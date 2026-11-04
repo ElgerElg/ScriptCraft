@@ -421,8 +421,13 @@ command /menu:
 |---|---|
 | `text "..."` | `at X Y`, `anchor`, `color #RRGGBB` / `#AARRGGBB`, `shadow` |
 | `button "..."` | `at`, `size WxH` (по умолчанию 100x20), `anchor`, `run "/команда"` или `close` |
-| `slot <предмет> [кол-во]` | `at`, `anchor` (только показ и подсказка, брать нельзя) |
+| `slot <предмет> [кол-во]` | `at`, `anchor`, `size`, `no frame` (только показ и подсказка, брать нельзя) |
+| `slot hotbar N` / `slot image "..."` / `slot text "..."` | предмет из N-го слота хотбара игрока, картинка или текст в слоте |
 | `image "ns:путь.png"` | `at`, `size WxH`, `texture WxH` (реальный размер файла), `anchor`, `color` (оттенок) |
+| `bar ["имя"]` | полоса прогресса: `value`, `max`, `direction`, `background`, `fill`, `text` — см. 5.1 |
+| `hotbar` | 9 слотов хотбара игрока в ряд — см. 5.1 |
+
+У каждого элемента есть `layer N` (больше = выше, по умолчанию 0) — порядок отрисовки, в том числе относительно кнопок и предметов.
 
 `anchor`: `top_left`, `top`, `top_right`, `left`, `center` (по умолчанию), `right`, `bottom_left`, `bottom`, `bottom_right`.
 Позиция считается так: элемент выравнивается по точке привязки и сдвигается на `X Y` (минус означает влево или вверх).
@@ -434,15 +439,85 @@ command /menu:
 ```
 com.scriptcraft.screen        (общий код: сервер + клиент)
   ScreenDescription           заголовок + список элементов, сериализация в FriendlyByteBuf
-  ScreenElement (sealed)      TextElement, ButtonElement, SlotElement, ImageElement
-  Layout                      x, y, width, height, anchor, color
+  ScreenElement (sealed)      TextElement, ButtonElement, SlotElement, ImageElement, BarElement
+  Layout                      x, y, width, height, anchor, color, layer
   Anchor                      9 точек привязки
 com.scriptcraft.network
   ModNetwork                  SimpleChannel "scriptcraft:main"
   OpenScreenPacket            сервер -> клиент: открыть экран
 com.scriptcraft.client        (ТОЛЬКО клиент, @OnlyIn(Dist.CLIENT))
   ClientPacketHandler         Minecraft.setScreen(...)
-  ScriptScreen                Screen + GuiGraphics: рисует элементы, кнопки — настоящие виджеты
+  ScriptScreen                Screen + GuiGraphics: рисует элементы по слоям, кнопки — настоящие виджеты
+  ElementRenderer             рендер text/image/slot/bar (общий с HUD)
+```
+
+### 5.1 HUD, полосы и слои
+
+Свой интерфейс **поверх экрана игры** (без открытия GUI). Полный пример — [`hud.sk`](../examples/scripts/hud.sk) (при первом запуске копируется выключенным как `-hud.sk`: он прячет ванильный HUD, включить — `/sc enable hud`).
+
+```
+on join:
+    hide vanilla hotbar for player
+    create hud "stats" for player:
+        hotbar id hb color #FFD700
+        bar "hp" value health at -51, -28 size 80x8 anchor bottom fill "example:textures/gui/bar_fill_hp.png" layer 1
+        image "example:textures/gui/bar_frame.png" at -51, -26 size 84x12 anchor bottom layer 2
+        text "%health%/%max_health%" at -51, -38 anchor bottom shadow layer 3
+
+command /boss:
+    set progress of bar "boss_hp" for all players to 75
+```
+
+| Действие | Что делает |
+|---|---|
+| `create hud "группа" [for <цель>]:` + элементы | создать/заменить группу элементов (как `open screen`, но без кнопок) |
+| `set value\|progress of bar "имя" [for <цель>] to <значение>` | значение полосы: число, `{переменная}` или источник клиента |
+| `set max of bar "имя" [for <цель>] to <значение>` | максимум полосы |
+| `set text of hud "имя" [for <цель>] to "текст"` | текст у `text`, `slot text` или надпись полосы |
+| `show hud` / `hide hud` / `remove hud "имя" [for <цель>]` | имя элемента **или** группы |
+| `clear hud [for <цель>]` | убрать весь свой HUD игрока |
+| `hide vanilla <часть>` / `show vanilla <часть> [for <цель>]` | hotbar, health, food, armor, air, experience, mount_health, jump_bar, crosshair, effects, item_name, scoreboard, bossbar, hud (всё) |
+
+Элементы HUD: `text`, `image`, `slot` (`slot <предмет> [n]`, `slot hotbar 1..9`, `slot image "..."`, `slot text "..."`),
+`bar ["имя"]` (синоним `progress`) и `hotbar` (раскладывается в 9 слотов `slot hotbar N`). У всех — `layer N` и `id имя`.
+`bar`, `hotbar`, новые виды слотов и `layer` работают и в `open screen`.
+
+**Полосы.** `value`/`max` — строка: число либо имя источника (`health`, `max_health`, `absorption`, `food`, `saturation`,
+`armor`, `air`, `max_air`, `xp` (0..1), `level`). Источники клиент читает у своего игрока **каждый кадр** — HP-полоса
+живая без пакетов и без тик-событий. Направление: `left_to_right` (по умолчанию), `right_to_left`, `bottom_to_top`,
+`top_to_bottom`. `background` — цвет, картинка (фон/рамка) или `none`; `fill` — картинка заполнения, она **обрезается**
+по UV под прогресс (не растягивается). `text "..."` рисуется по центру полосы: `%value%`, `%max%`, `%percent%`
+и все источники как `%health%`. Сервер при `create hud`/`set text` подставляет `%player%` и `{переменные}`,
+неизвестные `%...%` оставляет клиенту.
+
+**Слои.** Элементы сортируются устойчиво по `layer` (при равенстве — порядок в скрипте). Предметы рисуются со своей
+глубиной, поэтому после каждого слота с предметом z поднимается на 250 (до 8000) — следующие по порядку элементы
+гарантированно ложатся поверх. После HUD-оверлея буфер глубины очищается, чтобы не мешать ванильным оверлеям.
+В HUD элементы с `layer < 0` рисуются оверлеем `scriptcraft:hud_below` (`registerBelowAll`), остальные —
+`scriptcraft:hud` (`registerAboveAll`). В `ScriptScreen` кнопки рисуются вручную в общем порядке слоёв
+(в `addWidget`, не `addRenderableWidget`), подсказка предмета — поверх всего.
+
+**Состояние и сеть.** Сервер хранит HUD каждого игрока по UUID (`HudManager`): упорядоченный список `HudEntry`
+(`id`, группа, видимость, элемент) и маску скрытых ванильных частей. Клиенту уходят только **диффы** (`HudPacket`
+со списком `HudOp`: `Put`, `Remove`, `RemoveGroup`, `Clear`, `Value`, `Text`, `Visible`, `Vanilla`); если значение
+не изменилось — ничего не отправляется. При входе HUD отправляется заново (`Put` + `Vanilla`), при выходе
+клиент сбрасывает его сам, при остановке сервера состояние очищается. `/sc reload` HUD не трогает.
+Ванильные части прячутся отменой `RenderGuiOverlayEvent.Pre` по id оверлея. Лимит — 128 элементов на игрока.
+Протокол сети поднят до `3` (клиент и сервер должны быть одной версии).
+
+```
+com.scriptcraft.hud
+  HudEntry                    id + группа + видимость + ScreenElement
+  HudOp (sealed)              операции-диффы и их сериализация
+  HudManager                  серверное состояние по UUID, отправка диффов, вход/остановка сервера
+  VanillaHudPart              части ванильного HUD -> битовая маска
+com.scriptcraft.screen        + BarElement, BarDirection; Layout.layer; SlotElement.Content (ITEM, HOTBAR, IMAGE, TEXT)
+com.scriptcraft.network       + HudPacket
+com.scriptcraft.client
+  ElementRenderer             общий рендер text/image/bar/slot для экранов и HUD, сортировка по слоям, плейсхолдеры
+  ClientHud                   клиентское состояние HUD, рендер оверлеев, скрытие ванильных частей
+  ClientModEvents             RegisterGuiOverlaysEvent: hud_below + hud
+com.scriptcraft.script.runtime.HudActions   действия create hud / set value / set text / show / hide / remove / clear / vanilla
 ```
 
 ## 6. Ресурсы: как текстуры попадают к игрокам
@@ -511,8 +586,9 @@ src/main/java/com/scriptcraft/
   resources/                   ResourceIndex (индекс + SHA-1), ResourceSync (манифест, очередь кусков),
                                ResourcePacks (скрытый клиентский пак кэша, серверный датапак)
   event/ServerEvents           Forge-события -> события скриптов, переменные, раздача ресурсов
-  network/                     ModNetwork (протокол 2), OpenScreenPacket, ResourceManifest/Request/ChunkPacket
+  network/                     ModNetwork (протокол 3), OpenScreenPacket, HudPacket, ResourceManifest/Request/ChunkPacket
   screen/, client/             Screen API; client/ClientResources — кэш, DynamicTexture, перезагрузка ресурсов
+  hud/                         HUD поверх игры: HudManager (сервер), HudOp/HudEntry (диффы); client/ClientHud — рендер
 ```
 
 **Песочница.** Скрипт может вызывать только действия из `Actions.java`. У него нет рефлексии, доступа к файлам и Java-классам.

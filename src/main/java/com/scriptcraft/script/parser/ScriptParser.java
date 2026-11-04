@@ -1,15 +1,19 @@
 package com.scriptcraft.script.parser;
 
 import com.scriptcraft.ScriptCraft;
+import com.scriptcraft.hud.HudEntry;
 import com.scriptcraft.script.ScriptSource;
 import com.scriptcraft.script.parser.Tokenizer.Token;
 import com.scriptcraft.script.runtime.Action;
 import com.scriptcraft.script.runtime.Actions;
 import com.scriptcraft.script.runtime.Condition;
 import com.scriptcraft.script.runtime.Expression;
+import com.scriptcraft.script.runtime.HudActions;
 import com.scriptcraft.script.runtime.ScriptEvent;
 import com.scriptcraft.script.runtime.Target;
 import com.scriptcraft.screen.Anchor;
+import com.scriptcraft.screen.BarDirection;
+import com.scriptcraft.screen.BarElement;
 import com.scriptcraft.screen.ButtonElement;
 import com.scriptcraft.screen.ImageElement;
 import com.scriptcraft.screen.Layout;
@@ -19,10 +23,12 @@ import com.scriptcraft.screen.TextElement;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -461,8 +467,8 @@ public final class ScriptParser {
         }
         String head = word(t, 0);
 
-        if (hasBlock && !head.equals("open")) {
-            throw new ParseException("двоеточие допустимо только у 'open screen', 'loop', 'if' и 'else'");
+        if (hasBlock && !head.equals("open") && !head.equals("create")) {
+            throw new ParseException("двоеточие допустимо только у 'open screen', 'create hud', 'loop', 'if' и 'else'");
         }
         if (!hasBlock && !children.isEmpty()) {
             throw new ParseException("у этого действия не может быть вложенных строк");
@@ -522,63 +528,167 @@ public final class ScriptParser {
                 List<ScreenElement> elements = new ArrayList<>();
                 for (Line child : children) {
                     try {
-                        elements.add(parseElement(child));
+                        for (ParsedElement pe : parseElements(child)) {
+                            elements.add(pe.element());
+                        }
                     } catch (ParseException e) {
                         error(child, e.getMessage());
                     }
                 }
                 return new Actions.OpenScreen(target, title, elements);
             }
+            case "create" -> {
+                // create hud "имя" [for|to <цель>]:  + элементы (как у open screen, кроме кнопок)
+                expectWord(t, 1, "hud");
+                String group = EffectPatterns.hudName(quoted(t, 2));
+                Target target = new Target.Self();
+                if (t.size() > 3) {
+                    String w = word(t, 3);
+                    if (!w.equals("for") && !w.equals("to")) {
+                        throw new ParseException("ожидается 'for <цель>', например create hud \"stats\" for player:");
+                    }
+                    target = TargetParser.parseWhole(t, 4, "create hud \"stats\" for all players:");
+                }
+                if (!hasBlock || children.isEmpty()) {
+                    throw new ParseException("у 'create hud' нет элементов: допишите двоеточие и элементы с отступом");
+                }
+                List<HudEntry> entries = new ArrayList<>();
+                Set<String> ids = new HashSet<>();
+                int auto = 0;
+                for (Line child : children) {
+                    try {
+                        for (ParsedElement pe : parseElements(child)) {
+                            if (pe.element() instanceof ButtonElement) {
+                                throw new ParseException("кнопки в HUD не поддерживаются (HUD не принимает клики) — используйте open screen");
+                            }
+                            String id = pe.id();
+                            if (id.isEmpty()) {
+                                // Безымянный элемент: обновлять его нельзя, но скрыть/удалить можно вместе с группой.
+                                do {
+                                    id = group + "#" + (++auto);
+                                } while (ids.contains(id));
+                            }
+                            if (!ids.add(id)) {
+                                throw new ParseException("элемент с именем '" + id + "' уже есть в этом HUD");
+                            }
+                            entries.add(new HudEntry(id, group, true, pe.element()));
+                        }
+                    } catch (ParseException e) {
+                        error(child, e.getMessage());
+                    }
+                }
+                if (entries.size() > com.scriptcraft.hud.HudManager.MAX_ELEMENTS) {
+                    throw new ParseException("слишком много элементов в одном HUD (максимум "
+                            + com.scriptcraft.hud.HudManager.MAX_ELEMENTS + ")");
+                }
+                return new HudActions.CreateHud(target, group, entries);
+            }
             default -> throw new ParseException("неизвестное действие: " + head);
         }
     }
 
-    // ------------------------------------------------------------------ элементы экрана
+    // ------------------------------------------------------------------ элементы экрана и HUD
+
+    /** Разобранный элемент + имя для HUD ("" = без имени). */
+    private record ParsedElement(String id, ScreenElement element) {
+    }
+
+    /** Какие параметры допустимы у каждого вида элемента (лишний параметр — понятная ошибка, а не тихое игнорирование). */
+    private static final Map<String, Set<String>> ELEMENT_OPTIONS = Map.of(
+            "text", Set.of("at", "anchor", "color", "shadow", "layer", "id"),
+            "button", Set.of("at", "size", "anchor", "run", "close", "layer", "id"),
+            "image", Set.of("at", "size", "texture", "anchor", "color", "layer", "id"),
+            "slot", Set.of("at", "size", "anchor", "color", "no", "layer", "id"),
+            "bar", Set.of("at", "size", "texture", "anchor", "color", "layer", "id", "value", "max", "direction",
+                    "background", "fill", "text", "shadow"),
+            "hotbar", Set.of("at", "size", "anchor", "color", "no", "layer", "id", "spacing"));
 
     /**
+     * Элемент экрана или HUD (одна строка; "hotbar" раскладывается в 9 слотов):
      * text "Текст" [at X Y] [anchor A] [color #RRGGBB] [shadow]
      * button "Надпись" [at X Y] [size WxH] [anchor A] (run "/команда" | close)
-     * slot <предмет> [количество] [at X Y] [anchor A]
+     * slot <предмет> [количество] | slot hotbar N | slot image "картинка" | slot text "Текст"  [at X Y] [size WxH] [no frame]
      * image "ns:textures/....png" [at X Y] [size WxH] [texture WxH] [anchor A] [color #RRGGBB]
+     * bar ["имя"] [value V] [max V] [direction D] [size WxH] [color #заполнение] [background #цвет|"картинка"|none]
+     *     [fill "картинка"] [texture WxH] [text "надпись"] [shadow]
+     * hotbar [at X Y] [anchor A] [size WxH] [spacing N] [color #выделение] [no frame]
+     * У всех: [layer N] — слой (больше = выше), [id имя] — имя в HUD.
      */
-    private ScreenElement parseElement(Line line) throws ParseException {
+    private List<ParsedElement> parseElements(Line line) throws ParseException {
         List<Token> t = Tokenizer.tokenize(line.text());
         String kind = word(t, 0);
         int idx;
-        String main;
+        String main = "";
+        String id = "";
         int count = 1;
+        SlotElement.Content slotContent = SlotElement.Content.ITEM;
         switch (kind) {
             case "text", "button", "image" -> {
                 main = quoted(t, 1);
                 idx = 2;
             }
             case "slot" -> {
-                main = word(t, 1);
-                if (main.isEmpty()) {
-                    throw new ParseException("не указан предмет слота");
-                }
+                String what = word(t, 1);
                 idx = 2;
-                if (t.size() > 2 && !t.get(2).quoted() && t.get(2).value().matches("\\d+")) {
+                if (what.equals("hotbar") && t.size() > 2 && !t.get(2).quoted() && t.get(2).value().matches("\\d+")) {
+                    // slot hotbar 3 — настоящий предмет из 3-го слота хотбара игрока
+                    slotContent = SlotElement.Content.HOTBAR;
                     count = parseInt(t.get(2).value());
+                    if (count < 1 || count > 9) {
+                        throw new ParseException("номер слота хотбара — от 1 до 9");
+                    }
                     idx = 3;
+                } else if ((what.equals("image") || what.equals("text")) && t.size() > 2 && t.get(2).quoted()) {
+                    slotContent = what.equals("image") ? SlotElement.Content.IMAGE : SlotElement.Content.TEXT;
+                    main = t.get(2).value();
+                    idx = 3;
+                } else {
+                    main = what;
+                    if (main.isEmpty()) {
+                        throw new ParseException("не указан предмет слота");
+                    }
+                    if (t.size() > 2 && !t.get(2).quoted() && t.get(2).value().matches("\\d+")) {
+                        count = parseInt(t.get(2).value());
+                        idx = 3;
+                    }
                 }
             }
-            default -> throw new ParseException("неизвестный элемент экрана: " + kind);
+            case "bar", "progress" -> {
+                kind = "bar";
+                idx = 1;
+                if (t.size() > 1 && t.get(1).quoted()) {
+                    id = EffectPatterns.hudName(t.get(1).value());
+                    idx = 2;
+                }
+            }
+            case "hotbar" -> idx = 1;
+            default -> throw new ParseException("неизвестный элемент: " + kind + " (text, button, image, slot, bar, hotbar)");
         }
 
-        int x = 0, y = 0, w = 0, h = 0, texW = 0, texH = 0;
+        int x = 0, y = 0, w = 0, h = 0, texW = 0, texH = 0, layer = 0, spacing = -1;
         int color = 0xFFFFFFFF;
+        boolean colorSet = false, atSet = false, anchorSet = false;
         Anchor anchor = Anchor.CENTER;
-        boolean shadow = false;
+        boolean shadow = false, frame = true;
         String action = "close";
+        // Полоса
+        String value = "0", max = null, fillTexture = "", backgroundTexture = "", barText = "";
+        BarDirection direction = BarDirection.LEFT_TO_RIGHT;
+        int backgroundColor = 0x80000000;
 
+        Set<String> allowed = ELEMENT_OPTIONS.get(kind);
         while (idx < t.size()) {
             String opt = word(t, idx);
+            if (!allowed.contains(opt)) {
+                throw new ParseException(opt.isEmpty() ? "лишний текст в кавычках: \"" + t.get(idx).value() + "\""
+                        : "у элемента '" + kind + "' нет параметра '" + opt + "'");
+            }
             switch (opt) {
                 case "at" -> {
                     if (idx + 2 >= t.size()) throw new ParseException("нужно: at X Y");
                     x = parseInt(t.get(idx + 1).value());
                     y = parseInt(t.get(idx + 2).value());
+                    atSet = true;
                     idx += 3;
                 }
                 case "size", "texture" -> {
@@ -597,10 +707,12 @@ public final class ScriptParser {
                     Anchor a = Anchor.byName(idx + 1 < t.size() ? t.get(idx + 1).value() : "");
                     if (a == null) throw new ParseException("неизвестный anchor (top_left, top, center, bottom_right...)");
                     anchor = a;
+                    anchorSet = true;
                     idx += 2;
                 }
                 case "color" -> {
                     color = parseColor(idx + 1 < t.size() ? t.get(idx + 1).value() : "");
+                    colorSet = true;
                     idx += 2;
                 }
                 case "shadow" -> {
@@ -616,17 +728,142 @@ public final class ScriptParser {
                     action = "close";
                     idx++;
                 }
+                case "layer" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: layer N (целое число, больше = выше)");
+                    layer = parseInt(t.get(idx + 1).value());
+                    idx += 2;
+                }
+                case "id" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: id имя");
+                    id = EffectPatterns.hudName(t.get(idx + 1).value());
+                    idx += 2;
+                }
+                case "no" -> {
+                    expectWord(t, idx + 1, "frame");
+                    frame = false;
+                    idx += 2;
+                }
+                case "spacing" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: spacing N");
+                    spacing = parseInt(t.get(idx + 1).value());
+                    idx += 2;
+                }
+                case "value", "max" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: " + opt + " <число | {переменная} | health | food ...>");
+                    String v = barValueRaw(t.get(idx + 1));
+                    if (opt.equals("value")) {
+                        value = v;
+                    } else {
+                        max = v;
+                    }
+                    idx += 2;
+                }
+                case "direction" -> {
+                    BarDirection d = BarDirection.byName(word(t, idx + 1));
+                    if (d == null) {
+                        throw new ParseException("направление: left_to_right, right_to_left, bottom_to_top, top_to_bottom");
+                    }
+                    direction = d;
+                    idx += 2;
+                }
+                case "background" -> {
+                    // background #80000000 | background "ns:textures/gui/bar_bg.png" | background none
+                    if (idx + 1 < t.size() && t.get(idx + 1).quoted()) {
+                        backgroundTexture = t.get(idx + 1).value();
+                    } else if (word(t, idx + 1).equals("none")) {
+                        backgroundColor = 0;
+                        backgroundTexture = "";
+                    } else {
+                        backgroundColor = parseColor(idx + 1 < t.size() ? t.get(idx + 1).value() : "");
+                    }
+                    idx += 2;
+                }
+                case "fill" -> {
+                    // fill "ns:textures/gui/bar_fill.png" | fill #RRGGBB (то же, что color)
+                    if (idx + 1 < t.size() && t.get(idx + 1).quoted()) {
+                        fillTexture = t.get(idx + 1).value();
+                    } else {
+                        color = parseColor(idx + 1 < t.size() ? t.get(idx + 1).value() : "");
+                        colorSet = true;
+                    }
+                    idx += 2;
+                }
+                case "text" -> {
+                    barText = quoted(t, idx + 1);
+                    idx += 2;
+                }
                 default -> throw new ParseException("неизвестный параметр элемента: " + opt);
             }
         }
 
-        Layout layout = new Layout(x, y, w, h, anchor, color);
-        return switch (kind) {
+        if (kind.equals("hotbar")) {
+            return expandHotbar(id, x, y, atSet, anchor, anchorSet, w, h, spacing, color, frame, layer);
+        }
+        if (kind.equals("bar") && !colorSet) {
+            color = 0xFF4CAF50;
+        }
+        Layout layout = new Layout(x, y, w, h, anchor, color, layer);
+        ScreenElement element = switch (kind) {
             case "text" -> new TextElement(layout, main, shadow);
             case "button" -> new ButtonElement(layout, main, action);
-            case "slot" -> new SlotElement(layout, main, count);
+            case "slot" -> new SlotElement(layout, slotContent, main, count, frame);
+            case "bar" -> new BarElement(layout, id, value, max != null ? max : defaultMax(value), direction,
+                    backgroundColor, fillTexture, backgroundTexture, texW, texH, barText, shadow);
             default -> new ImageElement(layout, main, texW, texH);
         };
+        return List.of(new ParsedElement(id, element));
+    }
+
+    /** Значение полосы в описании: число, {переменная}, плейсхолдер или источник клиента. */
+    private static String barValueRaw(Token token) throws ParseException {
+        String v = token.value().strip();
+        if (token.quoted() || NUMBER.matcher(v).matches() || v.startsWith("{") || v.contains("%")
+                || BarElement.isSource(v)) {
+            return BarElement.isSource(v) ? v.toLowerCase(Locale.ROOT) : v;
+        }
+        throw new ParseException("значение полосы: число, {переменная} или " + String.join(", ", BarElement.SOURCES)
+                + ", а не '" + v + "'");
+    }
+
+    /** Максимум по умолчанию подбирается под источник: health -> max_health, food -> 20, air -> max_air... */
+    private static String defaultMax(String value) {
+        return switch (value) {
+            case "health" -> "max_health";
+            case "air" -> "max_air";
+            case "xp" -> "1";
+            case "food", "saturation", "armor", "absorption" -> "20";
+            default -> "100";
+        };
+    }
+
+    /**
+     * hotbar -> 9 слотов "slot hotbar 1..9" в ряд. По умолчанию — внизу по центру, как ванильный хотбар.
+     * spacing — расстояние между началами слотов (по умолчанию размер слота + 2).
+     */
+    private static List<ParsedElement> expandHotbar(String id, int x, int y, boolean atSet, Anchor anchor, boolean anchorSet,
+                                                    int w, int h, int spacing, int color, boolean frame, int layer) {
+        if (!anchorSet) {
+            anchor = Anchor.BOTTOM;
+        }
+        if (!atSet && anchor == Anchor.BOTTOM) {
+            y = -3;
+        }
+        int size = w > 0 ? w : SlotElement.SIZE;
+        int step = spacing > 0 ? spacing : size + 2;
+        int total = step * 8 + size;
+        List<ParsedElement> slots = new ArrayList<>(9);
+        for (int i = 0; i < 9; i++) {
+            // Сдвиг i-го слота относительно точки привязки ряда целиком.
+            int offset = switch (anchor.horizontal()) {
+                case 0 -> i * step;
+                case 1 -> i * step - (total - size) / 2;
+                default -> -(8 - i) * step;
+            };
+            Layout layout = new Layout(x + offset, y, w, h, anchor, color, layer);
+            slots.add(new ParsedElement(id.isEmpty() ? "" : id + (i + 1),
+                    new SlotElement(layout, SlotElement.Content.HOTBAR, "", i + 1, frame)));
+        }
+        return slots;
     }
 
     // ------------------------------------------------------------------ helpers

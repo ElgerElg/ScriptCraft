@@ -4,7 +4,10 @@ import com.scriptcraft.script.parser.Tokenizer.Token;
 import com.scriptcraft.script.runtime.Action;
 import com.scriptcraft.script.runtime.Effects;
 import com.scriptcraft.script.runtime.Expression;
+import com.scriptcraft.script.runtime.HudActions;
 import com.scriptcraft.script.runtime.Target;
+import com.scriptcraft.hud.VanillaHudPart;
+import com.scriptcraft.screen.BarElement;
 import net.minecraft.world.level.GameType;
 
 import java.util.ArrayList;
@@ -39,6 +42,7 @@ final class EffectPatterns {
 
     private static final List<Rule> RULES = new ArrayList<>();
     private static final Pattern ID = Pattern.compile("[a-z0-9_.-]+(:[a-z0-9_./-]+)?");
+    private static final Pattern HUD_NAME = Pattern.compile("[A-Za-z0-9_.-]{1,64}");
     private static final String SECONDS = "seconds|second|secs|sec";
 
     static {
@@ -74,6 +78,35 @@ final class EffectPatterns {
         rule("remove effect %id% from %target%", c -> new Effects.RemoveEffect(c.target(1), c.id(0)));
         rule("clear effects of %target%", c -> new Effects.ClearEffects(c.target(0)));
         rule("clear all effects of %target%", c -> new Effects.ClearEffects(c.target(0)));
+
+        // --- HUD (create hud "..." — блок с элементами, разбирается в ScriptParser)
+        // Обновление полосы: значение — число, {переменная} или источник клиента (health, food...).
+        rule("set value|progress of bar %text% for|of %target% to %value%",
+                c -> new HudActions.SetBar(c.target(1), hudName(c.text(0)), barValue(c.raw(2)), null));
+        rule("set value|progress of bar %text% to %value%",
+                c -> new HudActions.SetBar(new Target.Self(), hudName(c.text(0)), barValue(c.raw(1)), null));
+        rule("set max of bar %text% for|of %target% to %value%",
+                c -> new HudActions.SetBar(c.target(1), hudName(c.text(0)), null, barValue(c.raw(2))));
+        rule("set max of bar %text% to %value%",
+                c -> new HudActions.SetBar(new Target.Self(), hudName(c.text(0)), null, barValue(c.raw(1))));
+        rule("set text of hud %text% for|of %target% to %text%",
+                c -> new HudActions.SetText(c.target(1), hudName(c.text(0)), c.text(2)));
+        rule("set text of hud %text% to %text%",
+                c -> new HudActions.SetText(new Target.Self(), hudName(c.text(0)), c.text(1)));
+        // show/hide/remove hud "имя": имя элемента или целой группы (create hud "группа")
+        rule("show hud %text% to|for %target%", c -> new HudActions.Visibility(c.target(1), hudName(c.text(0)), true));
+        rule("show hud %text%", c -> new HudActions.Visibility(new Target.Self(), hudName(c.text(0)), true));
+        rule("hide hud %text% from|for %target%", c -> new HudActions.Visibility(c.target(1), hudName(c.text(0)), false));
+        rule("hide hud %text%", c -> new HudActions.Visibility(new Target.Self(), hudName(c.text(0)), false));
+        rule("remove hud %text% from|for %target%", c -> new HudActions.Remove(c.target(1), hudName(c.text(0))));
+        rule("remove hud %text%", c -> new HudActions.Remove(new Target.Self(), hudName(c.text(0))));
+        rule("clear hud of|for %target%", c -> new HudActions.Clear(c.target(0)));
+        rule("clear hud", c -> new HudActions.Clear(new Target.Self()));
+        // Части ванильного HUD: hide vanilla hotbar for player / show vanilla health for all players
+        rule("hide vanilla %part% for|from %target%", c -> new HudActions.Vanilla(c.target(1), vanillaPart(c.raw(0)), true));
+        rule("hide vanilla %part%", c -> new HudActions.Vanilla(new Target.Self(), vanillaPart(c.raw(0)), true));
+        rule("show vanilla %part% for|to %target%", c -> new HudActions.Vanilla(c.target(1), vanillaPart(c.raw(0)), false));
+        rule("show vanilla %part%", c -> new HudActions.Vanilla(new Target.Self(), vanillaPart(c.raw(0)), false));
 
         // --- звук, титры, опыт
         rule("play sound %id% to %target%", c -> new Effects.PlaySound(c.target(1), c.id(0)));
@@ -204,6 +237,33 @@ final class EffectPatterns {
             throw new ParseException("ожидается число или {переменная}, а не '" + t.value() + "'");
         }
         return e;
+    }
+
+    /** Имя элемента/группы HUD: латиница, цифры, _ . - (до 64 символов). */
+    static String hudName(String raw) throws ParseException {
+        String v = raw.strip();
+        if (!HUD_NAME.matcher(v).matches()) {
+            throw new ParseException("имя HUD должно быть латиницей (буквы, цифры, _ . -), а не '" + raw + "'");
+        }
+        return v;
+    }
+
+    /** Значение полосы: число, {переменная} или источник клиента (health, food...). */
+    private static Expression barValue(Token t) throws ParseException {
+        Expression e = ScriptParser.expression(t);
+        if (e instanceof Expression.Text && !t.quoted() && !BarElement.isSource(t.value())) {
+            throw new ParseException("ожидается число, {переменная} или источник (" + String.join(", ", BarElement.SOURCES)
+                    + "), а не '" + t.value() + "'");
+        }
+        return e;
+    }
+
+    private static int vanillaPart(Token t) throws ParseException {
+        int mask = t.quoted() ? -1 : VanillaHudPart.maskByName(t.value());
+        if (mask < 0) {
+            throw new ParseException("неизвестная часть ванильного HUD: '" + t.value() + "' (" + VanillaHudPart.names() + ")");
+        }
+        return mask;
     }
 
     private static GameType gameMode(Token t) throws ParseException {

@@ -25,4 +25,8 @@ public record TextElement(Layout layout, String text, boolean shadow) implements
     public ScreenElement format(UnaryOperator<String> formatter) {
         return new TextElement(layout, formatter.apply(text), shadow);
     }
+
+    public TextElement withText(String newText) {
+        return new TextElement(layout, newText, shadow);
+    }
 }

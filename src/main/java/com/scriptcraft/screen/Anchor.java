@@ -19,6 +19,11 @@ public enum Anchor {
         this.vertical = vertical;
     }
 
+    /** 0 — левый край, 1 — центр, 2 — правый край (нужно для раскладки рядов слотов). */
+    public int horizontal() {
+        return horizontal;
+    }
+
     public int resolveX(int screenWidth, int elementWidth, int offsetX) {
         return align(horizontal, screenWidth, elementWidth) + offsetX;
     }
@@ -35,10 +40,24 @@ public enum Anchor {
         };
     }
 
-    /** "top_left", "center"... -> enum; null, если имя неизвестно. */
+    /** "top_left", "center"... -> enum; null, если имя неизвестно. Синонимы: top_center, bottom_center, middle. */
     public static Anchor byName(String name) {
+        String n = name.toLowerCase(java.util.Locale.ROOT).replace('-', '_');
+        switch (n) {
+            case "top_center", "center_top" -> {
+                return TOP;
+            }
+            case "bottom_center", "center_bottom" -> {
+                return BOTTOM;
+            }
+            case "middle" -> {
+                return CENTER;
+            }
+            default -> {
+            }
+        }
         try {
-            return valueOf(name.toUpperCase(java.util.Locale.ROOT));
+            return valueOf(n.toUpperCase(java.util.Locale.ROOT));
         } catch (IllegalArgumentException e) {
             return null;
         }

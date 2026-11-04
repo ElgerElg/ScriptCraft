@@ -3,6 +3,7 @@ package com.scriptcraft.client;
 import com.scriptcraft.ScriptCraft;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
+import net.minecraftforge.client.event.RenderGuiOverlayEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
@@ -15,5 +16,14 @@ public final class ClientEvents {
     @SubscribeEvent
     public static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
         ClientResources.reset();
+        ClientHud.reset();
+    }
+
+    /** Скрытие частей ванильного HUD по команде скрипта (hide vanilla hotbar for player). */
+    @SubscribeEvent
+    public static void onRenderOverlay(RenderGuiOverlayEvent.Pre event) {
+        if (ClientHud.isHidden(event.getOverlay().id())) {
+            event.setCanceled(true);
+        }
     }
 }

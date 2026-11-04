@@ -1,7 +1,7 @@
 /*
  * ScriptCraft — большие примеры для вкладки «Примеры».
  * Каждый пример: id, title {ru,en}, intro {ru,en}, blocks[] (lang: sk | json | toml | text), notes {ru[], en[]}, related[] (id из syntax.js).
- * Скрипты взяты из examples/scripts репозитория (welcome.sk, menu.sk, ruby.sk) — держите их в согласии.
+ * Скрипты взяты из examples/scripts репозитория (welcome.sk, menu.sk, ruby.sk, hud.sk) — держите их в согласии.
  */
 window.SC_DOCS = window.SC_DOCS || {};
 window.SC_DOCS.examples = [
@@ -45,6 +45,81 @@ command /announce permission 2:
            "`%player%` and `{variables}` are filled in on the server when the screen opens."]
     },
     related: ["eff-open-screen", "screen-text", "screen-button", "screen-slot", "screen-image", "screen-layout"]
+  },
+  {
+    id: "hud",
+    title: { ru: "HUD: свой хотбар, полосы HP и голода, картинки и слои", en: "HUD: custom hotbar, HP and hunger bars, images and layers" },
+    intro: {
+      ru: "При входе игрок получает свой HUD: хотбар из 9 настоящих слотов, полосы здоровья и сытости с картинками заполнения и рамкой (рамка — отдельная картинка слоем выше), счётчик монет со слотом-картинкой. Ванильные хотбар, сердечки и голод спрятаны. Полосы со значением `health`/`food` клиент обновляет сам каждый кадр — без пакетов. Картинки лежат в `scriptcraft/resources/assets/example/textures/gui/` и отправляются игрокам автоматически.",
+      en: "On join the player gets a custom HUD: a hotbar of 9 real slots, health and hunger bars with fill images and a frame (the frame is a separate image on a higher layer), and a coin counter with an image slot. The vanilla hotbar, hearts and hunger are hidden. Bars with `health`/`food` values are updated by the client every frame — no packets. Images live in `scriptcraft/resources/assets/example/textures/gui/` and are sent to players automatically."
+    },
+    blocks: [
+      { lang: "sk", title: { ru: "scriptcraft/scripts/hud.sk", en: "scriptcraft/scripts/hud.sk" }, code: `on join:
+    # Прячем ванильные хотбар, сердечки и голод — рисуем свои
+    hide vanilla hotbar for player
+    hide vanilla health for player
+    hide vanilla food for player
+    create hud "stats" for player:
+        # Хотбар: 9 настоящих слотов игрока, выбранный слот подсвечен цветом color
+        hotbar id hb color #FFD700 layer 0
+        # Полосы: значение берётся на клиенте каждый кадр (health, food...), пакеты не нужны.
+        # Заполнение — картинка (обрезается, а не растягивается), рамка — отдельная картинка слоем выше.
+        bar "hp" value health at -51, -28 size 80x8 anchor bottom fill "example:textures/gui/bar_fill_hp.png" background #A0000000 layer 1
+        image "example:textures/gui/bar_frame.png" at -51, -26 size 84x12 anchor bottom layer 2
+        text "❤ %health%/%max_health%" at -51, -38 anchor bottom color #FF5555 shadow layer 3 id hp_text
+        bar "food" value food direction right_to_left at 51, -28 size 80x8 anchor bottom fill "example:textures/gui/bar_fill_food.png" background #A0000000 layer 1
+        image "example:textures/gui/bar_frame.png" at 51, -26 size 84x12 anchor bottom layer 2
+        text "%food%/20" at 51, -38 anchor bottom color #FFAA00 shadow layer 3
+        # Текст прямо на полосе (плейсхолдеры %value%, %max%, %percent%); в обычном тексте — %health%, %food%...
+        bar "air" value air direction bottom_to_top at -8, -60 size 6x40 anchor right color #55AAFF text "%percent%%" layer 1
+
+    # Отдельная группа: монеты игрока. Слот может содержать картинку или текст.
+    create hud "coins" for player:
+        slot image "example:textures/gui/coin.png" at 4, 4 anchor top_left id coin_icon layer 0
+        text "{coins::%player%}" at 26, 9 anchor top_left color #FFD700 shadow id coins_text layer 1
+        bar "coins_goal" value {coins::%player%} max 100 at 4, 26 size 60x4 anchor top_left color #FFD700 layer 0
+
+# /coinhud — обновить счётчик монет (только изменения уходят клиенту)
+command /coinhud:
+    set text of hud "coins_text" for player to "{coins::%player%}"
+    set value of bar "coins_goal" for player to {coins::%player%}
+
+# /hudoff и /hudon — скрыть/показать группу целиком
+command /hudoff:
+    hide hud "stats" from player
+    show vanilla hotbar for player
+    show vanilla health for player
+    show vanilla food for player
+
+command /hudon:
+    show hud "stats" to player
+    hide vanilla hotbar for player
+    hide vanilla health for player
+    hide vanilla food for player
+
+# /boss — полоса для всех игроков рядом, значение задаёт скрипт
+command /boss permission 2:
+    create hud "boss" for players in radius 30 of player:
+        text "Страж подземелья" at 0, 6 anchor top color #FF5555 shadow layer 1
+        bar "boss_hp" value 100 max 100 at 0, 18 size 182x6 anchor top color #AA0000 layer 0
+    set progress of bar "boss_hp" for players in radius 30 of player to 75
+
+# /hudreset — убрать весь свой HUD и вернуть ванильный
+command /hudreset:
+    clear hud for player
+    show vanilla all for player` }
+    ],
+    notes: {
+      ru: ["`layer` — порядок отрисовки: больше = выше. Отрицательный слой рисуется под ванильным HUD.",
+           "HUD хранится на сервере и возвращается игроку после перезахода; `/sc reload` его не сбрасывает — повторный `create hud` с тем же именем заменяет группу.",
+           "Клиенту уходят только изменения: `set value of bar` с тем же значением ничего не отправляет.",
+           "`bar`, `hotbar`, `slot image/text` и `layer` работают и в `open screen`."],
+      en: ["`layer` is the drawing order: higher = on top. A negative layer is drawn below the vanilla HUD.",
+           "The HUD is kept on the server and comes back after re-joining; `/sc reload` does not reset it — running `create hud` with the same name replaces the group.",
+           "Only changes are sent: `set value of bar` with the same value sends nothing.",
+           "`bar`, `hotbar`, `slot image/text` and `layer` also work in `open screen`."]
+    },
+    related: ["hud-create", "hud-bar", "hud-bar-sources", "hud-hotbar", "hud-slot", "hud-layer", "hud-set-bar", "hud-set-text", "hud-show-hide", "hud-vanilla"]
   },
   {
     id: "economy",

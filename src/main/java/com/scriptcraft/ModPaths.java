@@ -30,6 +30,7 @@ public final class ModPaths {
             "scripts/welcome.sk",
             "scripts/ruby.sk",
             "scripts/menu.sk",
+            "scripts/hud.sk",
             "resources/assets/example/blockstates/ruby_block.json",
             "resources/assets/example/models/block/ruby_block.json",
             "resources/assets/example/models/item/ruby_block.json",
@@ -37,10 +38,20 @@ public final class ModPaths {
             "resources/assets/example/textures/block/ruby_block.png",
             "resources/assets/example/textures/item/ruby.png",
             "resources/assets/example/textures/gui/menu_banner.png",
+            "resources/assets/example/textures/gui/bar_frame.png",
+            "resources/assets/example/textures/gui/bar_fill_hp.png",
+            "resources/assets/example/textures/gui/bar_fill_food.png",
+            "resources/assets/example/textures/gui/coin.png",
             "resources/assets/example/lang/en_us.json",
             "resources/assets/example/lang/ru_ru.json",
             "resources/data/example/loot_tables/blocks/ruby_block.json",
             "resources/data/minecraft/tags/blocks/mineable/pickaxe.json");
+
+    /**
+     * Примеры, которые копируются ВЫКЛЮЧЕННЫМИ ("-имя.sk"): hud.sk прячет ванильный HUD всем игрокам при входе,
+     * поэтому включать его по умолчанию нельзя — только командой /sc enable hud.
+     */
+    private static final java.util.Set<String> DISABLED_DEFAULTS = java.util.Set.of("scripts/hud.sk");
 
     private ModPaths() {
     }
@@ -126,6 +137,9 @@ public final class ModPaths {
                 continue;
             }
             Path target = root().resolve(rel);
+            if (DISABLED_DEFAULTS.contains(rel)) {
+                target = target.resolveSibling("-" + target.getFileName());
+            }
             if (Files.exists(target)) {
                 continue;
             }

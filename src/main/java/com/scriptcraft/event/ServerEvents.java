@@ -1,6 +1,7 @@
 package com.scriptcraft.event;
 
 import com.scriptcraft.command.ScriptCommands;
+import com.scriptcraft.hud.HudManager;
 import com.scriptcraft.resources.ResourceSync;
 import com.scriptcraft.script.ScriptLoader;
 import com.scriptcraft.script.runtime.ScriptEvent;
@@ -34,6 +35,9 @@ public final class ServerEvents {
         if (event.getEntity() instanceof ServerPlayer player) {
             // Сначала манифест ресурсов: клиент начнёт докачку, пока скрипт приветствует игрока.
             ResourceSync.onLogin(player);
+            // HUD, созданный до выхода игрока, отправляется заново (клиент при отключении его стёр).
+            // Если скрипт "on join" создаст тот же HUD ещё раз, повторной отправки не будет — сервер сравнит.
+            HudManager.onLogin(player);
             ScriptLoader.fireEvent(ScriptEvent.JOIN, player);
         }
     }
@@ -70,6 +74,7 @@ public final class ServerEvents {
     public static void onServerStopped(ServerStoppedEvent event) {
         VariableStore.shutdown();
         ResourceSync.onServerStopped();
+        HudManager.onServerStopped();
     }
 
     /** Периодическое автосохранение (интервал — variablesSaveIntervalSeconds в конфиге). */

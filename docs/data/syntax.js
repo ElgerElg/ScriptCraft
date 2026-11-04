@@ -24,6 +24,7 @@ window.SC_DOCS.syntax = {
     { id: "expressions",ru: "Выражения и плейсхолдеры", en: "Expressions & placeholders" },
     { id: "targets",    ru: "Цели (селекторы)",   en: "Targets (selectors)" },
     { id: "screen",     ru: "Экраны (GUI)",       en: "Screens (GUI)" },
+    { id: "hud",        ru: "UI / HUD",           en: "UI / HUD" },
     { id: "commands",   ru: "Команды мода",       en: "Mod commands" },
     { id: "config",     ru: "Конфиг",             en: "Config" }
   ],
@@ -300,14 +301,14 @@ teleport other players in radius 100 of player to player`,
     name: { ru: "Открыть экран", en: "Open screen" },
     syntax: ["open screen \"<заголовок>\":", "open screen \"<заголовок>\" to <цель>:"],
     desc: {
-      ru: "Открывает игрокам экран (GUI) с элементами, перечисленными с отступом ниже: `text`, `button`, `slot`, `image`. См. категорию «Экраны».",
-      en: "Opens a screen (GUI) for the players, with elements listed indented below: `text`, `button`, `slot`, `image`. See the “Screens” category."
+      ru: "Открывает игрокам экран (GUI) с элементами, перечисленными с отступом ниже: `text`, `button`, `slot`, `image`, `bar`, `hotbar`. У каждого элемента есть `layer` (слой). См. категории «Экраны» и «UI / HUD».",
+      en: "Opens a screen (GUI) for the players, with elements listed indented below: `text`, `button`, `slot`, `image`, `bar`, `hotbar`. Every element has a `layer`. See the “Screens” and “UI / HUD” categories."
     },
     example: `command /menu:
     open screen "Главное меню" to player:
         text "Привет, %player%!" at 0, -40 color #FFD700 shadow
         button "Закрыть" at 0, 20 size 120x20 close`,
-    since: "0.1.0", related: ["screen-text", "screen-button", "screen-slot", "screen-image"]
+    since: "0.1.0", related: ["screen-text", "screen-button", "screen-slot", "screen-image", "hud-bar", "hud-layer"]
   },
 
   // ================================================================== ЭФФЕКТЫ: здоровье
@@ -753,14 +754,14 @@ button "Закрыть" at 0, 40 size 120x20 close`,
   {
     id: "screen-slot", category: "screen",
     name: { ru: "Слот с предметом", en: "Item slot" },
-    syntax: ["slot <предмет> [<количество>] [at <X> <Y>] [anchor <точка>]"],
+    syntax: ["slot <предмет> [<количество>] [at <X> <Y>] [anchor <точка>]", "slot hotbar <1-9> | slot image \"<картинка>\" | slot text \"<текст>\""],
     desc: {
-      ru: "Показывает предмет с подсказкой при наведении. Только показ — брать нельзя.",
-      en: "Shows an item with a tooltip on hover. Display only — it cannot be taken."
+      ru: "Показывает предмет с подсказкой при наведении. Только показ — брать нельзя. С 0.1.33 слот может показывать предмет из хотбара игрока, картинку или текст (см. «Слоты HUD»).",
+      en: "Shows an item with a tooltip on hover. Display only — it cannot be taken. Since 0.1.33 a slot can also show an item from the player's hotbar, an image or a text (see “HUD slots”)."
     },
     example: `slot diamond 5 at -30, -15
 slot example:ruby 4 at 60, -15`,
-    since: "0.1.0", related: ["eff-open-screen"]
+    since: "0.1.0", related: ["eff-open-screen", "hud-slot"]
   },
   {
     id: "screen-image", category: "screen",
@@ -782,7 +783,159 @@ slot example:ruby 4 at 60, -15`,
       en: "The element is aligned to an anchor point of the screen (`center` by default) and shifted by X Y pixels (negative = left/up)."
     },
     example: `text "ScriptCraft" at -4, -4 anchor bottom_right color #808080`,
-    since: "0.1.0", related: ["screen-text", "screen-button"]
+    since: "0.1.0", related: ["screen-text", "screen-button", "hud-layer"]
+  },
+
+  // ================================================================== UI / HUD
+  {
+    id: "hud-create", category: "hud",
+    name: { ru: "Создать HUD", en: "Create HUD" },
+    syntax: ["create hud \"<группа>\":", "create hud \"<группа>\" for <цель>:"],
+    desc: {
+      ru: "Рисует поверх экрана игры группу элементов, перечисленных с отступом ниже: `text`, `image`, `slot`, `bar`, `hotbar` (кнопок нет — HUD не принимает клики). Имя группы — латиница. Повторный `create hud` с тем же именем заменяет группу целиком (если ничего не изменилось — пакет не отправляется). HUD хранится на сервере: после перезахода игрок получает его снова; `/sc reload` его не трогает, при остановке сервера он очищается. До 128 элементов на игрока.",
+      en: "Draws a group of elements over the game screen, listed indented below: `text`, `image`, `slot`, `bar`, `hotbar` (no buttons — the HUD takes no clicks). The group name is Latin. Running `create hud` again with the same name replaces the whole group (nothing is sent if nothing changed). The HUD is kept on the server: players get it back after re-joining; `/sc reload` does not touch it, it is cleared when the server stops. Up to 128 elements per player."
+    },
+    example: `on join:
+    create hud "stats" for player:
+        hotbar color #FFD700
+        bar "hp" value health at -51, -28 size 80x8 anchor bottom color #E53935
+        text "%health%/%max_health%" at -51, -38 anchor bottom shadow layer 3`,
+    since: "0.1.33", related: ["hud-bar", "hud-hotbar", "hud-slot", "hud-layer", "hud-show-hide", "eff-open-screen"]
+  },
+  {
+    id: "hud-bar", category: "hud",
+    name: { ru: "Полоса прогресса", en: "Progress bar" },
+    syntax: [
+      "bar [\"<имя>\"] [value <значение>] [max <значение>] [direction left_to_right|right_to_left|bottom_to_top|top_to_bottom]",
+      "    [size <W>x<H>] [color #заполнение] [background #цвет|\"картинка\"|none] [fill \"картинка\"] [texture <W>x<H>] [text \"<надпись>\"] [shadow]"
+    ],
+    desc: {
+      ru: "Горизонтальная или вертикальная полоса (по умолчанию 80x8, слева направо). `value`/`max` — число, `{переменная}` или источник клиента (`health`, `food`…, см. «Источники полос»). Если `max` не указан, он подбирается: `health` → `max_health`, `food` → 20, `air` → `max_air`, иначе 100. `background` — цвет или картинка-фон/рамка, `fill` — картинка заполнения: она обрезается по прогрессу, а не растягивается. `text` рисуется по центру полосы, в нём работают `%value%`, `%max%`, `%percent%`. Работает и в HUD, и в `open screen`. `progress` — синоним `bar`.",
+      en: "A horizontal or vertical bar (80x8, left to right by default). `value`/`max` is a number, a `{variable}` or a client source (`health`, `food`…, see “Bar sources”). Without `max` a sensible one is picked: `health` → `max_health`, `food` → 20, `air` → `max_air`, otherwise 100. `background` is a colour or a background/frame image, `fill` is the fill image: it is cropped to the progress, not stretched. `text` is drawn centred on the bar and supports `%value%`, `%max%`, `%percent%`. Works both in the HUD and in `open screen`. `progress` is an alias of `bar`."
+    },
+    example: `bar "hp" value health size 80x8 anchor bottom at -51, -28 fill "example:textures/gui/bar_fill_hp.png" background #A0000000 text "%value%/%max%"
+bar "air" value air direction bottom_to_top size 6x40 anchor right at -8, 0 color #55AAFF`,
+    since: "0.1.33", related: ["hud-bar-sources", "hud-set-bar", "hud-layer", "hud-create"]
+  },
+  {
+    id: "hud-bar-sources", category: "hud",
+    name: { ru: "Источники полос и плейсхолдеры HUD", en: "Bar sources and HUD placeholders" },
+    syntax: [
+      "health | max_health | absorption | food | saturation | armor | air | max_air | xp | level",
+      "%health% %food% ... | %value% %max% %percent%"
+    ],
+    desc: {
+      ru: "Если `value`/`max` полосы — имя источника, клиент сам берёт значение у игрока каждый кадр: полоса HP всегда актуальна без пакетов и без событий. `xp` — прогресс уровня от 0 до 1. Те же имена работают как плейсхолдеры `%health%` в любом тексте HUD и экранов. Внутри `text` полосы ещё есть `%value%`, `%max%`, `%percent%`. `%player%` и `{переменные}` подставляет сервер в момент `create hud` / `set text`.",
+      en: "If a bar's `value`/`max` is a source name, the client reads it from the player every frame: the HP bar is always current with no packets or events. `xp` is the level progress from 0 to 1. The same names work as `%health%`-style placeholders in any HUD or screen text. Inside a bar's `text` there are also `%value%`, `%max%`, `%percent%`. `%player%` and `{variables}` are filled in by the server at `create hud` / `set text` time."
+    },
+    example: `bar "food" value food direction right_to_left text "%percent%%"
+text "❤ %health%/%max_health%  🛡 %armor%" anchor top_left at 4, 4`,
+    since: "0.1.33", related: ["hud-bar", "hud-set-text"]
+  },
+  {
+    id: "hud-hotbar", category: "hud",
+    name: { ru: "Свой хотбар", en: "Custom hotbar" },
+    syntax: ["hotbar [at <X> <Y>] [anchor <точка>] [size <W>x<H>] [spacing <N>] [color #выделение] [no frame] [id <имя>] [layer <N>]"],
+    desc: {
+      ru: "Ряд из 9 слотов с настоящими предметами хотбара игрока; выбранный слот обводится цветом `color`. По умолчанию — внизу по центру, как ванильный. `spacing` — шаг между слотами (по умолчанию размер слота + 2), `size` — размер слота (по умолчанию 18). С `id hb` слоты получают имена `hb1`…`hb9`. Ванильный хотбар прячется отдельно: `hide vanilla hotbar`.",
+      en: "A row of 9 slots showing the player's real hotbar items; the selected slot is outlined in `color`. By default it sits at the bottom centre like the vanilla one. `spacing` is the step between slots (slot size + 2 by default), `size` is the slot size (18 by default). With `id hb` the slots are named `hb1`…`hb9`. Hide the vanilla hotbar separately: `hide vanilla hotbar`."
+    },
+    example: `create hud "bar" for player:
+    hotbar anchor left at 4, 0 spacing 20 color #55FF55
+hide vanilla hotbar for player`,
+    since: "0.1.33", related: ["hud-slot", "hud-vanilla", "hud-create"]
+  },
+  {
+    id: "hud-slot", category: "hud",
+    name: { ru: "Слоты HUD: предмет, хотбар, картинка, текст", en: "HUD slots: item, hotbar, image, text" },
+    syntax: [
+      "slot <предмет> [<количество>]",
+      "slot hotbar <1-9>",
+      "slot image \"<ns>:<путь>.png\"",
+      "slot text \"<текст>\"",
+      "... [at <X> <Y>] [anchor <точка>] [size <W>x<H>] [color #выделение] [no frame] [id <имя>] [layer <N>]"
+    ],
+    desc: {
+      ru: "Слот (18x18 с рамкой) может содержать предмет, предмет из слота хотбара игрока, картинку или короткий текст. `no frame` — без рамки, `size` масштабирует содержимое. Работает и в HUD, и в `open screen`.",
+      en: "A slot (18x18 with a frame) can hold an item, the item from one of the player's hotbar slots, an image or a short text. `no frame` removes the frame, `size` scales the content. Works both in the HUD and in `open screen`."
+    },
+    example: `slot image "example:textures/gui/coin.png" at 4, 4 anchor top_left
+slot text "Q" at 24, 4 anchor top_left
+slot hotbar 1 at 0, -40 anchor bottom size 24x24`,
+    since: "0.1.33", related: ["hud-hotbar", "screen-slot", "hud-create"]
+  },
+  {
+    id: "hud-layer", category: "hud",
+    name: { ru: "Слои (layer) и имена (id)", en: "Layers (layer) and names (id)" },
+    syntax: ["layer <N>", "id <имя>"],
+    desc: {
+      ru: "У любого элемента HUD и экрана: `layer` — порядок отрисовки (больше = выше, по умолчанию 0; при равных слоях — по порядку в скрипте). Элементы с отрицательным слоем в HUD рисуются под ванильным HUD. Предметы в слотах тоже подчиняются слоям: картинка со слоем выше перекроет предмет. `id` — имя элемента для `set value/text`, `show/hide/remove hud` (у `bar \"имя\"` имя задаётся сразу). Элементы без имени управляются через имя группы.",
+      en: "On any HUD or screen element: `layer` is the drawing order (higher = on top, 0 by default; equal layers keep script order). HUD elements with a negative layer are drawn below the vanilla HUD. Items in slots follow layers too: an image on a higher layer covers the item. `id` names the element for `set value/text`, `show/hide/remove hud` (`bar \"name\"` sets it directly). Unnamed elements are controlled through the group name."
+    },
+    example: `bar "hp" value health size 80x8 anchor bottom at 0, -28 layer 1
+image "example:textures/gui/bar_frame.png" size 84x12 anchor bottom at 0, -26 layer 2
+text "HP" anchor bottom at 0, -38 layer 3 id hp_label`,
+    since: "0.1.33", related: ["hud-create", "screen-layout", "eff-open-screen"]
+  },
+  {
+    id: "hud-set-bar", category: "hud",
+    name: { ru: "Значение и максимум полосы", en: "Bar value and max" },
+    syntax: ["set value|progress of bar \"<имя>\" [for <цель>] to <значение>", "set max of bar \"<имя>\" [for <цель>] to <значение>"],
+    desc: {
+      ru: "Меняет значение или максимум полосы: число, `{переменная}` или источник (`health`, `food`…). Без `for` — игроку из контекста. Клиенту уходит только изменение, и только если значение действительно поменялось.",
+      en: "Changes a bar's value or max: a number, a `{variable}` or a source (`health`, `food`…). Without `for` it targets the context player. Only the change is sent, and only if the value actually changed."
+    },
+    example: `set progress of bar "boss_hp" for all players to 75
+set max of bar "coins_goal" to 200
+set value of bar "coins_goal" for player to {coins::%player%}`,
+    since: "0.1.33", related: ["hud-bar", "hud-bar-sources", "hud-set-text"]
+  },
+  {
+    id: "hud-set-text", category: "hud",
+    name: { ru: "Текст элемента HUD", en: "HUD element text" },
+    syntax: ["set text of hud \"<имя>\" [for <цель>] to \"<текст>\""],
+    desc: {
+      ru: "Меняет текст у `text`, `slot text` или надпись на полосе `bar`. `%player%` и `{переменные}` подставляются один раз — для игрока из контекста скрипта (того, кто вызвал команду/событие).",
+      en: "Changes the text of a `text`, a `slot text` or the label on a `bar`. `%player%` and `{variables}` are filled in once — for the script's context player (whoever triggered the command/event)."
+    },
+    example: `set text of hud "coins_text" for player to "{coins::%player%}"`,
+    since: "0.1.33", related: ["hud-set-bar", "hud-layer"]
+  },
+  {
+    id: "hud-show-hide", category: "hud",
+    name: { ru: "Показать, скрыть, удалить HUD", en: "Show, hide, remove HUD" },
+    syntax: [
+      "show hud \"<имя>\" [to <цель>]",
+      "hide hud \"<имя>\" [from <цель>]",
+      "remove hud \"<имя>\" [from <цель>]",
+      "clear hud [for <цель>]"
+    ],
+    desc: {
+      ru: "`<имя>` — имя элемента или целой группы из `create hud`. `hide` прячет, но хранит (вернуть — `show`), `remove` удаляет насовсем, `clear hud` убирает весь свой HUD игрока (ванильные части не трогает).",
+      en: "`<name>` is an element name or a whole group from `create hud`. `hide` hides but keeps it (bring it back with `show`), `remove` deletes it, `clear hud` removes all of the player's custom HUD (vanilla parts are not touched)."
+    },
+    example: `hide hud "stats" from player
+show hud "stats" to player
+remove hud "boss" from all players
+clear hud for player`,
+    since: "0.1.33", related: ["hud-create", "hud-vanilla"]
+  },
+  {
+    id: "hud-vanilla", category: "hud",
+    name: { ru: "Скрыть ванильный HUD", en: "Hide vanilla HUD" },
+    syntax: [
+      "hide vanilla <часть> [for <цель>]",
+      "show vanilla <часть> [for <цель>]",
+      "<часть>: hotbar, health, food, armor, air, experience, mount_health, jump_bar, crosshair, effects, item_name, scoreboard, bossbar, hud (всё)"
+    ],
+    desc: {
+      ru: "Прячет или возвращает части ванильного HUD. Синонимы: `hearts`, `hunger`, `xp`, `potions`, `boss_bar`, `all`. Состояние хранится на сервере вместе с HUD и восстанавливается при входе.",
+      en: "Hides or restores parts of the vanilla HUD. Aliases: `hearts`, `hunger`, `xp`, `potions`, `boss_bar`, `all`. The state is kept on the server with the HUD and restored on join."
+    },
+    example: `hide vanilla hotbar for player
+hide vanilla health for player
+show vanilla all for player`,
+    since: "0.1.33", related: ["hud-hotbar", "hud-show-hide"]
   },
 
   // ================================================================== КОМАНДЫ МОДА

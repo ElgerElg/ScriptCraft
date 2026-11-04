@@ -12,7 +12,8 @@ import net.minecraftforge.network.simple.SimpleChannel;
 public final class ModNetwork {
     /** Версия протокола: при несовпадении клиент не сможет зайти на сервер. Меняйте при изменении пакетов. */
     // 2: синхронизация ресурсов (манифест / запрос / куски файлов).
-    private static final String PROTOCOL_VERSION = "2";
+    // 3: HUD (HudPacket), слои у элементов, полосы прогресса, новые виды слотов.
+    private static final String PROTOCOL_VERSION = "3";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(ScriptCraft.MODID, "main"),
@@ -54,6 +55,12 @@ public final class ModNetwork {
                 .encoder(ResourceChunkPacket::encode)
                 .decoder(ResourceChunkPacket::decode)
                 .consumerMainThread(ResourceChunkPacket::handle)
+                .add();
+        // Сервер -> клиент: изменения HUD (только разница, а не весь HUD).
+        CHANNEL.messageBuilder(HudPacket.class, id++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(HudPacket::encode)
+                .decoder(HudPacket::decode)
+                .consumerMainThread(HudPacket::handle)
                 .add();
     }
 

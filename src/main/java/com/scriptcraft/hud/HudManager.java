@@ -1,0 +1,201 @@
+package com.scriptcraft.hud;
+
+import com.scriptcraft.lang.Messages;
+import com.scriptcraft.network.HudPacket;
+import com.scriptcraft.network.ModNetwork;
+import com.scriptcraft.script.runtime.ScriptRuntimeException;
+import net.minecraft.server.level.ServerPlayer;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+
+/**
+ * Серверное состояние HUD каждого игрока (что у него сейчас нарисовано) и отправка ИЗМЕНЕНИЙ клиенту.
+ *
+ * - Если новое значение совпадает с уже отправленным, пакет не уходит (можно спокойно обновлять полосу
+ *   из частых событий — сеть не забивается).
+ * - Состояние хранится в памяти сервера: при выходе игрока оно сохраняется, а при входе отправляется
+ *   заново (клиент свой HUD при отключении стирает). Очищается при остановке сервера.
+ * - /sc reload HUD не трогает: элементы, созданные старой версией скрипта, остаются до remove/clear.
+ *
+ * Все методы вызываются из главного потока сервера (скрипты выполняются в нём).
+ */
+public final class HudManager {
+    /** Максимум элементов HUD у одного игрока (защита клиента от "бесконечных" скриптов). */
+    public static final int MAX_ELEMENTS = 128;
+
+    private static final Map<UUID, PlayerHud> HUDS = new HashMap<>();
+
+    private static final class PlayerHud {
+        final LinkedHashMap<String, HudEntry> entries = new LinkedHashMap<>();
+        int vanillaMask;
+    }
+
+    private HudManager() {
+    }
+
+    private static PlayerHud hud(ServerPlayer player) {
+        return HUDS.computeIfAbsent(player.getUUID(), u -> new PlayerHud());
+    }
+
+    private static void send(ServerPlayer player, List<HudOp> ops) {
+        if (!ops.isEmpty()) {
+            ModNetwork.sendTo(player, new HudPacket(ops));
+        }
+    }
+
+    /**
+     * create hud "группа": заменяет все элементы группы новыми. Элементы с теми же id из ДРУГИХ групп
+     * тоже заменяются (id уникален у игрока). Если группа не изменилась — ничего не отправляется.
+     */
+    public static void create(ServerPlayer player, String group, List<HudEntry> newEntries) {
+        PlayerHud hud = hud(player);
+        List<HudEntry> old = new ArrayList<>();
+        for (HudEntry e : hud.entries.values()) {
+            if (e.group().equals(group)) {
+                old.add(e);
+            }
+        }
+        if (old.equals(newEntries)) {
+            return;
+        }
+        // Проверка лимита ДО изменения состояния.
+        int remaining = 0;
+        for (HudEntry e : hud.entries.values()) {
+            if (!e.group().equals(group) && newEntries.stream().noneMatch(n -> n.id().equals(e.id()))) {
+                remaining++;
+            }
+        }
+        if (remaining + newEntries.size() > MAX_ELEMENTS) {
+            throw new ScriptRuntimeException(Messages.get("hud.too_many", MAX_ELEMENTS));
+        }
+        List<HudOp> ops = new ArrayList<>();
+        if (!old.isEmpty()) {
+            hud.entries.values().removeIf(e -> e.group().equals(group));
+            ops.add(new HudOp.RemoveGroup(group));
+        }
+        for (HudEntry e : newEntries) {
+            hud.entries.remove(e.id());
+            hud.entries.put(e.id(), e);
+        }
+        ops.add(new HudOp.Put(List.copyOf(newEntries)));
+        send(player, ops);
+    }
+
+    /** set value/max of bar: null — оставить как было. Неизвестный id или не полоса — тихо пропускается. */
+    public static void setBar(ServerPlayer player, String id, String value, String max) {
+        PlayerHud hud = HUDS.get(player.getUUID());
+        HudEntry entry = hud == null ? null : hud.entries.get(id);
+        if (entry == null || !(entry.element() instanceof com.scriptcraft.screen.BarElement bar)) {
+            return;
+        }
+        String v = value != null ? value : bar.value();
+        String m = max != null ? max : bar.max();
+        if (v.equals(bar.value()) && m.equals(bar.max())) {
+            return;
+        }
+        hud.entries.put(id, Objects.requireNonNull(entry.withValues(v, m)));
+        send(player, List.of(new HudOp.Value(id, v, m)));
+    }
+
+    /** set text of hud "id". */
+    public static void setText(ServerPlayer player, String id, String text) {
+        PlayerHud hud = HUDS.get(player.getUUID());
+        HudEntry entry = hud == null ? null : hud.entries.get(id);
+        if (entry == null) {
+            return;
+        }
+        HudEntry updated = entry.withText(text);
+        if (updated == null || updated.equals(entry)) {
+            return;
+        }
+        hud.entries.put(id, updated);
+        send(player, List.of(new HudOp.Text(id, text)));
+    }
+
+    /** show/hide hud "имя": имя элемента ИЛИ группы (тогда все её элементы). */
+    public static void setVisible(ServerPlayer player, String name, boolean visible) {
+        PlayerHud hud = HUDS.get(player.getUUID());
+        if (hud == null) {
+            return;
+        }
+        List<HudOp> ops = new ArrayList<>();
+        for (Map.Entry<String, HudEntry> me : hud.entries.entrySet()) {
+            HudEntry e = me.getValue();
+            if ((e.id().equals(name) || e.group().equals(name)) && e.visible() != visible) {
+                me.setValue(e.withVisible(visible));
+                ops.add(new HudOp.Visible(e.id(), visible));
+            }
+        }
+        send(player, ops);
+    }
+
+    /** remove hud "имя": элемент или вся группа. */
+    public static void remove(ServerPlayer player, String name) {
+        PlayerHud hud = HUDS.get(player.getUUID());
+        if (hud == null) {
+            return;
+        }
+        List<HudOp> ops = new ArrayList<>();
+        if (hud.entries.remove(name) != null) {
+            ops.add(new HudOp.Remove(name));
+        }
+        if (hud.entries.values().removeIf(e -> e.group().equals(name))) {
+            ops.add(new HudOp.RemoveGroup(name));
+        }
+        send(player, ops);
+    }
+
+    /** clear hud: убрать все элементы и вернуть ванильный HUD. */
+    public static void clear(ServerPlayer player) {
+        PlayerHud hud = HUDS.remove(player.getUUID());
+        if (hud == null) {
+            return;
+        }
+        List<HudOp> ops = new ArrayList<>();
+        if (!hud.entries.isEmpty()) {
+            ops.add(new HudOp.Clear());
+        }
+        if (hud.vanillaMask != 0) {
+            ops.add(new HudOp.Vanilla(0));
+        }
+        send(player, ops);
+    }
+
+    /** hide/show vanilla <часть>: маска из {@link VanillaHudPart}. */
+    public static void setVanilla(ServerPlayer player, int mask, boolean hide) {
+        PlayerHud hud = hud(player);
+        int updated = hide ? hud.vanillaMask | mask : hud.vanillaMask & ~mask;
+        if (updated == hud.vanillaMask) {
+            return;
+        }
+        hud.vanillaMask = updated;
+        send(player, List.of(new HudOp.Vanilla(updated)));
+    }
+
+    /** Вход игрока: клиент начинает с пустого HUD, поэтому отправляем всё сохранённое состояние целиком. */
+    public static void onLogin(ServerPlayer player) {
+        PlayerHud hud = HUDS.get(player.getUUID());
+        if (hud == null) {
+            return;
+        }
+        List<HudOp> ops = new ArrayList<>();
+        if (!hud.entries.isEmpty()) {
+            ops.add(new HudOp.Put(List.copyOf(hud.entries.values())));
+        }
+        if (hud.vanillaMask != 0) {
+            ops.add(new HudOp.Vanilla(hud.vanillaMask));
+        }
+        send(player, ops);
+    }
+
+    /** Остановка сервера (в одиночной игре — выход из мира): следующий мир начинает с чистого HUD. */
+    public static void onServerStopped() {
+        HUDS.clear();
+    }
+}

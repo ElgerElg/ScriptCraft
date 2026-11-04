@@ -80,6 +80,9 @@ public final class Messages {
         add("effect.commands_need_op", "running commands from chat effect commands requires operator level 2",
                 "запуск команд из эффект-команд в чате доступен только операторам (уровень 2)");
 
+        // --- HUD
+        add("hud.too_many", "too many HUD elements for one player (max %d)", "слишком много элементов HUD у одного игрока (максимум %d)");
+
         // --- ресурсы
         add("resources.reloaded", "&aResources rescanned: %d file(s), %d KB. Manifest sent to %d online player(s); they download only changed files.",
                 "&aРесурсы перечитаны: файлов %d, %d КБ. Манифест отправлен игрокам онлайн: %d; они скачают только изменённое.");
