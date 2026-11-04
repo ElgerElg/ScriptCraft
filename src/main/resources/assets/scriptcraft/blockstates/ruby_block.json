@@ -1,0 +1,5 @@
+{
+  "variants": {
+    "": { "model": "scriptcraft:block/ruby_block" }
+  }
+}

@@ -1,0 +1,38 @@
+# Eclipse
+bin
+*.launch
+.settings
+.metadata
+.classpath
+.project
+eclipse
+
+# IntelliJ IDEA
+out
+*.ipr
+*.iws
+*.iml
+.idea/
+
+# VS Code
+.vscode/
+
+# Gradle
+build/
+.gradle/
+mcmodsrepo/
+
+# Запуск игры из среды разработки (runClient/runServer)
+run/
+run-data/
+logs/
+*.log
+crash-reports/
+
+# ОС
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Файлы Forge MDK
+forge*changelog.txt

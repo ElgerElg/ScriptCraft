@@ -1,0 +1,26 @@
+# ==========================================================
+#  welcome.sk — события входа/выхода и простые команды
+#  Логика перезагружается командой /scriptcraft reload
+# ==========================================================
+
+on join:
+    send "&aПривет, &e%player%&a! Добро пожаловать на сервер." to player
+    broadcast "&7%player% зашёл на сервер (онлайн: %online%)"
+
+on quit:
+    broadcast "&7%player% вышел с сервера"
+
+# Команда для всех игроков
+command /hello:
+    send "&bHello, %player%! Ты написал: %args%" to player
+
+# Команда только для операторов (permission 2)
+command /kit permission 2:
+    give player diamond 3
+    give player bread 16
+    heal player
+    send "&6Набор выдан!" to player
+
+command /spawnpoint0:
+    teleport player to 0, 100, 0
+    reply "Телепортирован на 0 100 0"

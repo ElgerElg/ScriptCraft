@@ -1,0 +1,16 @@
+# ==========================================================
+#  menu.sk — экран (GUI), который сервер открывает игроку
+#  Элементы: text, button, slot, image
+#  Позиция: at X Y относительно anchor (по умолчанию center)
+# ==========================================================
+
+command /menu:
+    open screen "Главное меню" to player:
+        text "Добро пожаловать, %player%!" at 0, -60 color #FFD700 shadow
+        image "minecraft:textures/item/diamond.png" at 0, -40 size 16x16 texture 16x16
+        slot diamond 5 at -30, -15
+        slot scriptcraft:ruby 8 at 0, -15
+        slot bread 16 at 30, -15
+        button "Сказать привет" at 0, 15 size 120x20 run "/hello из меню"
+        button "Закрыть" at 0, 40 size 120x20 close
+        text "ScriptCraft v0.1" at -4, -4 anchor bottom_right color #808080

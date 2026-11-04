@@ -1,0 +1,23 @@
+# ==========================================================
+#  ruby.sk — блок и предмет, объявленные скриптом
+#  ВНИМАНИЕ: новые блоки/предметы появляются только после ПЕРЕЗАПУСКА.
+#  Этот файл должен быть одинаковым на сервере и у всех клиентов!
+# ==========================================================
+
+define block ruby_block:
+    name: "Рубиновый блок"
+    hardness: 5
+    resistance: 6
+    sound: metal
+    light: 7
+    requires_tool: true
+
+define item ruby:
+    name: "Рубин"
+    stack_size: 64
+    rarity: rare
+
+command /ruby permission 2:
+    give player ruby_block 1
+    give player ruby 8
+    send "&cДержи рубины!" to player
