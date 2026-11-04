@@ -96,9 +96,9 @@ public final class ScriptLoader {
         }
     }
 
-    // ------------------------------------------------------------------ команды /sk
+    // ------------------------------------------------------------------ команды /sc
 
-    /** /sk reload — перезагрузить все скрипты с диска. */
+    /** /sc reload — перезагрузить все скрипты с диска. */
     public static int reloadAll(CommandSourceStack source) {
         loadAllFromDisk();
         afterChange(source);
@@ -108,7 +108,7 @@ public final class ScriptLoader {
         return errors == 0 ? 1 : 0;
     }
 
-    /** /sk reload <скрипт> — перезагрузить один файл. */
+    /** /sc reload <скрипт> — перезагрузить один файл. */
     public static int reloadOne(CommandSourceStack source, String input) {
         if (isAll(input)) {
             return reloadAll(source);
@@ -136,7 +136,7 @@ public final class ScriptLoader {
         return 1;
     }
 
-    /** /sk disable <скрипт> — выгрузить и переименовать в "-имя.sk". */
+    /** /sc disable <скрипт> — выгрузить и переименовать в "-имя.sk". */
     public static int disable(CommandSourceStack source, String input) {
         String name = ScriptPaths.normalize(input);
         if (name == null) {
@@ -167,7 +167,7 @@ public final class ScriptLoader {
         return 1;
     }
 
-    /** /sk enable <скрипт> — переименовать "-имя.sk" обратно и загрузить. */
+    /** /sc enable <скрипт> — переименовать "-имя.sk" обратно и загрузить. */
     public static int enable(CommandSourceStack source, String input) {
         String name = ScriptPaths.normalize(input);
         if (name == null) {
@@ -200,7 +200,7 @@ public final class ScriptLoader {
         return 1;
     }
 
-    /** /sk list */
+    /** /sc list */
     public static int list(CommandSourceStack source) {
         List<String> disabled = ScriptPaths.listScripts().stream().filter(ScriptPaths::isDisabled).toList();
         String none = Messages.get("list.none");

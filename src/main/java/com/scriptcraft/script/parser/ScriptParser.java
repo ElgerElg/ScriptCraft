@@ -52,7 +52,7 @@ public final class ScriptParser {
     private static final Pattern ID = Pattern.compile("[a-z0-9_]{1,64}");
     private static final Pattern COMMAND_HEADER = Pattern.compile("command\\s+/([a-z0-9_]{1,32})(?:\\s+permission\\s+([0-4]))?");
     /** Корневые команды мода — скрипты не могут их перекрыть. */
-    private static final java.util.Set<String> RESERVED_COMMANDS = java.util.Set.of("scriptcraft", "sk", "script");
+    private static final java.util.Set<String> RESERVED_COMMANDS = java.util.Set.of("scriptcraft", "sc", "script");
     private static final Pattern NUMBER = Pattern.compile("-?\\d+(\\.\\d+)?");
     private static final Pattern SIZE = Pattern.compile("(\\d{1,4})x(\\d{1,4})");
 
@@ -149,7 +149,7 @@ public final class ScriptParser {
             String name = cmd.group(1);
             int permission = cmd.group(2) != null ? Integer.parseInt(cmd.group(2)) : 0;
             if (RESERVED_COMMANDS.contains(name)) {
-                error(headerLine, "имя /" + name + " зарезервировано модом (scriptcraft, sk, script)");
+                error(headerLine, "имя /" + name + " зарезервировано модом (scriptcraft, sc, script)");
                 return;
             }
             if (commands.containsKey(name)) {

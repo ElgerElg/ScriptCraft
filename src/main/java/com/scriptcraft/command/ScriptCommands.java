@@ -20,10 +20,10 @@ import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 /**
- * Команды мода (/scriptcraft, /sk, /script) и команды, объявленные в скриптах (command /hello:).
+ * Команды мода (/scriptcraft, /sc, /script) и команды, объявленные в скриптах (command /hello:).
  *
  * Почему три одинаковых дерева, а не redirect: у Brigadier redirect не переносит executes() корневого узла,
- * поэтому "/sk" без аргументов не показал бы справку. Одна функция строит дерево трижды — поведение идентично.
+ * поэтому "/sc" без аргументов не показал бы справку. Одна функция строит дерево трижды — поведение идентично.
  *
  * Ограничения горячей перезагрузки команд (Brigadier не умеет удалять узлы):
  * - НОВЫЕ команды при reload/enable добавляются в дерево, и дерево заново отправляется игрокам;
@@ -32,7 +32,7 @@ import java.util.stream.Stream;
  */
 public final class ScriptCommands {
     /** Корневые команды мода. Первая — основная, остальные — синонимы. */
-    public static final List<String> ROOTS = List.of("scriptcraft", "sk", "script");
+    public static final List<String> ROOTS = List.of("scriptcraft", "sc", "script");
 
     /** Имена, которые зарегистрировали мы (чтобы не путать со своими при повторной регистрации). */
     private static final Set<String> REGISTERED = new HashSet<>();
@@ -60,7 +60,7 @@ public final class ScriptCommands {
         REGISTERED.clear();
         for (String root : ROOTS) {
             if (root.equals("script") && dispatcher.getRoot().getChild(root) != null) {
-                // На случай, если другой мод уже занял /script — основная команда и /sk всё равно работают.
+                // На случай, если другой мод уже занял /script — основная команда и /sc всё равно работают.
                 ScriptCraft.LOGGER.warn("[ScriptCraft] Команда /script уже занята другим модом — синоним пропущен");
                 continue;
             }
@@ -73,7 +73,7 @@ public final class ScriptCommands {
     private static LiteralArgumentBuilder<CommandSourceStack> buildRoot(String root) {
         return Commands.literal(root)
                 .requires(src -> src.hasPermission(2))
-                // "/sk" без аргументов — справка
+                // "/sc" без аргументов — справка
                 .executes(ctx -> help(ctx.getSource(), root))
                 .then(Commands.literal("help").executes(ctx -> help(ctx.getSource(), root)))
                 .then(Commands.literal("reload")

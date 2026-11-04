@@ -20,7 +20,7 @@ public final class Messages {
     private static final Map<String, String> RU = new HashMap<>();
 
     static {
-        // --- справка (%1$s = имя корневой команды: scriptcraft / sk / script)
+        // --- справка (%1$s = имя корневой команды: scriptcraft / sc / script)
         add("help.header", "&6--- ScriptCraft help ---", "&6--- ScriptCraft: справка ---");
         add("help.reload", "&e/%1$s reload &7- reload all scripts", "&e/%1$s reload &7- перезагрузить все скрипты");
         add("help.reload_one", "&e/%1$s reload <script> &7- reload one script", "&e/%1$s reload <скрипт> &7- перезагрузить один скрипт");
@@ -28,7 +28,7 @@ public final class Messages {
         add("help.disable", "&e/%1$s disable <script> &7- disable a script (renames it to -name.sk)", "&e/%1$s disable <скрипт> &7- выключить скрипт (переименует в -имя.sk)");
         add("help.list", "&e/%1$s list &7- show loaded scripts, commands and errors", "&e/%1$s list &7- загруженные скрипты, команды и ошибки");
         add("help.help", "&e/%1$s help &7- this help", "&e/%1$s help &7- эта справка");
-        add("help.aliases", "&7Aliases: /scriptcraft, /sk, /script", "&7Синонимы: /scriptcraft, /sk, /script");
+        add("help.aliases", "&7Aliases: /scriptcraft, /sc, /script", "&7Синонимы: /scriptcraft, /sc, /script");
 
         // --- перезагрузка
         add("reload.all", "&aReloaded %d script(s): %d command(s), %d error(s)", "&aПерезагружено скриптов: %d, команд: %d, ошибок: %d");

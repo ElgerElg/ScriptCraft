@@ -50,17 +50,17 @@ gradlew.bat runServer    :: запустить выделенный сервер
 
 ### Команды мода
 
-Корневая команда **`/scriptcraft`**, у неё есть полноценные синонимы **`/sk`** и **`/script`**: все три работают одинаково.
+Корневая команда **`/scriptcraft`**, у неё есть полноценные синонимы **`/sc`** и **`/script`**: все три работают одинаково.
 Нужен уровень оператора 2. Имена скриптов подсказываются по Tab, расширение `.sk` писать не обязательно.
 
 | Команда | Что делает |
 |---|---|
-| `/sk` или `/sk help` | справка |
-| `/sk reload` | перезагрузить **все** скрипты (логику: события, команды, сообщения, экраны) |
-| `/sk reload welcome` | перезагрузить только `welcome.sk` (подпапки так: `/sk reload sub/name`) |
-| `/sk disable welcome` | выключить скрипт: выгружает его события и команды и переименовывает файл в `-welcome.sk` |
-| `/sk enable welcome` | включить: переименовывает `-welcome.sk` обратно в `welcome.sk` и загружает его |
-| `/sk list` | загруженные и выключенные скрипты, команды, число переменных и ошибок |
+| `/sc` или `/sc help` | справка |
+| `/sc reload` | перезагрузить **все** скрипты (логику: события, команды, сообщения, экраны) |
+| `/sc reload welcome` | перезагрузить только `welcome.sk` (подпапки так: `/sc reload sub/name`) |
+| `/sc disable welcome` | выключить скрипт: выгружает его события и команды и переименовывает файл в `-welcome.sk` |
+| `/sc enable welcome` | включить: переименовывает `-welcome.sk` обратно в `welcome.sk` и загружает его |
+| `/sc list` | загруженные и выключенные скрипты, команды, число переменных и ошибок |
 
 **Выключенные скрипты** (как в Skript): любой файл, имя которого начинается с `-`, не загружается ни при старте,
 ни при `reload`, ни при предварительном чтении блоков. Выключить скрипт можно и вручную: просто переименуй файл.
@@ -257,7 +257,7 @@ src/main/java/com/scriptcraft/
     runtime/                   Action, Actions (белый список), Expression, Condition, ExecutionContext, ExecutionBudget
   config/ScriptCraftConfig     ForgeConfigSpec -> config/scriptcraft-common.toml
   lang/Messages                сообщения мода на EN/RU (язык выбирается в конфиге)
-  command/ScriptCommands       /scriptcraft|/sk|/script help|reload|enable|disable|list + команды из скриптов
+  command/ScriptCommands       /scriptcraft|/sc|/script help|reload|enable|disable|list + команды из скриптов
   event/ServerEvents           Forge-события -> события скриптов, жизненный цикл переменных
   network/, screen/, client/   Screen API (см. выше)
 ```
@@ -271,7 +271,7 @@ src/main/java/com/scriptcraft/
 Удалённые команды остаются в дереве до перезапуска. При вызове они пишут «выключена», потому что Brigadier не умеет удалять узлы.
 
 **Почему три дерева, а не redirect.** У Brigadier `redirect` не переносит `executes()` самого корня,
-поэтому голый `/sk` не показал бы справку. Поэтому одна функция строит одинаковое дерево для `/scriptcraft`, `/sk` и `/script`.
+поэтому голый `/sc` не показал бы справку. Поэтому одна функция строит одинаковое дерево для `/scriptcraft`, `/sc` и `/script`.
 Если `/script` уже занят другим модом, этот синоним пропускается (с предупреждением в логе).
 
 **Новое действие** добавляется так: создать `record` в `Actions.java` и добавить `case` в `ScriptParser.parseAction`.
