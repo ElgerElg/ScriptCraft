@@ -545,7 +545,68 @@ src/main/java/com/scriptcraft/
 - [ ] Эффекты над мобами и блоками, цели `targeted entity`, `entities in radius`, `loop-entity`.
 - [ ] Публичный API для аддонов (отдельный артефакт `scriptcraft-api` + Javadoc).
 
-## 9. GitHub
+## 9. Сайт документации (GitHub Pages)
+
+В папке [`docs/`](docs) лежит сайт документации в духе SkriptHub: поиск по всему синтаксису, фильтр по категориям
+(события, эффекты, условия, выражения, цели, экраны, команды мода, конфиг), пример у каждой строки, вкладки
+«Примеры» (большие готовые скрипты) и «Начало» (установка, папка `scriptcraft/`, команды, конфиг). Русский интерфейс
+с переключателем на английский, тёмная и светлая тема. Это обычные HTML/CSS/JS без сборки и без внешних CDN:
+сайт открывается и прямо с диска (`docs/index.html` двойным щелчком).
+
+Адрес после включения: **https://elgerelg.github.io/ScriptCraft/**
+
+**Как включить GitHub Pages** (один раз, после `git push`):
+1. На GitHub откройте репозиторий → **Settings → Pages**.
+2. В **Build and deployment → Source** выберите **Deploy from a branch**.
+3. **Branch:** `main`, папка **`/docs`** → **Save**.
+4. Через 1–2 минуты сайт появится по адресу выше. Дальше он обновляется сам после каждого push в `main`.
+
+Файл `docs/.nojekyll` отключает обработку Jekyll: файлы отдаются как есть.
+
+**Устройство:**
+
+```
+docs/
+  index.html        синтаксис: поиск, фильтры, карточки, ссылки вида index.html#eff-heal
+  examples.html     большие примеры (данные — data/examples.js)
+  start.html        «Начало»
+  data/syntax.js    ВСЕ записи синтаксиса (данные сайта)
+  data/examples.js  большие примеры
+  assets/           style.css, app.js (строки RU/EN, тема, подсветка, копирование), docs.js, examples.js
+  check.js          проверка данных: node docs/check.js
+```
+
+Данные подключаются тегом `<script>` (а не `fetch` JSON), поэтому сайт работает и с `file://`.
+Подборки можно давать ссылкой: `index.html?q=radius` или `index.html?cat=effects,targets`.
+
+**Как добавить запись в документацию** — допишите объект в массив `entries` в `docs/data/syntax.js`:
+
+```js
+{
+  id: "eff-heal",                       // уникальный, латиница/цифры/-/_ ; это и якорь #eff-heal
+  category: "effects",                  // events | structures | effects | conditions | expressions | targets | screen | commands | config
+  name: { ru: "Вылечить", en: "Heal" },
+  syntax: ["heal <цель>"],              // один или несколько шаблонов
+  desc: { ru: "Описание, `код` и **жирный** можно.", en: "Description." },
+  example: `command /healme:
+    heal player`,                       // пример (для config — строка из config.toml)
+  since: "0.1.2",                       // версия мода, где появилось
+  related: ["eff-feed", "target-radius"] // id других записей (могут быть пустыми: [])
+}
+```
+
+Пишите только то, что мод действительно поддерживает. Новую категорию добавляют в `categories` (id, ru, en).
+Большой пример — объект в `docs/data/examples.js` (id, title, intro, blocks с кодом, notes, related).
+Строки интерфейса (кнопки, подсказки) — таблица `SC.strings` в `docs/assets/app.js`.
+После правки запустите проверку (Node.js 16+):
+
+```bat
+node docs/check.js
+```
+
+Она проверяет уникальность id, обязательные поля, категории и ссылки `related` и печатает число записей по категориям.
+
+## 10. GitHub
 
 Репозиторий: https://github.com/ElgerElg/ScriptCraft. Remote `origin` уже добавлен в локальный git.
 
