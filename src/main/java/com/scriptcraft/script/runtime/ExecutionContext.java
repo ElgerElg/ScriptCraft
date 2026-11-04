@@ -32,6 +32,8 @@ public final class ExecutionContext {
     private final CommandSourceStack source;
     private final Map<String, String> variables = new HashMap<>();
     private final ExecutionBudget budget = ExecutionBudget.fromConfig();
+    /** Запуск из эффект-команды в чате (?heal player): некоторые эффекты здесь строже. */
+    private boolean effectCommand;
 
     public ExecutionContext(MinecraftServer server, @Nullable ServerPlayer player, @Nullable CommandSourceStack source) {
         this.server = server;
@@ -59,6 +61,15 @@ public final class ExecutionContext {
             throw new ScriptRuntimeException("Это действие требует игрока (команда вызвана не игроком?)");
         }
         return player;
+    }
+
+    public boolean isEffectCommand() {
+        return effectCommand;
+    }
+
+    public ExecutionContext markEffectCommand() {
+        this.effectCommand = true;
+        return this;
     }
 
     /** Задаёт плейсхолдер %name% (например, %args% для команд). */

@@ -4,7 +4,7 @@ import com.scriptcraft.config.ScriptCraftConfig;
 
 /**
  * Лимит на одно выполнение скрипта: максимум шагов и максимум времени.
- * Значения берутся из config/scriptcraft-common.toml (maxScriptSteps, maxScriptMillis).
+ * Значения берутся из scriptcraft/config.toml (maxScriptSteps, maxScriptMillis).
  * Каждое действие, включая действия внутри if, расходует один шаг.
  */
 public final class ExecutionBudget {

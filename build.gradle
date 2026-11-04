@@ -164,9 +164,10 @@ tasks.named('processResources', ProcessResources).configure {
         expand replaceProperties + [project: project]
     }
 
-    // ScriptCraft: примеры скриптов из examples/scripts кладём внутрь jar (папка scriptcraft_defaults).
-    // При первом запуске мод скопирует их в <папка игры>/scripts, если её ещё нет.
-    from('examples/scripts') {
+    // ScriptCraft: примеры (examples/scripts и examples/resources) кладём внутрь jar (папка scriptcraft_defaults).
+    // При первом запуске мод скопирует их в <папка игры>/scriptcraft/scripts и scriptcraft/resources,
+    // если этих папок ещё нет.
+    from('examples') {
         into 'scriptcraft_defaults'
     }
 }

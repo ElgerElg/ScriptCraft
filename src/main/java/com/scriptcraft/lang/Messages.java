@@ -11,7 +11,7 @@ import java.util.Map;
 
 /**
  * Все сообщения для игроков и консоли на двух языках (EN и RU).
- * Язык берётся из config/scriptcraft-common.toml (language = "en" | "ru").
+ * Язык берётся из scriptcraft/config.toml (language = "en" | "ru").
  * Аргументы подставляются через String.format: %s, %d, %1$s...
  * Чтобы добавить язык, заведите ещё одну таблицу и добавьте её в {@link #table()}.
  */
@@ -28,6 +28,8 @@ public final class Messages {
         add("help.disable", "&e/%1$s disable <script> &7- disable a script (renames it to -name.sk)", "&e/%1$s disable <скрипт> &7- выключить скрипт (переименует в -имя.sk)");
         add("help.list", "&e/%1$s list &7- show loaded scripts, commands and errors", "&e/%1$s list &7- загруженные скрипты, команды и ошибки");
         add("help.help", "&e/%1$s help &7- this help", "&e/%1$s help &7- эта справка");
+        add("help.resources", "&e/%1$s resources reload &7- rescan scriptcraft/resources and send changes to online players",
+                "&e/%1$s resources reload &7- перечитать scriptcraft/resources и отправить изменения игрокам онлайн");
         add("help.aliases", "&7Aliases: /scriptcraft, /sc, /script", "&7Синонимы: /scriptcraft, /sc, /script");
 
         // --- перезагрузка
@@ -59,6 +61,36 @@ public final class Messages {
         add("command.disabled", "&cCommand /%s is disabled (its script was disabled or removed). It disappears after restart.",
                 "&cКоманда /%s выключена (её скрипт выключен или удалён). Она исчезнет после перезапуска.");
         add("command.error", "&c[ScriptCraft] Error in /%s: %s", "&c[ScriptCraft] Ошибка в /%s: %s");
+
+        // --- эффект-команды (?heal player)
+        add("effectcmd.no_permission", "&cYou are not allowed to use effect commands (scriptcraft.effectcommands)",
+                "&cУ вас нет права на эффект-команды (scriptcraft.effectcommands)");
+        add("effectcmd.parse_error", "&cEffect command error: %s", "&cОшибка в эффект-команде: %s");
+        add("effectcmd.run_error", "&cEffect command failed: %s", "&cЭффект-команда не выполнилась: %s");
+
+        // --- эффекты
+        add("effect.player_offline", "player '%s' is not online", "игрок '%s' не в сети");
+        add("effect.not_number", "'%s' is not a number", "'%s' — не число");
+        add("effect.bad_id", "invalid id '%s'", "некорректный id '%s'");
+        add("effect.unknown_effect", "unknown potion effect %s", "неизвестный эффект %s");
+        add("effect.unknown_sound", "unknown sound %s", "неизвестный звук %s");
+        add("effect.commands_disabled", "command effects are disabled (allowCommandEffects = false)",
+                "эффекты-команды выключены (allowCommandEffects = false)");
+        add("effect.commands_need_op", "running commands from chat effect commands requires operator level 2",
+                "запуск команд из эффект-команд в чате доступен только операторам (уровень 2)");
+
+        // --- ресурсы
+        add("resources.reloaded", "&aResources rescanned: %d file(s), %d KB. Manifest sent to %d online player(s); they download only changed files.",
+                "&aРесурсы перечитаны: файлов %d, %d КБ. Манифест отправлен игрокам онлайн: %d; они скачают только изменённое.");
+        add("resources.reloaded_nosync", "&eResources rescanned: %d file(s), %d KB. Sync to clients is off (syncResourcesToClients = false).",
+                "&eРесурсы перечитаны: файлов %d, %d КБ. Отправка клиентам выключена (syncResourcesToClients = false).");
+        add("resources.reload_failed", "&cResource sync disabled: %s", "&cСинхронизация ресурсов отключена: %s");
+        add("resources.data_hint", "&7Loot tables/tags/recipes from scriptcraft/resources/data are reloaded by vanilla /reload",
+                "&7Лут/теги/рецепты из scriptcraft/resources/data перечитывает ванильная /reload");
+        add("resources.reloading", "&e[ScriptCraft] Applying server textures/models (one resource reload)...",
+                "&e[ScriptCraft] Применяю текстуры/модели сервера (одна перезагрузка ресурсов)...");
+        add("resources.too_big", "&c[ScriptCraft] Server resources (%d MB) exceed your maxResourceSizeMb (%d MB) - not downloaded",
+                "&c[ScriptCraft] Ресурсы сервера (%d МБ) больше вашего maxResourceSizeMb (%d МБ) — не скачаны");
     }
 
     private Messages() {
@@ -88,6 +120,6 @@ public final class Messages {
     public static List<String> helpLines(String root) {
         return List.of(get("help.header"), get("help.reload", root), get("help.reload_one", root),
                 get("help.enable", root), get("help.disable", root), get("help.list", root),
-                get("help.help", root), get("help.aliases"));
+                get("help.resources", root), get("help.help", root), get("help.aliases"));
     }
 }

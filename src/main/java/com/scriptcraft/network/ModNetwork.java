@@ -11,7 +11,8 @@ import net.minecraftforge.network.simple.SimpleChannel;
 /** Сетевой канал мода (Forge SimpleChannel). */
 public final class ModNetwork {
     /** Версия протокола: при несовпадении клиент не сможет зайти на сервер. Меняйте при изменении пакетов. */
-    private static final String PROTOCOL_VERSION = "1";
+    // 2: синхронизация ресурсов (манифест / запрос / куски файлов).
+    private static final String PROTOCOL_VERSION = "2";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(ScriptCraft.MODID, "main"),
@@ -36,6 +37,28 @@ public final class ModNetwork {
                 .decoder(OpenScreenPacket::decode)
                 .consumerMainThread(OpenScreenPacket::handle)
                 .add();
+        // Сервер -> клиент: список ресурсов (путь + SHA-1).
+        CHANNEL.messageBuilder(ResourceManifestPacket.class, id++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(ResourceManifestPacket::encode)
+                .decoder(ResourceManifestPacket::decode)
+                .consumerMainThread(ResourceManifestPacket::handle)
+                .add();
+        // Клиент -> сервер: запрос недостающих файлов.
+        CHANNEL.messageBuilder(ResourceRequestPacket.class, id++, NetworkDirection.PLAY_TO_SERVER)
+                .encoder(ResourceRequestPacket::encode)
+                .decoder(ResourceRequestPacket::decode)
+                .consumerMainThread(ResourceRequestPacket::handle)
+                .add();
+        // Сервер -> клиент: кусок файла.
+        CHANNEL.messageBuilder(ResourceChunkPacket.class, id++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(ResourceChunkPacket::encode)
+                .decoder(ResourceChunkPacket::decode)
+                .consumerMainThread(ResourceChunkPacket::handle)
+                .add();
+    }
+
+    public static void sendToServer(Object packet) {
+        CHANNEL.sendToServer(packet);
     }
 
     public static void sendTo(ServerPlayer player, Object packet) {

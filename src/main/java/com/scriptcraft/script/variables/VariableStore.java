@@ -6,6 +6,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
+import com.scriptcraft.ModPaths;
 import com.scriptcraft.ScriptCraft;
 import com.scriptcraft.config.ScriptCraftConfig;
 import net.minecraft.server.MinecraftServer;
@@ -20,15 +21,22 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.TreeMap;
 
 /**
  * Хранилище переменных скриптов ({name}).
  *
- * Где лежат: <папка мира>/scriptcraft/variables.json (на сервере: world/scriptcraft/variables.json).
- * Выбран JSON в папке мира, а не SavedData: файл легко читать и править руками, а в одиночной игре
- * у каждого мира свои переменные.
+ * Где лежат: ОДИН общий файл <папка игры>/scriptcraft/variables/variables.json (не зависит от мира).
+ * Так все данные мода в одной папке, и их удобно переносить и бэкапить. Минус: в одиночной игре
+ * все миры видят одни и те же переменные (если нужно разделять — добавляйте имя мира в имя переменной).
+ * При каждом старте сервера делается резервная копия variables-ГГГГММДД-ЧЧММСС.json,
+ * хранятся последние variableBackups штук.
+ * Миграция: если общего файла ещё нет, а в мире лежит старый <мир>/scriptcraft/variables.json (v0.1) — он копируется.
  *
  * Когда сохраняются: раз в variablesSaveIntervalSeconds (если что-то менялось) и при остановке сервера.
  * Временные переменные (имя начинается с '-', например {-var} или {--var}) при enableTemporaryVariables=true
@@ -84,16 +92,18 @@ public final class VariableStore {
 
     // ------------------------------------------------------------------ жизненный цикл
 
-    /** Старт сервера: очищаем всё и читаем файл мира. */
+    /** Старт сервера: очищаем всё, делаем резервную копию и читаем общий файл переменных. */
     public static void load(MinecraftServer server) {
         PERSISTENT.clear();
         TEMPORARY.clear();
         dirty = false;
         ticksSinceSave = 0;
-        file = server.getWorldPath(LevelResource.ROOT).resolve("scriptcraft").resolve("variables.json");
+        file = ModPaths.variables().resolve("variables.json");
+        migrateFromWorld(server);
         if (!Files.isRegularFile(file)) {
             return;
         }
+        backup();
         try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
             JsonElement root = JsonParser.parseReader(reader);
             if (root.isJsonObject()) {
@@ -112,6 +122,47 @@ public final class VariableStore {
             ScriptCraft.LOGGER.info("[ScriptCraft] Загружено переменных: {} ({})", PERSISTENT.size(), file);
         } catch (IOException | RuntimeException e) {
             ScriptCraft.LOGGER.error("[ScriptCraft] Не удалось прочитать переменные из {}", file, e);
+        }
+    }
+
+    /** Старый файл v0.1 из папки мира -> общий файл (только если общего ещё нет). */
+    private static void migrateFromWorld(MinecraftServer server) {
+        Path old = server.getWorldPath(LevelResource.ROOT).resolve("scriptcraft").resolve("variables.json");
+        if (file == null || Files.exists(file) || !Files.isRegularFile(old)) {
+            return;
+        }
+        try {
+            Files.createDirectories(file.getParent());
+            Files.copy(old, file);
+            ScriptCraft.LOGGER.info("[ScriptCraft] Переменные перенесены из {} в {}", old, file);
+        } catch (IOException e) {
+            ScriptCraft.LOGGER.warn("[ScriptCraft] Не удалось перенести переменные из {}", old, e);
+        }
+    }
+
+    /** Резервная копия текущего файла + удаление старых копий сверх лимита variableBackups. */
+    private static void backup() {
+        int keep = ScriptCraftConfig.variableBackups();
+        if (keep <= 0 || file == null) {
+            return;
+        }
+        Path dir = file.getParent();
+        String stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
+        try {
+            Files.copy(file, dir.resolve("variables-" + stamp + ".json"), StandardCopyOption.REPLACE_EXISTING);
+            List<Path> backups;
+            try (Stream<Path> list = Files.list(dir)) {
+                // Имена с датой сортируются по алфавиту в хронологическом порядке.
+                backups = list.filter(p -> {
+                    String n = p.getFileName().toString();
+                    return n.startsWith("variables-") && n.endsWith(".json");
+                }).sorted().toList();
+            }
+            for (int i = 0; i < backups.size() - keep; i++) {
+                Files.deleteIfExists(backups.get(i));
+            }
+        } catch (IOException e) {
+            ScriptCraft.LOGGER.warn("[ScriptCraft] Не удалось сделать резервную копию переменных", e);
         }
     }
 

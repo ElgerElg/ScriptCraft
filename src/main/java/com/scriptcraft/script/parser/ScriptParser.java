@@ -1,5 +1,6 @@
 package com.scriptcraft.script.parser;
 
+import com.scriptcraft.ScriptCraft;
 import com.scriptcraft.script.ScriptSource;
 import com.scriptcraft.script.parser.Tokenizer.Token;
 import com.scriptcraft.script.runtime.Action;
@@ -35,8 +36,12 @@ import java.util.regex.Pattern;
  * command /hello:
  *     send "Hello!" to player
  *
- * define block ruby_block:
+ * define block ruby_block:          (id: scriptcraft:ruby_block)
  *     hardness: 3
+ *
+ * namespace example                  (все следующие define в файле — в example:)
+ * define block ruby_block:          (id: example:ruby_block)
+ * define item othermod:gem:         (полный id указан явно)
  *
  * command /coins:
  *     add 1 to {coins::%player%}
@@ -49,7 +54,10 @@ import java.util.regex.Pattern;
  * Парсер не создаёт никаких объектов Minecraft (кроме описаний), поэтому безопасно работает при запуске мода.
  */
 public final class ScriptParser {
-    private static final Pattern ID = Pattern.compile("[a-z0-9_]{1,64}");
+    private static final Pattern ID = Pattern.compile("[a-z0-9_.-]{1,64}");
+    private static final Pattern NAMESPACE = Pattern.compile("[a-z0-9_.-]{1,64}");
+    /** Пространства имён, которые скрипты занимать не могут. */
+    private static final java.util.Set<String> RESERVED_NAMESPACES = java.util.Set.of("minecraft", "forge", "neoforge", "c");
     private static final Pattern COMMAND_HEADER = Pattern.compile("command\\s+/([a-z0-9_]{1,32})(?:\\s+permission\\s+([0-4]))?");
     /** Корневые команды мода — скрипты не могут их перекрыть. */
     private static final java.util.Set<String> RESERVED_COMMANDS = java.util.Set.of("scriptcraft", "sc", "script");
@@ -66,13 +74,31 @@ public final class ScriptParser {
     private final Map<String, ItemDefinition> items = new LinkedHashMap<>();
     private final List<String> errors = new ArrayList<>();
     private String currentFile = "?";
+    /** Текущее пространство имён для define (сбрасывается на scriptcraft в начале каждого файла). */
+    private String currentNamespace = ScriptCraft.MODID;
 
     public ParseResult parse(List<ScriptSource> sources) {
         for (ScriptSource source : sources) {
             currentFile = source.fileName();
+            currentNamespace = ScriptCraft.MODID;
             parseFile(preprocess(source.lines()));
         }
         return new ParseResult(events, commands, List.copyOf(blocks.values()), List.copyOf(items.values()), List.copyOf(errors));
+    }
+
+    /**
+     * Разбор ОДНОЙ строки-эффекта для эффект-команд в чате (?heal player).
+     * Блоки (if, open screen с элементами) здесь не поддерживаются.
+     */
+    public static Action parseEffectLine(String text) throws ParseException {
+        String stripped = text.strip();
+        if (stripped.isEmpty()) {
+            throw new ParseException("пустая эффект-команда");
+        }
+        if (stripped.endsWith(":")) {
+            throw new ParseException("блоки (if/open screen) в эффект-командах не поддерживаются");
+        }
+        return new ScriptParser().parseAction(new Line(1, 0, stripped), List.of());
     }
 
     // ------------------------------------------------------------------ структура файла
@@ -119,6 +145,25 @@ public final class ScriptParser {
         while (i < lines.size()) {
             Line line = lines.get(i);
             int end = blockEnd(lines, i);
+            String lowerText = line.text().toLowerCase(Locale.ROOT);
+            if (line.indent() == 0 && (lowerText.startsWith("namespace ") || lowerText.startsWith("modid "))) {
+                // "namespace example", "namespace example:" или "modid example:" — двоеточие не обязательно.
+                String ns = lowerText.substring(lowerText.indexOf(' ') + 1).strip();
+                if (ns.endsWith(":")) {
+                    ns = ns.substring(0, ns.length() - 1).strip();
+                }
+                String problem = namespaceProblem(ns);
+                if (problem != null) {
+                    error(line, problem);
+                } else {
+                    currentNamespace = ns;
+                }
+                if (end > i + 1) {
+                    error(lines.get(i + 1), "у 'namespace' не бывает вложенных строк: пишите define без отступа ниже");
+                }
+                i = end;
+                continue;
+            }
             if (line.indent() != 0) {
                 error(line, "неожиданный отступ");
             } else if (!line.text().endsWith(":")) {
@@ -162,11 +207,28 @@ public final class ScriptParser {
 
         if (lower.startsWith("define block ") || lower.startsWith("define item ")) {
             boolean isBlock = lower.startsWith("define block ");
-            String id = lower.substring(isBlock ? 13 : 12).strip();
-            if (!ID.matcher(id).matches()) {
-                error(headerLine, "некорректный id '" + id + "' (только a-z, 0-9 и _)");
+            // id приводится к нижнему регистру, как и раньше (Ruby_Block -> ruby_block).
+            String raw = lower.substring(isBlock ? 13 : 12).strip();
+            String ns = currentNamespace;
+            String path = raw;
+            int colon = raw.indexOf(':');
+            if (colon >= 0) {
+                ns = raw.substring(0, colon).strip();
+                path = raw.substring(colon + 1).strip();
+                String problem = namespaceProblem(ns);
+                if (problem != null) {
+                    error(headerLine, problem);
+                    return;
+                }
+            }
+            if (!ID.matcher(path).matches()) {
+                error(headerLine, hasCyrillic(path)
+                        ? "id '" + path + "' на кириллице невозможен: Minecraft разрешает в id только a-z, 0-9, _ . - "
+                        + "(пишите транслитом, например rubinovyj_blok, а русское название задайте через name:)"
+                        : "некорректный id '" + path + "' (только строчные a-z, 0-9, _ . -)");
                 return;
             }
+            String id = ns + ":" + path;
             if (blocks.containsKey(id) || items.containsKey(id)) {
                 error(headerLine, "id '" + id + "' уже объявлен");
                 return;
@@ -190,6 +252,25 @@ public final class ScriptParser {
         }
 
         error(headerLine, "неизвестный блок: " + header);
+    }
+
+    /** null, если пространство имён допустимо, иначе текст ошибки. */
+    private static String namespaceProblem(String ns) {
+        if (hasCyrillic(ns)) {
+            return "namespace '" + ns + "' на кириллице невозможен: только a-z, 0-9, _ . - "
+                    + "(например svoymod вместо своймод)";
+        }
+        if (!NAMESPACE.matcher(ns).matches()) {
+            return "некорректный namespace '" + ns + "' (только строчные a-z, 0-9, _ . -)";
+        }
+        if (RESERVED_NAMESPACES.contains(ns)) {
+            return "namespace '" + ns + "' зарезервирован (minecraft, forge, neoforge, c)";
+        }
+        return null;
+    }
+
+    private static boolean hasCyrillic(String s) {
+        return s.codePoints().anyMatch(cp -> Character.UnicodeScript.of(cp) == Character.UnicodeScript.CYRILLIC);
     }
 
     // ------------------------------------------------------------------ свойства define
@@ -311,7 +392,7 @@ public final class ScriptParser {
     }
 
     /** Токен -> значение: "текст", {переменная}, число, true/false, иначе слово как текст. */
-    private static Expression expression(Token token) {
+    static Expression expression(Token token) {
         String v = token.value();
         if (token.quoted()) {
             return new Expression.Text(v);
@@ -356,6 +437,12 @@ public final class ScriptParser {
         }
         if (!hasBlock && !children.isEmpty()) {
             throw new ParseException("у этого действия не может быть вложенных строк");
+        }
+
+        // Сначала таблица эффектов (set gamemode of player..., heal player by 2, send title ...).
+        Action effect = EffectPatterns.tryParse(t);
+        if (effect != null) {
+            return effect;
         }
 
         switch (head) {

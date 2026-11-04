@@ -1,6 +1,7 @@
 package com.scriptcraft.event;
 
 import com.scriptcraft.command.ScriptCommands;
+import com.scriptcraft.resources.ResourceSync;
 import com.scriptcraft.script.ScriptLoader;
 import com.scriptcraft.script.runtime.ScriptEvent;
 import com.scriptcraft.script.variables.VariableStore;
@@ -31,6 +32,8 @@ public final class ServerEvents {
     @SubscribeEvent
     public static void onPlayerJoin(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
+            // Сначала манифест ресурсов: клиент начнёт докачку, пока скрипт приветствует игрока.
+            ResourceSync.onLogin(player);
             ScriptLoader.fireEvent(ScriptEvent.JOIN, player);
         }
     }
@@ -40,15 +43,20 @@ public final class ServerEvents {
     public static void onPlayerQuit(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
             ScriptLoader.fireEvent(ScriptEvent.QUIT, player);
+            ResourceSync.onLogout(player);
         }
     }
 
     // ------------------------------------------------------------------ переменные
 
-    /** Старт сервера (мира): загружаем <мир>/scriptcraft/variables.json, временные переменные очищаются. */
+    /**
+     * Старт сервера (мира): загружаем scriptcraft/variables/variables.json (с резервной копией),
+     * временные переменные очищаются; строим индекс ресурсов для клиентов.
+     */
     @SubscribeEvent
     public static void onServerStarting(ServerStartingEvent event) {
         VariableStore.load(event.getServer());
+        ResourceSync.onServerStarting();
     }
 
     /** Остановка сервера: сохраняем переменные, пока мир ещё доступен. */
@@ -61,6 +69,7 @@ public final class ServerEvents {
     @SubscribeEvent
     public static void onServerStopped(ServerStoppedEvent event) {
         VariableStore.shutdown();
+        ResourceSync.onServerStopped();
     }
 
     /** Периодическое автосохранение (интервал — variablesSaveIntervalSeconds в конфиге). */
@@ -68,6 +77,7 @@ public final class ServerEvents {
     public static void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase == TickEvent.Phase.END) {
             VariableStore.tick();
+            ResourceSync.tick(event.getServer());
         }
     }
 }

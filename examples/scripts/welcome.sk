@@ -5,7 +5,7 @@
 # ==========================================================
 
 on join:
-    # Постоянная переменная (сохраняется в <мир>/scriptcraft/variables.json)
+    # Постоянная переменная (сохраняется в scriptcraft/variables/variables.json)
     add 1 to {joins::%player%}
     if {joins::%player%} is 1:
         send "&aПривет, &e%player%&a! Ты здесь впервые, добро пожаловать!" to player
@@ -28,6 +28,49 @@ command /kit permission 2:
     give player bread 16
     heal player
     send "&6Набор выдан!" to player
+
+# ----------------------------------------------------------
+#  Эффекты над игроком (как в Skript). Цель: player или имя игрока ("Steve", {var}, "%args%")
+# ----------------------------------------------------------
+
+command /buff permission 2:
+    heal player
+    feed player
+    extinguish player
+    give player effect speed for 60 seconds level 2
+    give player effect night_vision for 120 seconds
+    play sound entity.player.levelup to player
+    send title "&6Бафф!" with subtitle "&eСкорость и ночное зрение" to player
+    send action bar "&aЗдоровье и голод восстановлены" to player
+
+command /fly permission 2:
+    set flying of player to true
+    send action bar "&bПолёт включён" to player
+
+command /nofly permission 2:
+    set flying of player to false
+
+command /creative permission 2:
+    set player's gamemode to creative
+
+command /survival permission 2:
+    set gamemode of player to survival
+    clear effects of player
+
+# /healp Steve — вылечить другого игрока (имя из %args%; игрок должен быть онлайн)
+command /healp permission 2:
+    heal "%args%"
+    send action bar "&aТебя вылечили!" to "%args%"
+    reply "Вылечен: %args%"
+
+command /xp permission 2:
+    give 100 xp to player
+    set xp level of player to 30
+
+# Команды: выполняются только если allowCommandEffects = true (по умолчанию).
+command /daytime permission 2:
+    execute console command "time set day"
+    make player execute command "me поставил день"
 
 command /spawnpoint0:
     teleport player to 0, 100, 0

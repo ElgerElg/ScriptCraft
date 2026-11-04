@@ -5,7 +5,10 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import com.scriptcraft.ScriptCraft;
+import com.scriptcraft.config.ScriptCraftConfig;
 import com.scriptcraft.lang.Messages;
+import com.scriptcraft.resources.ResourceIndex;
+import com.scriptcraft.resources.ResourceSync;
 import com.scriptcraft.script.ScriptLoader;
 import com.scriptcraft.script.ScriptPaths;
 import net.minecraft.commands.CommandSourceStack;
@@ -69,7 +72,7 @@ public final class ScriptCommands {
         registerScriptCommands(dispatcher);
     }
 
-    /** Дерево одной корневой команды: help, reload [скрипт], enable, disable, list. */
+    /** Дерево одной корневой команды: help, reload [скрипт], enable, disable, list, resources reload. */
     private static LiteralArgumentBuilder<CommandSourceStack> buildRoot(String root) {
         return Commands.literal(root)
                 .requires(src -> src.hasPermission(2))
@@ -93,7 +96,29 @@ public final class ScriptCommands {
                                 .suggests(ENABLED_SCRIPTS)
                                 .executes(ctx -> ScriptLoader.disable(ctx.getSource(),
                                         StringArgumentType.getString(ctx, "script")))))
-                .then(Commands.literal("list").executes(ctx -> ScriptLoader.list(ctx.getSource())));
+                .then(Commands.literal("list").executes(ctx -> ScriptLoader.list(ctx.getSource())))
+                .then(Commands.literal("resources")
+                        .then(Commands.literal("reload").executes(ctx -> reloadResources(ctx.getSource()))));
+    }
+
+    /** /sc resources reload: перечитать scriptcraft/resources/assets и разослать изменения игрокам онлайн. */
+    private static int reloadResources(CommandSourceStack source) {
+        String error = ResourceSync.reloadAndPush(source.getServer());
+        if (error != null) {
+            source.sendFailure(Messages.component("resources.reload_failed", error));
+            return 0;
+        }
+        int files = ResourceIndex.entries().size();
+        long kb = ResourceIndex.totalBytes() / 1024;
+        if (ScriptCraftConfig.syncResourcesToClients()) {
+            int players = source.getServer().getPlayerList().getPlayerCount();
+            source.sendSuccess(() -> Messages.component("resources.reloaded", files, kb, players), true);
+        } else {
+            source.sendSuccess(() -> Messages.component("resources.reloaded_nosync", files, kb), true);
+        }
+        // data/ (лут, теги, рецепты) перечитывает ванильная /reload — подсказываем.
+        source.sendSuccess(() -> Messages.component("resources.data_hint"), false);
+        return 1;
     }
 
     private static int help(CommandSourceStack source, String root) {

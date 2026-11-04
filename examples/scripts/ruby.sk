@@ -1,8 +1,12 @@
 # ==========================================================
-#  ruby.sk — блок и предмет, объявленные скриптом
+#  ruby.sk — блоки и предметы, объявленные скриптом
 #  ВНИМАНИЕ: новые блоки/предметы появляются только после ПЕРЕЗАПУСКА.
 #  Этот файл должен быть одинаковым на сервере и у всех клиентов!
+#  (текстуры/модели клиенты получают с сервера сами, а вот реестры — нет)
 # ==========================================================
+
+# --- namespace по умолчанию: scriptcraft -> scriptcraft:ruby_block, scriptcraft:ruby
+#     Текстуры и модели этих двух лежат внутри jar мода.
 
 define block ruby_block:
     name: "Рубиновый блок"
@@ -17,7 +21,31 @@ define item ruby:
     stack_size: 64
     rarity: rare
 
+# --- свой namespace: всё, что ниже, получит id example:...
+#     Ресурсы: scriptcraft/resources/assets/example/... (модели, текстуры, lang),
+#     лут и теги: scriptcraft/resources/data/example/... и data/minecraft/tags/...
+#     id только латиницей: example:ruby_block (а не "пример:рубиновый_блок").
+#     Названия здесь берутся из lang-файлов (assets/example/lang/ru_ru.json), но можно задать и name:.
+
+namespace example
+
+define block ruby_block:
+    hardness: 5
+    resistance: 6
+    sound: metal
+    requires_tool: true
+
+define item ruby:
+    stack_size: 16
+    rarity: epic
+
+# Полный id можно указать и явно, независимо от строки namespace:
+# define item example:ruby_shard:
+#     name: "Осколок рубина"
+
 command /ruby permission 2:
     give player ruby_block 1
     give player ruby 8
-    send "&cДержи рубины!" to player
+    give player example:ruby_block 1
+    give player example:ruby 4
+    send "&cДержи рубины! &7(scriptcraft: и example:)" to player

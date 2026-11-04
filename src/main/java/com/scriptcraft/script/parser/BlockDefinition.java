@@ -7,8 +7,8 @@ import org.jetbrains.annotations.Nullable;
 /**
  * Блок из "define block <id>:".
  *
- * @param id           путь id (итоговый id: scriptcraft:<id>)
- * @param displayName  отображаемое имя или null (тогда используется перевод block.scriptcraft.<id>)
+ * @param id           полный id "namespace:path", например scriptcraft:ruby_block или example:ruby_block
+ * @param displayName  отображаемое имя или null (тогда используется перевод block.<namespace>.<path>)
  * @param hardness     прочность (камень = 1.5, обсидиан = 50)
  * @param resistance   взрывоустойчивость
  * @param sound        звук: stone, wood, metal, glass, grass, sand, wool, gravel
@@ -17,6 +17,16 @@ import org.jetbrains.annotations.Nullable;
  */
 public record BlockDefinition(String id, @Nullable String displayName, float hardness, float resistance,
                               String sound, int lightLevel, boolean requiresTool) {
+
+    /** Пространство имён (часть id до двоеточия). */
+    public String namespace() {
+        return id.substring(0, id.indexOf(':'));
+    }
+
+    /** Путь (часть id после двоеточия). */
+    public String path() {
+        return id.substring(id.indexOf(':') + 1);
+    }
 
     /** Превращает описание из скрипта в свойства блока Minecraft. */
     public BlockBehaviour.Properties toProperties() {
