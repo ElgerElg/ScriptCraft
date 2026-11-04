@@ -328,3 +328,4 @@ gh repo create ScriptCraft --private --source . --push
 ```
 
 При первом `push` Git for Windows откроет окно входа в GitHub. Пароль от аккаунта при push не подходит, нужен вход через браузер или Personal Access Token.
+"# ScriptCraft" 
