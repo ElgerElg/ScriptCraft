@@ -15,6 +15,7 @@ import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.registries.DeferredRegister;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.registries.RegistryObject;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -50,14 +51,12 @@ public final class ScriptRegistries {
     /** Полный id -> зарегистрированный предмет из скрипта (включая предметы-блоки). */
     private static final Map<String, RegistryObject<Item>> SCRIPT_ITEMS = new LinkedHashMap<>();
 
-    /** Вкладка творческого режима со всем, что объявлено в скриптах. */
-    public static final RegistryObject<CreativeModeTab> TAB = TABS.register("scripted", () -> CreativeModeTab.builder()
-            .title(Component.translatable("itemGroup.scriptcraft"))
-            .icon(() -> SCRIPT_ITEMS.values().stream().findFirst()
-                    .map(ro -> new ItemStack(ro.get()))
-                    .orElseGet(() -> new ItemStack(Items.WRITABLE_BOOK)))
-            .displayItems((params, output) -> SCRIPT_ITEMS.values().forEach(ro -> output.accept(ro.get())))
-            .build());
+    /**
+     * Вкладка творческого режима со всем, что объявлено в скриптах. Своих предметов у мода нет,
+     * поэтому вкладка регистрируется только если скрипты объявили хотя бы один блок/предмет (иначе null).
+     */
+    @Nullable
+    private static RegistryObject<CreativeModeTab> tab;
 
     private static boolean registered = false;
 
@@ -98,6 +97,23 @@ public final class ScriptRegistries {
                     .register(def.path(), () -> new ScriptItem(def.toProperties(), def.displayName())));
             ScriptCraft.LOGGER.info("[ScriptCraft] Предмет из скрипта: {}", def.id());
         }
+
+        // Пустую вкладку не показываем: без скриптового контента в творческом режиме от мода ничего нет.
+        if (!SCRIPT_ITEMS.isEmpty()) {
+            tab = TABS.register("scripted", () -> CreativeModeTab.builder()
+                    .title(Component.translatable("itemGroup.scriptcraft"))
+                    .icon(() -> SCRIPT_ITEMS.values().stream().findFirst()
+                            .map(ro -> new ItemStack(ro.get()))
+                            .orElseGet(() -> new ItemStack(Items.WRITABLE_BOOK)))
+                    .displayItems((params, output) -> SCRIPT_ITEMS.values().forEach(ro -> output.accept(ro.get())))
+                    .build());
+        }
+    }
+
+    /** Вкладка творческого режима или null, если скрипты ничего не объявили. */
+    @Nullable
+    public static RegistryObject<CreativeModeTab> tab() {
+        return tab;
     }
 
     private static DeferredRegister<Block> blocks(String namespace) {

@@ -7,7 +7,7 @@ import org.jetbrains.annotations.Nullable;
 /**
  * Блок из "define block <id>:".
  *
- * @param id           полный id "namespace:path", например scriptcraft:ruby_block или example:ruby_block
+ * @param id           полный id "namespace:path", например example:ruby_block (без строки namespace — scriptcraft:...)
  * @param displayName  отображаемое имя или null (тогда используется перевод block.<namespace>.<path>)
  * @param hardness     прочность (камень = 1.5, обсидиан = 50)
  * @param resistance   взрывоустойчивость

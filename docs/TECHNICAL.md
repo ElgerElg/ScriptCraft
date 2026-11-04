@@ -168,7 +168,7 @@ command /kit permission 2:       # только операторы (0–4)
 | сообщение игрокам | `send "Привет, %player%!" to player` / `send "Внимание" to all players` / `message "..." to @a` |
 | сообщение всем | `broadcast "Сервер перезапустится"` |
 | ответ вызвавшему (работает и из консоли) | `reply "Готово"` |
-| выдать предмет | `give player diamond 3` / `give all players scriptcraft:ruby` / `give @a ruby {n}` |
+| выдать предмет | `give player diamond 3` / `give all players example:ruby` / `give @a ruby {n}` |
 | вылечить | `heal player` / `heal players in radius 10 of player` (и другие эффекты — см. ниже) |
 | телепорт | `teleport player to 0, 100, 0` / `teleport @a to player` / `tp targeted player to "Steve"` |
 | открыть экран | `open screen "Заголовок" to player:` / `open screen "Меню" to players in radius 5 of player:` + элементы |
@@ -352,6 +352,8 @@ command /rich:
 ### Блок через скрипт (пример)
 
 ```
+namespace example
+
 define block ruby_block:
     name: "Рубиновый блок"
     hardness: 5            # прочность (камень 1.5)
@@ -367,7 +369,10 @@ define item ruby:
     fire_resistant: false
 ```
 
-Получится `scriptcraft:ruby_block` (блок вместе с предметом) и `scriptcraft:ruby`. Оба попадут во вкладку творческого режима **ScriptCraft**.
+Получится `example:ruby_block` (блок вместе с предметом) и `example:ruby`. Оба попадут во вкладку творческого режима **ScriptCraft**
+(вкладка появляется, только если скрипты объявили хотя бы один блок или предмет).
+Без строки `namespace` id получат namespace `scriptcraft`, но лучше давать своему контенту свой namespace:
+в самом моде нет ни блоков, ни предметов, ни текстур — только движок.
 Свойство `name:` задаёт отображаемое название (можно по-русски) и не требует lang-файлов.
 
 ### Свой namespace (`mymod:ruby_block`)
@@ -392,9 +397,9 @@ define item othermod:gem:       # полный id в обход строки nam
   невозможен — пишите транслитом: `svoymod:rubinovyj_blok`, а русское название задайте через `name: "Рубиновый блок"`
   или в `lang/ru_ru.json`. Заглавные буквы приводятся к строчным.
 - Ресурсы такого блока ищутся в `assets/mymod/...` и `data/mymod/...` — кладите их в `scriptcraft/resources/` (см. ниже).
-- Пример: [`examples/scripts/ruby.sk`](../examples/scripts/ruby.sk) объявляет и `scriptcraft:ruby_block`/`scriptcraft:ruby`
-  (ресурсы в jar), и `example:ruby_block`/`example:ruby` (ресурсы в `scriptcraft/resources/assets/example`,
-  названия из `lang`).
+- Пример: [`examples/scripts/ruby.sk`](../examples/scripts/ruby.sk) объявляет `example:ruby_block`/`example:ruby`
+  (модели, текстуры, названия — в `scriptcraft/resources/assets/example`, дроп и тег кирки — в `scriptcraft/resources/data`).
+  В jar мода своих блоков, предметов, моделей, текстур и рецептов нет.
 
 ### Текстуры, модели, дроп
 

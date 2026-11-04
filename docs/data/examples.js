@@ -20,9 +20,9 @@ window.SC_DOCS.examples = [
         text "Добро пожаловать, %player%!" at 0, -60 color #FFD700 shadow
         image "minecraft:textures/item/diamond.png" at 0, -40 size 16x16 texture 16x16
         slot diamond 5 at -30, -15
-        slot scriptcraft:ruby 8 at 0, -15
+        slot example:ruby 8 at 0, -15
         slot bread 16 at 30, -15
-        slot example:ruby 4 at 60, -15
+        slot example:ruby_block 4 at 60, -15
         button "Сказать привет" at 0, 15 size 120x20 run "/hello из меню"
         button "Закрыть" at 0, 40 size 120x20 close
         text "ScriptCraft" at -4, -4 anchor bottom_right color #808080
@@ -174,8 +174,8 @@ command /resetcoins permission 2:
     id: "custom-block",
     title: { ru: "Свой блок и предмет в своём namespace + ресурсы", en: "Custom block and item in your own namespace + resources" },
     intro: {
-      ru: "Скрипт объявляет `example:ruby_block` и `example:ruby`. Модели, текстуры и названия лежат в `scriptcraft/resources/assets/example/`, дроп и «копается киркой» — в `scriptcraft/resources/data/`. Сервер отправит `assets` игрокам сам, но **файл скрипта с `define` должен быть одинаковым у сервера и у клиентов**, а новые блоки появляются только после перезапуска.",
-      en: "The script declares `example:ruby_block` and `example:ruby`. Models, textures and names live in `scriptcraft/resources/assets/example/`, loot and the pickaxe tag in `scriptcraft/resources/data/`. The server sends `assets` to players itself, but **the script file with `define` must be identical on the server and clients**, and new blocks appear only after a restart."
+      ru: "Скрипт объявляет `example:ruby_block` и `example:ruby` (в самом моде, в namespace `scriptcraft`, контента нет — всё в примере). Модели, текстуры и названия лежат в `scriptcraft/resources/assets/example/`, дроп и «копается киркой» — в `scriptcraft/resources/data/`. Сервер отправит `assets` игрокам сам, но **файл скрипта с `define` должен быть одинаковым у сервера и у клиентов**, а новые блоки появляются только после перезапуска.",
+      en: "The script declares `example:ruby_block` and `example:ruby` (the mod itself has no content in the `scriptcraft` namespace — everything is in the example). Models, textures and names live in `scriptcraft/resources/assets/example/`, loot and the pickaxe tag in `scriptcraft/resources/data/`. The server sends `assets` to players itself, but **the script file with `define` must be identical on the server and clients**, and new blocks appear only after a restart."
     },
     blocks: [
       { lang: "sk", title: { ru: "scriptcraft/scripts/ruby.sk", en: "scriptcraft/scripts/ruby.sk" }, code: `namespace example
@@ -184,15 +184,16 @@ define block ruby_block:
     hardness: 5
     resistance: 6
     sound: metal
+    light: 7
     requires_tool: true
 
 define item ruby:
-    stack_size: 16
-    rarity: epic
+    stack_size: 64
+    rarity: rare
 
 command /ruby permission 2:
     give player example:ruby_block 1
-    give player example:ruby 4
+    give player example:ruby 8
     send "&cДержи рубины!" to player` },
       { lang: "text", title: { ru: "Раскладка папки resources", en: "resources folder layout" }, code: `scriptcraft/resources/
   assets/example/
@@ -214,8 +215,8 @@ command /ruby permission 2:
   }
 }` },
       { lang: "json", title: { ru: "assets/example/lang/ru_ru.json", en: "assets/example/lang/ru_ru.json" }, code: `{
-  "block.example.ruby_block": "Рубиновый блок (namespace example)",
-  "item.example.ruby": "Рубин (namespace example)"
+  "block.example.ruby_block": "Рубиновый блок",
+  "item.example.ruby": "Рубин"
 }` },
       { lang: "json", title: { ru: "data/example/loot_tables/blocks/ruby_block.json", en: "data/example/loot_tables/blocks/ruby_block.json" }, code: `{
   "type": "minecraft:block",
