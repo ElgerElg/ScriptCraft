@@ -7,6 +7,7 @@ import com.scriptcraft.event.ServerEvents;
 import com.scriptcraft.network.ModNetwork;
 import com.scriptcraft.registry.BindingStore;
 import com.scriptcraft.registry.ScriptRegistries;
+import com.scriptcraft.resources.DefineCache;
 import com.scriptcraft.resources.ResourcePacks;
 import com.scriptcraft.script.ScriptLoader;
 import com.scriptcraft.script.ScriptPaths;
@@ -16,7 +17,11 @@ import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.config.ModConfig;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
+import net.minecraftforge.fml.loading.FMLEnvironment;
 import org.slf4j.Logger;
+
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 /**
  * Главный класс мода ScriptCraft.
@@ -55,9 +60,22 @@ public class ScriptCraft {
         // 2. Первая загрузка скриптов: события/команды готовы сразу. Define отсюда закрепляют "подсказки" слотов
         //    (scriptcraft/bindings.json) — нужны data-паку и переназначению блоков старых миров до загрузки мира.
         ScriptLoader.initialLoad();
+        // 2a. Гибрид: define, известные уже сейчас, регистрируются настоящими id (example:ruby_block).
+        //     Сервер — из своих скриптов; клиент — ещё и из кэша define серверов (scriptcraft/cache/defines.json).
+        //     Define, добавленные позже (/sc reload), живут во временных слотах пула до перезапуска.
+        Set<String> realBlocks = new LinkedHashSet<>();
+        Set<String> realItems = new LinkedHashSet<>();
+        ScriptLoader.getProgram().blocks().forEach(b -> realBlocks.add(b.id()));
+        ScriptLoader.getProgram().items().forEach(i -> realItems.add(i.id()));
+        if (FMLEnvironment.dist.isClient()) {
+            realBlocks.addAll(DefineCache.blocks());
+            realItems.addAll(DefineCache.items());
+        }
+        realItems.removeAll(realBlocks);
+        ScriptRegistries.registerReal(realBlocks, realItems);
         BindingStore.prepare(ScriptLoader.getProgram());
 
-        // 3. Пул блоков/предметов (одинаковый у всех) и вкладка творческого режима.
+        // 3. Пул блоков/предметов (одинаковый у всех), настоящие id и вкладка творческого режима.
         ScriptRegistries.register(modBus);
 
         // 4. Сетевой канал: экраны из скриптов и синхронизация ресурсов.

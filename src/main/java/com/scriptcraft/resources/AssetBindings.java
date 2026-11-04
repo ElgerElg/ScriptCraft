@@ -7,6 +7,7 @@ import com.scriptcraft.ModPaths;
 import com.scriptcraft.ScriptCraft;
 import com.scriptcraft.registry.Bindings;
 import com.scriptcraft.registry.ScriptRegistries;
+import com.scriptcraft.script.parser.BlockDefinition;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
@@ -15,8 +16,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Клиент: какие модели подставлять слотам пула (слот -> id из скрипта) и генерация этих JSON "на лету"
@@ -31,6 +34,13 @@ import java.util.Map;
  * - models/item/dyn_block_N.json — модель ns:item/path, если есть, иначе модель блока;
  * - models/item/dyn_item_N.json — модель ns:item/path, иначе плоская иконка с текстурой ns:item/path;
  * - свободные слоты — "пустая" модель (чёрно-фиолетовый куб / иконка барьера).
+ *
+ * Поворот (define block ... facing: horizontal|all): blockstate слота получает варианты facing=north..down
+ * с поворотом выбранной модели (x/y), как у печи и раздатчика. Вид поворота каждого id тоже хранится в файле.
+ *
+ * Настоящие id (example:ruby_block, зарегистрированы при запуске): если в ресурсах скрипта нет своего
+ * blockstate / модели блока / модели предмета, они генерируются в namespace самого id по тем же правилам
+ * (свой blockstate автора берётся как есть — варианты facing в нём автор пишет сам).
  */
 public final class AssetBindings {
     private static final String UNBOUND_BLOCK_MODEL = ScriptCraft.MODID + ":block/dyn_unbound";
@@ -38,6 +48,8 @@ public final class AssetBindings {
     /** слот -> "ns:path". Заменяются целиком. */
     private static volatile Map<Integer, String> blocks = Map.of();
     private static volatile Map<Integer, String> items = Map.of();
+    /** id блока -> вид поворота (none | horizontal | all). */
+    private static volatile Map<String, String> facings = Map.of();
     private static boolean loaded = false;
 
     private AssetBindings() {
@@ -56,6 +68,17 @@ public final class AssetBindings {
             JsonObject root = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8)).getAsJsonObject();
             blocks = read(root.getAsJsonObject("blocks"), ScriptRegistries.BLOCK_SLOTS);
             items = read(root.getAsJsonObject("items"), ScriptRegistries.ITEM_SLOTS);
+            JsonObject f = root.getAsJsonObject("facing");
+            if (f != null) {
+                Map<String, String> map = new HashMap<>();
+                for (Map.Entry<String, JsonElement> e : f.entrySet()) {
+                    String kind = BlockDefinition.parseFacing(e.getValue().getAsString());
+                    if (isId(e.getKey()) && kind != null) {
+                        map.put(e.getKey(), kind);
+                    }
+                }
+                facings = Map.copyOf(map);
+            }
         } catch (IOException | RuntimeException e) {
             ScriptCraft.LOGGER.warn("[ScriptCraft] Не удалось прочитать {}: {}", file, e.getMessage());
         }
@@ -96,11 +119,23 @@ public final class AssetBindings {
         snapshot.blockSlots().forEach((id, slot) -> b.put(slot, id));
         Map<Integer, String> i = new HashMap<>();
         snapshot.itemSlots().forEach((id, slot) -> i.put(slot, id));
-        if (b.equals(blocks) && i.equals(items)) {
+        Map<String, String> f = new HashMap<>();
+        snapshot.realBlocks().forEach((id, def) -> f.put(id, def.facing()));
+        snapshot.blockSlots().keySet().forEach(id -> {
+            BlockDefinition def = snapshot.blockById(id);
+            if (def != null) {
+                f.put(id, def.facing());
+            }
+        });
+        // Виды поворота других серверов (настоящие id из кэша) не забываем — дописываем.
+        Map<String, String> mergedFacings = new HashMap<>(facings);
+        mergedFacings.putAll(f);
+        if (b.equals(blocks) && i.equals(items) && mergedFacings.equals(facings)) {
             return false;
         }
         blocks = Map.copyOf(b);
         items = Map.copyOf(i);
+        facings = Map.copyOf(mergedFacings);
         JsonObject root = new JsonObject();
         JsonObject jb = new JsonObject();
         b.forEach((slot, id) -> jb.addProperty(Integer.toString(slot), id));
@@ -108,6 +143,9 @@ public final class AssetBindings {
         i.forEach((slot, id) -> ji.addProperty(Integer.toString(slot), id));
         root.add("blocks", jb);
         root.add("items", ji);
+        JsonObject jf = new JsonObject();
+        mergedFacings.forEach(jf::addProperty);
+        root.add("facing", jf);
         try {
             Files.createDirectories(file().getParent());
             Files.writeString(file(), root.toString(), StandardCharsets.UTF_8);
@@ -186,7 +224,10 @@ public final class AssetBindings {
         return json.getBytes(StandardCharsets.UTF_8);
     }
 
-    /** Блок-слот рисуется одним вариантом "" (подходит ко всем состояниям, в т.ч. к любому light). */
+    /**
+     * Блок-слот: один вариант "" (подходит ко всем состояниям, в т.ч. к любому light) или, у поворотных,
+     * варианты facing=... с поворотом той же модели.
+     */
     private static String blockstate(int slot) {
         String id = blocks.get(slot);
         if (id == null) {
@@ -198,19 +239,129 @@ public final class AssetBindings {
                 JsonObject root = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8)).getAsJsonObject();
                 JsonObject variants = root.getAsJsonObject("variants");
                 if (variants != null && !variants.entrySet().isEmpty()) {
-                    // Свойств (facing и т.п.) у блока-слота нет — берём вариант "" или первый попавшийся.
-                    JsonElement chosen = variants.has("") ? variants.get("") : variants.entrySet().iterator().next().getValue();
-                    return variant(chosen.toString());
+                    // Варианты автора (facing=east и т.п.) не переносим: берём "" (или facing=north, или первый)
+                    // и поворачиваем сами — так работает любой blockstate.
+                    JsonElement chosen = variants.has("") ? variants.get("")
+                            : variants.has("facing=north") ? variants.get("facing=north")
+                            : variants.entrySet().iterator().next().getValue();
+                    return rotated(chosen, facings.getOrDefault(id, BlockDefinition.FACING_NONE));
                 }
             } catch (IOException | RuntimeException e) {
                 ScriptCraft.LOGGER.warn("[ScriptCraft] Не удалось прочитать {}: {}", file, e.getMessage());
             }
         }
-        return variant("{\"model\":\"" + blockModel(slot, id) + "\"}");
+        return rotated(JsonParser.parseString("{\"model\":\"" + blockModel(slot, id) + "\"}"),
+                facings.getOrDefault(id, BlockDefinition.FACING_NONE));
     }
 
     private static String variant(String value) {
         return "{\"variants\":{\"\":" + value + "}}";
+    }
+
+    /** Направление -> поворот модели {x, y}, как у ванильных печи/раздатчика (модель смотрит на север). */
+    private static final String[][] FACING_ROTATIONS = {
+            {"north", "0", "0"}, {"east", "0", "90"}, {"south", "0", "180"}, {"west", "0", "270"},
+            {"up", "270", "0"}, {"down", "90", "0"}};
+
+    /** blockstate из одного варианта: без поворота — "", иначе 6 вариантов facing=... (horizontal: up/down как north). */
+    static String rotated(JsonElement model, String kind) {
+        if (BlockDefinition.FACING_NONE.equals(kind)) {
+            return variant(model.toString());
+        }
+        JsonObject variants = new JsonObject();
+        for (String[] r : FACING_ROTATIONS) {
+            boolean vertical = r[0].equals("up") || r[0].equals("down");
+            int x = vertical && BlockDefinition.FACING_HORIZONTAL.equals(kind) ? 0 : Integer.parseInt(r[1]);
+            int y = Integer.parseInt(r[2]);
+            variants.add("facing=" + r[0], rotate(model, x, y));
+        }
+        JsonObject root = new JsonObject();
+        root.add("variants", variants);
+        return root.toString();
+    }
+
+    /** Добавляет x/y к варианту (объект или массив случайных вариантов), складывая с уже заданными. */
+    private static JsonElement rotate(JsonElement model, int x, int y) {
+        if (model.isJsonArray()) {
+            com.google.gson.JsonArray arr = new com.google.gson.JsonArray();
+            model.getAsJsonArray().forEach(e -> arr.add(rotate(e, x, y)));
+            return arr;
+        }
+        JsonObject o = model.getAsJsonObject().deepCopy();
+        int nx = (o.has("x") ? o.get("x").getAsInt() : 0) + x;
+        int ny = (o.has("y") ? o.get("y").getAsInt() : 0) + y;
+        o.remove("x");
+        o.remove("y");
+        if (nx % 360 != 0) {
+            o.addProperty("x", ((nx % 360) + 360) % 360);
+        }
+        if (ny % 360 != 0) {
+            o.addProperty("y", ((ny % 360) + 360) % 360);
+        }
+        return o;
+    }
+
+    // ------------------------------------------------------------------ настоящие id
+
+    /** Namespace настоящих id клиента (для пака: ему нужно объявить их). */
+    static Set<String> realNamespaces() {
+        Set<String> out = new HashSet<>();
+        ScriptRegistries.realBlockIds().forEach(id -> out.add(ns(id)));
+        ScriptRegistries.realItemIds().forEach(id -> out.add(ns(id)));
+        return out;
+    }
+
+    /** Пути (внутри assets/<namespace>/), которые генерируются для настоящих id: только отсутствующие в кэше. */
+    static List<String> generatedRealPaths(String namespace) {
+        List<String> paths = new ArrayList<>();
+        for (String id : ScriptRegistries.realBlockIds()) {
+            if (ns(id).equals(namespace)) {
+                for (String folder : List.of("blockstates/", "models/block/", "models/item/")) {
+                    if (!hasAsset(id, folder)) {
+                        paths.add(folder + path(id) + ".json");
+                    }
+                }
+            }
+        }
+        for (String id : ScriptRegistries.realItemIds()) {
+            if (ns(id).equals(namespace) && !hasAsset(id, "models/item/")) {
+                paths.add("models/item/" + path(id) + ".json");
+            }
+        }
+        return paths;
+    }
+
+    /** JSON для настоящего id (assets/<namespace>/<path>) или null — не наш путь или файл автора есть в кэше. */
+    @Nullable
+    static byte[] generateReal(String namespace, String path) {
+        ensureLoaded();
+        if (!path.endsWith(".json")) {
+            return null;
+        }
+        String json = null;
+        for (String folder : List.of("blockstates/", "models/block/", "models/item/")) {
+            if (!path.startsWith(folder)) {
+                continue;
+            }
+            String id = namespace + ":" + path.substring(folder.length(), path.length() - ".json".length());
+            boolean block = ScriptRegistries.isRealBlock(id);
+            boolean item = ScriptRegistries.isRealItem(id);
+            if ((!block && !item) || hasAsset(id, folder)) {
+                return null;
+            }
+            String texture = namespace + ":" + (block ? "block/" : "item/") + path(id);
+            if (folder.equals("blockstates/") && block) {
+                String model = namespace + ":block/" + path(id);
+                json = rotated(JsonParser.parseString("{\"model\":\"" + model + "\"}"),
+                        facings.getOrDefault(id, BlockDefinition.FACING_NONE));
+            } else if (folder.equals("models/block/") && block) {
+                json = "{\"parent\":\"minecraft:block/cube_all\",\"textures\":{\"all\":\"" + texture + "\"}}";
+            } else if (folder.equals("models/item/")) {
+                json = block ? "{\"parent\":\"" + namespace + ":block/" + path(id) + "\"}"
+                        : "{\"parent\":\"minecraft:item/generated\",\"textures\":{\"layer0\":\"" + texture + "\"}}";
+            }
+        }
+        return json == null ? null : json.getBytes(StandardCharsets.UTF_8);
     }
 
     /** Модель блока: своя ns:block/path, если есть в кэше, иначе сгенерированный куб с текстурой ns:block/path. */

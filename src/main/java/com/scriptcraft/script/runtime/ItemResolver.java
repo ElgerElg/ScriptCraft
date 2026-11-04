@@ -10,7 +10,7 @@ import java.util.Optional;
 
 /**
  * Поиск предмета по id из скрипта.
- * - "ns:path": сначала привязки define (example:ruby_block -> предмет слота scriptcraft:dyn_block_N), затем реестр;
+ * - "ns:path": сначала define (настоящий id или предмет временного слота scriptcraft:dyn_block_N), затем реестр;
  * - короткий "diamond": minecraft:diamond, затем scriptcraft:<id>, затем привязанный define с таким путём (ruby -> example:ruby).
  * Работает и на клиенте (экраны/HUD): клиент получает ту же таблицу привязок от сервера.
  */

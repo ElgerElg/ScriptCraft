@@ -13,9 +13,32 @@ import org.jetbrains.annotations.Nullable;
  * @param sound        звук: stone, wood, metal, glass, grass, sand, wool, gravel
  * @param lightLevel   свечение 0..15
  * @param requiresTool нужен ли подходящий инструмент для дропа
+ * @param facing       поворот при установке: none (нет), horizontal (4 стороны, как печь), all (6 сторон, как раздатчик)
  */
 public record BlockDefinition(String id, @Nullable String displayName, float hardness, float resistance,
-                              String sound, int lightLevel, boolean requiresTool) {
+                              String sound, int lightLevel, boolean requiresTool, String facing) {
+    public static final String FACING_NONE = "none";
+    public static final String FACING_HORIZONTAL = "horizontal";
+    public static final String FACING_ALL = "all";
+
+    /** Нормализует значение свойства facing из скрипта; null — значение неизвестно. */
+    @Nullable
+    public static String parseFacing(@Nullable String raw) {
+        if (raw == null) {
+            return FACING_NONE;
+        }
+        return switch (raw.replace("\"", "").strip().toLowerCase(java.util.Locale.ROOT)) {
+            case "none", "false", "no" -> FACING_NONE;
+            case "horizontal", "true", "yes" -> FACING_HORIZONTAL;
+            case "all" -> FACING_ALL;
+            default -> null;
+        };
+    }
+
+    /** Поворачивается ли блок вообще. */
+    public boolean rotatable() {
+        return !FACING_NONE.equals(facing);
+    }
 
     /** Пространство имён (часть id до двоеточия). */
     public String namespace() {

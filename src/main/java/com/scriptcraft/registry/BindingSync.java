@@ -89,28 +89,79 @@ public final class BindingSync {
     }
 
     /**
-     * Мир из версии 0.1.6 и раньше хранит блоки под id из скриптов (example:ruby_block), которых теперь нет
-     * в реестре. Forge спрашивает, что с ними делать, — переназначаем на слот-подсказку из scriptcraft/bindings.json.
-     * Если подсказки нет, Forge предупредит, и такие блоки исчезнут (как при удалении мода).
+     * Forge не нашёл записи реестра.
+     *
+     * Сервер (загрузка мира):
+     * - мир из версии 0.1.6 и раньше хранит блоки под id скриптов, которых нет в реестре, — переназначаем на
+     *   слот-подсказку из scriptcraft/bindings.json;
+     * - настоящий id исчез (define удалили и перезапустили сервер) — тоже во временный слот (подсказка или новая),
+     *   слот закрепляется в мире, и при возвращении define блоки снова переедут на настоящий id.
+     * Чужие id (удалённые моды) не трогаем — Forge предупредит, как обычно.
+     *
+     * Клиент при входе на сервер (синхронизация реестров): здесь переназначать НЕЛЬЗЯ — номера записей задаёт
+     * сервер. У клиента нет настоящих id сервера (их не было в кэше при запуске) — запоминаем их в кэш define;
+     * Forge покажет экран "не хватает записей" и отключит, а после перезапуска клиента вход пройдёт.
      */
     public static void onMissingMappings(MissingMappingsEvent event) {
+        if (isNetworkHandshake()) {
+            rememberServerIds(event);
+            return;
+        }
         for (MissingMappingsEvent.Mapping<Block> m : event.getAllMappings(ForgeRegistries.Keys.BLOCKS)) {
-            Integer slot = BindingStore.hintBlockSlot(m.getKey().toString());
+            String id = m.getKey().toString();
+            Integer slot = BindingStore.hintBlockSlot(id) != null || BindingStore.wasRealBlock(id)
+                    ? BindingStore.reserveForMissing(id, true) : null;
             if (slot != null && slot < ScriptRegistries.BLOCK_SLOTS) {
                 m.remap(ScriptRegistries.block(slot));
             }
         }
         for (MissingMappingsEvent.Mapping<Item> m : event.getAllMappings(ForgeRegistries.Keys.ITEMS)) {
             String id = m.getKey().toString();
-            Integer slot = BindingStore.hintBlockSlot(id);
-            if (slot != null && slot < ScriptRegistries.BLOCK_SLOTS) {
-                m.remap(ScriptRegistries.blockItem(slot));
+            if (BindingStore.hintBlockSlot(id) != null || BindingStore.wasRealBlock(id)) {
+                Integer slot = BindingStore.reserveForMissing(id, true);
+                if (slot != null && slot < ScriptRegistries.BLOCK_SLOTS) {
+                    m.remap(ScriptRegistries.blockItem(slot));
+                }
                 continue;
             }
-            slot = BindingStore.hintItemSlot(id);
-            if (slot != null && slot < ScriptRegistries.ITEM_SLOTS) {
-                m.remap(ScriptRegistries.item(slot));
+            if (BindingStore.hintItemSlot(id) != null || BindingStore.wasRealItem(id)) {
+                Integer slot = BindingStore.reserveForMissing(id, false);
+                if (slot != null && slot < ScriptRegistries.ITEM_SLOTS) {
+                    m.remap(ScriptRegistries.item(slot));
+                }
             }
         }
+    }
+
+    /** Идёт ли синхронизация реестров при входе на сервер (а не загрузка своего мира). */
+    private static boolean isNetworkHandshake() {
+        return StackWalker.getInstance().walk(frames -> frames.anyMatch(
+                f -> f.getClassName().startsWith("net.minecraftforge.network.HandshakeHandler")));
+    }
+
+    /** Клиент: недостающие id сервера (не ванилла и не загруженные моды) — в кэш define до перезапуска. */
+    private static void rememberServerIds(MissingMappingsEvent event) {
+        java.util.List<String> blocks = new java.util.ArrayList<>();
+        java.util.List<String> items = new java.util.ArrayList<>();
+        for (MissingMappingsEvent.Mapping<Block> m : event.getAllMappings(ForgeRegistries.Keys.BLOCKS)) {
+            if (isScriptNamespace(m.getKey().getNamespace())) {
+                blocks.add(m.getKey().toString());
+            }
+        }
+        for (MissingMappingsEvent.Mapping<Item> m : event.getAllMappings(ForgeRegistries.Keys.ITEMS)) {
+            String id = m.getKey().toString();
+            if (isScriptNamespace(m.getKey().getNamespace()) && !blocks.contains(id)) {
+                items.add(id);
+            }
+        }
+        if (com.scriptcraft.resources.DefineCache.add(blocks, items)) {
+            ScriptCraft.LOGGER.warn("[ScriptCraft] У сервера есть блоки/предметы, которых не было при запуске клиента: {} {}."
+                    + " Они сохранены в scriptcraft/cache/defines.json — перезапустите клиент и зайдите снова", blocks, items);
+        }
+    }
+
+    private static boolean isScriptNamespace(String namespace) {
+        return !namespace.equals("minecraft") && !namespace.equals(ScriptCraft.MODID)
+                && !net.minecraftforge.fml.ModList.get().isLoaded(namespace);
     }
 }

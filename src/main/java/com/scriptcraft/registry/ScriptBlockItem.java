@@ -12,13 +12,17 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
-/** Предмет блока-слота: имя и ключ перевода — те же, что у привязанного блока. */
-public class PoolBlockItem extends BlockItem {
-    private final PoolBlock block;
+/** Предмет блока из скрипта (слота или настоящего): имя и ключ перевода — те же, что у блока. */
+public class ScriptBlockItem extends BlockItem {
+    private final ScriptBlock block;
 
-    public PoolBlockItem(PoolBlock block) {
+    public ScriptBlockItem(ScriptBlock block) {
         super(block, new Properties());
         this.block = block;
+    }
+
+    public ScriptBlock scriptBlock() {
+        return block;
     }
 
     @Override
@@ -31,12 +35,12 @@ public class PoolBlockItem extends BlockItem {
         return block.getName();
     }
 
-    /** Подробные подсказки (F3+H): рядом с техническим id показываем id из скрипта. */
+    /** Подробные подсказки (F3+H) у слота: рядом с техническим id показываем id из скрипта. */
     @Override
     public void appendHoverText(ItemStack stack, @Nullable Level level, List<Component> tooltip, TooltipFlag flag) {
         super.appendHoverText(stack, level, tooltip, flag);
         BlockDefinition def = block.definition();
-        if (flag.isAdvanced() && def != null) {
+        if (flag.isAdvanced() && def != null && block instanceof PoolBlock) {
             tooltip.add(scriptIdLine(def.id()));
         }
     }

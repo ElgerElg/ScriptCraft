@@ -4,13 +4,18 @@ import com.scriptcraft.command.ScriptCommands;
 import com.scriptcraft.hud.HudManager;
 import com.scriptcraft.registry.BindingStore;
 import com.scriptcraft.registry.BindingSync;
+import com.scriptcraft.registry.SlotMigration;
 import com.scriptcraft.resources.ResourceSync;
 import com.scriptcraft.script.ScriptLoader;
 import com.scriptcraft.script.runtime.ScriptEvent;
 import com.scriptcraft.script.variables.VariableStore;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.entity.EntityJoinLevelEvent;
+import net.minecraftforge.event.level.ChunkEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.server.ServerStartedEvent;
 import net.minecraftforge.event.server.ServerStartingEvent;
@@ -37,6 +42,8 @@ public final class ServerEvents {
     @SubscribeEvent
     public static void onPlayerJoin(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
+            // Предметы из временных слотов, чьи define теперь настоящие, — на настоящие id (до отправки привязок).
+            SlotMigration.onPlayerLogin(player);
             // Сначала манифест ресурсов: клиент начнёт докачку, пока скрипт приветствует игрока.
             ResourceSync.onLogin(player);
             // Таблица привязок define -> слоты пула: клиент сразу знает новые блоки/предметы (без перезапуска).
@@ -102,6 +109,7 @@ public final class ServerEvents {
         VariableStore.shutdown();
         ResourceSync.onServerStopped();
         HudManager.onServerStopped();
+        SlotMigration.onServerStopped();
         BindingStore.onServerStopped();
     }
 
@@ -111,6 +119,25 @@ public final class ServerEvents {
         if (event.phase == TickEvent.Phase.END) {
             VariableStore.tick();
             ResourceSync.tick(event.getServer());
+            SlotMigration.tick(event.getServer());
+        }
+    }
+
+    // ------------------------------------------------------------------ перевод слотов на настоящие id
+
+    /** Чанк загружен: блоки временных слотов -> настоящие блоки (если define теперь зарегистрирован настоящим). */
+    @SubscribeEvent
+    public static void onChunkLoad(ChunkEvent.Load event) {
+        if (event.getLevel() instanceof ServerLevel level && event.getChunk() instanceof LevelChunk chunk) {
+            SlotMigration.onChunkLoad(level, chunk);
+        }
+    }
+
+    /** Сущность появилась в мире: предметы на земле, в рамках, у стоек и мобов, в вагонетках. */
+    @SubscribeEvent
+    public static void onEntityJoin(EntityJoinLevelEvent event) {
+        if (event.getLevel() instanceof ServerLevel level) {
+            SlotMigration.onEntityJoin(level, event.getEntity());
         }
     }
 }

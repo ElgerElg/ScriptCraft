@@ -39,8 +39,8 @@ public final class Messages {
         add("reload.one", "&aReloaded script %s (%d error(s) total)", "&aСкрипт %s перезагружен (всего ошибок: %d)");
         add("reload.time", "Scripts compiled in %d ms", "Скрипты скомпилированы за %d мс");
         // --- привязка define к слотам пула (scriptcraft:dyn_block_N / dyn_item_N)
-        add("bindings.added", "&aBlock/item %s is live as %s - players get it without restarting",
-                "&aБлок/предмет %s доступен как %s — игрокам перезапуск не нужен");
+        add("bindings.added", "&aBlock/item %s is live as %s (temporary slot; after a server and client restart it gets its real id)",
+                "&aБлок/предмет %s доступен как %s (временный слот; после перезапуска сервера и клиента — настоящий id)");
         add("bindings.pool_full", "&cNo free slot for %s: the pool has %d block and %d item slots (defines removed from this world keep their slots)",
                 "&cНет свободного слота для %s: в пуле %d слотов блоков и %d слотов предметов (удалённые define сохраняют слоты в этом мире)");
         add("bindings.data_reload", "&7Reloading data (tags, loot tables, recipes) for the new ids...",
@@ -51,6 +51,10 @@ public final class Messages {
         add("ids.header", "&6Script id -> registry id (F3, vanilla commands, other datapacks):",
                 "&6id скрипта -> id в реестре (F3, ванильные команды, чужие датапаки):");
         add("ids.entry", "&e%s &7-> &f%s", "&e%s &7-> &f%s");
+        add("ids.real", "&e%s &7- &areal id", "&e%s &7- &aнастоящий id");
+        add("ids.temporary", "&e%s &7-> &f%s &7(temporary slot until restart)", "&e%s &7-> &f%s &7(временный слот до перезапуска)");
+        add("bindings.restart_client", "&eNew blocks/items are in temporary slots for now: %s. Restart the client to get the real ids (the server needs a restart too).",
+                "&eНовые блоки/предметы пока во временных слотах: %s. Перезапустите клиент, чтобы получить настоящие id (нужен и перезапуск сервера).");
         add("ids.none", "&7No blocks or items are defined in scripts", "&7В скриптах нет блоков и предметов (define)");
         add("give.unknown", "&cUnknown item: %s", "&cНеизвестный предмет: %s");
         add("give.done", "&aGave %d x %s to %d player(s)", "&aВыдано %d x %s игрокам: %d");

@@ -60,9 +60,7 @@ public final class ScriptCommands {
 
     /** Подсказки: id привязанных define (для /sc give). */
     private static final SuggestionProvider<CommandSourceStack> BOUND_IDS = (ctx, builder) -> {
-        List<String> ids = new ArrayList<>(Bindings.current().blockSlots().keySet());
-        ids.addAll(Bindings.current().itemSlots().keySet());
-        return SharedSuggestionProvider.suggest(ids, builder);
+        return SharedSuggestionProvider.suggest(Bindings.current().allIds(), builder);
     };
 
     private ScriptCommands() {
@@ -139,11 +137,14 @@ public final class ScriptCommands {
             return 1;
         }
         source.sendSuccess(() -> Messages.component("ids.header"), false);
-        List<String> all = new ArrayList<>(b.blockSlots().keySet());
-        all.addAll(b.itemSlots().keySet());
+        List<String> all = b.allIds();
         for (String id : all) {
             String poolId = b.poolId(id);
-            source.sendSuccess(() -> Messages.component("ids.entry", id, poolId), false);
+            if (poolId == null) {
+                source.sendSuccess(() -> Messages.component("ids.real", id), false);
+            } else {
+                source.sendSuccess(() -> Messages.component("ids.temporary", id, poolId), false);
+            }
         }
         return all.size();
     }

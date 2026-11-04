@@ -14,7 +14,7 @@ public final class ModNetwork {
     // 2: синхронизация ресурсов (манифест / запрос / куски файлов).
     // 3: HUD (HudPacket), слои у элементов, полосы прогресса, новые виды слотов.
     // 4: пул блоков/предметов и таблица привязок (BindingsPacket).
-    private static final String PROTOCOL_VERSION = "4";
+    private static final String PROTOCOL_VERSION = "5";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(ScriptCraft.MODID, "main"),

@@ -17,6 +17,7 @@ import java.util.Set;
  * Клиентский скрытый пак: файлы scriptcraft/cache/ (ресурсы, скачанные с сервера) плюс сгенерированные
  * blockstates/модели для слотов пула (scriptcraft:dyn_block_N / dyn_item_N), указывающие на модели и
  * текстуры из ресурсов скрипта. Сгенерированные файлы важнее одноимённых файлов кэша.
+ * Для настоящих id (example:ruby_block) генерируются только недостающие blockstate/модели — файлы автора важнее.
  */
 public class GeneratedAssetsPack extends PathPackResources {
     public GeneratedAssetsPack(String name, Path root) {
@@ -28,6 +29,7 @@ public class GeneratedAssetsPack extends PathPackResources {
         Set<String> namespaces = new HashSet<>(super.getNamespaces(type));
         if (type == PackType.CLIENT_RESOURCES) {
             namespaces.add(ScriptCraft.MODID);
+            namespaces.addAll(AssetBindings.realNamespaces());
         }
         return namespaces;
     }
@@ -41,6 +43,14 @@ public class GeneratedAssetsPack extends PathPackResources {
                 return () -> new ByteArrayInputStream(generated);
             }
         }
+        if (type == PackType.CLIENT_RESOURCES) {
+            IoSupplier<InputStream> own = super.getResource(type, location);
+            if (own != null) {
+                return own; // файл автора из кэша важнее сгенерированного
+            }
+            byte[] real = AssetBindings.generateReal(location.getNamespace(), location.getPath());
+            return real == null ? null : () -> new ByteArrayInputStream(real);
+        }
         return super.getResource(type, location);
     }
 
@@ -53,8 +63,20 @@ public class GeneratedAssetsPack extends PathPackResources {
                 output.accept(location, supplier);
             }
         });
+        String prefix = path.endsWith("/") ? path : path + "/";
+        if (type == PackType.CLIENT_RESOURCES && !ScriptCraft.MODID.equals(namespace)) {
+            // Настоящие id: недостающие blockstate/модели (существующие в кэше уже выданы выше).
+            for (String p : AssetBindings.generatedRealPaths(namespace)) {
+                if (p.startsWith(prefix)) {
+                    ResourceLocation location = ResourceLocation.tryBuild(namespace, p);
+                    byte[] data = AssetBindings.generateReal(namespace, p);
+                    if (location != null && data != null) {
+                        output.accept(location, () -> new ByteArrayInputStream(data));
+                    }
+                }
+            }
+        }
         if (ours) {
-            String prefix = path.endsWith("/") ? path : path + "/";
             for (String p : AssetBindings.generatedPaths()) {
                 if (p.startsWith(prefix)) {
                     ResourceLocation location = ResourceLocation.tryBuild(ScriptCraft.MODID, p);

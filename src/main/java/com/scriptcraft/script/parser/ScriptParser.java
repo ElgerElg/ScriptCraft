@@ -259,10 +259,15 @@ public final class ScriptParser {
             Map<String, String> props = parseProperties(body);
             try {
                 if (isBlock) {
+                    String facing = BlockDefinition.parseFacing(props.get("facing"));
+                    if (facing == null) {
+                        error(headerLine, "facing: ожидается none, horizontal или all, а не '" + props.get("facing") + "'");
+                        return;
+                    }
                     blocks.put(id, new BlockDefinition(id, props.get("name"),
                             floatProp(props, "hardness", 1.5f), floatProp(props, "resistance", 6f),
                             props.getOrDefault("sound", "stone").toLowerCase(Locale.ROOT),
-                            (int) floatProp(props, "light", 0), boolProp(props, "requires_tool")));
+                            (int) floatProp(props, "light", 0), boolProp(props, "requires_tool"), facing));
                 } else {
                     items.put(id, new ItemDefinition(id, props.get("name"),
                             (int) floatProp(props, "stack_size", 64), boolProp(props, "fire_resistant"),
