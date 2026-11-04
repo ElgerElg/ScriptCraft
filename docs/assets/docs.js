@@ -129,25 +129,82 @@
       ? SC.t("status.all", { n: list.length })
       : SC.t("status.found", { n: list.length, total: DATA.entries.length });
 
-    var html = "", side = "", lastCat = null;
+    var html = "", lastCat = null;
     list.forEach(function (e) {
       if (!ts.length && e.category !== lastCat) {
         var c = catById[e.category];
         var n = list.filter(function (x) { return x.category === c.id; }).length;
         html += '<h2 class="cat-title">' + SC.esc(SC.tr(c)) + "<small>" + n + "</small></h2>";
       }
-      if (e.category !== lastCat) side += "<h4>" + SC.esc(SC.tr(catById[e.category])) + "</h4>";
       lastCat = e.category;
       html += card(e, ts);
-      side += '<a href="#' + e.id + '" data-id="' + e.id + '">' + SC.esc(SC.tr(e.name)) + "</a>";
     });
-    if (ts.length) {
-      // При поиске сайдбар — плоский список по релевантности.
-      side = list.map(function (e) { return '<a href="#' + e.id + '" data-id="' + e.id + '">' + SC.esc(SC.tr(e.name)) + "</a>"; }).join("");
-    }
     els.list.innerHTML = html || '<div class="empty">' + SC.esc(SC.t("empty")) + "</div>";
-    els.side.innerHTML = side;
+    renderSide(list, ts);
     SC.measure();
+  }
+
+  // ------------------------------------------------------------ сайдбар со сворачиваемыми категориями
+  var SIDE_KEY = "sc-side-collapsed";
+  var collapsed = {};      // сохранённое состояние (localStorage)
+  var searchClosed = {};   // при поиске группы открыты; здесь — те, что свернули вручную во время поиска
+  try { (JSON.parse(localStorage.getItem(SIDE_KEY)) || []).forEach(function (c) { collapsed[c] = true; }); } catch (e) { /* нет localStorage */ }
+
+  function saveCollapsed() {
+    try { localStorage.setItem(SIDE_KEY, JSON.stringify(Object.keys(collapsed).filter(function (k) { return collapsed[k]; }))); } catch (e) { /* ignore */ }
+  }
+  function isOpen(cat) { return terms().length ? !searchClosed[cat] : !collapsed[cat]; }
+
+  var CHEVRON = '<svg class="chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 6l3.5 3.5L11.5 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  /** Группы по категориям; при поиске порядок групп — по самой релевантной записи. */
+  function renderSide(list, ts) {
+    var groups = [], byCat = {};
+    list.forEach(function (e) {
+      if (!byCat[e.category]) { byCat[e.category] = []; groups.push(e.category); }
+      byCat[e.category].push(e);
+    });
+    if (!ts.length) groups.sort(function (a, b) { return catById[a].order - catById[b].order; });
+    var tools = groups.length > 1
+      ? '<div class="side-tools"><span>' + SC.esc(SC.t("side.sections")) + "</span>" +
+        '<button type="button" class="side-all" data-side="expand" title="' + SC.esc(SC.t("side.expand")) + '" aria-label="' + SC.esc(SC.t("side.expand")) + '">' +
+        '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 6.5L8 3l3.5 3.5M4.5 9.5L8 13l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' +
+        '<button type="button" class="side-all" data-side="collapse" title="' + SC.esc(SC.t("side.collapse")) + '" aria-label="' + SC.esc(SC.t("side.collapse")) + '">' +
+        '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 3L8 6.5 11.5 3M4.5 13L8 9.5l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>'
+      : "";
+    els.side.innerHTML = tools + groups.map(function (cat) {
+      var open = isOpen(cat);
+      return '<div class="side-group' + (open ? "" : " collapsed") + '" data-cat="' + cat + '">' +
+        '<button type="button" class="side-cat" aria-expanded="' + open + '" aria-controls="side-' + cat + '">' + CHEVRON +
+        '<span class="side-name">' + SC.esc(SC.tr(catById[cat])) + '</span><span class="side-n">' + byCat[cat].length + "</span></button>" +
+        '<div class="side-items" id="side-' + cat + '"><div class="side-inner">' +
+        byCat[cat].map(function (e) { return '<a href="#' + e.id + '" data-id="' + e.id + '"' + (open ? "" : ' tabindex="-1"') + ">" + SC.esc(SC.tr(e.name)) + "</a>"; }).join("") +
+        "</div></div></div>";
+    }).join("");
+  }
+
+  function setOpen(cat, open, remember) {
+    var g = els.side.querySelector('.side-group[data-cat="' + cat + '"]');
+    if (terms().length) searchClosed[cat] = !open;
+    else if (remember !== false) { collapsed[cat] = !open; saveCollapsed(); }
+    if (!g) return;
+    g.classList.toggle("collapsed", !open);
+    g.querySelector(".side-cat").setAttribute("aria-expanded", String(open));
+    g.querySelectorAll(".side-inner a").forEach(function (a) { if (open) a.removeAttribute("tabindex"); else a.setAttribute("tabindex", "-1"); });
+  }
+
+  /** Подсветить пункт сайдбара и прокрутить к нему саму панель (не страницу). */
+  function markSide(id) {
+    var e = byId[id];
+    if (e && !isOpen(e.category)) setOpen(e.category, true);
+    els.side.querySelectorAll("a.cur").forEach(function (a) { a.classList.remove("cur"); });
+    var link = els.side.querySelector('a[data-id="' + id + '"]');
+    if (!link) return;
+    link.classList.add("cur");
+    setTimeout(function () { // после анимации раскрытия
+      var top = link.offsetTop, h = els.side.clientHeight; // .side — sticky, он и есть offsetParent
+      if (top < els.side.scrollTop || top > els.side.scrollTop + h - 30) els.side.scrollTo({ top: Math.max(0, top - h / 3), behavior: "smooth" });
+    }, 260);
   }
 
   /** Переход по постоянной ссылке: если запись скрыта фильтром — сбрасываем фильтры. */
@@ -163,9 +220,7 @@
     el.classList.remove("flash");
     void el.offsetWidth;
     el.classList.add("flash");
-    els.side.querySelectorAll("a.cur").forEach(function (a) { a.classList.remove("cur"); });
-    var link = els.side.querySelector('a[data-id="' + id + '"]');
-    if (link) link.classList.add("cur");
+    markSide(id);
   }
 
   function currentHash() {
@@ -184,7 +239,20 @@
     if (params.get("q")) { state.q = params.get("q"); els.input.value = state.q; }
     (params.get("cat") || "").split(",").forEach(function (c) { if (catById[c]) state.cats[c] = true; });
 
-    els.input.addEventListener("input", function () { state.q = els.input.value; render(); window.scrollTo(0, 0); });
+    els.input.addEventListener("input", function () { state.q = els.input.value; searchClosed = {}; render(); window.scrollTo(0, 0); });
+    els.side.addEventListener("click", function (ev) {
+      var head = ev.target.closest(".side-cat");
+      if (head) {
+        var cat = head.parentNode.getAttribute("data-cat");
+        setOpen(cat, head.getAttribute("aria-expanded") !== "true");
+        return;
+      }
+      var all = ev.target.closest(".side-all");
+      if (all) {
+        var open = all.getAttribute("data-side") === "expand";
+        els.side.querySelectorAll(".side-group").forEach(function (g) { setOpen(g.getAttribute("data-cat"), open); });
+      }
+    });
     els.chips.addEventListener("click", function (ev) {
       var b = ev.target.closest("button");
       if (!b) return;
