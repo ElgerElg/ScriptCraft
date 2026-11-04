@@ -8,6 +8,7 @@ import com.scriptcraft.script.runtime.Actions;
 import com.scriptcraft.script.runtime.Condition;
 import com.scriptcraft.script.runtime.Expression;
 import com.scriptcraft.script.runtime.ScriptEvent;
+import com.scriptcraft.script.runtime.Target;
 import com.scriptcraft.screen.Anchor;
 import com.scriptcraft.screen.ButtonElement;
 import com.scriptcraft.screen.ImageElement;
@@ -332,6 +333,19 @@ public final class ScriptParser {
                     error(line, e.getMessage());
                     openIf = -1;
                 }
+            } else if (lower.startsWith("loop ") && lower.endsWith(":")) {
+                // loop <цель>:  + вложенные действия, внутри loop-player / %loop-player%
+                openIf = -1;
+                try {
+                    List<Token> t = Tokenizer.tokenize(line.text().substring(5, line.text().length() - 1));
+                    Target target = TargetParser.parseWhole(t, 0, "loop all players:");
+                    if (children.isEmpty()) {
+                        throw new ParseException("у 'loop' нет вложенных действий");
+                    }
+                    actions.add(new Actions.Loop(target, parseActions(children)));
+                } catch (ParseException e) {
+                    error(line, e.getMessage());
+                }
             } else if (lower.equals("else:")) {
                 // else:  — относится к if прямо над ним
                 if (openIf < 0) {
@@ -357,11 +371,26 @@ public final class ScriptParser {
     /**
      * Условие (текст между "if" и двоеточием):
      * {a} is X | {a} is not X | {a} > X | {a} < X | {a} >= X | {a} <= X | {a} is set | {a} is not set
+     * <цель> is set | <цель> is not set (targeted player is set, players in radius 5 of player is not set...)
      */
     private Condition parseCondition(String text) throws ParseException {
         List<Token> t = Tokenizer.tokenize(text);
         if (t.size() < 2) {
             throw new ParseException("неполное условие, пример: if {coins::%player%} >= 10:");
+        }
+        // <цель> is [not] set — "targeted player is set", "other players in radius 5 of player is set".
+        // Только для настоящих целей: {var}/"текст"/слово по-прежнему значения (как раньше).
+        if (!t.get(0).quoted() && !t.get(0).value().startsWith("{")) {
+            TargetParser.Parsed parsed = TargetParser.parse(t, 0);
+            if (parsed != null && !(parsed.target() instanceof Target.Named)) {
+                int k = parsed.end();
+                boolean negate = word(t, k + 1).equals("not");
+                int setAt = negate ? k + 2 : k + 1;
+                if (word(t, k).equals("is") && word(t, setAt).equals("set") && t.size() == setAt + 1) {
+                    return new Condition.TargetSet(parsed.target(), negate);
+                }
+                // иначе это обычное сравнение (например, if %player% is "Notch":) — разбираем как раньше
+            }
         }
         Expression left = expression(t.get(0));
         String op = word(t, 1);
@@ -433,7 +462,7 @@ public final class ScriptParser {
         String head = word(t, 0);
 
         if (hasBlock && !head.equals("open")) {
-            throw new ParseException("двоеточие допустимо только у 'open screen', 'if' и 'else'");
+            throw new ParseException("двоеточие допустимо только у 'open screen', 'loop', 'if' и 'else'");
         }
         if (!hasBlock && !children.isEmpty()) {
             throw new ParseException("у этого действия не может быть вложенных строк");
@@ -468,9 +497,9 @@ public final class ScriptParser {
                 // delete {name}
                 return new Actions.DeleteVariable(variableName(t, 1));
             }
-            case "send" -> {
-                // send "текст" [to player]
-                return new Actions.SendMessage(quoted(t, 1));
+            case "send", "message" -> {
+                // Правильные формы разобраны таблицей эффектов; сюда попадают только ошибки.
+                throw new ParseException("нужно: send \"текст\" [to <цель>], например send \"Привет\" to all players");
             }
             case "broadcast" -> {
                 return new Actions.Broadcast(quoted(t, 1));
@@ -478,33 +507,18 @@ public final class ScriptParser {
             case "reply" -> {
                 return new Actions.Reply(quoted(t, 1));
             }
-            case "give" -> {
-                // give player <предмет> [количество]
-                expectWord(t, 1, "player");
-                String item = word(t, 2);
-                if (item.isEmpty()) {
-                    throw new ParseException("не указан предмет: give player diamond 1");
-                }
-                int count = t.size() > 3 ? parseInt(t.get(3).value()) : 1;
-                return new Actions.GiveItem(item, count);
-            }
-            case "heal" -> {
-                expectWord(t, 1, "player");
-                return new Actions.HealPlayer();
-            }
-            case "teleport" -> {
-                // teleport player to x, y, z
-                expectWord(t, 1, "player");
-                expectWord(t, 2, "to");
-                if (t.size() < 6) {
-                    throw new ParseException("нужно: teleport player to x, y, z");
-                }
-                return new Actions.Teleport(parseDouble(t.get(3).value()), parseDouble(t.get(4).value()), parseDouble(t.get(5).value()));
-            }
+            case "give" -> throw new ParseException("нужно: give <цель> <предмет> [количество], например give player diamond 3");
+            case "heal" -> throw new ParseException("нужно: heal <цель> [by N], например heal all players");
+            case "teleport", "tp" -> throw new ParseException("нужно: teleport <цель> to x, y, z  или  teleport <цель> to <цель>");
             case "open" -> {
-                // open screen "Заголовок" [to player]:
+                // open screen "Заголовок" [to <цель>]:
                 expectWord(t, 1, "screen");
                 String title = quoted(t, 2);
+                Target target = new Target.Self();
+                if (t.size() > 3) {
+                    expectWord(t, 3, "to");
+                    target = TargetParser.parseWhole(t, 4, "open screen \"Меню\" to players in radius 5 of player:");
+                }
                 List<ScreenElement> elements = new ArrayList<>();
                 for (Line child : children) {
                     try {
@@ -513,7 +527,7 @@ public final class ScriptParser {
                         error(child, e.getMessage());
                     }
                 }
-                return new Actions.OpenScreen(title, elements);
+                return new Actions.OpenScreen(target, title, elements);
             }
             default -> throw new ParseException("неизвестное действие: " + head);
         }
@@ -639,14 +653,6 @@ public final class ScriptParser {
             return Integer.parseInt(s);
         } catch (NumberFormatException e) {
             throw new ParseException("ожидается целое число, а не '" + s + "'");
-        }
-    }
-
-    private static double parseDouble(String s) throws ParseException {
-        try {
-            return Double.parseDouble(s);
-        } catch (NumberFormatException e) {
-            throw new ParseException("ожидается число, а не '" + s + "'");
         }
     }
 

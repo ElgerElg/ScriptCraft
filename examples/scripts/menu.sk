@@ -18,3 +18,9 @@ command /menu:
         button "Сказать привет" at 0, 15 size 120x20 run "/hello из меню"
         button "Закрыть" at 0, 40 size 120x20 close
         text "ScriptCraft" at -4, -4 anchor bottom_right color #808080
+
+# /announce — открыть экран всем игрокам в радиусе 10 блоков (цель — набор игроков)
+command /announce permission 2:
+    open screen "Объявление" to players in radius 10 of player:
+        text "%player% собирает команду!" at 0, -20 color #FFD700 shadow
+        button "Понятно" at 0, 10 size 120x20 close

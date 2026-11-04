@@ -81,6 +81,10 @@ public final class EffectCommands {
         ExecutionContext ctx = new ExecutionContext(server, player, player.createCommandSourceStack()).markEffectCommand();
         try {
             Actions.runAll(List.of(action), ctx);
+            if (ctx.hadOnlyEmptyTargets()) {
+                // В скриптах пустой набор целей — тихо ничего не делать; в чате скажем об этом.
+                player.sendSystemMessage(Messages.component("effectcmd.no_targets"));
+            }
         } catch (RuntimeException e) {
             player.sendSystemMessage(Messages.component("effectcmd.run_error", e.getMessage()));
         }

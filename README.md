@@ -108,6 +108,7 @@ scriptcraft/
 | `general.maxScriptMillis` | `50` | максимум миллисекунд на один запуск скрипта |
 | `general.logScriptLoadTimes` | `false` | писать в лог время компиляции скриптов |
 | `general.allowCommandEffects` | `true` | разрешить эффекты `execute console command` и `make player execute command` |
+| `general.targetedPlayerRange` | `50` | как далеко ищется `targeted player` / `%targeted%` (1–256 блоков, сквозь блоки луч не проходит) |
 | `resources.syncResourcesToClients` | `true` | отправлять `scriptcraft/resources/assets` игрокам через сетевой канал мода |
 | `resources.maxResourceSizeMb` | `32` | максимальный общий размер ресурсов (1–512 МБ). Проверяет и сервер (не раздаёт больше), и клиент (не качает больше) |
 | `resources.resourceChunkSizeKb` | `256` | размер одного сетевого куска (16–900 КБ; лимит пакета Minecraft — 1 МБ) |
@@ -154,27 +155,77 @@ command /kit permission 2:       # только операторы (0–4)
 
 | Действие | Пример |
 |---|---|
-| сообщение игроку | `send "Привет, %player%!" to player` |
+| сообщение игрокам | `send "Привет, %player%!" to player` / `send "Внимание" to all players` / `message "..." to @a` |
 | сообщение всем | `broadcast "Сервер перезапустится"` |
 | ответ вызвавшему (работает и из консоли) | `reply "Готово"` |
-| выдать предмет | `give player diamond 3` / `give player scriptcraft:ruby 1` / `give player ruby 1` |
-| вылечить | `heal player` (и другие эффекты — см. ниже) |
-| телепорт | `teleport player to 0, 100, 0` |
-| открыть экран | `open screen "Заголовок" to player:` + элементы (см. ниже) |
+| выдать предмет | `give player diamond 3` / `give all players scriptcraft:ruby` / `give @a ruby {n}` |
+| вылечить | `heal player` / `heal players in radius 10 of player` (и другие эффекты — см. ниже) |
+| телепорт | `teleport player to 0, 100, 0` / `teleport @a to player` / `tp targeted player to "Steve"` |
+| открыть экран | `open screen "Заголовок" to player:` / `open screen "Меню" to players in radius 5 of player:` + элементы |
+| цикл по игрокам | `loop all players:` + действия с отступом, внутри `loop-player` (см. «Цели») |
 | записать переменную | `set {coins::%player%} to 0` / `set {motd} to "Добро пожаловать"` |
 | прибавить / отнять | `add 5 to {coins::%player%}` / `remove 1 from {coins::%player%}` |
 | удалить переменную | `delete {coins::%player%}` (или `clear {...}`) |
 | условие | `if {coins::%player%} >= 10:` + действия с отступом, затем `else:` (необязательно) |
 
-Плейсхолдеры: `%player%`, `%uuid%`, `%online%`, `%args%`. Цвета: `&a`, `&e`, `&l` и т.д. (как в Bukkit).
+Плейсхолдеры: `%player%`, `%uuid%`, `%online%`, `%args%`, `%targeted%` (имя игрока, на которого смотрит `player`,
+или `<none>`), `%loop-player%` (текущий игрок цикла). Цвета: `&a`, `&e`, `&l` и т.д. (как в Bukkit).
 Если у предмета не указан мод (`diamond`), мод сначала ищет `minecraft:diamond`, потом `scriptcraft:diamond`,
 потом тот же путь в других namespace из скриптов (`example:diamond`). Надёжнее писать полный id: `give player example:ruby 1`.
 
+### Цели: кому применять действие
+
+Везде, где действие относится к игроку (`send … to`, `give`, `heal`, `teleport`, `open screen … to`, все эффекты ниже,
+`make … execute command`), вместо `player` можно написать **цель**. Цель — это **набор игроков**: действие выполняется
+для каждого по очереди. Пустой набор — действие просто ничего не делает (без ошибки).
+
+| Цель | Кто это |
+|---|---|
+| `player` (или `%player%`) | тот, кто вызвал команду / зашёл / написал эффект-команду |
+| `"Steve"` / `{target::%player%}` / `"%args%"` / `Steve` | игрок по имени. Если его нет в сети — пустой набор (раньше была ошибка) |
+| `targeted player` / `target of player` | игрок, на которого смотрит `player` (луч из глаз до `targetedPlayerRange` блоков, сквозь блоки не видит; зрители не считаются). Можно и от другого: `target of "Steve"`, `targeted player of {x}` |
+| `all players` / `@a` | все игроки онлайн |
+| `players in radius N of <цель>` | игроки в том же мире не дальше N блоков от каждого игрока цели (сам центр входит). N — число или `{переменная}`. Синоним: `players within N blocks of <цель>`, вместо `of` можно `around` |
+| `other players in radius N of <цель>` | то же, но без самих центров |
+| `@p` / `@r` / `@s` | ванильные селекторы: ближайший (от лица игрока это всегда он сам — как в ванилле), случайный, сам игрок |
+| `@a[distance=..10]`, `@r[limit=2,gamemode=survival]` … | ванильные селекторы с аргументами (разбираются самим Minecraft). Пробелов внутри `[...]` лучше не ставить |
+| `loop-player` | текущий игрок внутри `loop <цель>:` |
+
+```
+command /buffall:
+    give players in radius 20 of player effect regeneration for 10 seconds
+    send "&a%player% вылечил всех рядом" to other players in radius 20 of player
+
+command /who:
+    if targeted player is set:
+        send "Ты смотришь на %targeted%" to player
+        send title "&cНа тебя смотрят" to targeted player
+    else:
+        send "Ты ни на кого не смотришь" to player
+
+command /gather permission 2:
+    teleport other players in radius 100 of player to player
+    loop all players:
+        send "&e%loop-player%, сбор у %player%!" to loop-player
+```
+
+- Селекторы выполняются от лица игрока из контекста (его позиция и мир; из консоли — от сервера, где `@s` пуст)
+  с уровнем прав 2: селектор написал автор скрипта, поэтому прав самого игрока на селекторы не нужно.
+  `@e` не поддерживается — только игроки.
+- Селекторы распознаются **только написанными прямо в скрипте**. Текст из переменной или `%args%` всегда считается
+  именем игрока: `/heal @a` у команды `heal "%args%"` не вылечит всех.
+- `teleport <цель> to <цель>` — к первому игроку второго набора (в его мир, с его поворотом). Если второй набор пуст — ничего.
+- Условие для целей: `if <цель> is set:` / `if <цель> is not set:` — есть ли хоть один такой игрок
+  (`if targeted player is set:`, `if other players in radius 10 of player is not set:`).
+- `loop <цель>:` выполняет вложенные действия для каждого игрока; внутри `loop-player` — цель и `%loop-player%` — имя.
+  `player` внутри цикла — по-прежнему тот, кто вызвал скрипт (как в Skript). Циклы можно вкладывать.
+  Каждое действие каждого прохода тратит шаг `maxScriptSteps`.
+- Плейсхолдеры в тексте (`%player%` и т.п.) считаются от игрока из контекста, а не от получателя:
+  `send "Привет, %player%" to all players` всем напишет имя вызвавшего. Для имени получателя используйте `loop` и `%loop-player%`.
+
 ### Эффекты над игроком (как в Skript)
 
-**Цель** (`<цель>` ниже): `player` — тот, кто вызвал команду / зашёл / написал эффект-команду;
-или имя игрока: `"Steve"`, `{target::%player%}`, `"%args%"` (игрок должен быть онлайн, иначе ошибка выполнения).
-Числа можно брать из переменных: `heal player by {bonus}`.
+`<цель>` ниже — любая цель из таблицы выше. Числа можно брать из переменных: `heal player by {bonus}`.
 
 | Эффект | Пример |
 |---|---|
@@ -211,6 +262,7 @@ command /kit permission 2:       # только операторы (0–4)
 rule("ignite %target% for %num% seconds|second|sec", c -> new Effects.Ignite(c.target(0), c.num(1)));
 ```
 Слова шаблона должны совпасть (варианты через `|`), `%target%`, `%num%`, `%text%`, `%id%` — значения.
+`%target%` занимает столько слов, сколько нужно цели (разбирает `script/parser/TargetParser.java`), остальные — одно слово.
 Действие — `record` в `script/runtime/Effects.java`. Сеттеры (`set X of <цель> to …` и `set player's X to …`)
 регистрируются одной строкой `setter("health", …)`.
 
@@ -224,16 +276,20 @@ rule("ignite %target% for %num% seconds|second|sec", c -> new Effects.Ignite(c.t
 ?set player's gamemode to creative
 ?give player effect night_vision for 600 seconds
 ?send title "Тест" to "Steve"
+?heal players in radius 10 of player
+?send "привет" to targeted player
+?give @a[distance=..20] diamond 1
 ?set {coins::Steve} to 100
 ```
 
 - Выключено по умолчанию: `effectCommands.enableEffectCommands = true` в `scriptcraft/config.toml`.
 - Право: **`scriptcraft.effectcommands`** (Forge PermissionAPI — его можно выдать через LuckPerms и подобные моды).
   Без мода прав действует правило по умолчанию: только операторы уровня 2, если `effectCommandsRequireOp = true`;
-  при `false` — **все игроки** (⚠ опасно: кто угодно сможет `?kill "Steve"` или `?set {coins::...}`).
+  при `false` — **все игроки** (⚠ опасно: кто угодно сможет `?kill @a`, `?kill "Steve"` или `?set {coins::...}`).
 - `execute console command` / `make player execute command` из эффект-команд доступны **только операторам** (уровень 2),
   даже если право выдано через PermissionAPI.
-- Блоки (`if …:`, `open screen …:`) в одной строке не поддерживаются.
+- Блоки (`if …:`, `loop …:`, `open screen …:`) в одной строке не поддерживаются.
+- Если цель оказалась пустой (никого в радиусе, ни на кого не смотришь, игрок не в сети), в чат придёт «Нет целей».
 - Ошибки разбора и выполнения приходят в чат красным, каждое использование пишется в лог сервера.
 - Сообщение с токеном отменяется всегда (даже без прав), чтобы случайно не уйти в общий чат.
 
@@ -278,6 +334,7 @@ command /rich:
 | равно / не равно (текст сравнивается без учёта регистра) | `if {rank::%player%} is "vip":` / `if {x} is not 0:` |
 | сравнение чисел | `if {x} > 5:` `<` `>=` `<=` |
 | задана / не задана | `if {x} is set:` / `if {x} is not set:` |
+| есть ли игроки в цели | `if targeted player is set:` / `if players in radius 5 of player is not set:` |
 
 Условия могут быть вложенными. `else:` пишется на том же отступе, что и `if`, сразу после его блока.
 Пока нет `else if`, `and`/`or`: используй вложенные `if`.
@@ -441,7 +498,8 @@ src/main/java/com/scriptcraft/
     ScriptLoader               текущая программа, reload всего/одного, enable/disable, запуск событий/команд
     variables/VariableStore    переменные: scriptcraft/variables/variables.json + резервные копии + временные {-имя}
     engine/                    ScriptEngine (интерфейс) -> SimpleScriptEngine -> ScriptProgram
-    parser/                    Tokenizer, ScriptParser (namespace, define), EffectPatterns (таблица эффектов)
+    parser/                    Tokenizer, ScriptParser (namespace, define), EffectPatterns (таблица эффектов),
+                               TargetParser (цели: all players, players in radius ..., @a[...])
     runtime/                   Action, Actions, Effects (эффекты над игроком), Target, Expression, Condition,
                                ExecutionContext, ExecutionBudget
   config/ScriptCraftConfig     ForgeConfigSpec -> scriptcraft/config.toml
@@ -478,12 +536,13 @@ src/main/java/com/scriptcraft/
 - [ ] **Движок Rhino (JavaScript) или LuaJ** как вторая реализация `ScriptEngine`, с белым списком API через `ClassShutter`.
 - [ ] **Больше событий**: death, respawn, chat, block break/place, right click, item use, tick/таймеры.
 - [x] Переменные (`set/add/remove/delete`, `{x::%player%}`, временные `{-x}`) и условия `if/else`.
-- [ ] Язык: `else if`, `and`/`or`, списки `{x::*}` и `loop {x::*}`, циклы, `wait 5 seconds` (планировщик по тикам), арифметика в выражениях, аргументы команд (`arg 1`).
+- [ ] Язык: `else if`, `and`/`or`, списки `{x::*}` и `loop {x::*}`, циклы по числам (`loop 5 times`), `wait 5 seconds` (планировщик по тикам), арифметика в выражениях, аргументы команд (`arg 1`).
 - [ ] События блоков и предметов из скриптов (`on use`, `on break`), форма блока, BlockEntity.
 - [ ] Генерация моделей и blockstate «на лету» через встроенный ресурспак, чтобы не писать JSON руками.
 - [ ] Синхронизация `define` с клиентом (модпак-копия скриптов) и понятная ошибка при несовпадении.
 - [x] Эффекты над игроком (как в Skript), эффект-команды `?…`, свой namespace, синхронизация ресурсов через мод.
-- [ ] Эффекты над мобами и блоками, цели `all players`, `targeted entity`.
+- [x] Цели-наборы игроков: `all players`, `@a`/`@p`/`@r`/`@s` и селекторы с аргументами, `targeted player`, `players in radius N of …`, `loop <цель>:`.
+- [ ] Эффекты над мобами и блоками, цели `targeted entity`, `entities in radius`, `loop-entity`.
 - [ ] Публичный API для аддонов (отдельный артефакт `scriptcraft-api` + Javadoc).
 
 ## 9. GitHub

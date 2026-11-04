@@ -17,10 +17,11 @@ import java.util.regex.Pattern;
  *
  * Части шаблона через пробел:
  * - слово (можно варианты через '|': "seconds|second|sec") — должно совпасть без учёта регистра и без кавычек;
- * - %что-то% — любое значение, которое забирает builder: target, num, text, id, mode, bool.
- * Длина строки должна совпасть с длиной шаблона, поэтому необязательные части оформляются отдельными шаблонами.
- *
- * Цель (%target%): player — игрок из контекста; "Steve", {var} или слово — игрок по имени (должен быть онлайн).
+ * - %target% — цель из нескольких слов (all players, players in radius 5 of player, @a[...]) — см. TargetParser;
+ * - %text% — только текст в кавычках;
+ * - любое другое %что-то% — ровно один токен, его забирает builder: num, id, mode, bool...
+ * Строка должна совпасть с шаблоном целиком, необязательные части оформляются отдельными шаблонами.
+ * Шаблоны проверяются по порядку, первый подошедший побеждает — более длинные/конкретные ставим раньше.
  */
 final class EffectPatterns {
     @FunctionalInterface
@@ -82,6 +83,17 @@ final class EffectPatterns {
         rule("send actionbar %text% to %target%", c -> new Effects.ActionBar(c.target(1), c.text(0)));
         rule("give %num% xp|experience to %target%", c -> new Effects.GiveXp(c.target(1), c.num(0)));
 
+        // --- сообщения, предметы, телепорт (раньше были отдельными действиями только для "player")
+        rule("send %text%", c -> new Effects.SendMessage(new Target.Self(), c.text(0)));
+        rule("send %text% to %target%", c -> new Effects.SendMessage(c.target(1), c.text(0)));
+        rule("message %text% to %target%", c -> new Effects.SendMessage(c.target(1), c.text(0)));
+        // give <цель> <предмет> [кол-во] — после "give ... effect ..." и "give N xp ...", чтобы не перехватить их
+        rule("give %target% %id%", c -> new Effects.GiveItem(c.target(0), c.id(1), null));
+        rule("give %target% %id% %num%", c -> new Effects.GiveItem(c.target(0), c.id(1), c.num(2)));
+        rule("teleport|tp %target% to %num% %num% %num%",
+                c -> new Effects.TeleportToPos(c.target(0), c.num(1), c.num(2), c.num(3)));
+        rule("teleport|tp %target% to %target%", c -> new Effects.TeleportToPlayer(c.target(0), c.target(1)));
+
         // --- команды (выключаются allowCommandEffects = false)
         rule("execute console command %text%", c -> new Effects.ConsoleCommand(c.text(0)));
         rule("make %target% execute command %text%", c -> new Effects.PlayerCommand(c.target(0), c.text(1)));
@@ -108,29 +120,71 @@ final class EffectPatterns {
     /**
      * Пробует разобрать строку как эффект из таблицы.
      * @return действие или null, если ни один шаблон не подошёл (тогда парсер пробует остальные действия)
-     * @throws ParseException шаблон подошёл по словам, но значение неверное (например, не число)
+     * @throws ParseException шаблон подошёл по словам, но значение неверное (например, не число),
+     *                        или ни один не подошёл, а цель была записана с ошибкой ("players 5 of player")
      */
     static Action tryParse(List<Token> tokens) throws ParseException {
+        ParseException targetError = null;
         for (Rule rule : RULES) {
-            if (rule.parts().length != tokens.size()) {
+            List<Object> captures = new ArrayList<>();
+            try {
+                if (!match(rule.parts(), 0, tokens, 0, captures)) {
+                    continue;
+                }
+            } catch (ParseException e) {
+                // Ошибка в записи цели: запомним, вдруг подойдёт другой шаблон.
+                if (targetError == null) {
+                    targetError = e;
+                }
                 continue;
             }
-            List<Token> captures = new ArrayList<>();
-            boolean ok = true;
-            for (int i = 0; i < tokens.size() && ok; i++) {
-                String[] alts = rule.parts()[i];
-                Token tok = tokens.get(i);
-                if (alts[0].startsWith("%")) {
-                    captures.add(tok);
-                } else {
-                    ok = !tok.quoted() && matchesAny(tok.value().toLowerCase(Locale.ROOT), alts);
-                }
-            }
-            if (ok) {
-                return rule.builder().build(new Captures(captures));
-            }
+            return rule.builder().build(new Captures(captures));
+        }
+        if (targetError != null) {
+            throw targetError;
         }
         return null;
+    }
+
+    /**
+     * Сопоставление шаблона с токенами начиная с позиций pi/ti. %target% занимает столько токенов,
+     * сколько разобрал TargetParser (разбор цели однозначный, поэтому перебор длины не нужен).
+     */
+    private static boolean match(String[][] parts, int pi, List<Token> tokens, int ti, List<Object> captures)
+            throws ParseException {
+        if (pi == parts.length) {
+            return ti == tokens.size();
+        }
+        String[] alts = parts[pi];
+        if (alts[0].equals("%target%")) {
+            TargetParser.Parsed parsed = TargetParser.parse(tokens, ti);
+            if (parsed == null) {
+                return false;
+            }
+            captures.add(parsed.target());
+            if (match(parts, pi + 1, tokens, parsed.end(), captures)) {
+                return true;
+            }
+            captures.remove(captures.size() - 1);
+            return false;
+        }
+        if (ti >= tokens.size()) {
+            return false;
+        }
+        Token tok = tokens.get(ti);
+        if (alts[0].startsWith("%")) {
+            if (alts[0].equals("%text%") && !tok.quoted()) {
+                return false;
+            }
+            captures.add(tok);
+            if (match(parts, pi + 1, tokens, ti + 1, captures)) {
+                return true;
+            }
+            captures.remove(captures.size() - 1);
+            return false;
+        }
+        return !tok.quoted() && matchesAny(tok.value().toLowerCase(Locale.ROOT), alts)
+                && match(parts, pi + 1, tokens, ti + 1, captures);
     }
 
     private static boolean matchesAny(String word, String[] alts) {
@@ -162,26 +216,22 @@ final class EffectPatterns {
         };
     }
 
-    /** Захваченные значения шаблона по порядку. */
-    private record Captures(List<Token> tokens) {
+    /** Захваченные значения шаблона по порядку: Token для одиночных значений, Target для %target%. */
+    private record Captures(List<Object> values) {
         Token raw(int i) {
-            return tokens.get(i);
+            return (Token) values.get(i);
         }
 
         Target target(int i) {
-            Token t = tokens.get(i);
-            if (!t.quoted() && (t.value().equalsIgnoreCase("player") || t.value().equalsIgnoreCase("%player%"))) {
-                return new Target.Self();
-            }
-            return new Target.Named(ScriptParser.expression(t));
+            return (Target) values.get(i);
         }
 
         Expression num(int i) throws ParseException {
-            return EffectPatterns.num(tokens.get(i));
+            return EffectPatterns.num(raw(i));
         }
 
         String text(int i) throws ParseException {
-            Token t = tokens.get(i);
+            Token t = raw(i);
             if (!t.quoted()) {
                 throw new ParseException("ожидается текст в кавычках, а не '" + t.value() + "'");
             }
@@ -189,7 +239,7 @@ final class EffectPatterns {
         }
 
         String id(int i) throws ParseException {
-            String v = tokens.get(i).value().toLowerCase(Locale.ROOT);
+            String v = raw(i).value().toLowerCase(Locale.ROOT);
             if (!ID.matcher(v).matches()) {
                 throw new ParseException("некорректный id: '" + v + "' (пример: speed, minecraft:speed, entity.player.levelup)");
             }

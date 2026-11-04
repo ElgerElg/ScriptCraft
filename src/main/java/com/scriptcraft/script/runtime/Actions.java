@@ -6,8 +6,6 @@ import com.scriptcraft.screen.ScreenDescription;
 import com.scriptcraft.screen.ScreenElement;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.item.Item;
-import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -80,14 +78,6 @@ public final class Actions {
 
     // ------------------------------------------------------------------ игрок и чат
 
-    /** send "текст" [to player] — сообщение игроку. */
-    public record SendMessage(String text) implements Action {
-        @Override
-        public void execute(ExecutionContext ctx) {
-            ctx.requirePlayer().sendSystemMessage(Component.literal(ctx.format(text)));
-        }
-    }
-
     /** broadcast "текст" — сообщение всем игрокам. */
     public record Broadcast(String text) implements Action {
         @Override
@@ -104,55 +94,48 @@ public final class Actions {
         }
     }
 
-    /** give player <предмет> [количество] — выдать предмет; если инвентарь полон, предмет падает рядом. */
-    public record GiveItem(String itemId, int count) implements Action {
-        @Override
-        public void execute(ExecutionContext ctx) {
-            ServerPlayer player = ctx.requirePlayer();
-            Item item = ItemResolver.resolve(itemId)
-                    .orElseThrow(() -> new ScriptRuntimeException("Неизвестный предмет: " + itemId));
-            int left = Math.max(1, Math.min(count, 64 * 36));
-            while (left > 0) {
-                int size = Math.min(left, new ItemStack(item).getMaxStackSize());
-                ItemStack stack = new ItemStack(item, size);
-                if (!player.getInventory().add(stack)) {
-                    player.drop(stack, false);
-                }
-                left -= size;
-            }
-        }
-    }
-
-    /** heal player — восстановить здоровье. */
-    public record HealPlayer() implements Action {
-        @Override
-        public void execute(ExecutionContext ctx) {
-            ServerPlayer player = ctx.requirePlayer();
-            player.setHealth(player.getMaxHealth());
-        }
-    }
-
-    /** teleport player to x, y, z — телепорт в текущем мире игрока. */
-    public record Teleport(double x, double y, double z) implements Action {
-        @Override
-        public void execute(ExecutionContext ctx) {
-            ctx.requirePlayer().teleportTo(x, y, z);
-        }
-    }
-
     /**
-     * open screen "Заголовок" [to player]: + вложенные элементы.
-     * Сервер подставляет плейсхолдеры и отправляет описание экрана клиенту пакетом.
+     * open screen "Заголовок" [to <цель>]: + вложенные элементы.
+     * Сервер подставляет плейсхолдеры и отправляет описание экрана каждому игроку цели пакетом.
+     * Плейсхолдеры считаются один раз (от игрока из контекста), а не для каждого получателя.
      */
-    public record OpenScreen(String title, List<ScreenElement> elements) implements Action {
+    public record OpenScreen(Target target, String title, List<ScreenElement> elements) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            ServerPlayer player = ctx.requirePlayer();
+            List<ServerPlayer> players = target.resolve(ctx);
+            if (players.isEmpty()) {
+                return;
+            }
             List<ScreenElement> formatted = new ArrayList<>(elements.size());
             for (ScreenElement element : elements) {
                 formatted.add(element.format(ctx::format));
             }
-            ModNetwork.sendTo(player, new OpenScreenPacket(new ScreenDescription(ctx.format(title), formatted)));
+            ScreenDescription screen = new ScreenDescription(ctx.format(title), formatted);
+            for (ServerPlayer player : players) {
+                ModNetwork.sendTo(player, new OpenScreenPacket(screen));
+            }
+        }
+    }
+
+    /**
+     * loop <цель>: + вложенные действия — выполнить блок для каждого игрока цели;
+     * внутри блока цель {@code loop-player} и плейсхолдер %loop-player% — текущий игрок.
+     * {@code player} внутри цикла по-прежнему игрок из контекста (как в Skript).
+     * Каждое действие каждого прохода тратит шаг бюджета (maxScriptSteps).
+     */
+    public record Loop(Target target, List<Action> body) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            List<ServerPlayer> players = target.resolve(ctx);
+            ServerPlayer previous = ctx.loopPlayer();
+            try {
+                for (ServerPlayer p : players) {
+                    ctx.setLoopPlayer(p);
+                    runAll(body, ctx);
+                }
+            } finally {
+                ctx.setLoopPlayer(previous);
+            }
         }
     }
 }

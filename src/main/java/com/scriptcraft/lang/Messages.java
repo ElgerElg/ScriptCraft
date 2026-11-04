@@ -67,9 +67,10 @@ public final class Messages {
                 "&cУ вас нет права на эффект-команды (scriptcraft.effectcommands)");
         add("effectcmd.parse_error", "&cEffect command error: %s", "&cОшибка в эффект-команде: %s");
         add("effectcmd.run_error", "&cEffect command failed: %s", "&cЭффект-команда не выполнилась: %s");
+        add("effectcmd.no_targets", "&eNo targets: no player matched", "&eНет целей: ни один игрок не подошёл");
 
         // --- эффекты
-        add("effect.player_offline", "player '%s' is not online", "игрок '%s' не в сети");
+        add("target.bad_selector", "bad selector %s: %s", "ошибка в селекторе %s: %s");
         add("effect.not_number", "'%s' is not a number", "'%s' — не число");
         add("effect.bad_id", "invalid id '%s'", "некорректный id '%s'");
         add("effect.unknown_effect", "unknown potion effect %s", "неизвестный эффект %s");

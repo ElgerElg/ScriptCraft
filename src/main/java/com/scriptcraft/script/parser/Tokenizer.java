@@ -6,7 +6,8 @@ import java.util.List;
 /**
  * Простейший токенизатор: слова через пробел, строки в двойных кавычках ("..." с \" внутри),
  * запятые вне кавычек считаются пробелами (поэтому "at 0, -20" == "at 0 -20"),
- * переменная в фигурных скобках — один токен целиком, даже с пробелами и запятыми: {my var::%player%}.
+ * переменная в фигурных скобках — один токен целиком, даже с пробелами и запятыми: {my var::%player%},
+ * ванильный селектор с аргументами — тоже один токен как есть: @a[distance=..10,name="Steve"].
  */
 final class Tokenizer {
     record Token(String value, boolean quoted) {
@@ -54,6 +55,34 @@ final class Tokenizer {
                 }
                 tokens.add(new Token(line.substring(i, close + 1), false));
                 i = close + 1;
+                continue;
+            }
+            if (c == '[' && cur.length() == 2 && cur.charAt(0) == '@') {
+                // Аргументы селектора: копируем до парной ']' (с учётом кавычек), запятые внутри не режем.
+                int depth = 0;
+                boolean inQuote = false;
+                int j = i;
+                for (; j < line.length(); j++) {
+                    char d = line.charAt(j);
+                    if (inQuote) {
+                        if (d == '\\') {
+                            j++;
+                        } else if (d == '"') {
+                            inQuote = false;
+                        }
+                    } else if (d == '"') {
+                        inQuote = true;
+                    } else if (d == '[') {
+                        depth++;
+                    } else if (d == ']' && --depth == 0) {
+                        break;
+                    }
+                }
+                if (j >= line.length()) {
+                    throw new ParseException("незакрытая скобка '[' в селекторе " + cur);
+                }
+                cur.append(line, i, j + 1);
+                i = j + 1;
                 continue;
             }
             if (Character.isWhitespace(c) || c == ',') {

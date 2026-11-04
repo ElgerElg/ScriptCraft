@@ -14,9 +14,13 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.food.FoodData;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.GameType;
 import net.minecraftforge.registries.ForgeRegistries;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
 
 /**
  * Эффекты над игроком (белый список, синтаксис как в Skript). Разбираются таблицей шаблонов в
@@ -73,7 +77,9 @@ public final class Effects {
     public record SetGameMode(Target target, GameType mode) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            target.resolve(ctx).setGameMode(mode);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                p.setGameMode(mode);
+            }
         }
     }
 
@@ -81,11 +87,13 @@ public final class Effects {
     public record Heal(Target target, @Nullable Expression amount) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            ServerPlayer p = target.resolve(ctx);
-            if (amount == null) {
-                p.setHealth(p.getMaxHealth());
-            } else {
-                p.heal((float) number(amount, ctx));
+            Float by = amount == null ? null : (float) number(amount, ctx);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                if (by == null) {
+                    p.setHealth(p.getMaxHealth());
+                } else {
+                    p.heal(by);
+                }
             }
         }
     }
@@ -94,8 +102,10 @@ public final class Effects {
     public record SetHealth(Target target, Expression value) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            ServerPlayer p = target.resolve(ctx);
-            p.setHealth((float) Math.max(0, Math.min(p.getMaxHealth(), number(value, ctx))));
+            double v = number(value, ctx);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                p.setHealth((float) Math.max(0, Math.min(p.getMaxHealth(), v)));
+            }
         }
     }
 
@@ -103,8 +113,10 @@ public final class Effects {
     public record Damage(Target target, Expression amount) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            ServerPlayer p = target.resolve(ctx);
-            p.hurt(p.damageSources().generic(), (float) Math.max(0, number(amount, ctx)));
+            float v = (float) Math.max(0, number(amount, ctx));
+            for (ServerPlayer p : target.resolve(ctx)) {
+                p.hurt(p.damageSources().generic(), v);
+            }
         }
     }
 
@@ -112,12 +124,15 @@ public final class Effects {
     public record Feed(Target target, @Nullable Expression amount) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            FoodData food = target.resolve(ctx).getFoodData();
-            if (amount == null) {
-                food.setFoodLevel(20);
-                food.setSaturation(20f);
-            } else {
-                food.setFoodLevel((int) Math.max(0, Math.min(20, food.getFoodLevel() + number(amount, ctx))));
+            Double by = amount == null ? null : number(amount, ctx);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                FoodData food = p.getFoodData();
+                if (by == null) {
+                    food.setFoodLevel(20);
+                    food.setSaturation(20f);
+                } else {
+                    food.setFoodLevel((int) Math.max(0, Math.min(20, food.getFoodLevel() + by)));
+                }
             }
         }
     }
@@ -126,7 +141,10 @@ public final class Effects {
     public record SetFood(Target target, Expression value) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            target.resolve(ctx).getFoodData().setFoodLevel((int) Math.max(0, Math.min(20, number(value, ctx))));
+            int v = (int) Math.max(0, Math.min(20, number(value, ctx)));
+            for (ServerPlayer p : target.resolve(ctx)) {
+                p.getFoodData().setFoodLevel(v);
+            }
         }
     }
 
@@ -134,8 +152,11 @@ public final class Effects {
     public record SetSaturation(Target target, Expression value) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            FoodData food = target.resolve(ctx).getFoodData();
-            food.setSaturation((float) Math.max(0, Math.min(food.getFoodLevel(), number(value, ctx))));
+            double v = number(value, ctx);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                FoodData food = p.getFoodData();
+                food.setSaturation((float) Math.max(0, Math.min(food.getFoodLevel(), v)));
+            }
         }
     }
 
@@ -143,7 +164,9 @@ public final class Effects {
     public record Kill(Target target) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            target.resolve(ctx).kill();
+            for (ServerPlayer p : target.resolve(ctx)) {
+                p.kill();
+            }
         }
     }
 
@@ -151,7 +174,9 @@ public final class Effects {
     public record Extinguish(Target target) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            target.resolve(ctx).clearFire();
+            for (ServerPlayer p : target.resolve(ctx)) {
+                p.clearFire();
+            }
         }
     }
 
@@ -159,7 +184,10 @@ public final class Effects {
     public record Ignite(Target target, Expression seconds) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            target.resolve(ctx).setSecondsOnFire((int) Math.max(1, Math.min(3600, number(seconds, ctx))));
+            int v = (int) Math.max(1, Math.min(3600, number(seconds, ctx)));
+            for (ServerPlayer p : target.resolve(ctx)) {
+                p.setSecondsOnFire(v);
+            }
         }
     }
 
@@ -167,7 +195,9 @@ public final class Effects {
     public record ClearInventory(Target target) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            target.resolve(ctx).getInventory().clearContent();
+            for (ServerPlayer p : target.resolve(ctx)) {
+                p.getInventory().clearContent();
+            }
         }
     }
 
@@ -179,7 +209,11 @@ public final class Effects {
         public void execute(ExecutionContext ctx) {
             MobEffect effect = mobEffect(effectId);
             int amplifier = level == null ? 0 : (int) Math.max(0, Math.min(255, number(level, ctx) - 1));
-            target.resolve(ctx).addEffect(new MobEffectInstance(effect, ticks(number(seconds, ctx)), amplifier));
+            int duration = ticks(number(seconds, ctx));
+            for (ServerPlayer p : target.resolve(ctx)) {
+                // Свой экземпляр на каждого игрока: MobEffectInstance изменяемый (тикает длительность).
+                p.addEffect(new MobEffectInstance(effect, duration, amplifier));
+            }
         }
     }
 
@@ -187,7 +221,10 @@ public final class Effects {
     public record RemoveEffect(Target target, String effectId) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            target.resolve(ctx).removeEffect(mobEffect(effectId));
+            MobEffect effect = mobEffect(effectId);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                p.removeEffect(effect);
+            }
         }
     }
 
@@ -195,7 +232,9 @@ public final class Effects {
     public record ClearEffects(Target target) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            target.resolve(ctx).removeAllEffects();
+            for (ServerPlayer p : target.resolve(ctx)) {
+                p.removeAllEffects();
+            }
         }
     }
 
@@ -210,7 +249,9 @@ public final class Effects {
             if (sound == null || !ForgeRegistries.SOUND_EVENTS.containsKey(rl)) {
                 throw new ScriptRuntimeException(Messages.get("effect.unknown_sound", rl));
             }
-            target.resolve(ctx).playNotifySound(sound, SoundSource.MASTER, 1f, 1f);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                p.playNotifySound(sound, SoundSource.MASTER, 1f, 1f);
+            }
         }
     }
 
@@ -218,13 +259,16 @@ public final class Effects {
     public record Title(Target target, String title, @Nullable String subtitle) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            ServerPlayer p = target.resolve(ctx);
-            // Порядок как у ванильной /title: тайминги, подзаголовок, потом заголовок (он запускает показ).
-            p.connection.send(new ClientboundSetTitlesAnimationPacket(10, 70, 20));
-            if (subtitle != null) {
-                p.connection.send(new ClientboundSetSubtitleTextPacket(Component.literal(ctx.format(subtitle))));
+            Component titleText = Component.literal(ctx.format(title));
+            Component subtitleText = subtitle == null ? null : Component.literal(ctx.format(subtitle));
+            for (ServerPlayer p : target.resolve(ctx)) {
+                // Порядок как у ванильной /title: тайминги, подзаголовок, потом заголовок (он запускает показ).
+                p.connection.send(new ClientboundSetTitlesAnimationPacket(10, 70, 20));
+                if (subtitleText != null) {
+                    p.connection.send(new ClientboundSetSubtitleTextPacket(subtitleText));
+                }
+                p.connection.send(new ClientboundSetTitleTextPacket(titleText));
             }
-            p.connection.send(new ClientboundSetTitleTextPacket(Component.literal(ctx.format(title))));
         }
     }
 
@@ -232,7 +276,10 @@ public final class Effects {
     public record ActionBar(Target target, String text) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            target.resolve(ctx).displayClientMessage(Component.literal(ctx.format(text)), true);
+            Component message = Component.literal(ctx.format(text));
+            for (ServerPlayer p : target.resolve(ctx)) {
+                p.displayClientMessage(message, true);
+            }
         }
     }
 
@@ -240,7 +287,10 @@ public final class Effects {
     public record SetXpLevel(Target target, Expression value) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            target.resolve(ctx).setExperienceLevels((int) Math.max(0, Math.min(1_000_000, number(value, ctx))));
+            int v = (int) Math.max(0, Math.min(1_000_000, number(value, ctx)));
+            for (ServerPlayer p : target.resolve(ctx)) {
+                p.setExperienceLevels(v);
+            }
         }
     }
 
@@ -248,7 +298,10 @@ public final class Effects {
     public record GiveXp(Target target, Expression amount) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            target.resolve(ctx).giveExperiencePoints((int) Math.max(-1_000_000, Math.min(1_000_000, number(amount, ctx))));
+            int v = (int) Math.max(-1_000_000, Math.min(1_000_000, number(amount, ctx)));
+            for (ServerPlayer p : target.resolve(ctx)) {
+                p.giveExperiencePoints(v);
+            }
         }
     }
 
@@ -256,13 +309,80 @@ public final class Effects {
     public record SetFlying(Target target, Expression value) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            ServerPlayer p = target.resolve(ctx);
             boolean fly = bool(value, ctx);
-            if (!p.isCreative() && !p.isSpectator()) {
-                p.getAbilities().mayfly = fly;
+            for (ServerPlayer p : target.resolve(ctx)) {
+                if (!p.isCreative() && !p.isSpectator()) {
+                    p.getAbilities().mayfly = fly;
+                }
+                p.getAbilities().flying = fly && p.getAbilities().mayfly;
+                p.onUpdateAbilities();
             }
-            p.getAbilities().flying = fly && p.getAbilities().mayfly;
-            p.onUpdateAbilities();
+        }
+    }
+
+    // ------------------------------------------------------------------ чат, предметы, телепорт
+
+    /** send "текст" [to <цель>] — сообщение игрокам. */
+    public record SendMessage(Target target, String text) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            Component message = Component.literal(ctx.format(text));
+            for (ServerPlayer p : target.resolve(ctx)) {
+                p.sendSystemMessage(message);
+            }
+        }
+    }
+
+    /** give <цель> <предмет> [количество] — выдать предмет; если инвентарь полон, предмет падает рядом. */
+    public record GiveItem(Target target, String itemId, @Nullable Expression count) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            Item item = ItemResolver.resolve(itemId)
+                    .orElseThrow(() -> new ScriptRuntimeException("Неизвестный предмет: " + itemId));
+            int total = count == null ? 1 : (int) Math.max(1, Math.min(64 * 36, number(count, ctx)));
+            int maxStack = new ItemStack(item).getMaxStackSize();
+            for (ServerPlayer p : target.resolve(ctx)) {
+                int left = total;
+                while (left > 0) {
+                    int size = Math.min(left, maxStack);
+                    ItemStack stack = new ItemStack(item, size);
+                    if (!p.getInventory().add(stack)) {
+                        p.drop(stack, false);
+                    }
+                    left -= size;
+                }
+            }
+        }
+    }
+
+    /** teleport <цель> to x, y, z — в текущем мире каждого игрока. */
+    public record TeleportToPos(Target target, Expression x, Expression y, Expression z) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            double tx = number(x, ctx), ty = number(y, ctx), tz = number(z, ctx);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                p.teleportTo(tx, ty, tz);
+            }
+        }
+    }
+
+    /**
+     * teleport <цель> to <цель> — к первому игроку второго набора (в его мир, с его поворотом головы).
+     * Пустой второй набор = ничего не делать.
+     */
+    public record TeleportToPlayer(Target target, Target destination) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            List<ServerPlayer> dest = destination.resolve(ctx);
+            if (dest.isEmpty()) {
+                return;
+            }
+            ServerPlayer to = dest.get(0);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                if (p != to) {
+                    p.teleportTo(to.serverLevel(), to.getX(), to.getY(), to.getZ(), to.getYRot(), to.getXRot());
+                }
+            }
         }
     }
 
@@ -295,8 +415,9 @@ public final class Effects {
         @Override
         public void execute(ExecutionContext ctx) {
             String cmd = command(raw, ctx);
-            ServerPlayer p = target.resolve(ctx);
-            ctx.server().getCommands().performPrefixedCommand(p.createCommandSourceStack(), cmd);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                ctx.server().getCommands().performPrefixedCommand(p.createCommandSourceStack(), cmd);
+            }
         }
     }
 }

@@ -22,6 +22,7 @@ public final class ScriptCraftConfig {
     private static final ForgeConfigSpec.IntValue MAX_SCRIPT_MILLIS;
     private static final ForgeConfigSpec.BooleanValue LOG_SCRIPT_LOAD_TIMES;
     private static final ForgeConfigSpec.BooleanValue ALLOW_COMMAND_EFFECTS;
+    private static final ForgeConfigSpec.IntValue TARGETED_PLAYER_RANGE;
     private static final ForgeConfigSpec.IntValue VARIABLE_BACKUPS;
     private static final ForgeConfigSpec.BooleanValue SYNC_RESOURCES;
     private static final ForgeConfigSpec.IntValue RESOURCE_MAX_MB;
@@ -63,6 +64,11 @@ public final class ScriptCraftConfig {
                         "Allow effects 'execute console command \"...\"' and 'make player execute command \"...\"'.",
                         "Разрешить эффекты выполнения команд от консоли и от имени игрока.")
                 .define("allowCommandEffects", true);
+
+        TARGETED_PLAYER_RANGE = b.comment(
+                        "How far 'targeted player' / %targeted% looks (blocks; the ray stops at blocks).",
+                        "Как далеко ищется 'targeted player' / %targeted% (блоков; сквозь блоки луч не проходит).")
+                .defineInRange("targetedPlayerRange", 50, 1, 256);
 
         b.pop();
 
@@ -140,6 +146,10 @@ public final class ScriptCraftConfig {
 
     public static boolean logScriptLoadTimes() {
         return safe(LOG_SCRIPT_LOAD_TIMES::get, false);
+    }
+
+    public static int targetedPlayerRange() {
+        return safe(TARGETED_PLAYER_RANGE::get, 50);
     }
 
     public static boolean allowCommandEffects() {

@@ -30,7 +30,8 @@ command /kit permission 2:
     send "&6Набор выдан!" to player
 
 # ----------------------------------------------------------
-#  Эффекты над игроком (как в Skript). Цель: player или имя игрока ("Steve", {var}, "%args%")
+#  Эффекты над игроком (как в Skript). Цель: player, имя игрока ("Steve", {var}, "%args%")
+#  или набор игроков (all players, @a, targeted player, players in radius 10 of player) — см. ниже
 # ----------------------------------------------------------
 
 command /buff permission 2:
@@ -57,7 +58,7 @@ command /survival permission 2:
     set gamemode of player to survival
     clear effects of player
 
-# /healp Steve — вылечить другого игрока (имя из %args%; игрок должен быть онлайн)
+# /healp Steve — вылечить другого игрока (имя из %args%; если его нет в сети — ничего не произойдёт)
 command /healp permission 2:
     heal "%args%"
     send action bar "&aТебя вылечили!" to "%args%"
@@ -75,6 +76,37 @@ command /daytime permission 2:
 command /spawnpoint0:
     teleport player to 0, 100, 0
     reply "Телепортирован на 0 100 0"
+
+# ----------------------------------------------------------
+#  Цели-наборы: действие выполняется для каждого игрока набора, пустой набор = ничего
+# ----------------------------------------------------------
+
+# /healall — вылечить и накормить всех рядом (включая себя)
+command /healall permission 2:
+    heal players in radius 20 of player
+    feed players in radius 20 of player
+    send "&a%player% вылечил всех в радиусе 20 блоков" to other players in radius 20 of player
+    reply "Готово"
+
+# /look — на кого я смотрю (луч до targetedPlayerRange блоков из конфига)
+command /look:
+    if targeted player is set:
+        send "&eТы смотришь на &6%targeted%" to player
+        send action bar "&c%player% смотрит на тебя" to targeted player
+    else:
+        send "&7Ты ни на кого не смотришь" to player
+
+# /gather — собрать всех к себе и поздороваться с каждым по имени
+command /gather permission 2:
+    teleport other players in radius 200 of player to player
+    loop all players:
+        send "&e%loop-player%, сбор у %player%!" to loop-player
+    play sound entity.player.levelup to @a
+
+# /nearbuff — ванильный селектор с аргументами
+command /nearbuff permission 2:
+    give @a[distance=..10] effect regeneration for 10 seconds
+    send title "&aРегенерация" to @a[distance=..10]
 
 # ----------------------------------------------------------
 #  Переменные и условия: простая "экономика"

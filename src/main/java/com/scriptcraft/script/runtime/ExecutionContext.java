@@ -9,6 +9,7 @@ import org.jetbrains.annotations.Nullable;
 import com.scriptcraft.script.variables.VariableStore;
 
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -19,7 +20,7 @@ import java.util.regex.Pattern;
  */
 public final class ExecutionContext {
     /** Плейсхолдеры вида %name%. */
-    private static final Pattern PLACEHOLDER = Pattern.compile("%([a-zA-Z0-9_]+)%");
+    private static final Pattern PLACEHOLDER = Pattern.compile("%([a-zA-Z0-9_-]+)%");
     /** Переменные в тексте: {name}, {coins::%player%}. */
     private static final Pattern VARIABLE = Pattern.compile("\\{([^{}]+)}");
     /** Цветовые коды в стиле Bukkit: &a, &l ... -> §a, §l. */
@@ -34,6 +35,12 @@ public final class ExecutionContext {
     private final ExecutionBudget budget = ExecutionBudget.fromConfig();
     /** Запуск из эффект-команды в чате (?heal player): некоторые эффекты здесь строже. */
     private boolean effectCommand;
+    /** Текущий игрок цикла "loop <цель>:" (loop-player), null вне цикла. */
+    @Nullable
+    private ServerPlayer loopPlayer;
+    /** Сколько раз действия выбирали цели и сколько игроков всего нашлось (для "нет целей" в эффект-командах). */
+    private int targetQueries;
+    private int targetHits;
 
     public ExecutionContext(MinecraftServer server, @Nullable ServerPlayer player, @Nullable CommandSourceStack source) {
         this.server = server;
@@ -70,6 +77,30 @@ public final class ExecutionContext {
     public ExecutionContext markEffectCommand() {
         this.effectCommand = true;
         return this;
+    }
+
+    @Nullable
+    public ServerPlayer loopPlayer() {
+        return loopPlayer;
+    }
+
+    /** Ставит игрока цикла (null — выход из цикла); возвращает предыдущего, чтобы вложенные циклы восстанавливали его. */
+    @Nullable
+    public ServerPlayer setLoopPlayer(@Nullable ServerPlayer player) {
+        ServerPlayer previous = loopPlayer;
+        loopPlayer = player;
+        return previous;
+    }
+
+    /** Отметка от Target.resolve: действие выбрало цели, нашлось count игроков. */
+    public void noteTargets(int count) {
+        targetQueries++;
+        targetHits += count;
+    }
+
+    /** true, если действия выбирали цели, но ни разу никого не нашли. */
+    public boolean hadOnlyEmptyTargets() {
+        return targetQueries > 0 && targetHits == 0;
     }
 
     /** Задаёт плейсхолдер %name% (например, %args% для команд). */
@@ -120,11 +151,35 @@ public final class ExecutionContext {
         Matcher m = PLACEHOLDER.matcher(raw);
         StringBuilder sb = new StringBuilder();
         while (m.find()) {
-            String value = variables.getOrDefault(m.group(1).toLowerCase(), m.group(0));
+            String key = m.group(1).toLowerCase(Locale.ROOT);
+            String value = variables.get(key);
+            if (value == null) {
+                value = dynamicPlaceholder(key, m.group(0));
+            }
             m.appendReplacement(sb, Matcher.quoteReplacement(value));
         }
         m.appendTail(sb);
         return sb.toString();
+    }
+
+    /**
+     * Плейсхолдеры, которые считаются только при использовании:
+     * %targeted% — имя игрока, на которого смотрит игрок из контекста (или &lt;none&gt;),
+     * %loop-player% — имя текущего игрока цикла (или &lt;none&gt;).
+     */
+    private String dynamicPlaceholder(String key, String fallback) {
+        switch (key) {
+            case "targeted" -> {
+                ServerPlayer p = player == null ? null : Target.Targeted.lookedAt(player);
+                return p == null ? "<none>" : p.getGameProfile().getName();
+            }
+            case "loop-player" -> {
+                return loopPlayer == null ? "<none>" : loopPlayer.getGameProfile().getName();
+            }
+            default -> {
+                return fallback;
+            }
+        }
     }
 
     /** Ответ тому, кто запустил скрипт (игроку или консоли). */

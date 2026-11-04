@@ -4,7 +4,8 @@ import java.util.Objects;
 
 /**
  * Условие для "if ...:".
- * Поддерживается: {a} is X, {a} is not X, {a} > X, <, >=, <=, {a} is set, {a} is not set.
+ * Поддерживается: {a} is X, {a} is not X, {a} > X, <, >=, <=, {a} is set, {a} is not set,
+ * а также для целей: targeted player is set, all players is not set и т.п. (есть ли хоть один игрок).
  * TODO: and/or, "else if", условия по игроку (has permission, is op, holds item...).
  */
 @FunctionalInterface
@@ -16,6 +17,17 @@ public interface Condition {
         @Override
         public boolean test(ExecutionContext ctx) {
             return (value.evaluate(ctx) != null) != negate;
+        }
+    }
+
+    /** <цель> is set / is not set — набор игроков не пуст / пуст (например, targeted player is set). */
+    record TargetSet(Target target, boolean negate) implements Condition {
+        @Override
+        public boolean test(ExecutionContext ctx) {
+            if (target instanceof Target.Self && ctx.player() == null) {
+                return negate; // "player is set" из консоли — игрока нет, это не ошибка
+            }
+            return !target.select(ctx).isEmpty() != negate;
         }
     }
 
