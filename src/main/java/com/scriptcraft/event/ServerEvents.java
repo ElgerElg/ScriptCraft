@@ -71,6 +71,12 @@ public final class ServerEvents {
         BindingSync.onServerStarting(event.getServer(), ScriptLoader.getProgram());
     }
 
+    /** Ванильные команды с id из скриптов: /give @s example:ruby_block -> scriptcraft:dyn_block_N. */
+    @SubscribeEvent
+    public static void onCommand(net.minecraftforge.event.CommandEvent event) {
+        BindingSync.onCommand(event);
+    }
+
     /** Мир из старой версии мода: блоки под id скриптов (example:ruby_block) переназначаются на слоты пула. */
     @SubscribeEvent
     public static void onMissingMappings(MissingMappingsEvent event) {

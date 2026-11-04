@@ -42,6 +42,8 @@ public final class Bindings {
         /** id -> слот, в порядке слотов. */
         private final Map<String, Integer> blockSlots;
         private final Map<String, Integer> itemSlots;
+        /** id из скрипта -> технический id ("example:ruby_block" -> "scriptcraft:dyn_block_3"). */
+        private final Map<String, String> poolIds;
 
         public Snapshot(Map<Integer, BlockDefinition> blockDefs, Map<Integer, ItemDefinition> itemDefs) {
             Map<String, Integer> b = new LinkedHashMap<>();
@@ -60,6 +62,11 @@ public final class Bindings {
             });
             blockSlots = Collections.unmodifiableMap(b);
             itemSlots = Collections.unmodifiableMap(i);
+            Map<String, String> ids = new LinkedHashMap<>();
+            // Строки собираются из констант — без загрузки ScriptRegistries (и реестров Forge).
+            b.forEach((id, slot) -> ids.put(id, com.scriptcraft.ScriptCraft.MODID + ":" + ScriptRegistries.BLOCK_PREFIX + slot));
+            i.forEach((id, slot) -> ids.putIfAbsent(id, com.scriptcraft.ScriptCraft.MODID + ":" + ScriptRegistries.ITEM_PREFIX + slot));
+            poolIds = Collections.unmodifiableMap(ids);
         }
 
         @Nullable
@@ -115,12 +122,12 @@ public final class Bindings {
         /** Технический id для id из скрипта ("scriptcraft:dyn_block_0") или null. */
         @Nullable
         public String poolId(String fullId) {
-            Integer slot = blockSlots.get(fullId);
-            if (slot != null) {
-                return ScriptRegistries.blockSlotId(slot).toString();
-            }
-            slot = itemSlots.get(fullId);
-            return slot != null ? ScriptRegistries.itemSlotId(slot).toString() : null;
+            return poolIds.get(fullId);
+        }
+
+        /** Все пары "id из скрипта -> технический id" (для перезаписи команд и данных). */
+        public Map<String, String> poolIds() {
+            return poolIds;
         }
 
         /** Совпадает ли раскладка id по слотам (от неё зависят модели на клиенте; свойства — нет). */

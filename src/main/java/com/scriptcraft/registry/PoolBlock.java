@@ -12,6 +12,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockState;
@@ -65,6 +66,20 @@ public class PoolBlock extends Block {
     public BlockState getStateForPlacement(BlockPlaceContext context) {
         BlockDefinition def = definition();
         return defaultBlockState().setValue(LIGHT, def == null ? 0 : def.light());
+    }
+
+    /**
+     * Блок поставлен НЕ игроком (/setblock, /fill, структура, скрипт) — у него состояние по умолчанию (light=0).
+     * Подставляем свет из define; повторный вызов onPlace уже ничего не меняет (значение совпадает).
+     */
+    @Override
+    @SuppressWarnings("deprecation")
+    public void onPlace(BlockState state, Level level, BlockPos pos, BlockState oldState, boolean movedByPiston) {
+        super.onPlace(state, level, pos, oldState, movedByPiston);
+        BlockDefinition def = definition();
+        if (!level.isClientSide && def != null && state.getValue(LIGHT) != def.light()) {
+            level.setBlock(pos, state.setValue(LIGHT, def.light()), Block.UPDATE_ALL);
+        }
     }
 
     /** Ключ перевода берётся из id скрипта: block.example.ruby_block (lang-файлы ресурсов работают как раньше). */

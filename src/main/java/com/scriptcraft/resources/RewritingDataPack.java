@@ -1,6 +1,7 @@
 package com.scriptcraft.resources;
 
 import com.scriptcraft.registry.BindingStore;
+import com.scriptcraft.registry.IdRewriter;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.PackType;
 import net.minecraft.server.packs.PathPackResources;
@@ -12,19 +13,16 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Серверный пак scriptcraft/resources/data: при чтении JSON (теги, лут-таблицы, рецепты, достижения)
- * id из скриптов в кавычках заменяются на технические id слотов: "example:ruby_block" -> "scriptcraft:dyn_block_0".
+ * и функций .mcfunction (целые id-токены в командах) id из скриптов заменяются на технические id слотов:
+ * "example:ruby_block" -> "scriptcraft:dyn_block_0".
  * Поэтому data-файлы пишутся с обычными id скриптов и работают как раньше (mineable/pickaxe, дроп, крафт).
  * Ссылки на теги ("#example:...") и пути лут-таблиц (example:blocks/...) не трогаются — их нет в таблице.
  * Чужие датапаки (папка datapacks мира) НЕ перезаписываются — там нужны технические id.
  */
 public class RewritingDataPack extends PathPackResources {
-    private static final Pattern QUOTED_ID = Pattern.compile("\"([a-z0-9_.-]+:[a-z0-9_./-]+)\"");
-
     public RewritingDataPack(String name, Path root) {
         super(name, root, true);
     }
@@ -42,7 +40,9 @@ public class RewritingDataPack extends PathPackResources {
     }
 
     private static IoSupplier<InputStream> wrap(ResourceLocation location, IoSupplier<InputStream> supplier) {
-        if (!location.getPath().endsWith(".json")) {
+        boolean json = location.getPath().endsWith(".json");
+        boolean function = location.getPath().endsWith(".mcfunction");
+        if (!json && !function) {
             return supplier;
         }
         return () -> {
@@ -54,18 +54,8 @@ public class RewritingDataPack extends PathPackResources {
             try (InputStream in = supplier.get()) {
                 text = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             }
-            return new ByteArrayInputStream(rewrite(text, map).getBytes(StandardCharsets.UTF_8));
+            String rewritten = json ? IdRewriter.rewriteJson(text, map) : IdRewriter.rewriteFunction(text, map);
+            return new ByteArrayInputStream(rewritten.getBytes(StandardCharsets.UTF_8));
         };
-    }
-
-    static String rewrite(String text, Map<String, String> map) {
-        Matcher m = QUOTED_ID.matcher(text);
-        StringBuilder out = new StringBuilder(text.length());
-        while (m.find()) {
-            String replacement = map.get(m.group(1));
-            m.appendReplacement(out, Matcher.quoteReplacement(replacement == null ? m.group() : "\"" + replacement + "\""));
-        }
-        m.appendTail(out);
-        return out.toString();
     }
 }

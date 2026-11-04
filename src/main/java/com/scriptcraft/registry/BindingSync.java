@@ -5,11 +5,13 @@ import com.scriptcraft.lang.Messages;
 import com.scriptcraft.network.BindingsPacket;
 import com.scriptcraft.network.ModNetwork;
 import com.scriptcraft.script.engine.ScriptProgram;
+import com.mojang.brigadier.ParseResults;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
+import net.minecraftforge.event.CommandEvent;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.registries.MissingMappingsEvent;
 import org.jetbrains.annotations.Nullable;
@@ -67,6 +69,23 @@ public final class BindingSync {
     /** Вход игрока: таблица привязок (после манифеста ресурсов — модели скачиваются параллельно). */
     public static void onLogin(ServerPlayer player) {
         ModNetwork.sendTo(player, new BindingsPacket(Bindings.current()));
+    }
+
+    /**
+     * Любая команда на сервере (чат игрока, консоль, командный блок, "execute console command" из скрипта):
+     * id из скриптов подменяются на id слотов, и команда разбирается заново. Так работают ванильные
+     * /give @s example:ruby_block, /setblock, /fill, /clear, /item, /execute if block, /summon item {Item:{id:"..."}}.
+     * Клиент 1.20.1 отправляет команду, даже если сам подсветил её красным (неизвестный предмет), — разбирает сервер.
+     */
+    public static void onCommand(CommandEvent event) {
+        ParseResults<CommandSourceStack> parse = event.getParseResults();
+        String command = parse.getReader().getString();
+        String rewritten = IdRewriter.rewriteCommand(command, Bindings.current().poolIds());
+        if (rewritten.equals(command)) {
+            return; // id скриптов в команде нет
+        }
+        CommandSourceStack source = parse.getContext().getSource();
+        event.setParseResults(source.getServer().getCommands().getDispatcher().parse(rewritten, source));
     }
 
     /**

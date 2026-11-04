@@ -6,7 +6,11 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Rarity;
+import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
 
 /**
  * Предмет-слот пула (scriptcraft:dyn_item_N). Размер стака, редкость, огнестойкость и имя —
@@ -48,6 +52,15 @@ public class PoolItem extends Item {
             return Component.literal(Messages.get("pool.free_item", slot));
         }
         return def.displayName() != null ? Component.literal(def.displayName()) : Component.translatable(getDescriptionId());
+    }
+
+    /** Подробные подсказки (F3+H): рядом с техническим id показываем id из скрипта. */
+    @Override
+    public void appendHoverText(ItemStack stack, @Nullable Level level, List<Component> tooltip, TooltipFlag flag) {
+        ItemDefinition def = definition();
+        if (flag.isAdvanced() && def != null) {
+            tooltip.add(PoolBlockItem.scriptIdLine(def.id()));
+        }
     }
 
     /** Forge спрашивает размер стака у предмета для каждого стака — так он меняется без перезапуска. */

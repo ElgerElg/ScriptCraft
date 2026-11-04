@@ -134,8 +134,8 @@ command /kit permission 2:
     name: { ru: "Свой блок", en: "Custom block" },
     syntax: ["define block <id>:", "define block <namespace>:<id>:"],
     desc: {
-      ru: "Регистрирует блок (вместе с предметом-блоком) во вкладке творческого режима ScriptCraft. Свойства (все необязательные): `name:` название, `hardness:` прочность (1.5), `resistance:` взрывоустойчивость (6), `sound:` stone/wood/metal/glass/grass/sand/wool/gravel, `light:` свечение 0–15, `requires_tool:` true — дроп только подходящим инструментом. id — только `a-z 0-9 _ . -`. Появляется после `/sc reload` без перезапуска: сервер привязывает блок к слоту пула `scriptcraft:dyn_block_N` и рассылает его игрокам (скрипт клиентам не нужен). В F3 и ванильных командах виден id слота (`/sc ids`), выдать по id скрипта — `/sc give`. Свет записывается в блок при установке.",
-      en: "Registers a block (plus its block item) in the ScriptCraft creative tab. Properties (all optional): `name:` display name, `hardness:` (1.5), `resistance:` (6), `sound:` stone/wood/metal/glass/grass/sand/wool/gravel, `light:` 0–15, `requires_tool:` true — drops only with the right tool. id: only `a-z 0-9 _ . -`. Appears after `/sc reload` without a restart: the server binds the block to a pool slot `scriptcraft:dyn_block_N` and sends it to players (clients don't need the script). F3 and vanilla commands show the slot id (`/sc ids`); give it by the script id with `/sc give`. Light is stored in the block when placed."
+      ru: "Регистрирует блок (вместе с предметом-блоком) во вкладке творческого режима ScriptCraft. Свойства (все необязательные): `name:` название, `hardness:` прочность (1.5), `resistance:` взрывоустойчивость (6), `sound:` stone/wood/metal/glass/grass/sand/wool/gravel, `light:` свечение 0–15, `requires_tool:` true — дроп только подходящим инструментом. id — только `a-z 0-9 _ . -`. Появляется после `/sc reload` без перезапуска: сервер привязывает блок к слоту пула `scriptcraft:dyn_block_N` и рассылает его игрокам (скрипт клиентам не нужен). Ванильные команды (`/give`, `/setblock`, `/fill`, `/clear`, `/execute if block`) принимают id скрипта с namespace (`example:ruby_block`) — сервер сам подставляет слот (с 0.1.8); в F3 и автодополнении виден id слота (`/sc ids`). Свет записывается в блок при установке (и через `/setblock`). F3+H показывает id скрипта в подсказке.",
+      en: "Registers a block (plus its block item) in the ScriptCraft creative tab. Properties (all optional): `name:` display name, `hardness:` (1.5), `resistance:` (6), `sound:` stone/wood/metal/glass/grass/sand/wool/gravel, `light:` 0–15, `requires_tool:` true — drops only with the right tool. id: only `a-z 0-9 _ . -`. Appears after `/sc reload` without a restart: the server binds the block to a pool slot `scriptcraft:dyn_block_N` and sends it to players (clients don't need the script). Vanilla commands (`/give`, `/setblock`, `/fill`, `/clear`, `/execute if block`) accept the namespaced script id (`example:ruby_block`) — the server substitutes the slot (since 0.1.8); F3 and tab completion show the slot id (`/sc ids`). Light is stored in the block when placed (also via `/setblock`). F3+H shows the script id in the tooltip."
     },
     example: `define block ruby_block:
     name: "Рубиновый блок"
@@ -151,8 +151,8 @@ command /kit permission 2:
     name: { ru: "Свой предмет", en: "Custom item" },
     syntax: ["define item <id>:", "define item <namespace>:<id>:"],
     desc: {
-      ru: "Регистрирует предмет. Свойства: `name:` название, `stack_size:` 1–64 (64), `rarity:` common/uncommon/rare/epic (цвет названия), `fire_resistant:` true — не горит в лаве. Как и блоки — после `/sc reload` без перезапуска (слот `scriptcraft:dyn_item_N`).",
-      en: "Registers an item. Properties: `name:`, `stack_size:` 1–64 (64), `rarity:` common/uncommon/rare/epic (name colour), `fire_resistant:` true — survives lava. Like blocks — live after `/sc reload` (slot `scriptcraft:dyn_item_N`)."
+      ru: "Регистрирует предмет. Свойства: `name:` название, `stack_size:` 1–64 (64), `rarity:` common/uncommon/rare/epic (цвет названия), `fire_resistant:` true — не горит в лаве. Как и блоки — после `/sc reload` без перезапуска (слот `scriptcraft:dyn_item_N`); ванильная `/give @s example:ruby` работает (с 0.1.8).",
+      en: "Registers an item. Properties: `name:`, `stack_size:` 1–64 (64), `rarity:` common/uncommon/rare/epic (name colour), `fire_resistant:` true — survives lava. Like blocks — live after `/sc reload` (slot `scriptcraft:dyn_item_N`); vanilla `/give @s example:ruby` works (since 0.1.8)."
     },
     example: `define item ruby:
     name: "Рубин"
@@ -1029,8 +1029,8 @@ show vanilla all for player`,
     name: { ru: "/sc ids", en: "/sc ids" },
     syntax: ["/sc ids"],
     desc: {
-      ru: "Показать, к какому слоту пула привязан каждый `define`: `example:ruby_block -> scriptcraft:dyn_block_0`. Технический id виден в F3, нужен в ванильных командах (`/setblock`, `/give`) и в датапаках из папки мира.",
-      en: "Show which pool slot each `define` is bound to: `example:ruby_block -> scriptcraft:dyn_block_0`. The technical id shows in F3 and is needed in vanilla commands (`/setblock`, `/give`) and world datapacks."
+      ru: "Показать, к какому слоту пула привязан каждый `define`: `example:ruby_block -> scriptcraft:dyn_block_0`. Технический id виден в F3 и в автодополнении ванильных команд, нужен в датапаках из папки мира. В самих командах можно писать id скрипта — сервер подставит слот.",
+      en: "Show which pool slot each `define` is bound to: `example:ruby_block -> scriptcraft:dyn_block_0`. The technical id shows in F3 and in vanilla tab completion and is needed in world datapacks. Commands themselves accept the script id — the server substitutes the slot."
     },
     example: `/sc ids`,
     since: "0.1.7", related: ["struct-define-block", "struct-define-item", "cmd-give"]
@@ -1040,8 +1040,8 @@ show vanilla all for player`,
     name: { ru: "/sc give", en: "/sc give" },
     syntax: ["/sc give <игроки> <id> [количество]"],
     desc: {
-      ru: "Выдать блок или предмет по id скрипта (`example:ruby_block`, короткий `ruby`) или любой обычный предмет. Ванильная `/give` id скриптов не знает — в реестре только слоты `scriptcraft:dyn_*`. Полный инвентарь — предмет падает рядом.",
-      en: "Give a block or item by its script id (`example:ruby_block`, short `ruby`) or any regular item. Vanilla `/give` doesn't know script ids — the registry only has `scriptcraft:dyn_*` slots. Full inventory — the item drops nearby."
+      ru: "Выдать блок или предмет по id скрипта (`example:ruby_block`, короткий `ruby`) или любой обычный предмет. В отличие от ванильной `/give` (она с 0.1.8 тоже принимает `example:ruby_block`), понимает короткий id и подсказывает id скриптов при наборе. Полный инвентарь — предмет падает рядом.",
+      en: "Give a block or item by its script id (`example:ruby_block`, short `ruby`) or any regular item. Unlike vanilla `/give` (which also accepts `example:ruby_block` since 0.1.8), it understands short ids and suggests script ids while typing. Full inventory — the item drops nearby."
     },
     example: `/sc give @s example:ruby_block 4`,
     since: "0.1.7", related: ["cmd-ids", "struct-define-block"]

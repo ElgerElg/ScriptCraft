@@ -46,6 +46,7 @@ public final class Messages {
         add("bindings.data_reload", "&7Reloading data (tags, loot tables, recipes) for the new ids...",
                 "&7Перезагружаю данные (теги, лут, рецепты) для новых id...");
         add("pool.free_block", "Free ScriptCraft block slot %d", "Свободный слот блока ScriptCraft %d");
+        add("pool.script_id", "Script id: %s", "id в скрипте: %s");
         add("pool.free_item", "Free ScriptCraft item slot %d", "Свободный слот предмета ScriptCraft %d");
         add("ids.header", "&6Script id -> registry id (F3, vanilla commands, other datapacks):",
                 "&6id скрипта -> id в реестре (F3, ванильные команды, чужие датапаки):");
