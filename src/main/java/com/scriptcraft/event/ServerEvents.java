@@ -10,6 +10,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
+import net.minecraftforge.event.server.ServerStartedEvent;
 import net.minecraftforge.event.server.ServerStartingEvent;
 import net.minecraftforge.event.server.ServerStoppedEvent;
 import net.minecraftforge.event.server.ServerStoppingEvent;
@@ -63,9 +64,16 @@ public final class ServerEvents {
         ResourceSync.onServerStarting();
     }
 
-    /** Остановка сервера: сохраняем переменные, пока мир ещё доступен. */
+    /** Сервер полностью запущен: "on load:" всех включённых скриптов. */
+    @SubscribeEvent
+    public static void onServerStarted(ServerStartedEvent event) {
+        ScriptLoader.onServerStarted(event.getServer());
+    }
+
+    /** Остановка сервера: "on unload:" скриптов, затем сохраняем переменные, пока мир ещё доступен. */
     @SubscribeEvent
     public static void onServerStopping(ServerStoppingEvent event) {
+        ScriptLoader.onServerStopping(event.getServer());
         VariableStore.save();
     }
 

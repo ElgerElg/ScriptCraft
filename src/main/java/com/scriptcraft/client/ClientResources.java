@@ -11,7 +11,10 @@ import com.scriptcraft.network.ResourceManifestPacket;
 import com.scriptcraft.network.ResourceRequestPacket;
 import com.scriptcraft.resources.ResourceIndex;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.client.renderer.texture.DynamicTexture;
+import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite;
+import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
@@ -23,6 +26,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -52,6 +56,10 @@ public final class ClientResources {
     private static final Map<String, Integer> RECEIVED = new HashMap<>();
     /** Изменённые в кэше файлы, которые ещё не применены. */
     private static final Set<String> CHANGED = new LinkedHashSet<>();
+    /** GUI-картинки, которые уже точно есть в TextureManager (проверять больше не нужно). */
+    private static final Set<ResourceLocation> READY = new HashSet<>();
+    /** Когда снова проверить картинку, которой пока нет ни в ресурсах, ни в кэше (мс). */
+    private static final Map<ResourceLocation, Long> RETRY_AT = new HashMap<>();
 
     private ClientResources() {
     }
@@ -138,6 +146,45 @@ public final class ClientResources {
         BUFFERS.clear();
         RECEIVED.clear();
         CHANGED.clear();
+        READY.clear();
+        RETRY_AT.clear();
+    }
+
+    /**
+     * Вызывается перед отрисовкой GUI-картинки HUD/экрана. Чинит случай, когда текстура не подхватилась:
+     * - картинку уже пытались нарисовать до докачки -> под id лежит "missing" (фиолетово-чёрная клетка);
+     * - кэш был актуален уже при входе, а ресурспак-кэш ещё не знает этот namespace -> текстуры нет вовсе.
+     * Если файл есть в scriptcraft/cache, он регистрируется как DynamicTexture — без перезахода и перезагрузки.
+     * Нет файла — повторная проверка не чаще раза в секунду (он может ещё докачиваться).
+     */
+    public static void ensureGuiTexture(ResourceLocation id) {
+        if (READY.contains(id)) {
+            return;
+        }
+        String path = "assets/" + id.getNamespace() + "/" + id.getPath();
+        if (!isGuiTexture(path)) {
+            READY.add(id); // не наша забота: атлас блоков/предметов и ванильные картинки
+            return;
+        }
+        long now = System.currentTimeMillis();
+        Long retry = RETRY_AT.get(id);
+        if (retry != null && now < retry) {
+            return;
+        }
+        TextureManager textures = Minecraft.getInstance().getTextureManager();
+        // Версия getTexture с запасным значением НЕ загружает текстуру, только смотрит, что зарегистрировано.
+        AbstractTexture current = textures.getTexture(id, null);
+        if (current != null && current != MissingTextureAtlasSprite.getTexture()) {
+            READY.add(id);
+            return;
+        }
+        if (Files.isRegularFile(ModPaths.cache().resolve(path)) && registerDynamic(path)) {
+            READY.add(id);
+            RETRY_AT.remove(id);
+        } else {
+            // Пусть пока рисуется как есть (ресурспак или "missing"); проверим ещё раз позже.
+            RETRY_AT.put(id, now + 1000L);
+        }
     }
 
     private static void apply() {
@@ -149,6 +196,12 @@ public final class ClientResources {
         for (String path : CHANGED) {
             if (isGuiTexture(path)) {
                 if (registerDynamic(path)) {
+                    String[] parts = path.split("/", 3);
+                    ResourceLocation id = ResourceLocation.tryBuild(parts[1], parts[2]);
+                    if (id != null) {
+                        READY.add(id);
+                        RETRY_AT.remove(id);
+                    }
                     gui++;
                     continue;
                 }

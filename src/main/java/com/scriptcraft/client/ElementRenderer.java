@@ -348,7 +348,12 @@ public final class ElementRenderer {
         if (raw.isEmpty()) {
             return null;
         }
-        return TEXTURES.computeIfAbsent(raw, r -> Optional.ofNullable(ResourceLocation.tryParse(r))).orElse(null);
+        ResourceLocation id = TEXTURES.computeIfAbsent(raw, r -> Optional.ofNullable(ResourceLocation.tryParse(r))).orElse(null);
+        if (id != null) {
+            // Картинка, докачанная после первой попытки отрисовки, подхватится сама — без перезахода.
+            ClientResources.ensureGuiTexture(id);
+        }
+        return id;
     }
 
     @Nullable

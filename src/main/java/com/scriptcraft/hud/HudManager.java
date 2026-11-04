@@ -4,7 +4,9 @@ import com.scriptcraft.lang.Messages;
 import com.scriptcraft.network.HudPacket;
 import com.scriptcraft.network.ModNetwork;
 import com.scriptcraft.script.runtime.ScriptRuntimeException;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -21,7 +23,9 @@ import java.util.UUID;
  *   из частых событий — сеть не забивается).
  * - Состояние хранится в памяти сервера: при выходе игрока оно сохраняется, а при входе отправляется
  *   заново (клиент свой HUD при отключении стирает). Очищается при остановке сервера.
- * - /sc reload HUD не трогает: элементы, созданные старой версией скрипта, остаются до remove/clear.
+ * - /sc reload HUD не трогает: повторный create hud с тем же именем заменит группу (обычно из "on join or load:").
+ * - У каждой группы и у каждого "hide vanilla" запоминается скрипт-владелец (файл). /sc disable этого
+ *   скрипта убирает его группы и возвращает ванильные части, которые прятал только он ({@link #unloadScript}).
  *
  * Все методы вызываются из главного потока сервера (скрипты выполняются в нём).
  */
@@ -31,9 +35,33 @@ public final class HudManager {
 
     private static final Map<UUID, PlayerHud> HUDS = new HashMap<>();
 
+    /** Владелец для действий не из файла (эффект-команды в чате): автоматически не убирается. */
+    private static final String NO_OWNER = "";
+
     private static final class PlayerHud {
         final LinkedHashMap<String, HudEntry> entries = new LinkedHashMap<>();
+        /** Группа -> файл скрипта, который её создал последним. */
+        final Map<String, String> groupOwners = new HashMap<>();
+        /** Файл скрипта -> какие ванильные части он спрятал. Итоговая маска — объединение. */
+        final Map<String, Integer> vanillaByOwner = new HashMap<>();
         int vanillaMask;
+
+        int computeVanillaMask() {
+            int m = 0;
+            for (int v : vanillaByOwner.values()) {
+                m |= v;
+            }
+            return m;
+        }
+
+        /** Забыть владельцев групп, от которых не осталось элементов. */
+        void pruneOwners() {
+            groupOwners.keySet().removeIf(g -> entries.values().stream().noneMatch(e -> e.group().equals(g)));
+        }
+    }
+
+    private static String owner(@Nullable String script) {
+        return script == null ? NO_OWNER : script;
     }
 
     private HudManager() {
@@ -53,8 +81,9 @@ public final class HudManager {
      * create hud "группа": заменяет все элементы группы новыми. Элементы с теми же id из ДРУГИХ групп
      * тоже заменяются (id уникален у игрока). Если группа не изменилась — ничего не отправляется.
      */
-    public static void create(ServerPlayer player, String group, List<HudEntry> newEntries) {
+    public static void create(ServerPlayer player, String group, List<HudEntry> newEntries, @Nullable String script) {
         PlayerHud hud = hud(player);
+        hud.groupOwners.put(group, owner(script));
         List<HudEntry> old = new ArrayList<>();
         for (HudEntry e : hud.entries.values()) {
             if (e.group().equals(group)) {
@@ -84,6 +113,7 @@ public final class HudManager {
             hud.entries.put(e.id(), e);
         }
         ops.add(new HudOp.Put(List.copyOf(newEntries)));
+        hud.pruneOwners();
         send(player, ops);
     }
 
@@ -148,6 +178,7 @@ public final class HudManager {
         if (hud.entries.values().removeIf(e -> e.group().equals(name))) {
             ops.add(new HudOp.RemoveGroup(name));
         }
+        hud.pruneOwners();
         send(player, ops);
     }
 
@@ -168,14 +199,54 @@ public final class HudManager {
     }
 
     /** hide/show vanilla <часть>: маска из {@link VanillaHudPart}. */
-    public static void setVanilla(ServerPlayer player, int mask, boolean hide) {
+    public static void setVanilla(ServerPlayer player, int mask, boolean hide, @Nullable String script) {
         PlayerHud hud = hud(player);
-        int updated = hide ? hud.vanillaMask | mask : hud.vanillaMask & ~mask;
+        if (hide) {
+            hud.vanillaByOwner.merge(owner(script), mask, (a, b) -> a | b);
+        } else {
+            // show vanilla — явная просьба вернуть часть: снимаем её у всех скриптов.
+            hud.vanillaByOwner.replaceAll((o, m) -> m & ~mask);
+            hud.vanillaByOwner.values().removeIf(m -> m == 0);
+        }
+        int updated = hud.computeVanillaMask();
         if (updated == hud.vanillaMask) {
             return;
         }
         hud.vanillaMask = updated;
         send(player, List.of(new HudOp.Vanilla(updated)));
+    }
+
+    /**
+     * /sc disable &lt;скрипт&gt;: у всех игроков (и онлайн, и сохранённых офлайн) убрать группы, созданные этим
+     * скриптом, и вернуть ванильные части, которые он прятал (если их не прячет другой скрипт).
+     * Онлайн-игрокам сразу уходят изменения, офлайн получат уже чистое состояние при входе.
+     */
+    public static void unloadScript(String script, MinecraftServer server) {
+        for (Map.Entry<UUID, PlayerHud> me : HUDS.entrySet()) {
+            PlayerHud hud = me.getValue();
+            List<HudOp> ops = new ArrayList<>();
+            for (Map.Entry<String, String> go : List.copyOf(hud.groupOwners.entrySet())) {
+                if (go.getValue().equals(script)) {
+                    String group = go.getKey();
+                    hud.groupOwners.remove(group);
+                    if (hud.entries.values().removeIf(e -> e.group().equals(group))) {
+                        ops.add(new HudOp.RemoveGroup(group));
+                    }
+                }
+            }
+            if (hud.vanillaByOwner.remove(script) != null) {
+                int updated = hud.computeVanillaMask();
+                if (updated != hud.vanillaMask) {
+                    hud.vanillaMask = updated;
+                    ops.add(new HudOp.Vanilla(updated));
+                }
+            }
+            ServerPlayer player = server.getPlayerList().getPlayer(me.getKey());
+            if (player != null) {
+                send(player, ops);
+            }
+        }
+        HUDS.values().removeIf(h -> h.entries.isEmpty() && h.vanillaMask == 0);
     }
 
     /** Вход игрока: клиент начинает с пустого HUD, поэтому отправляем всё сохранённое состояние целиком. */

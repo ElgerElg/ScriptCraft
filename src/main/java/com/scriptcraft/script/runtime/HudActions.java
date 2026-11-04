@@ -51,7 +51,7 @@ public final class HudActions {
                 formatted.add(e.withElement(e.element().format(ctx::format)));
             }
             for (ServerPlayer p : players) {
-                HudManager.create(p, group, formatted);
+                HudManager.create(p, group, formatted, ctx.script());
             }
         }
     }
@@ -122,7 +122,7 @@ public final class HudActions {
         @Override
         public void execute(ExecutionContext ctx) {
             for (ServerPlayer p : target.resolve(ctx)) {
-                HudManager.setVanilla(p, mask, hide);
+                HudManager.setVanilla(p, mask, hide, ctx.script());
             }
         }
     }

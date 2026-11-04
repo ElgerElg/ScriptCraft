@@ -3,6 +3,7 @@ package com.scriptcraft.script;
 import com.scriptcraft.ScriptCraft;
 import com.scriptcraft.command.ScriptCommands;
 import com.scriptcraft.config.ScriptCraftConfig;
+import com.scriptcraft.hud.HudManager;
 import com.scriptcraft.lang.Messages;
 import com.scriptcraft.registry.ScriptRegistries;
 import com.scriptcraft.script.engine.ScriptEngine;
@@ -25,6 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.function.Predicate;
 
 /**
  * Загрузчик скриптов: хранит исходники включённых скриптов, компилирует их движком в одну программу,
@@ -32,6 +34,10 @@ import java.util.TreeMap;
  *
  * Как работает перезагрузка одного скрипта: заново читается только этот файл, остальные берутся из памяти,
  * затем вся программа пересобирается (разбор быстрый). Так нет "полузагруженных" состояний.
+ *
+ * Жизненный цикл скрипта: "on unload:" старой версии -> пересборка -> "on load:" новой версии.
+ * load срабатывает при старте сервера, /sc reload, /sc reload &lt;скрипт&gt; и /sc enable — только у затронутых
+ * файлов. Поэтому HUD из "on join or load:" появляется у игроков онлайн сразу, без перезахода.
  */
 public final class ScriptLoader {
     /** Текущий движок. Сюда можно подставить другой (например, на Rhino) — см. TODO в README. */
@@ -100,8 +106,11 @@ public final class ScriptLoader {
 
     /** /sc reload — перезагрузить все скрипты с диска. */
     public static int reloadAll(CommandSourceStack source) {
+        MinecraftServer server = source.getServer();
+        fireScriptEvent(ScriptEvent.UNLOAD, f -> true, server);
         loadAllFromDisk();
         afterChange(source);
+        fireScriptEvent(ScriptEvent.LOAD, f -> true, server);
         int errors = lastErrors.size();
         source.sendSuccess(() -> Messages.component("reload.all", SOURCES.size(), program.commandNames().size(), errors), true);
         sendErrors(source);
@@ -128,9 +137,11 @@ public final class ScriptLoader {
             errors.forEach(e -> source.sendFailure(Component.literal(e)));
             return 0;
         }
+        fireScriptEvent(ScriptEvent.UNLOAD, name::equals, source.getServer());
         SOURCES.put(name, fresh);
         recompile();
         afterChange(source);
+        fireScriptEvent(ScriptEvent.LOAD, name::equals, source.getServer());
         source.sendSuccess(() -> Messages.component("reload.one", name, lastErrors.size()), true);
         sendErrors(source);
         return 1;
@@ -157,6 +168,9 @@ public final class ScriptLoader {
             return 0;
         }
         boolean hadDefines = hasDefines(SOURCES.get(name));
+        // Сначала "on unload:" ещё загруженной версии, потом убираем всё, что скрипт оставил в HUD.
+        fireScriptEvent(ScriptEvent.UNLOAD, name::equals, source.getServer());
+        HudManager.unloadScript(name, source.getServer());
         SOURCES.remove(name);
         recompile();
         afterChange(source);
@@ -194,6 +208,8 @@ public final class ScriptLoader {
         }
         recompile();
         afterChange(source);
+        // "on load:" / "on join or load:" — HUD и прочая подготовка сразу для игроков онлайн.
+        fireScriptEvent(ScriptEvent.LOAD, name::equals, source.getServer());
         source.sendSuccess(() -> Messages.component("script.enabled", name), true);
         errors.forEach(e -> source.sendFailure(Component.literal(e)));
         sendErrors(source);
@@ -267,6 +283,25 @@ public final class ScriptLoader {
         } catch (RuntimeException e) {
             ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка в 'on {}': {}", event.scriptName(), e.getMessage());
         }
+    }
+
+    /** "on load:"/"on unload:" для файлов, прошедших фильтр. Ошибки — в лог, сервер не падает. */
+    private static void fireScriptEvent(ScriptEvent event, Predicate<String> files, MinecraftServer server) {
+        try {
+            program.fireScriptEvent(event, files, server);
+        } catch (RuntimeException e) {
+            ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка в 'on {}': {}", event.scriptName(), e.getMessage());
+        }
+    }
+
+    /** Сервер запущен (мир загружен, переменные прочитаны): "on load:" всех включённых скриптов. */
+    public static void onServerStarted(MinecraftServer server) {
+        fireScriptEvent(ScriptEvent.LOAD, f -> true, server);
+    }
+
+    /** Сервер останавливается (игроки ещё на месте, переменные ещё не сохранены): "on unload:" всех скриптов. */
+    public static void onServerStopping(MinecraftServer server) {
+        fireScriptEvent(ScriptEvent.UNLOAD, f -> true, server);
     }
 
     /** Запуск команды из скрипта. Возвращает результат для Brigadier (1 — успех). */

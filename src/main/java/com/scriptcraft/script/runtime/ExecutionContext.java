@@ -39,6 +39,9 @@ public final class ExecutionContext {
     @Nullable
     private ServerPlayer loopPlayer;
     /** Сколько раз действия выбирали цели и сколько игроков всего нашлось (для "нет целей" в эффект-командах). */
+    /** Файл скрипта, чей код сейчас выполняется (владелец созданного HUD); null — эффект-команда в чате. */
+    @Nullable
+    private String script;
     private int targetQueries;
     private int targetHits;
 
@@ -76,6 +79,17 @@ public final class ExecutionContext {
 
     public ExecutionContext markEffectCommand() {
         this.effectCommand = true;
+        return this;
+    }
+
+    @Nullable
+    public String script() {
+        return script;
+    }
+
+    /** Ставится движком перед запуском обработчика события или команды из файла. */
+    public ExecutionContext setScript(@Nullable String script) {
+        this.script = script;
         return this;
     }
 

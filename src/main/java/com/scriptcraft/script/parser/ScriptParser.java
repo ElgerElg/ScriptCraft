@@ -75,7 +75,7 @@ public final class ScriptParser {
     private record Line(int number, int indent, String text) {
     }
 
-    private final Map<ScriptEvent, List<List<Action>>> events = new EnumMap<>(ScriptEvent.class);
+    private final Map<ScriptEvent, List<EventHandler>> events = new EnumMap<>(ScriptEvent.class);
     private final Map<String, CommandDefinition> commands = new LinkedHashMap<>();
     private final Map<String, BlockDefinition> blocks = new LinkedHashMap<>();
     private final Map<String, ItemDefinition> items = new LinkedHashMap<>();
@@ -187,12 +187,28 @@ public final class ScriptParser {
         String lower = header.toLowerCase(Locale.ROOT);
 
         if (lower.startsWith("on ")) {
-            ScriptEvent event = ScriptEvent.byName(lower.substring(3).strip());
-            if (event == null) {
-                error(headerLine, "неизвестное событие: " + header.substring(3).strip());
-                return;
+            // "on join:", "on load:", несколько событий — "on join or load:" (одно тело на все).
+            List<ScriptEvent> list = new ArrayList<>();
+            for (String part : lower.substring(3).split("\\s+or\\s+")) {
+                ScriptEvent event = ScriptEvent.byName(part);
+                if (event == null) {
+                    error(headerLine, "неизвестное событие: " + part.strip() + " (join, quit, load, unload)");
+                    return;
+                }
+                if (list.contains(event)) {
+                    error(headerLine, "событие '" + event.scriptName() + "' указано дважды");
+                    return;
+                }
+                list.add(event);
             }
-            events.computeIfAbsent(event, e -> new ArrayList<>()).add(parseActions(body));
+            // load/unload вместе с событием игрока (join/quit) выполняются для КАЖДОГО игрока онлайн:
+            // "on join or load:" = при входе игрока + сразу всем, кто уже на сервере, когда скрипт загрузился.
+            boolean withPlayerEvent = list.stream().anyMatch(ScriptEvent::playerEvent);
+            List<Action> actions = parseActions(body);
+            for (ScriptEvent event : list) {
+                events.computeIfAbsent(event, e -> new ArrayList<>())
+                        .add(new EventHandler(currentFile, actions, !event.playerEvent() && withPlayerEvent));
+            }
             return;
         }
 
@@ -208,7 +224,7 @@ public final class ScriptParser {
                 error(headerLine, "команда /" + name + " уже объявлена в другом месте");
                 return;
             }
-            commands.put(name, new CommandDefinition(name, permission, parseActions(body)));
+            commands.put(name, new CommandDefinition(name, permission, parseActions(body), currentFile));
             return;
         }
 

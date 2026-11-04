@@ -50,11 +50,11 @@ command /announce permission 2:
     id: "hud",
     title: { ru: "HUD: свой хотбар, полосы HP и голода, картинки и слои", en: "HUD: custom hotbar, HP and hunger bars, images and layers" },
     intro: {
-      ru: "При входе игрок получает свой HUD: хотбар из 9 настоящих слотов, полосы здоровья и сытости с картинками заполнения и рамкой (рамка — отдельная картинка слоем выше), счётчик монет со слотом-картинкой. Ванильные хотбар, сердечки и голод спрятаны. Полосы со значением `health`/`food` клиент обновляет сам каждый кадр — без пакетов. Картинки лежат в `scriptcraft/resources/assets/example/textures/gui/` и отправляются игрокам автоматически.",
-      en: "On join the player gets a custom HUD: a hotbar of 9 real slots, health and hunger bars with fill images and a frame (the frame is a separate image on a higher layer), and a coin counter with an image slot. The vanilla hotbar, hearts and hunger are hidden. Bars with `health`/`food` values are updated by the client every frame — no packets. Images live in `scriptcraft/resources/assets/example/textures/gui/` and are sent to players automatically."
+      ru: "При входе (и сразу всем онлайн — при `/sc enable hud`, `/sc reload` и старте сервера, благодаря `on join or load:`) игрок получает свой HUD: хотбар из 9 настоящих слотов, полосы здоровья и сытости с картинками заполнения и рамкой (рамка — отдельная картинка слоем выше), счётчик монет со слотом-картинкой. Ванильные хотбар, сердечки и голод спрятаны. Полосы со значением `health`/`food` клиент обновляет сам каждый кадр — без пакетов. Картинки лежат в `scriptcraft/resources/assets/example/textures/gui/` и отправляются игрокам автоматически.",
+      en: "On join (and instantly for everyone online on `/sc enable hud`, `/sc reload` and server start, thanks to `on join or load:`) the player gets a custom HUD: a hotbar of 9 real slots, health and hunger bars with fill images and a frame (the frame is a separate image on a higher layer), and a coin counter with an image slot. The vanilla hotbar, hearts and hunger are hidden. Bars with `health`/`food` values are updated by the client every frame — no packets. Images live in `scriptcraft/resources/assets/example/textures/gui/` and are sent to players automatically."
     },
     blocks: [
-      { lang: "sk", title: { ru: "scriptcraft/scripts/hud.sk", en: "scriptcraft/scripts/hud.sk" }, code: `on join:
+      { lang: "sk", title: { ru: "scriptcraft/scripts/hud.sk", en: "scriptcraft/scripts/hud.sk" }, code: `on join or load:
     # Прячем ванильные хотбар, сердечки и голод — рисуем свои
     hide vanilla hotbar for player
     hide vanilla health for player
@@ -112,10 +112,12 @@ command /hudreset:
     notes: {
       ru: ["`layer` — порядок отрисовки: больше = выше. Отрицательный слой рисуется под ванильным HUD.",
            "HUD хранится на сервере и возвращается игроку после перезахода; `/sc reload` его не сбрасывает — повторный `create hud` с тем же именем заменяет группу.",
+           "`/sc disable hud` убирает все группы, созданные этим скриптом, и возвращает ванильные части, которые он прятал.",
            "Клиенту уходят только изменения: `set value of bar` с тем же значением ничего не отправляет.",
            "`bar`, `hotbar`, `slot image/text` и `layer` работают и в `open screen`."],
       en: ["`layer` is the drawing order: higher = on top. A negative layer is drawn below the vanilla HUD.",
            "The HUD is kept on the server and comes back after re-joining; `/sc reload` does not reset it — running `create hud` with the same name replaces the group.",
+           "`/sc disable hud` removes every group created by this script and restores the vanilla parts it hid.",
            "Only changes are sent: `set value of bar` with the same value sends nothing.",
            "`bar`, `hotbar`, `slot image/text` and `layer` also work in `open screen`."]
     },

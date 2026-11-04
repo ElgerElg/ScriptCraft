@@ -1,7 +1,9 @@
 package com.scriptcraft.script.engine;
 
+import com.scriptcraft.ScriptCraft;
 import com.scriptcraft.script.parser.BlockDefinition;
 import com.scriptcraft.script.parser.CommandDefinition;
+import com.scriptcraft.script.parser.EventHandler;
 import com.scriptcraft.script.parser.ItemDefinition;
 import com.scriptcraft.script.parser.ParseResult;
 import com.scriptcraft.script.runtime.Action;
@@ -9,9 +11,13 @@ import com.scriptcraft.script.runtime.Actions;
 import com.scriptcraft.script.runtime.ExecutionContext;
 import com.scriptcraft.script.runtime.ScriptEvent;
 
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * Программа встроенного движка. Неизменяема: при /sc reload создаётся новая и
@@ -47,8 +53,36 @@ final class SimpleProgram implements ScriptProgram {
 
     @Override
     public void fireEvent(ScriptEvent event, ExecutionContext ctx) {
-        for (List<Action> handler : parsed.events().getOrDefault(event, List.of())) {
-            runActions(handler, ctx);
+        for (EventHandler handler : parsed.events().getOrDefault(event, List.of())) {
+            ctx.setScript(handler.file());
+            runActions(handler.actions(), ctx);
+        }
+    }
+
+    @Override
+    public void fireScriptEvent(ScriptEvent event, Predicate<String> files, MinecraftServer server) {
+        for (EventHandler handler : parsed.events().getOrDefault(event, List.of())) {
+            if (!files.test(handler.file())) {
+                continue;
+            }
+            if (handler.eachPlayer()) {
+                // Копия списка: обработчик может кого-то кикнуть/телепортировать между мирами.
+                for (ServerPlayer player : List.copyOf(server.getPlayerList().getPlayers())) {
+                    runSafely(event, handler, new ExecutionContext(server, player, null));
+                }
+            } else {
+                runSafely(event, handler, new ExecutionContext(server, null, null));
+            }
+        }
+    }
+
+    /** Каждый запуск — свой контекст и лимит; ошибка не прерывает остальные обработчики и игроков. */
+    private static void runSafely(ScriptEvent event, EventHandler handler, ExecutionContext ctx) {
+        ctx.setScript(handler.file());
+        try {
+            runActions(handler.actions(), ctx);
+        } catch (RuntimeException e) {
+            ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка в 'on {}' ({}): {}", event.scriptName(), handler.file(), e.getMessage());
         }
     }
 
@@ -59,6 +93,7 @@ final class SimpleProgram implements ScriptProgram {
         if (def == null) {
             return false;
         }
+        ctx.setScript(def.file());
         runActions(def.actions(), ctx);
         return true;
     }

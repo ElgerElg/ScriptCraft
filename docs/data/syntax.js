@@ -33,15 +33,15 @@ window.SC_DOCS.syntax = {
   {
     id: "event-join", category: "events",
     name: { ru: "Вход игрока", en: "Player join" },
-    syntax: ["on join:"],
+    syntax: ["on join:", "on join or load:"],
     desc: {
-      ru: "Срабатывает, когда игрок заходит на сервер. Внутри `player` — зашедший игрок.",
-      en: "Fires when a player joins the server. Inside, `player` is the joining player."
+      ru: "Срабатывает, когда игрок заходит на сервер. Внутри `player` — зашедший игрок. `on join or load:` — то же тело выполняется ещё и при загрузке скрипта для каждого игрока онлайн: так HUD и прочая подготовка появляются сразу после `/sc enable`, без перезахода.",
+      en: "Fires when a player joins the server. Inside, `player` is the joining player. With `on join or load:` the same body also runs when the script is loaded, once for every online player — so a HUD and other setup appear right after `/sc enable`, without re-joining."
     },
     example: `on join:
     send "&aПривет, %player%!" to player
     broadcast "&7%player% зашёл (онлайн: %online%)"`,
-    since: "0.1.0", related: ["event-quit", "ph-player", "eff-send", "eff-broadcast"]
+    since: "0.1.0", related: ["event-quit", "event-load", "ph-player", "eff-send", "eff-broadcast"]
   },
   {
     id: "event-quit", category: "events",
@@ -53,7 +53,35 @@ window.SC_DOCS.syntax = {
     },
     example: `on quit:
     broadcast "&7%player% вышел с сервера"`,
-    since: "0.1.0", related: ["event-join"]
+    since: "0.1.0", related: ["event-join", "event-unload"]
+  },
+  {
+    id: "event-load", category: "events",
+    name: { ru: "Загрузка скрипта", en: "Script load" },
+    syntax: ["on load:", "on script load:", "on join or load:"],
+    desc: {
+      ru: "Срабатывает один раз для этого скрипта, когда он загружен: при старте сервера, `/sc reload`, `/sc reload <скрипт>` и `/sc enable <скрипт>` (только у затронутых файлов). Игрока нет — используйте `all players`/`broadcast`. В связке `on join or load:` тело выполняется для каждого игрока онлайн с ним в `player`; несколько событий можно перечислить через `or`.",
+      en: "Fires once for this script when it is loaded: on server start, `/sc reload`, `/sc reload <script>` and `/sc enable <script>` (only for the affected files). There is no player — use `all players`/`broadcast`. In `on join or load:` the body runs for every online player with them as `player`; several events can be joined with `or`."
+    },
+    example: `on load:
+    broadcast "&7Скрипт событий загружен"
+
+on join or load:
+    create hud "coins" for player:
+        text "{coins::%player%}" at 4, 4 anchor top_left`,
+    since: "0.1.5", related: ["event-unload", "event-join", "hud-create", "cmd-disable"]
+  },
+  {
+    id: "event-unload", category: "events",
+    name: { ru: "Выгрузка скрипта", en: "Script unload" },
+    syntax: ["on unload:", "on script unload:", "on quit or unload:"],
+    desc: {
+      ru: "Срабатывает перед выгрузкой скрипта: `/sc disable <скрипт>`, перед `/sc reload` (старая версия) и при остановке сервера. Игрока нет; `on quit or unload:` выполняется для каждого игрока онлайн. HUD, созданный скриптом, при `/sc disable` убирается автоматически.",
+      en: "Fires before the script is unloaded: `/sc disable <script>`, before `/sc reload` (old version) and on server stop. There is no player; `on quit or unload:` runs for every online player. A HUD created by the script is removed automatically on `/sc disable`."
+    },
+    example: `on unload:
+    broadcast "&7Скрипт событий выключен"`,
+    since: "0.1.5", related: ["event-load", "event-quit", "cmd-disable"]
   },
 
   // ================================================================== СТРУКТУРЫ
@@ -792,10 +820,10 @@ slot example:ruby 4 at 60, -15`,
     name: { ru: "Создать HUD", en: "Create HUD" },
     syntax: ["create hud \"<группа>\":", "create hud \"<группа>\" for <цель>:"],
     desc: {
-      ru: "Рисует поверх экрана игры группу элементов, перечисленных с отступом ниже: `text`, `image`, `slot`, `bar`, `hotbar` (кнопок нет — HUD не принимает клики). Имя группы — латиница. Повторный `create hud` с тем же именем заменяет группу целиком (если ничего не изменилось — пакет не отправляется). HUD хранится на сервере: после перезахода игрок получает его снова; `/sc reload` его не трогает, при остановке сервера он очищается. До 128 элементов на игрока.",
-      en: "Draws a group of elements over the game screen, listed indented below: `text`, `image`, `slot`, `bar`, `hotbar` (no buttons — the HUD takes no clicks). The group name is Latin. Running `create hud` again with the same name replaces the whole group (nothing is sent if nothing changed). The HUD is kept on the server: players get it back after re-joining; `/sc reload` does not touch it, it is cleared when the server stops. Up to 128 elements per player."
+      ru: "Рисует поверх экрана игры группу элементов, перечисленных с отступом ниже: `text`, `image`, `slot`, `bar`, `hotbar` (кнопок нет — HUD не принимает клики). Имя группы — латиница. Повторный `create hud` с тем же именем заменяет группу целиком (если ничего не изменилось — пакет не отправляется). HUD хранится на сервере: после перезахода игрок получает его снова; `/sc reload` его не трогает, при остановке сервера он очищается. Группа запоминает создавший её скрипт: `/sc disable` этого скрипта убирает её у всех. Чтобы HUD появлялся сразу после `/sc enable`, создавайте его в `on join or load:`. До 128 элементов на игрока.",
+      en: "Draws a group of elements over the game screen, listed indented below: `text`, `image`, `slot`, `bar`, `hotbar` (no buttons — the HUD takes no clicks). The group name is Latin. Running `create hud` again with the same name replaces the whole group (nothing is sent if nothing changed). The HUD is kept on the server: players get it back after re-joining; `/sc reload` does not touch it, it is cleared when the server stops. A group remembers the script that created it: `/sc disable` of that script removes it for everyone. To show the HUD right after `/sc enable`, create it in `on join or load:`. Up to 128 elements per player."
     },
-    example: `on join:
+    example: `on join or load:
     create hud "stats" for player:
         hotbar color #FFD700
         bar "hp" value health at -51, -28 size 80x8 anchor bottom color #E53935
@@ -929,8 +957,8 @@ clear hud for player`,
       "<часть>: hotbar, health, food, armor, air, experience, mount_health, jump_bar, crosshair, effects, item_name, scoreboard, bossbar, hud (всё)"
     ],
     desc: {
-      ru: "Прячет или возвращает части ванильного HUD. Синонимы: `hearts`, `hunger`, `xp`, `potions`, `boss_bar`, `all`. Состояние хранится на сервере вместе с HUD и восстанавливается при входе.",
-      en: "Hides or restores parts of the vanilla HUD. Aliases: `hearts`, `hunger`, `xp`, `potions`, `boss_bar`, `all`. The state is kept on the server with the HUD and restored on join."
+      ru: "Прячет или возвращает части ванильного HUD. Синонимы: `hearts`, `hunger`, `xp`, `potions`, `boss_bar`, `all`. Состояние хранится на сервере вместе с HUD и восстанавливается при входе. Каждый скрипт прячет «свои» части: `/sc disable` скрипта возвращает их (если их не прячет другой скрипт); `show vanilla` возвращает часть независимо от того, кто её спрятал.",
+      en: "Hides or restores parts of the vanilla HUD. Aliases: `hearts`, `hunger`, `xp`, `potions`, `boss_bar`, `all`. The state is kept on the server with the HUD and restored on join. Each script hides “its own” parts: `/sc disable` of the script restores them (unless another script hides them too); `show vanilla` restores a part no matter who hid it."
     },
     example: `hide vanilla hotbar for player
 hide vanilla health for player
@@ -967,12 +995,12 @@ show vanilla all for player`,
     name: { ru: "/sc enable | disable", en: "/sc enable | disable" },
     syntax: ["/sc disable <скрипт>", "/sc enable <скрипт>"],
     desc: {
-      ru: "`disable` выгружает скрипт и переименовывает файл в `-имя.sk`; `enable` возвращает имя и загружает. Команды выключенного скрипта остаются в списке до перезапуска и отвечают «выключена».",
-      en: "`disable` unloads the script and renames the file to `-name.sk`; `enable` renames it back and loads it. Commands of a disabled script stay registered until restart and reply “disabled”."
+      ru: "`disable` выгружает скрипт и переименовывает файл в `-имя.sk`; `enable` возвращает имя и загружает (срабатывает `on load:`). При `disable` срабатывает `on unload:`, а HUD-группы и спрятанные ванильные части этого скрипта убираются у всех игроков. Команды выключенного скрипта остаются в списке до перезапуска и отвечают «выключена».",
+      en: "`disable` unloads the script and renames the file to `-name.sk`; `enable` renames it back and loads it (fires `on load:`). `disable` fires `on unload:` and removes this script's HUD groups and hidden vanilla parts for all players. Commands of a disabled script stay registered until restart and reply “disabled”."
     },
     example: `/sc disable welcome
 /sc enable welcome`,
-    since: "0.1.0", related: ["cmd-reload"]
+    since: "0.1.0", related: ["cmd-reload", "event-load", "event-unload"]
   },
   {
     id: "cmd-list", category: "commands",
