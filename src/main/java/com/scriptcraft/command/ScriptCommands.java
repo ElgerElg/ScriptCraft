@@ -1,21 +1,32 @@
 package com.scriptcraft.command;
 
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import com.scriptcraft.ScriptCraft;
 import com.scriptcraft.config.ScriptCraftConfig;
 import com.scriptcraft.lang.Messages;
+import com.scriptcraft.registry.Bindings;
 import com.scriptcraft.resources.ResourceIndex;
 import com.scriptcraft.resources.ResourceSync;
 import com.scriptcraft.script.ScriptLoader;
 import com.scriptcraft.script.ScriptPaths;
+import com.scriptcraft.script.runtime.ItemResolver;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
+import net.minecraft.commands.arguments.EntityArgument;
+import net.minecraft.commands.arguments.ResourceLocationArgument;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.network.chat.Component;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -46,6 +57,13 @@ public final class ScriptCommands {
     /** Подсказки: выключенные скрипты (для enable), показываются без минуса. */
     private static final SuggestionProvider<CommandSourceStack> DISABLED_SCRIPTS = (ctx, builder) ->
             SharedSuggestionProvider.suggest(suggestions(ScriptPaths::isDisabled), builder);
+
+    /** Подсказки: id привязанных define (для /sc give). */
+    private static final SuggestionProvider<CommandSourceStack> BOUND_IDS = (ctx, builder) -> {
+        List<String> ids = new ArrayList<>(Bindings.current().blockSlots().keySet());
+        ids.addAll(Bindings.current().itemSlots().keySet());
+        return SharedSuggestionProvider.suggest(ids, builder);
+    };
 
     private ScriptCommands() {
     }
@@ -98,7 +116,63 @@ public final class ScriptCommands {
                                         StringArgumentType.getString(ctx, "script")))))
                 .then(Commands.literal("list").executes(ctx -> ScriptLoader.list(ctx.getSource())))
                 .then(Commands.literal("resources")
-                        .then(Commands.literal("reload").executes(ctx -> reloadResources(ctx.getSource()))));
+                        .then(Commands.literal("reload").executes(ctx -> reloadResources(ctx.getSource()))))
+                .then(Commands.literal("ids").executes(ctx -> ids(ctx.getSource())))
+                // Ванильная /give не знает id скриптов (в реестре только scriptcraft:dyn_*), поэтому своя.
+                .then(Commands.literal("give")
+                        .then(Commands.argument("targets", EntityArgument.players())
+                                .then(Commands.argument("item", ResourceLocationArgument.id())
+                                        .suggests(BOUND_IDS)
+                                        .executes(ctx -> give(ctx.getSource(), EntityArgument.getPlayers(ctx, "targets"),
+                                                ResourceLocationArgument.getId(ctx, "item"), 1))
+                                        .then(Commands.argument("count", IntegerArgumentType.integer(1, 64 * 36))
+                                                .executes(ctx -> give(ctx.getSource(), EntityArgument.getPlayers(ctx, "targets"),
+                                                        ResourceLocationArgument.getId(ctx, "item"),
+                                                        IntegerArgumentType.getInteger(ctx, "count")))))));
+    }
+
+    /** /sc ids: какие технические id (F3, ванильные команды, датапаки) получили define из скриптов. */
+    private static int ids(CommandSourceStack source) {
+        Bindings.Snapshot b = Bindings.current();
+        if (b.isEmpty()) {
+            source.sendSuccess(() -> Messages.component("ids.none"), false);
+            return 1;
+        }
+        source.sendSuccess(() -> Messages.component("ids.header"), false);
+        List<String> all = new ArrayList<>(b.blockSlots().keySet());
+        all.addAll(b.itemSlots().keySet());
+        for (String id : all) {
+            String poolId = b.poolId(id);
+            source.sendSuccess(() -> Messages.component("ids.entry", id, poolId), false);
+        }
+        return all.size();
+    }
+
+    /** /sc give <игроки> <id> [количество] — как give в скриптах: example:ruby_block, ruby, diamond. */
+    private static int give(CommandSourceStack source, Collection<ServerPlayer> targets, ResourceLocation id, int count) {
+        // "ruby" Brigadier читает как minecraft:ruby — тогда ищем ещё и по короткому имени.
+        Item item = ItemResolver.resolve(id.toString())
+                .or(() -> "minecraft".equals(id.getNamespace()) ? ItemResolver.resolve(id.getPath()) : java.util.Optional.empty())
+                .orElse(null);
+        if (item == null) {
+            source.sendFailure(Messages.component("give.unknown", id.toString()));
+            return 0;
+        }
+        int maxStack = new ItemStack(item).getMaxStackSize();
+        for (ServerPlayer p : targets) {
+            int left = count;
+            while (left > 0) {
+                int size = Math.min(left, maxStack);
+                ItemStack stack = new ItemStack(item, size);
+                if (!p.getInventory().add(stack)) {
+                    p.drop(stack, false);
+                }
+                left -= size;
+            }
+        }
+        Component name = new ItemStack(item).getHoverName();
+        source.sendSuccess(() -> Messages.component("give.done", count, name.getString(), targets.size()), true);
+        return targets.size();
     }
 
     /** /sc resources reload: перечитать scriptcraft/resources/assets и разослать изменения игрокам онлайн. */

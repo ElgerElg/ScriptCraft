@@ -2,6 +2,8 @@ package com.scriptcraft.event;
 
 import com.scriptcraft.command.ScriptCommands;
 import com.scriptcraft.hud.HudManager;
+import com.scriptcraft.registry.BindingStore;
+import com.scriptcraft.registry.BindingSync;
 import com.scriptcraft.resources.ResourceSync;
 import com.scriptcraft.script.ScriptLoader;
 import com.scriptcraft.script.runtime.ScriptEvent;
@@ -15,6 +17,7 @@ import net.minecraftforge.event.server.ServerStartingEvent;
 import net.minecraftforge.event.server.ServerStoppedEvent;
 import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.registries.MissingMappingsEvent;
 
 /**
  * Мост между событиями Forge и событиями скриптов.
@@ -36,6 +39,8 @@ public final class ServerEvents {
         if (event.getEntity() instanceof ServerPlayer player) {
             // Сначала манифест ресурсов: клиент начнёт докачку, пока скрипт приветствует игрока.
             ResourceSync.onLogin(player);
+            // Таблица привязок define -> слоты пула: клиент сразу знает новые блоки/предметы (без перезапуска).
+            BindingSync.onLogin(player);
             // HUD, созданный до выхода игрока, отправляется заново (клиент при отключении его стёр).
             // Если скрипт "on join" создаст тот же HUD ещё раз, повторной отправки не будет — сервер сравнит.
             HudManager.onLogin(player);
@@ -62,6 +67,14 @@ public final class ServerEvents {
     public static void onServerStarting(ServerStartingEvent event) {
         VariableStore.load(event.getServer());
         ResourceSync.onServerStarting();
+        // Мир загружен: define из скриптов получают слоты пула (запоминаются в данных мира).
+        BindingSync.onServerStarting(event.getServer(), ScriptLoader.getProgram());
+    }
+
+    /** Мир из старой версии мода: блоки под id скриптов (example:ruby_block) переназначаются на слоты пула. */
+    @SubscribeEvent
+    public static void onMissingMappings(MissingMappingsEvent event) {
+        BindingSync.onMissingMappings(event);
     }
 
     /** Сервер полностью запущен: "on load:" всех включённых скриптов. */
@@ -83,6 +96,7 @@ public final class ServerEvents {
         VariableStore.shutdown();
         ResourceSync.onServerStopped();
         HudManager.onServerStopped();
+        BindingStore.onServerStopped();
     }
 
     /** Периодическое автосохранение (интервал — variablesSaveIntervalSeconds в конфиге). */

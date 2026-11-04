@@ -5,6 +5,7 @@ import com.scriptcraft.command.EffectCommands;
 import com.scriptcraft.config.ScriptCraftConfig;
 import com.scriptcraft.event.ServerEvents;
 import com.scriptcraft.network.ModNetwork;
+import com.scriptcraft.registry.BindingStore;
 import com.scriptcraft.registry.ScriptRegistries;
 import com.scriptcraft.resources.ResourcePacks;
 import com.scriptcraft.script.ScriptLoader;
@@ -22,13 +23,14 @@ import org.slf4j.Logger;
  *
  * Порядок запуска важен:
  * 1) создаём папку scriptcraft/ (scripts, variables, resources, cache; перенос старой scripts/; примеры);
- * 2) ПРЕДВАРИТЕЛЬНО читаем и разбираем все скрипты — ещё ДО регистрации реестров;
- * 3) из найденных в скриптах "define block / define item" создаём записи в DeferredRegister;
+ * 2) читаем и разбираем все скрипты (первая загрузка логики);
+ * 3) регистрируем фиксированный пул блоков/предметов scriptcraft:dyn_block_N / dyn_item_N — одинаковый
+ *    на клиенте и сервере, независимо от скриптов на диске (см. ScriptRegistries);
  * 4) подключаем DeferredRegister к шине мода — Forge сам зарегистрирует их в RegisterEvent.
  *
- * ВАЖНО: реестры блоков и предметов "замораживаются" после загрузки. Поэтому НОВЫЕ блоки и предметы
- * из скриптов появятся только после ПЕРЕЗАПУСКА игры/сервера. А логика (события, команды, сообщения, экраны)
- * перезагружается "на горячую" командой /scriptcraft reload (синонимы /sc и /script).
+ * Реестры блоков и предметов "замораживаются" после загрузки, поэтому "define block / define item" не
+ * регистрируют ничего нового: сервер во время работы привязывает их к свободным слотам пула и рассылает
+ * таблицу игрокам. Новые блоки появляются после /sc reload без перезапуска сервера и клиентов.
  *
  * Конфиг (scriptcraft/config.toml) Forge загружает ПОСЛЕ конструктора мода, поэтому
  * во время предварительного разбора действуют значения по умолчанию (язык en, стандартные лимиты).
@@ -50,12 +52,12 @@ public class ScriptCraft {
         //    Forge разрешает имя файла относительно config/, поэтому "../scriptcraft/config.toml".
         ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, ScriptCraftConfig.SPEC, ModPaths.CONFIG_FILE);
 
-        // 2. Предварительный разбор скриптов: нужен, чтобы узнать объявленные блоки/предметы до заморозки реестров.
-        //    Заодно это первая загрузка логики, поэтому события/команды готовы сразу.
+        // 2. Первая загрузка скриптов: события/команды готовы сразу. Define отсюда закрепляют "подсказки" слотов
+        //    (scriptcraft/bindings.json) — нужны data-паку и переназначению блоков старых миров до загрузки мира.
         ScriptLoader.initialLoad();
+        BindingStore.prepare(ScriptLoader.getProgram());
 
-        // 3. Регистрируем блоки/предметы из скриптов (свой DeferredRegister на каждый namespace). ОДИН раз за запуск.
-        ScriptRegistries.registerFromScripts(ScriptLoader.getProgram());
+        // 3. Пул блоков/предметов (одинаковый у всех) и вкладка творческого режима.
         ScriptRegistries.register(modBus);
 
         // 4. Сетевой канал: экраны из скриптов и синхронизация ресурсов.

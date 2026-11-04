@@ -1,7 +1,6 @@
 package com.scriptcraft.script.parser;
 
 import net.minecraft.world.level.block.SoundType;
-import net.minecraft.world.level.block.state.BlockBehaviour;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -28,20 +27,13 @@ public record BlockDefinition(String id, @Nullable String displayName, float har
         return id.substring(id.indexOf(':') + 1);
     }
 
-    /** Превращает описание из скрипта в свойства блока Minecraft. */
-    public BlockBehaviour.Properties toProperties() {
-        final int light = Math.max(0, Math.min(15, lightLevel));
-        BlockBehaviour.Properties props = BlockBehaviour.Properties.of()
-                .strength(hardness, resistance)
-                .sound(soundType())
-                .lightLevel(state -> light);
-        if (requiresTool) {
-            props = props.requiresCorrectToolForDrops();
-        }
-        return props;
+    /** Свечение, ограниченное 0..15 (значение свойства состояния LIGHT у блока-слота). */
+    public int light() {
+        return Math.max(0, Math.min(15, lightLevel));
     }
 
-    private SoundType soundType() {
+    /** Звук блока по имени из скрипта (неизвестное имя — камень). */
+    public SoundType soundType() {
         return switch (sound) {
             case "wood" -> SoundType.WOOD;
             case "metal" -> SoundType.METAL;

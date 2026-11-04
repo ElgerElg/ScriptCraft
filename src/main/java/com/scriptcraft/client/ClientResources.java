@@ -60,6 +60,11 @@ public final class ClientResources {
     private static final Set<ResourceLocation> READY = new HashSet<>();
     /** Когда снова проверить картинку, которой пока нет ни в ресурсах, ни в кэше (мс). */
     private static final Map<ResourceLocation, Long> RETRY_AT = new HashMap<>();
+    /**
+     * Нужна перезагрузка ресурсов из-за новой раскладки слотов пула. Не сбрасывается при выходе: таблица уже
+     * сохранена, и если перезагрузка не успела пройти, она выполнится при следующем входе.
+     */
+    private static boolean bindingsReload = false;
 
     private ClientResources() {
     }
@@ -187,11 +192,25 @@ public final class ClientResources {
         }
     }
 
+    /**
+     * Пришла таблица привязок. layoutChanged — модели слотов пула указывают на другие id: их нужно "запечь"
+     * перезагрузкой ресурсов. Если файлы ещё докачиваются — перезагрузка будет одна, после докачки.
+     */
+    public static void onBindings(boolean layoutChanged) {
+        if (layoutChanged) {
+            bindingsReload = true;
+        }
+        if (bindingsReload && PENDING.isEmpty()) {
+            apply();
+        }
+    }
+
     private static void apply() {
-        if (CHANGED.isEmpty()) {
+        if (CHANGED.isEmpty() && !bindingsReload) {
             return;
         }
-        boolean needReload = false;
+        boolean needReload = bindingsReload;
+        bindingsReload = false;
         int gui = 0;
         for (String path : CHANGED) {
             if (isGuiTexture(path)) {

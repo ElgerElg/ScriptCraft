@@ -1,6 +1,5 @@
 package com.scriptcraft.script.parser;
 
-import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Rarity;
 import org.jetbrains.annotations.Nullable;
 
@@ -22,17 +21,18 @@ public record ItemDefinition(String id, @Nullable String displayName, int stackS
         return id.substring(id.indexOf(':') + 1);
     }
 
-    public Item.Properties toProperties() {
-        Item.Properties props = new Item.Properties().stacksTo(Math.max(1, Math.min(64, stackSize)));
-        if (fireResistant) {
-            props = props.fireResistant();
-        }
-        Rarity r = switch (rarity) {
+    /** Размер стака, ограниченный 1..64. */
+    public int clampedStackSize() {
+        return Math.max(1, Math.min(64, stackSize));
+    }
+
+    /** Редкость (цвет названия) по имени из скрипта. */
+    public Rarity rarityValue() {
+        return switch (rarity) {
             case "uncommon" -> Rarity.UNCOMMON;
             case "rare" -> Rarity.RARE;
             case "epic" -> Rarity.EPIC;
             default -> Rarity.COMMON;
         };
-        return props.rarity(r);
     }
 }

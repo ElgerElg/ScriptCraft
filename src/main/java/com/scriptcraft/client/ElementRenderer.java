@@ -356,6 +356,11 @@ public final class ElementRenderer {
         return id;
     }
 
+    /** Сброс кэша предметов: после новой таблицы привязок example:ruby может указывать на другой слот. */
+    public static void clearItemCache() {
+        ITEMS.clear();
+    }
+
     @Nullable
     private static Item item(String id) {
         // Тот же поиск предмета, что и на сервере: "diamond" -> minecraft:diamond, иначе scriptcraft:<id>.

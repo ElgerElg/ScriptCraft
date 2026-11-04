@@ -30,14 +30,29 @@ public final class Messages {
         add("help.help", "&e/%1$s help &7- this help", "&e/%1$s help &7- эта справка");
         add("help.resources", "&e/%1$s resources reload &7- rescan scriptcraft/resources and send changes to online players",
                 "&e/%1$s resources reload &7- перечитать scriptcraft/resources и отправить изменения игрокам онлайн");
+        add("help.ids", "&e/%1$s ids &7- show which registry id each script block/item got", "&e/%1$s ids &7- какой id в реестре получил каждый блок/предмет скриптов");
+        add("help.give", "&e/%1$s give <players> <id> [count] &7- give a script item (example:ruby_block)", "&e/%1$s give <игроки> <id> [кол-во] &7- выдать предмет скрипта (example:ruby_block)");
         add("help.aliases", "&7Aliases: /scriptcraft, /sc, /script", "&7Синонимы: /scriptcraft, /sc, /script");
 
         // --- перезагрузка
         add("reload.all", "&aReloaded %d script(s): %d command(s), %d error(s)", "&aПерезагружено скриптов: %d, команд: %d, ошибок: %d");
         add("reload.one", "&aReloaded script %s (%d error(s) total)", "&aСкрипт %s перезагружен (всего ошибок: %d)");
         add("reload.time", "Scripts compiled in %d ms", "Скрипты скомпилированы за %d мс");
-        add("restart.block", "&eNew block %s will appear only after restarting the server and clients", "&eНовый блок %s появится только после перезапуска сервера и клиентов");
-        add("restart.item", "&eNew item %s will appear only after restarting the server and clients", "&eНовый предмет %s появится только после перезапуска сервера и клиентов");
+        // --- привязка define к слотам пула (scriptcraft:dyn_block_N / dyn_item_N)
+        add("bindings.added", "&aBlock/item %s is live as %s - players get it without restarting",
+                "&aБлок/предмет %s доступен как %s — игрокам перезапуск не нужен");
+        add("bindings.pool_full", "&cNo free slot for %s: the pool has %d block and %d item slots (defines removed from this world keep their slots)",
+                "&cНет свободного слота для %s: в пуле %d слотов блоков и %d слотов предметов (удалённые define сохраняют слоты в этом мире)");
+        add("bindings.data_reload", "&7Reloading data (tags, loot tables, recipes) for the new ids...",
+                "&7Перезагружаю данные (теги, лут, рецепты) для новых id...");
+        add("pool.free_block", "Free ScriptCraft block slot %d", "Свободный слот блока ScriptCraft %d");
+        add("pool.free_item", "Free ScriptCraft item slot %d", "Свободный слот предмета ScriptCraft %d");
+        add("ids.header", "&6Script id -> registry id (F3, vanilla commands, other datapacks):",
+                "&6id скрипта -> id в реестре (F3, ванильные команды, чужие датапаки):");
+        add("ids.entry", "&e%s &7-> &f%s", "&e%s &7-> &f%s");
+        add("ids.none", "&7No blocks or items are defined in scripts", "&7В скриптах нет блоков и предметов (define)");
+        add("give.unknown", "&cUnknown item: %s", "&cНеизвестный предмет: %s");
+        add("give.done", "&aGave %d x %s to %d player(s)", "&aВыдано %d x %s игрокам: %d");
 
         // --- включение / выключение
         add("script.not_found", "&cScript not found: %s", "&cСкрипт не найден: %s");
@@ -48,7 +63,8 @@ public final class Messages {
                 "&aСкрипт %s выключен (файл переименован в %s). Его команды останутся в списке до перезапуска и будут отвечать, что выключены.");
         add("script.enabled", "&aScript %s enabled and loaded", "&aСкрипт %s включён и загружен");
         add("script.rename_failed", "&cCould not rename file: %s", "&cНе удалось переименовать файл: %s");
-        add("script.defines_warning", "&eNote: blocks/items (define) of this script change only after restart", "&eВнимание: блоки/предметы (define) этого скрипта изменятся только после перезапуска");
+        add("script.defines_warning", "&eNote: placed blocks/items of this script stay in the world as free slots and come back when the script is enabled again",
+                "&eВнимание: поставленные блоки/предметы этого скрипта остаются в мире как свободные слоты и вернутся, когда скрипт снова включат");
 
         // --- список
         add("list.scripts", "&6Scripts: &f%s", "&6Скрипты: &f%s");
@@ -124,6 +140,7 @@ public final class Messages {
     public static List<String> helpLines(String root) {
         return List.of(get("help.header"), get("help.reload", root), get("help.reload_one", root),
                 get("help.enable", root), get("help.disable", root), get("help.list", root),
-                get("help.resources", root), get("help.help", root), get("help.aliases"));
+                get("help.resources", root), get("help.ids", root), get("help.give", root), get("help.help", root),
+                get("help.aliases"));
     }
 }

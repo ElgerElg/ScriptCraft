@@ -1,7 +1,7 @@
 package com.scriptcraft.script.runtime;
 
 import com.scriptcraft.ScriptCraft;
-import com.scriptcraft.registry.ScriptRegistries;
+import com.scriptcraft.registry.Bindings;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraftforge.registries.ForgeRegistries;
@@ -9,16 +9,20 @@ import net.minecraftforge.registries.ForgeRegistries;
 import java.util.Optional;
 
 /**
- * Поиск предмета по id из скрипта: "mod:item" — как есть; короткий "diamond" -> minecraft:diamond,
- * иначе scriptcraft:<id>, иначе первый предмет с таким путём из других namespace скриптов (example:ruby).
+ * Поиск предмета по id из скрипта.
+ * - "ns:path": сначала привязки define (example:ruby_block -> предмет слота scriptcraft:dyn_block_N), затем реестр;
+ * - короткий "diamond": minecraft:diamond, затем scriptcraft:<id>, затем привязанный define с таким путём (ruby -> example:ruby).
+ * Работает и на клиенте (экраны/HUD): клиент получает ту же таблицу привязок от сервера.
  */
 public final class ItemResolver {
     private ItemResolver() {
     }
 
     public static Optional<Item> resolve(String id) {
+        Bindings.Snapshot bindings = Bindings.current();
         if (id.contains(":")) {
-            return lookup(ResourceLocation.tryParse(id));
+            Item bound = bindings.resolveItem(id);
+            return bound != null ? Optional.of(bound) : lookup(ResourceLocation.tryParse(id));
         }
         Optional<Item> vanilla = lookup(ResourceLocation.tryParse("minecraft:" + id));
         if (vanilla.isPresent()) {
@@ -28,13 +32,7 @@ public final class ItemResolver {
         if (own.isPresent()) {
             return own;
         }
-        for (String ns : ScriptRegistries.namespaces()) {
-            Optional<Item> found = lookup(ResourceLocation.tryParse(ns + ":" + id));
-            if (found.isPresent()) {
-                return found;
-            }
-        }
-        return Optional.empty();
+        return Optional.ofNullable(bindings.resolveByPath(id));
     }
 
     private static Optional<Item> lookup(ResourceLocation rl) {

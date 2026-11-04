@@ -92,11 +92,13 @@ command /hello:
     <tr><td><code>/sc disable &lt;скрипт&gt;</code></td><td><span class="l-ru">выключить: выгрузить и переименовать в <code>-имя.sk</code></span><span class="l-en">disable: unload and rename to <code>-name.sk</code></span></td></tr>
     <tr><td><code>/sc enable &lt;скрипт&gt;</code></td><td><span class="l-ru">включить обратно и загрузить</span><span class="l-en">enable again and load</span></td></tr>
     <tr><td><code>/sc list</code></td><td><span class="l-ru">скрипты, команды, число переменных и ошибок</span><span class="l-en">scripts, commands, variable and error counts</span></td></tr>
+    <tr><td><code>/sc ids</code></td><td><span class="l-ru">какие id слотов получили блоки/предметы скриптов</span><span class="l-en">which slot ids script blocks/items got</span></td></tr>
+    <tr><td><code>/sc give &lt;игроки&gt; &lt;id&gt; [кол-во]</code></td><td><span class="l-ru">выдать блок/предмет по id скрипта</span><span class="l-en">give a script block/item by its id</span></td></tr>
     <tr><td><code>/sc resources reload</code></td><td><span class="l-ru">перечитать <code>resources/assets</code> и разослать изменения игрокам онлайн; <code>data/</code> перечитывает ванильная <code>/reload</code></span><span class="l-en">re-read <code>resources/assets</code> and send changes to online players; <code>data/</code> is reloaded by vanilla <code>/reload</code></span></td></tr>
   </table>
   <div class="note">
-    <span class="l-ru"><b>Блоки и предметы требуют перезапуска.</b> Новые или изменённые <code>define block/item</code> начинают работать только после перезапуска игры/сервера, а файлы с <code>define</code> должны быть одинаковыми на сервере и у всех клиентов (положите <code>scriptcraft/scripts/</code> в сборку модпака). Всё остальное — события, команды, экраны — меняется через <code>/sc reload</code>.</span>
-    <span class="l-en"><b>Blocks and items need a restart.</b> New or changed <code>define block/item</code> only take effect after a game/server restart, and files with <code>define</code> must be identical on the server and all clients (ship <code>scriptcraft/scripts/</code> in your modpack). Everything else — events, commands, screens — changes with <code>/sc reload</code>.</span>
+    <span class="l-ru"><b>Блоки и предметы — без перезапуска.</b> Новые или изменённые <code>define block/item</code> появляются после <code>/sc reload</code>: сервер привязывает их к слотам пула <code>scriptcraft:dyn_block_N</code> / <code>dyn_item_N</code> и рассылает игрокам, скрипты клиентам не нужны. Технические id показывает <code>/sc ids</code>, выдать по id скрипта — <code>/sc give</code>.</span>
+    <span class="l-en"><b>Blocks and items — no restart.</b> New or changed <code>define block/item</code> appear after <code>/sc reload</code>: the server binds them to pool slots <code>scriptcraft:dyn_block_N</code> / <code>dyn_item_N</code> and sends them to players; clients don't need the scripts. <code>/sc ids</code> shows the technical ids, <code>/sc give</code> gives by script id.</span>
   </div>
 
   <h2 id="config"><span class="l-ru">5. Конфиг</span><span class="l-en">5. Config</span></h2>

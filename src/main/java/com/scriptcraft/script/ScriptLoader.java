@@ -5,12 +5,10 @@ import com.scriptcraft.command.ScriptCommands;
 import com.scriptcraft.config.ScriptCraftConfig;
 import com.scriptcraft.hud.HudManager;
 import com.scriptcraft.lang.Messages;
-import com.scriptcraft.registry.ScriptRegistries;
+import com.scriptcraft.registry.BindingSync;
 import com.scriptcraft.script.engine.ScriptEngine;
 import com.scriptcraft.script.engine.ScriptProgram;
 import com.scriptcraft.script.engine.SimpleScriptEngine;
-import com.scriptcraft.script.parser.BlockDefinition;
-import com.scriptcraft.script.parser.ItemDefinition;
 import com.scriptcraft.script.runtime.ExecutionContext;
 import com.scriptcraft.script.runtime.ScriptEvent;
 import com.scriptcraft.script.variables.VariableStore;
@@ -71,7 +69,7 @@ public final class ScriptLoader {
     // ------------------------------------------------------------------ загрузка
 
     /**
-     * Первая загрузка — из конструктора мода (до регистрации блоков).
+     * Первая загрузка — из конструктора мода (до регистрации реестров; define отсюда задают только подсказки слотов).
      * Конфиг в этот момент ещё не загружен, поэтому используются настройки по умолчанию.
      */
     public static void initialLoad() {
@@ -236,14 +234,15 @@ public final class ScriptLoader {
         return s.equals("all") || s.equals("*") || s.equals("scripts");
     }
 
-    /** Есть ли в скрипте define (их изменение требует перезапуска). Грубая, но достаточная проверка. */
+    /** Есть ли в скрипте define (при выключении его блоки остаются в мире "свободными слотами"). Грубая, но достаточная проверка. */
     private static boolean hasDefines(@Nullable ScriptSource source) {
         return source != null && source.lines().stream().anyMatch(l -> l.strip().toLowerCase().startsWith("define "));
     }
 
     /**
      * После любого изменения: новые команды добавляются в дерево Brigadier и дерево заново рассылается игрокам;
-     * для новых define выводится предупреждение о перезапуске.
+     * define заново привязываются к слотам пула — новые блоки/предметы появляются у всех игроков сразу,
+     * без перезапуска (см. {@link BindingSync}).
      */
     private static void afterChange(CommandSourceStack source) {
         MinecraftServer server = source.getServer();
@@ -251,16 +250,7 @@ public final class ScriptLoader {
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             server.getCommands().sendCommands(player);
         }
-        for (BlockDefinition b : program.blocks()) {
-            if (!ScriptRegistries.registeredBlockIds().contains(b.id())) {
-                source.sendSuccess(() -> Messages.component("restart.block", b.id()), false);
-            }
-        }
-        for (ItemDefinition i : program.items()) {
-            if (!ScriptRegistries.registeredItemIds().contains(i.id())) {
-                source.sendSuccess(() -> Messages.component("restart.item", i.id()), false);
-            }
-        }
+        BindingSync.apply(server, program, source);
     }
 
     private static void sendErrors(CommandSourceStack source) {

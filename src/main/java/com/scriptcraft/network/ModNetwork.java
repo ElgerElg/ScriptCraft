@@ -13,7 +13,8 @@ public final class ModNetwork {
     /** Версия протокола: при несовпадении клиент не сможет зайти на сервер. Меняйте при изменении пакетов. */
     // 2: синхронизация ресурсов (манифест / запрос / куски файлов).
     // 3: HUD (HudPacket), слои у элементов, полосы прогресса, новые виды слотов.
-    private static final String PROTOCOL_VERSION = "3";
+    // 4: пул блоков/предметов и таблица привязок (BindingsPacket).
+    private static final String PROTOCOL_VERSION = "4";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(ScriptCraft.MODID, "main"),
@@ -61,6 +62,12 @@ public final class ModNetwork {
                 .encoder(HudPacket::encode)
                 .decoder(HudPacket::decode)
                 .consumerMainThread(HudPacket::handle)
+                .add();
+        // Сервер -> клиент: привязки define к слотам пула (при входе и после /sc reload).
+        CHANNEL.messageBuilder(BindingsPacket.class, id++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(BindingsPacket::encode)
+                .decoder(BindingsPacket::decode)
+                .consumerMainThread(BindingsPacket::handle)
                 .add();
     }
 

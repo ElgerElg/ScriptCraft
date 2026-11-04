@@ -17,6 +17,7 @@ public final class ClientEvents {
     public static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
         ClientResources.reset();
         ClientHud.reset();
+        ClientBindings.onLoggingOut();
     }
 
     /** Скрытие частей ванильного HUD по команде скрипта (hide vanilla hotbar for player). */
