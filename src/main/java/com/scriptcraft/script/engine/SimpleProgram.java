@@ -5,6 +5,7 @@ import com.scriptcraft.script.parser.CommandDefinition;
 import com.scriptcraft.script.parser.ItemDefinition;
 import com.scriptcraft.script.parser.ParseResult;
 import com.scriptcraft.script.runtime.Action;
+import com.scriptcraft.script.runtime.Actions;
 import com.scriptcraft.script.runtime.ExecutionContext;
 import com.scriptcraft.script.runtime.ScriptEvent;
 
@@ -13,7 +14,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Программа встроенного движка. Неизменяема: при /scriptcraft reload создаётся новая и
+ * Программа встроенного движка. Неизменяема: при /sk reload создаётся новая и
  * атомарно подменяет старую, поэтому выполняющийся код никогда не видит "полузагруженные" скрипты.
  */
 final class SimpleProgram implements ScriptProgram {
@@ -62,11 +63,7 @@ final class SimpleProgram implements ScriptProgram {
         return true;
     }
 
-    /** Выполняет действия по очереди; каждое действие расходует "шаг" бюджета (защита от зависаний). */
-    static void runActions(List<Action> actions, ExecutionContext ctx) {
-        for (Action action : actions) {
-            ctx.step();
-            action.execute(ctx);
-        }
+    private static void runActions(List<Action> actions, ExecutionContext ctx) {
+        Actions.runAll(actions, ctx);
     }
 }

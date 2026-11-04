@@ -20,6 +20,66 @@ public final class Actions {
     private Actions() {
     }
 
+    /** Выполняет действия по очереди; каждое действие расходует один шаг бюджета (защита от зависаний). */
+    public static void runAll(List<Action> actions, ExecutionContext ctx) {
+        for (Action action : actions) {
+            ctx.step();
+            action.execute(ctx);
+        }
+    }
+
+    // ------------------------------------------------------------------ переменные
+
+    /** set {name} to <значение> */
+    public record SetVariable(String rawName, Expression value) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            Object v = value.evaluate(ctx);
+            String name = ctx.variableName(rawName);
+            if (v == null) {
+                ctx.deleteVariable(name); // set {a} to {не_заданная} == delete {a}
+            } else {
+                ctx.setVariable(name, v);
+            }
+        }
+    }
+
+    /** add <n> to {name} / remove <n> from {name}. Незаданная переменная считается равной 0. */
+    public record AddToVariable(String rawName, Expression amount, boolean subtract) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            String name = ctx.variableName(rawName);
+            Object current = ctx.getVariable(name);
+            Double base = current == null ? Double.valueOf(0) : Expression.toNumber(current);
+            Double delta = Expression.toNumber(amount.evaluate(ctx));
+            if (base == null) {
+                throw new ScriptRuntimeException("{" + name + "} не число: " + Expression.toText(current));
+            }
+            if (delta == null) {
+                throw new ScriptRuntimeException("ожидается число в add/remove");
+            }
+            ctx.setVariable(name, subtract ? base - delta : base + delta);
+        }
+    }
+
+    /** delete {name} */
+    public record DeleteVariable(String rawName) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            ctx.deleteVariable(ctx.variableName(rawName));
+        }
+    }
+
+    /** if <условие>: ... [else: ...] */
+    public record If(Condition condition, List<Action> then, List<Action> otherwise) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            runAll(condition.test(ctx) ? then : otherwise, ctx);
+        }
+    }
+
+    // ------------------------------------------------------------------ игрок и чат
+
     /** send "текст" [to player] — сообщение игроку. */
     public record SendMessage(String text) implements Action {
         @Override

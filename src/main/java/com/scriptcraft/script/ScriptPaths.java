@@ -2,6 +2,7 @@ package com.scriptcraft.script;
 
 import com.scriptcraft.ScriptCraft;
 import net.minecraftforge.fml.loading.FMLPaths;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -12,7 +13,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
 
-/** Работа с папкой скриптов: <папка игры>/scripts/*.sk */
+/**
+ * Работа с папкой скриптов: <папка игры>/scripts/*.sk
+ * Выключенные скрипты (как в Skript) — файлы с минусом в начале имени: -welcome.sk. Они не загружаются.
+ */
 public final class ScriptPaths {
     /** Расширение файлов скриптов. */
     public static final String EXTENSION = ".sk";
@@ -50,33 +54,103 @@ public final class ScriptPaths {
     }
 
     /**
-     * Читает все *.sk файлы (включая подпапки) в алфавитном порядке.
+     * Все файлы скриптов (включая выключенные "-имя.sk"), пути относительно папки scripts, через '/'.
+     * Отсортированы по алфавиту.
+     */
+    public static List<String> listScripts() {
+        Path dir = scriptsDir();
+        if (!Files.isDirectory(dir)) {
+            return List.of();
+        }
+        try (Stream<Path> stream = Files.walk(dir, 4)) {
+            return stream.filter(p -> Files.isRegularFile(p) && p.getFileName().toString().endsWith(EXTENSION))
+                    .map(p -> dir.relativize(p).toString().replace('\\', '/'))
+                    .sorted()
+                    .toList();
+        } catch (IOException e) {
+            return List.of();
+        }
+    }
+
+    /** Выключен ли скрипт: имя файла (не папки) начинается с '-', как в Skript. */
+    public static boolean isDisabled(String relName) {
+        return fileNameOf(relName).startsWith("-");
+    }
+
+    /** "sub/-a.sk" -> "sub/a.sk" */
+    public static String enabledName(String relName) {
+        int slash = relName.lastIndexOf('/');
+        String file = fileNameOf(relName);
+        while (file.startsWith("-")) {
+            file = file.substring(1);
+        }
+        return relName.substring(0, slash + 1) + file;
+    }
+
+    /** "sub/a.sk" -> "sub/-a.sk" */
+    public static String disabledName(String relName) {
+        String enabled = enabledName(relName);
+        int slash = enabled.lastIndexOf('/');
+        return enabled.substring(0, slash + 1) + "-" + enabled.substring(slash + 1);
+    }
+
+    /**
+     * Ввод игрока -> нормальное (включённое) имя скрипта: "welcome", "welcome.sk", "-welcome.sk" -> "welcome.sk".
+     * Возвращает null, если путь выходит за пределы папки scripts (защита от "../").
+     */
+    @Nullable
+    public static String normalize(String input) {
+        String name = input.strip().replace('\\', '/');
+        if (name.isEmpty() || name.contains("..") || name.startsWith("/") || name.contains(":")) {
+            return null;
+        }
+        if (!name.endsWith(EXTENSION)) {
+            name = name + EXTENSION;
+        }
+        return enabledName(name);
+    }
+
+    /** Абсолютный путь файла скрипта по относительному имени. */
+    public static Path resolve(String relName) {
+        return scriptsDir().resolve(relName.replace('/', java.io.File.separatorChar));
+    }
+
+    /** Переименование (используется для enable/disable). */
+    public static void rename(String fromRel, String toRel) throws IOException {
+        Files.move(resolve(fromRel), resolve(toRel));
+    }
+
+    /** Читает один файл; null + запись в errors при ошибке. */
+    @Nullable
+    public static ScriptSource readOne(String relName, List<String> errors) {
+        try {
+            // Файлы читаются в UTF-8, чтобы русский текст отображался правильно.
+            return new ScriptSource(relName, Files.readAllLines(resolve(relName), StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            errors.add(relName + ": ошибка чтения: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Читает все ВКЛЮЧЁННЫЕ *.sk файлы (выключенные "-имя.sk" пропускаются) в алфавитном порядке.
      * Ошибки чтения добавляются в {@code errors}, остальные файлы всё равно загружаются.
      */
     public static List<ScriptSource> readAll(List<String> errors) {
         List<ScriptSource> result = new ArrayList<>();
-        Path dir = scriptsDir();
-        if (!Files.isDirectory(dir)) {
-            return result;
-        }
-        List<Path> files;
-        try (Stream<Path> stream = Files.walk(dir, 4)) {
-            files = stream.filter(p -> Files.isRegularFile(p) && p.getFileName().toString().endsWith(EXTENSION))
-                    .sorted()
-                    .toList();
-        } catch (IOException e) {
-            errors.add("Не удалось прочитать папку скриптов: " + e.getMessage());
-            return result;
-        }
-        for (Path file : files) {
-            try {
-                // Файлы читаются в UTF-8, чтобы русский текст отображался правильно.
-                List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
-                result.add(new ScriptSource(dir.relativize(file).toString().replace('\\', '/'), lines));
-            } catch (IOException e) {
-                errors.add(file.getFileName() + ": ошибка чтения: " + e.getMessage());
+        for (String rel : listScripts()) {
+            if (isDisabled(rel)) {
+                continue;
+            }
+            ScriptSource source = readOne(rel, errors);
+            if (source != null) {
+                result.add(source);
             }
         }
         return result;
+    }
+
+    private static String fileNameOf(String relName) {
+        return relName.substring(relName.lastIndexOf('/') + 1);
     }
 }

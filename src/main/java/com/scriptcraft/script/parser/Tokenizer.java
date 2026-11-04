@@ -5,7 +5,8 @@ import java.util.List;
 
 /**
  * Простейший токенизатор: слова через пробел, строки в двойных кавычках ("..." с \" внутри),
- * запятые вне кавычек считаются пробелами (поэтому "at 0, -20" == "at 0 -20").
+ * запятые вне кавычек считаются пробелами (поэтому "at 0, -20" == "at 0 -20"),
+ * переменная в фигурных скобках — один токен целиком, даже с пробелами и запятыми: {my var::%player%}.
  */
 final class Tokenizer {
     record Token(String value, boolean quoted) {
@@ -44,6 +45,15 @@ final class Tokenizer {
                     throw new ParseException("незакрытая кавычка");
                 }
                 tokens.add(new Token(str.toString(), true));
+                continue;
+            }
+            if (c == '{' && cur.isEmpty()) {
+                int close = line.indexOf('}', i);
+                if (close < 0) {
+                    throw new ParseException("незакрытая фигурная скобка '{'");
+                }
+                tokens.add(new Token(line.substring(i, close + 1), false));
+                i = close + 1;
                 continue;
             }
             if (Character.isWhitespace(c) || c == ',') {

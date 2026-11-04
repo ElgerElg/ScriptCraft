@@ -4,6 +4,8 @@ import com.scriptcraft.script.ScriptSource;
 import com.scriptcraft.script.parser.Tokenizer.Token;
 import com.scriptcraft.script.runtime.Action;
 import com.scriptcraft.script.runtime.Actions;
+import com.scriptcraft.script.runtime.Condition;
+import com.scriptcraft.script.runtime.Expression;
 import com.scriptcraft.script.runtime.ScriptEvent;
 import com.scriptcraft.screen.Anchor;
 import com.scriptcraft.screen.ButtonElement;
@@ -35,6 +37,13 @@ import java.util.regex.Pattern;
  *
  * define block ruby_block:
  *     hardness: 3
+ *
+ * command /coins:
+ *     add 1 to {coins::%player%}
+ *     if {coins::%player%} >= 10:
+ *         send "Богач!" to player
+ *     else:
+ *         send "Монет: {coins::%player%}" to player
  * </pre>
  * Ошибка в одной строке не ломает остальные: строка пропускается, ошибка попадает в список.
  * Парсер не создаёт никаких объектов Minecraft (кроме описаний), поэтому безопасно работает при запуске мода.
@@ -42,6 +51,9 @@ import java.util.regex.Pattern;
 public final class ScriptParser {
     private static final Pattern ID = Pattern.compile("[a-z0-9_]{1,64}");
     private static final Pattern COMMAND_HEADER = Pattern.compile("command\\s+/([a-z0-9_]{1,32})(?:\\s+permission\\s+([0-4]))?");
+    /** Корневые команды мода — скрипты не могут их перекрыть. */
+    private static final java.util.Set<String> RESERVED_COMMANDS = java.util.Set.of("scriptcraft", "sk", "script");
+    private static final Pattern NUMBER = Pattern.compile("-?\\d+(\\.\\d+)?");
     private static final Pattern SIZE = Pattern.compile("(\\d{1,4})x(\\d{1,4})");
 
     /** Строка после препроцессинга. */
@@ -136,8 +148,8 @@ public final class ScriptParser {
         if (cmd.matches()) {
             String name = cmd.group(1);
             int permission = cmd.group(2) != null ? Integer.parseInt(cmd.group(2)) : 0;
-            if (name.equals("scriptcraft")) {
-                error(headerLine, "имя /scriptcraft зарезервировано модом");
+            if (RESERVED_COMMANDS.contains(name)) {
+                error(headerLine, "имя /" + name + " зарезервировано модом (scriptcraft, sk, script)");
                 return;
             }
             if (commands.containsKey(name)) {
@@ -218,16 +230,40 @@ public final class ScriptParser {
             return actions;
         }
         int baseIndent = body.get(0).indent();
+        // Индекс последнего "if" без "else" в списке actions (-1, если предыдущая строка — не if).
+        int openIf = -1;
         int i = 0;
         while (i < body.size()) {
             Line line = body.get(i);
             int end = blockEnd(body, i);
+            List<Line> children = body.subList(i + 1, end);
+            String lower = line.text().toLowerCase(Locale.ROOT);
             if (line.indent() != baseIndent) {
                 error(line, "неверный отступ");
-            } else {
+                openIf = -1;
+            } else if (lower.startsWith("if ") && lower.endsWith(":")) {
+                // if <условие>:  + вложенные действия
                 try {
-                    Action action = parseAction(line, body.subList(i + 1, end));
-                    actions.add(action);
+                    Condition condition = parseCondition(line.text().substring(3, line.text().length() - 1));
+                    actions.add(new Actions.If(condition, parseActions(children), List.of()));
+                    openIf = actions.size() - 1;
+                } catch (ParseException e) {
+                    error(line, e.getMessage());
+                    openIf = -1;
+                }
+            } else if (lower.equals("else:")) {
+                // else:  — относится к if прямо над ним
+                if (openIf < 0) {
+                    error(line, "'else' без 'if' прямо над ним");
+                } else {
+                    Actions.If prev = (Actions.If) actions.get(openIf);
+                    actions.set(openIf, new Actions.If(prev.condition(), prev.then(), parseActions(children)));
+                }
+                openIf = -1;
+            } else {
+                openIf = -1;
+                try {
+                    actions.add(parseAction(line, children));
                 } catch (ParseException e) {
                     error(line, e.getMessage());
                 }
@@ -235,6 +271,72 @@ public final class ScriptParser {
             i = end;
         }
         return actions;
+    }
+
+    /**
+     * Условие (текст между "if" и двоеточием):
+     * {a} is X | {a} is not X | {a} > X | {a} < X | {a} >= X | {a} <= X | {a} is set | {a} is not set
+     */
+    private Condition parseCondition(String text) throws ParseException {
+        List<Token> t = Tokenizer.tokenize(text);
+        if (t.size() < 2) {
+            throw new ParseException("неполное условие, пример: if {coins::%player%} >= 10:");
+        }
+        Expression left = expression(t.get(0));
+        String op = word(t, 1);
+        if (op.equals("is")) {
+            boolean negate = word(t, 2).equals("not");
+            int next = negate ? 3 : 2;
+            if (word(t, next).equals("set") && t.size() == next + 1) {
+                return new Condition.IsSet(left, negate);
+            }
+            if (t.size() != next + 1) {
+                throw new ParseException("после 'is' ожидается одно значение (текст бери в кавычки)");
+            }
+            return new Condition.Compare(left, negate ? "is not" : "is", expression(t.get(next)));
+        }
+        if (op.equals(">") || op.equals("<") || op.equals(">=") || op.equals("<=")) {
+            if (t.size() != 3) {
+                throw new ParseException("ожидается: if {a} " + op + " число:");
+            }
+            return new Condition.Compare(left, op, expression(t.get(2)));
+        }
+        if (op.equals("=") || op.equals("==") || op.equals("!=")) {
+            if (t.size() != 3) {
+                throw new ParseException("ожидается: if {a} " + op + " значение:");
+            }
+            return new Condition.Compare(left, op.equals("!=") ? "is not" : "is", expression(t.get(2)));
+        }
+        throw new ParseException("неизвестный оператор условия: " + op + " (is, is not, >, <, >=, <=, is set)");
+    }
+
+    /** Токен -> значение: "текст", {переменная}, число, true/false, иначе слово как текст. */
+    private static Expression expression(Token token) {
+        String v = token.value();
+        if (token.quoted()) {
+            return new Expression.Text(v);
+        }
+        if (v.length() > 2 && v.startsWith("{") && v.endsWith("}")) {
+            return new Expression.Variable(v.substring(1, v.length() - 1));
+        }
+        if (NUMBER.matcher(v).matches()) {
+            return new Expression.Literal(Double.parseDouble(v));
+        }
+        if (v.equalsIgnoreCase("true") || v.equalsIgnoreCase("false")) {
+            return new Expression.Literal(Boolean.parseBoolean(v.toLowerCase(Locale.ROOT)));
+        }
+        return new Expression.Text(v);
+    }
+
+    /** Токен {имя} -> "имя" (без скобок, регистр сохраняется). */
+    private static String variableName(List<Token> t, int i) throws ParseException {
+        if (i < t.size() && !t.get(i).quoted()) {
+            String v = t.get(i).value();
+            if (v.length() > 2 && v.startsWith("{") && v.endsWith("}")) {
+                return v.substring(1, v.length() - 1);
+            }
+        }
+        throw new ParseException("ожидается переменная в фигурных скобках, например {coins::%player%}");
     }
 
     private Action parseAction(Line line, List<Line> children) throws ParseException {
@@ -250,13 +352,35 @@ public final class ScriptParser {
         String head = word(t, 0);
 
         if (hasBlock && !head.equals("open")) {
-            throw new ParseException("двоеточие допустимо только у 'open screen'");
+            throw new ParseException("двоеточие допустимо только у 'open screen', 'if' и 'else'");
         }
         if (!hasBlock && !children.isEmpty()) {
             throw new ParseException("у этого действия не может быть вложенных строк");
         }
 
         switch (head) {
+            case "set" -> {
+                // set {name} to <значение>
+                String name = variableName(t, 1);
+                expectWord(t, 2, "to");
+                if (t.size() != 4) {
+                    throw new ParseException("нужно: set {имя} to <значение> (текст с пробелами — в кавычках)");
+                }
+                return new Actions.SetVariable(name, expression(t.get(3)));
+            }
+            case "add", "remove" -> {
+                // add <n> to {name} / remove <n> from {name}
+                boolean remove = head.equals("remove");
+                if (t.size() != 4) {
+                    throw new ParseException(remove ? "нужно: remove <число> from {имя}" : "нужно: add <число> to {имя}");
+                }
+                expectWord(t, 2, remove ? "from" : "to");
+                return new Actions.AddToVariable(variableName(t, 3), expression(t.get(1)), remove);
+            }
+            case "delete", "clear" -> {
+                // delete {name}
+                return new Actions.DeleteVariable(variableName(t, 1));
+            }
             case "send" -> {
                 // send "текст" [to player]
                 return new Actions.SendMessage(quoted(t, 1));

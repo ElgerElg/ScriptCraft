@@ -1,10 +1,18 @@
 # ==========================================================
 #  welcome.sk — события входа/выхода и простые команды
-#  Логика перезагружается командой /scriptcraft reload
+#  Логика перезагружается командой /sk reload (или /sk reload welcome)
+#  Выключить файл: /sk disable welcome (станет -welcome.sk)
 # ==========================================================
 
 on join:
-    send "&aПривет, &e%player%&a! Добро пожаловать на сервер." to player
+    # Постоянная переменная (сохраняется в <мир>/scriptcraft/variables.json)
+    add 1 to {joins::%player%}
+    if {joins::%player%} is 1:
+        send "&aПривет, &e%player%&a! Ты здесь впервые, добро пожаловать!" to player
+    else:
+        send "&aС возвращением, &e%player%&a! Это твой {joins::%player%}-й вход." to player
+    # Временная переменная (имя с "-"): живёт только до перезапуска сервера
+    set {-online_since::%player%} to "сегодня"
     broadcast "&7%player% зашёл на сервер (онлайн: %online%)"
 
 on quit:
@@ -24,3 +32,36 @@ command /kit permission 2:
 command /spawnpoint0:
     teleport player to 0, 100, 0
     reply "Телепортирован на 0 100 0"
+
+# ----------------------------------------------------------
+#  Переменные и условия: простая "экономика"
+# ----------------------------------------------------------
+
+# /coins — показать баланс (незаданная переменная = <none>, поэтому сначала проверяем)
+command /coins:
+    if {coins::%player%} is not set:
+        set {coins::%player%} to 0
+    send "&eМонет: &6{coins::%player%}" to player
+
+# /work — заработать 5 монет, не чаще одного раза до перезапуска (временная переменная)
+command /work:
+    if {-worked::%player%} is set:
+        send "&cТы уже работал. Отдохни до перезапуска сервера." to player
+    else:
+        add 5 to {coins::%player%}
+        set {-worked::%player%} to true
+        send "&a+5 монет! Теперь: {coins::%player%}" to player
+
+# /buy — купить алмаз за 10 монет
+command /buy:
+    if {coins::%player%} >= 10:
+        remove 10 from {coins::%player%}
+        give player diamond 1
+        send "&aКуплено! Осталось монет: {coins::%player%}" to player
+    else:
+        send "&cНужно 10 монет, у тебя: {coins::%player%}" to player
+
+# /resetcoins — только операторы
+command /resetcoins permission 2:
+    delete {coins::%player%}
+    reply "Баланс сброшен"

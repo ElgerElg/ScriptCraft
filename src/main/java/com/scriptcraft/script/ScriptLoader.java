@@ -2,6 +2,8 @@ package com.scriptcraft.script;
 
 import com.scriptcraft.ScriptCraft;
 import com.scriptcraft.command.ScriptCommands;
+import com.scriptcraft.config.ScriptCraftConfig;
+import com.scriptcraft.lang.Messages;
 import com.scriptcraft.registry.ScriptRegistries;
 import com.scriptcraft.script.engine.ScriptEngine;
 import com.scriptcraft.script.engine.ScriptProgram;
@@ -10,27 +12,39 @@ import com.scriptcraft.script.parser.BlockDefinition;
 import com.scriptcraft.script.parser.ItemDefinition;
 import com.scriptcraft.script.runtime.ExecutionContext;
 import com.scriptcraft.script.runtime.ScriptEvent;
-import net.minecraft.ChatFormatting;
+import com.scriptcraft.script.variables.VariableStore;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 /**
- * Загрузчик скриптов: читает папку, компилирует движком, хранит текущую программу,
- * запускает события и команды, делает горячую перезагрузку.
+ * Загрузчик скриптов: хранит исходники включённых скриптов, компилирует их движком в одну программу,
+ * запускает события и команды, делает горячую перезагрузку, включает и выключает скрипты.
+ *
+ * Как работает перезагрузка одного скрипта: заново читается только этот файл, остальные берутся из памяти,
+ * затем вся программа пересобирается (разбор быстрый). Так нет "полузагруженных" состояний.
  */
 public final class ScriptLoader {
     /** Текущий движок. Сюда можно подставить другой (например, на Rhino) — см. TODO в README. */
     private static final ScriptEngine ENGINE = new SimpleScriptEngine();
 
+    /** Исходники включённых скриптов: относительное имя -> текст. */
+    private static final Map<String, ScriptSource> SOURCES = new TreeMap<>();
+
     /** Текущая программа. volatile + замена целиком = безопасная горячая перезагрузка. */
     private static volatile ScriptProgram program = ENGINE.compile(List.of(), new ArrayList<>());
     private static volatile List<String> lastErrors = List.of();
+    /** Ошибки чтения файлов (накапливаются до следующей полной перезагрузки). */
+    private static final List<String> READ_ERRORS = new ArrayList<>();
 
     private ScriptLoader() {
     }
@@ -43,60 +57,203 @@ public final class ScriptLoader {
         return lastErrors;
     }
 
-    /** Первая загрузка — из конструктора мода (до регистрации блоков). */
+    /** Имена загруженных (включённых) скриптов. */
+    public static List<String> loadedScripts() {
+        return List.copyOf(SOURCES.keySet());
+    }
+
+    // ------------------------------------------------------------------ загрузка
+
+    /**
+     * Первая загрузка — из конструктора мода (до регистрации блоков).
+     * Конфиг в этот момент ещё не загружен, поэтому используются настройки по умолчанию.
+     */
     public static void initialLoad() {
-        loadFromDisk();
-        ScriptCraft.LOGGER.info("[ScriptCraft] Загружено: команд {}, блоков {}, предметов {}, ошибок {}",
-                program.commandNames().size(), program.blocks().size(), program.items().size(), lastErrors.size());
+        loadAllFromDisk();
+        ScriptCraft.LOGGER.info("[ScriptCraft] Загружено скриптов {}: команд {}, блоков {}, предметов {}, ошибок {}",
+                SOURCES.size(), program.commandNames().size(), program.blocks().size(), program.items().size(), lastErrors.size());
         lastErrors.forEach(e -> ScriptCraft.LOGGER.warn("[ScriptCraft] {}", e));
     }
 
-    private static void loadFromDisk() {
-        List<String> errors = new ArrayList<>();
-        List<ScriptSource> sources = ScriptPaths.readAll(errors);
-        ScriptProgram compiled = ENGINE.compile(sources, errors);
+    private static void loadAllFromDisk() {
+        SOURCES.clear();
+        READ_ERRORS.clear();
+        for (ScriptSource source : ScriptPaths.readAll(READ_ERRORS)) {
+            SOURCES.put(source.fileName(), source);
+        }
+        recompile();
+    }
+
+    /** Пересобирает программу из SOURCES и атомарно подменяет текущую. */
+    private static void recompile() {
+        long start = System.nanoTime();
+        List<String> errors = new ArrayList<>(READ_ERRORS);
+        ScriptProgram compiled = ENGINE.compile(new ArrayList<>(SOURCES.values()), errors);
         program = compiled;
         lastErrors = List.copyOf(errors);
+        if (ScriptCraftConfig.logScriptLoadTimes()) {
+            ScriptCraft.LOGGER.info("[ScriptCraft] {}", Messages.get("reload.time", (System.nanoTime() - start) / 1_000_000L));
+        }
+    }
+
+    // ------------------------------------------------------------------ команды /sk
+
+    /** /sk reload — перезагрузить все скрипты с диска. */
+    public static int reloadAll(CommandSourceStack source) {
+        loadAllFromDisk();
+        afterChange(source);
+        int errors = lastErrors.size();
+        source.sendSuccess(() -> Messages.component("reload.all", SOURCES.size(), program.commandNames().size(), errors), true);
+        sendErrors(source);
+        return errors == 0 ? 1 : 0;
+    }
+
+    /** /sk reload <скрипт> — перезагрузить один файл. */
+    public static int reloadOne(CommandSourceStack source, String input) {
+        if (isAll(input)) {
+            return reloadAll(source);
+        }
+        String name = ScriptPaths.normalize(input);
+        if (name == null || !Files.isRegularFile(ScriptPaths.resolve(name))) {
+            if (name != null && Files.isRegularFile(ScriptPaths.resolve(ScriptPaths.disabledName(name)))) {
+                source.sendFailure(Messages.component("script.is_disabled", name));
+            } else {
+                source.sendFailure(Messages.component("script.not_found", input));
+            }
+            return 0;
+        }
+        List<String> errors = new ArrayList<>();
+        ScriptSource fresh = ScriptPaths.readOne(name, errors);
+        if (fresh == null) {
+            errors.forEach(e -> source.sendFailure(Component.literal(e)));
+            return 0;
+        }
+        SOURCES.put(name, fresh);
+        recompile();
+        afterChange(source);
+        source.sendSuccess(() -> Messages.component("reload.one", name, lastErrors.size()), true);
+        sendErrors(source);
+        return 1;
+    }
+
+    /** /sk disable <скрипт> — выгрузить и переименовать в "-имя.sk". */
+    public static int disable(CommandSourceStack source, String input) {
+        String name = ScriptPaths.normalize(input);
+        if (name == null) {
+            source.sendFailure(Messages.component("script.not_found", input));
+            return 0;
+        }
+        String disabled = ScriptPaths.disabledName(name);
+        if (!Files.isRegularFile(ScriptPaths.resolve(name))) {
+            source.sendFailure(Files.isRegularFile(ScriptPaths.resolve(disabled))
+                    ? Messages.component("script.already_disabled", name)
+                    : Messages.component("script.not_found", input));
+            return 0;
+        }
+        try {
+            ScriptPaths.rename(name, disabled);
+        } catch (IOException e) {
+            source.sendFailure(Messages.component("script.rename_failed", e.getMessage()));
+            return 0;
+        }
+        boolean hadDefines = hasDefines(SOURCES.get(name));
+        SOURCES.remove(name);
+        recompile();
+        afterChange(source);
+        source.sendSuccess(() -> Messages.component("script.disabled", name, disabled), true);
+        if (hadDefines) {
+            source.sendSuccess(() -> Messages.component("script.defines_warning"), false);
+        }
+        return 1;
+    }
+
+    /** /sk enable <скрипт> — переименовать "-имя.sk" обратно и загрузить. */
+    public static int enable(CommandSourceStack source, String input) {
+        String name = ScriptPaths.normalize(input);
+        if (name == null) {
+            source.sendFailure(Messages.component("script.not_found", input));
+            return 0;
+        }
+        String disabled = ScriptPaths.disabledName(name);
+        if (!Files.isRegularFile(ScriptPaths.resolve(disabled))) {
+            source.sendFailure(Files.isRegularFile(ScriptPaths.resolve(name))
+                    ? Messages.component("script.already_enabled", name)
+                    : Messages.component("script.not_found", input));
+            return 0;
+        }
+        try {
+            ScriptPaths.rename(disabled, name);
+        } catch (IOException e) {
+            source.sendFailure(Messages.component("script.rename_failed", e.getMessage()));
+            return 0;
+        }
+        List<String> errors = new ArrayList<>();
+        ScriptSource fresh = ScriptPaths.readOne(name, errors);
+        if (fresh != null) {
+            SOURCES.put(name, fresh);
+        }
+        recompile();
+        afterChange(source);
+        source.sendSuccess(() -> Messages.component("script.enabled", name), true);
+        errors.forEach(e -> source.sendFailure(Component.literal(e)));
+        sendErrors(source);
+        return 1;
+    }
+
+    /** /sk list */
+    public static int list(CommandSourceStack source) {
+        List<String> disabled = ScriptPaths.listScripts().stream().filter(ScriptPaths::isDisabled).toList();
+        String none = Messages.get("list.none");
+        source.sendSuccess(() -> Messages.component("list.scripts", SOURCES.isEmpty() ? none : String.join(", ", SOURCES.keySet())), false);
+        if (!disabled.isEmpty()) {
+            source.sendSuccess(() -> Messages.component("list.disabled", String.join(", ", disabled)), false);
+        }
+        String commands = program.commandNames().isEmpty() ? none : "/" + String.join(", /", program.commandNames());
+        source.sendSuccess(() -> Messages.component("list.summary", commands, program.blocks().size(),
+                program.items().size(), VariableStore.size(), lastErrors.size()), false);
+        sendErrors(source);
+        return 1;
+    }
+
+    private static boolean isAll(String input) {
+        String s = input.strip().toLowerCase();
+        return s.equals("all") || s.equals("*") || s.equals("scripts");
+    }
+
+    /** Есть ли в скрипте define (их изменение требует перезапуска). Грубая, но достаточная проверка. */
+    private static boolean hasDefines(@Nullable ScriptSource source) {
+        return source != null && source.lines().stream().anyMatch(l -> l.strip().toLowerCase().startsWith("define "));
     }
 
     /**
-     * /scriptcraft reload — горячая перезагрузка ЛОГИКИ.
-     * Блоки/предметы НЕ перерегистрируются (реестры заморожены) — о новых выводится предупреждение.
+     * После любого изменения: новые команды добавляются в дерево Brigadier и дерево заново рассылается игрокам;
+     * для новых define выводится предупреждение о перезапуске.
      */
-    public static int reload(CommandSourceStack source) {
-        loadFromDisk();
+    private static void afterChange(CommandSourceStack source) {
         MinecraftServer server = source.getServer();
-
-        // Новые команды добавляем в существующее дерево и заново рассылаем его игрокам.
         ScriptCommands.registerScriptCommands(server.getCommands().getDispatcher());
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             server.getCommands().sendCommands(player);
         }
-
-        int errors = lastErrors.size();
-        source.sendSuccess(() -> Component.literal("[ScriptCraft] Скрипты перезагружены: команд "
-                + program.commandNames().size() + ", ошибок " + errors), true);
-        for (String e : lastErrors) {
-            source.sendFailure(Component.literal(e));
-        }
-
         for (BlockDefinition b : program.blocks()) {
             if (!ScriptRegistries.registeredBlockIds().contains(b.id())) {
-                warnRestart(source, "блок " + b.id());
+                source.sendSuccess(() -> Messages.component("restart.block", b.id()), false);
             }
         }
         for (ItemDefinition i : program.items()) {
             if (!ScriptRegistries.registeredItemIds().contains(i.id())) {
-                warnRestart(source, "предмет " + i.id());
+                source.sendSuccess(() -> Messages.component("restart.item", i.id()), false);
             }
         }
-        return errors == 0 ? 1 : 0;
     }
 
-    private static void warnRestart(CommandSourceStack source, String what) {
-        source.sendSuccess(() -> Component.literal("[ScriptCraft] Новый " + what
-                + " появится только после перезапуска сервера и клиентов").withStyle(ChatFormatting.YELLOW), false);
+    private static void sendErrors(CommandSourceStack source) {
+        for (String e : lastErrors) {
+            source.sendFailure(Component.literal(e));
+        }
     }
+
+    // ------------------------------------------------------------------ выполнение
 
     /** Запуск обработчиков события ("on join:" и т.д.). Ошибки пишутся в лог и не роняют сервер. */
     public static void fireEvent(ScriptEvent event, ServerPlayer player) {
@@ -115,16 +272,16 @@ public final class ScriptLoader {
     /** Запуск команды из скрипта. Возвращает результат для Brigadier (1 — успех). */
     public static int runCommand(String name, CommandSourceStack source, @Nullable String args) {
         ExecutionContext ctx = new ExecutionContext(source.getServer(), source.getPlayer(), source);
-        ctx.setVariable("args", args == null ? "" : args);
+        ctx.setPlaceholder("args", args == null ? "" : args);
         try {
             if (!program.runCommand(name, ctx)) {
-                // Команда была удалена из скриптов, но узел Brigadier остался до перезапуска.
-                source.sendFailure(Component.literal("Команда /" + name + " удалена из скриптов"));
+                // Скрипт выключен или команда удалена, но узел Brigadier остаётся до перезапуска.
+                source.sendFailure(Messages.component("command.disabled", name));
                 return 0;
             }
             return 1;
         } catch (RuntimeException e) {
-            source.sendFailure(Component.literal("[ScriptCraft] Ошибка в /" + name + ": " + e.getMessage()));
+            source.sendFailure(Messages.component("command.error", name, e.getMessage()));
             return 0;
         }
     }

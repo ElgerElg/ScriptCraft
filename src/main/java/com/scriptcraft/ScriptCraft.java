@@ -1,6 +1,7 @@
 package com.scriptcraft;
 
 import com.mojang.logging.LogUtils;
+import com.scriptcraft.config.ScriptCraftConfig;
 import com.scriptcraft.event.ServerEvents;
 import com.scriptcraft.network.ModNetwork;
 import com.scriptcraft.registry.ScriptRegistries;
@@ -8,7 +9,9 @@ import com.scriptcraft.script.ScriptLoader;
 import com.scriptcraft.script.ScriptPaths;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.eventbus.api.IEventBus;
+import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.config.ModConfig;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import org.slf4j.Logger;
 
@@ -23,7 +26,10 @@ import org.slf4j.Logger;
  *
  * ВАЖНО: реестры блоков и предметов "замораживаются" после загрузки. Поэтому НОВЫЕ блоки и предметы
  * из скриптов появятся только после ПЕРЕЗАПУСКА игры/сервера. А логика (события, команды, сообщения, экраны)
- * перезагружается "на горячую" командой /scriptcraft reload.
+ * перезагружается "на горячую" командой /scriptcraft reload (синонимы /sk и /script).
+ *
+ * Конфиг (config/scriptcraft-common.toml) Forge загружает ПОСЛЕ конструктора мода, поэтому
+ * во время предварительного разбора действуют значения по умолчанию (язык en, стандартные лимиты).
  */
 @Mod(ScriptCraft.MODID)
 public class ScriptCraft {
@@ -33,6 +39,9 @@ public class ScriptCraft {
 
     public ScriptCraft() {
         IEventBus modBus = FMLJavaModLoadingContext.get().getModEventBus();
+
+        // 0. Конфиг: язык сообщений, лимиты выполнения, переменные. Читается безопасно через ScriptCraftConfig.
+        ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, ScriptCraftConfig.SPEC);
 
         // 1. Папка скриптов (<папка игры>/scripts). При первом запуске туда копируются примеры.
         ScriptPaths.ensureScriptsFolder();
