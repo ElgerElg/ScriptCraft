@@ -55,9 +55,10 @@
     return null;
   }
 
-  SC.lang = store("sc-lang") === "en" ? "en" : "ru";
+  // Нет сохранённого выбора — английский. "ru" в localStorage оставляет русский.
+  SC.lang = store("sc-lang") === "ru" ? "ru" : "en";
   SC.t = function (key, vars) {
-    var s = (SC.strings[SC.lang] && SC.strings[SC.lang][key]) || SC.strings.ru[key] || key;
+    var s = (SC.strings[SC.lang] && SC.strings[SC.lang][key]) || SC.strings.en[key] || key;
     if (vars) for (var k in vars) s = s.split("{" + k + "}").join(vars[k]);
     return s;
   };

@@ -1,165 +1,161 @@
 <div align="center">
 
-# ⛏️ ScriptCraft
+# ScriptCraft
 
-**Skript-подобные скрипты для Minecraft Forge: свои команды, события, экраны и блоки без плагинов и гибридных ядер.**
+**Skript-style scripts for Minecraft Forge: commands, events, screens, HUD, blocks and items, without plugins or a hybrid server.**
 
 [![Minecraft](https://img.shields.io/badge/Minecraft-1.20.1-62B47A?style=for-the-badge)](https://www.minecraft.net/)
 [![Forge](https://img.shields.io/badge/Forge-47.x-DFA86A?style=for-the-badge)](https://files.minecraftforge.net/net/minecraftforge/forge/index_1.20.1.html)
 [![Java](https://img.shields.io/badge/Java-17-ED8B00?style=for-the-badge)](https://adoptium.net/temurin/releases/?version=17)
-[![License](https://img.shields.io/badge/License-All%20Rights%20Reserved-lightgrey?style=for-the-badge)](gradle.properties)
-[![Status](https://img.shields.io/badge/status-alpha-orange?style=for-the-badge)](#-статус)
+[![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
+[![Status](https://img.shields.io/badge/status-alpha-orange?style=for-the-badge)](#status)
 [![Docs](https://img.shields.io/badge/docs-elgerelg.github.io-blue?style=for-the-badge)](https://elgerelg.github.io/ScriptCraft/)
 
-[📖 Документация](https://elgerelg.github.io/ScriptCraft/) · [🧩 Примеры](https://elgerelg.github.io/ScriptCraft/examples.html) · [🚀 Начало работы](https://elgerelg.github.io/ScriptCraft/start.html) · [🛠 Техническое описание](docs/TECHNICAL.md)
+[Documentation](https://elgerelg.github.io/ScriptCraft/) · [Examples](https://elgerelg.github.io/ScriptCraft/examples.html) · [Getting started](https://elgerelg.github.io/ScriptCraft/start.html) · [Technical notes](docs/TECHNICAL.md)
 
 </div>
 
 ---
 
-## 💡 Что такое ScriptCraft
+## What ScriptCraft is
 
-ScriptCraft — мод для **Forge 1.20.1**, который понимает простой язык скриптов в духе [Skript](https://github.com/SkriptLang/Skript).
-Вы пишете обычный текстовый файл `.sc` в папке `scriptcraft/scripts/`, выполняете `/sc reload`, и на сервере появляются
-новые команды, приветствия, меню и даже свои блоки. Java, плагины и Bukkit-ядра для этого не нужны: всё работает
-на «чистом» Forge, в одиночной игре и на выделенном сервере.
+ScriptCraft is a **Forge 1.20.1** mod with a small scripting language in the spirit of [Skript](https://github.com/SkriptLang/Skript).
+Write a `.sc` text file in `scriptcraft/scripts/`, run `/sc reload`, and the server gains commands, join messages, menus, and custom blocks. No Java plugin, no Bukkit, no hybrid core. It runs on Forge, in singleplayer and on a dedicated server.
 
-## ✨ Возможности
+The same jar is required on the **server and on every client**. Screens, custom blocks, and texture sync only work when both sides have the mod, and both sides must be the same ScriptCraft version.
 
-| | Возможность | Коротко |
+## Features
+
+| | Feature | In short |
 |---|---|---|
-| 🎯 | **События** | вход и выход, первый вход, смерть, возрождение, чат, блоки, клики, урон, смена мира и режима, таймер `every` |
-| ⌨️ | **Свои команды** | команды с уровнем прав и аргументами игрока |
-| ⚡ | **Эффекты** | сообщения, титры, звуки, предметы, телепорт, лечение, урон, режим, полёт, зелья, опыт, кик, погода и время, молния, взрыв, скорость, точка возрождения |
-| 🔤 | **Выражения и плейсхолдеры** | имя, UUID, онлайн, аргументы, свойства игрока (`health of player`), случайные числа, плейсхолдеры событий, цвета `&` |
-| 💾 | **Переменные** | постоянные (переживают перезапуск, с резервными копиями) и **временные** (живут до перезапуска) |
-| ❓ | **Условия** | сравнения, `if` / `else if` / `else`, `and` / `or`, состояние игрока, предмет в руке, режим и мир |
-| 👥 | **Цели и селекторы** | все игроки, игрок по имени, игроки в радиусе, игрок под прицелом, ванильные `@a` / `@p` / `@r` / `@s` с аргументами, циклы по игрокам |
-| 🖼️ | **Свои экраны (GUI)** | текст, кнопки, картинки, слоты с предметами, полосы прогресса, слои, 9 точек привязки |
-| 📊 | **Свой HUD** | хотбар, полосы здоровья и голода (горизонтальные и вертикальные), картинки и текст поверх игры, слои, скрытие ванильного HUD; HUD сохраняется при перезаходе |
-| 🧱 | **Свои блоки и предметы** | объявляются прямо в скрипте: прочность, звук, свет, редкость и т.д. |
-| 🏷️ | **Свои namespace** | `mymod:ruby_block` вместо `scriptcraft:...` |
-| 📦 | **Ресурсы без ресурспака** | сервер сам отправляет игрокам текстуры, модели и переводы, игрокам ничего не нужно ставить вручную |
-| 💬 | **Эффект-команды в чате** | одна строка скрипта прямо в чате через токен `?`, по правам (как в Skript) |
-| 🔄 | **Горячая перезагрузка** | `/sc reload` перечитывает скрипты без перезапуска сервера, ошибки выводятся с номером строки |
-| 🖥️ | **Студия** | F3 + `` ` `` открывает окно мода: главная, журнал и правка скриптов сервера (Ctrl+S) |
-| 🌐 | **RU / EN** | сообщения мода на русском или английском (настройка в конфиге) |
+| Events | Player and world | join, quit, first join, death, respawn, chat, break, place, left and right click, drop, pickup, **item received**, damage, world change, gamemode, load and unload, **key press**, **vanilla menu open** (can be cancelled), `every`, `wait` |
+| Commands | Your own | permission, aliases, who may run it, typed arguments (`text`, `player`, `integer`, `item`, and more) |
+| Effects | On players | messages, titles, sounds, items, teleport, heal, damage, gamemode, flight, potions, experience, kick, weather and time, lightning, explosion, velocity, spawn point |
+| Language | Expressions | player name, UUID, online count, command arguments, `health of player`, random numbers, event placeholders, `&` color codes |
+| Variables | Stored and temporary | saved across restarts (with backups) or kept until the next restart. A HUD label bound to `{variable}` updates when the variable is written |
+| Conditions | Branching | comparisons, `if` / `else if` / `else`, `and` / `or`, player state, item in hand, gamemode and world |
+| Targets | Who it applies to | all players, a player by name, players in a radius, the player you look at, vanilla `@a` / `@p` / `@r` / `@s`, `loop` |
+| Screens | Custom GUI | text, buttons, images, item slots, progress bars, layers, anchors, a **vertical or horizontal list**, and **click hitboxes** on text, images and slots |
+| HUD | On the game view | hotbar, health and hunger bars, images and text, layers, hide parts of the vanilla HUD. The HUD comes back when the player rejoins |
+| Blocks and items | Declared in the script | hardness, sound, light, rarity, facing, transparent and 3D models |
+| Namespaces | Your own ids | `example:ruby` instead of a generic mod id |
+| Resources | No manual resource pack | the server sends textures, models and translations to players |
+| Chat effects | One line in chat | a `?` token runs a script effect, gated by permission |
+| Reload | No restart | `/sc reload` rereads scripts and reports the file and line of an error |
+| Studio | In-game editor | F3 + `` ` `` (Ё on a Russian layout) opens the mod window for operators: home, journal, and script editing |
+| Languages | Mod messages | English or Russian, set in `scriptcraft/config.toml` |
 
-> Полный список синтаксиса с примером к каждой строке есть на [сайте документации](https://elgerelg.github.io/ScriptCraft/).
+The full syntax, with an example on every entry, is on the [documentation site](https://elgerelg.github.io/ScriptCraft/). The site opens in English. The **RU** button switches it to Russian.
 
-## 🚀 Установка и запуск
+## Install
 
-**Для игроков и серверов**
+**Players and servers**
 
-1. Нужны **Minecraft 1.20.1** и **Forge 47.x**.
-2. Положите `scriptcraft-<версия>.jar` в папку **`mods/`** **и на сервере, и у всех игроков**, версии должны совпадать: экраны, свои блоки
-   и раздача текстур работают только тогда, когда мод стоит у клиента. Разные версии не пускают друг друга в сеть.
-3. Запустите игру или сервер. Мод сам создаст папку `scriptcraft/` и положит туда примеры.
+1. Install **Minecraft 1.20.1** and **Forge 47.x**.
+2. Put the same `scriptcraft-<version>.jar` in `mods/` on the server **and** on every client.
+3. Start the game. The mod creates `scriptcraft/` and copies example scripts. `hud.sc` and `bag.sc` are copied disabled (`-hud.sc`, `-bag.sc`) because they change the vanilla HUD and the E inventory. Enable one with `/sc enable hud`.
 
-**Сборка из исходников (Windows)**
+**Build from source (Windows)**
 
-1. Установите **JDK 17** (например, [Eclipse Temurin](https://adoptium.net/temurin/releases/?version=17)) и проверьте `java -version`.
-2. В папке проекта выполните:
+1. Install **JDK 17** ([Eclipse Temurin](https://adoptium.net/temurin/releases/?version=17)) and check `java -version`.
+2. From the project folder:
 
 ```bat
 gradlew.bat build
 ```
 
-3. Готовый jar появится в **`build\libs\scriptcraft-<версия>.jar`**.
+3. The jar is `build\libs\scriptcraft-<version>.jar`.
 
-Первая сборка идёт долго (10–30 минут): Gradle скачивает Minecraft и Forge.
+The first build is slow (about 10–30 minutes): Gradle downloads Minecraft and Forge.
 
-**Для разработки**
+**Development**
 
 ```bat
-gradlew.bat runClient    :: клиент Minecraft с модом
-gradlew.bat runServer    :: выделенный сервер с модом (перед первым запуском: eula=true в run\eula.txt)
+gradlew.bat runClient
+gradlew.bat runServer
 ```
 
-При разработке всё лежит в `run\scriptcraft\`. На Linux и macOS используйте `./gradlew` вместо `gradlew.bat`.
+Before the first dedicated server start, set `eula=true` in `run\eula.txt`. In the dev workspace the folder is `run\scriptcraft\`. On Linux and macOS use `./gradlew`.
 
-## 📁 Структура папки `scriptcraft/`
+## The `scriptcraft/` folder
 
-Папка появляется рядом с `mods/` (на сервере рядом с `server.properties`):
+Created next to `mods/` (on a server, next to `server.properties`):
 
 ```text
 scriptcraft/
-├── config.toml           ⚙️  настройки мода
-├── scripts/              📜  ваши скрипты *.sc (подпапки тоже читаются; файл "-имя.sc" выключен)
+├── config.toml           mod settings
+├── scripts/              your *.sc scripts (subfolders are loaded; "-name.sc" is disabled)
 ├── variables/
-│   ├── variables.json    💾  все постоянные переменные
-│   └── variables-*.json  🗂️  резервные копии (делаются при каждом старте)
+│   ├── variables.json    saved variables
+│   └── variables-*.json  backups, written at each server start
 ├── resources/
-│   ├── assets/<ns>/      🎨  текстуры, модели, переводы: сервер сам отправит их игрокам
-│   └── data/<ns>/        📊  лут-таблицы, теги, рецепты (работают на сервере)
-└── cache/                📥  (у клиента) ресурсы, скачанные с серверов
+│   ├── assets/<ns>/      textures, models, translations (the server sends these)
+│   └── data/<ns>/        loot tables, tags, recipes (server only)
+└── cache/                client-side copies downloaded from servers
 ```
 
-## ⌨️ Команды
+## Commands
 
-`/scriptcraft`, `/sc` и `/script` работают одинаково. Нужен **уровень оператора 2**. Имена скриптов дополняются по Tab.
+`/scriptcraft`, `/sc` and `/script` are the same command. They need **operator level 2**. Script names complete with Tab.
 
-| Команда | Что делает |
+| Command | What it does |
 |---|---|
-| `/sc help` | справка |
-| F3 + `` ` `` | студия мода: главная, журнал и правка скриптов сервера (только оператор, клавиши нет в настройках управления) |
-| `/sc reload` | перезагрузить все скрипты |
-| `/sc reload <скрипт>` | перезагрузить один скрипт |
-| `/sc enable <скрипт>` | включить выключенный скрипт |
-| `/sc disable <скрипт>` | выключить скрипт (файл переименуется в `-имя.sc`) |
-| `/sc list` | список скриптов, команд, переменных и ошибок |
-| `/sc config reload` | перечитать `scriptcraft/config.toml` без перезагрузки скриптов |
-| `/sc resources reload` | перечитать `resources/assets` и разослать изменения игрокам онлайн |
-| `/sc ids` | какие блоки/предметы уже под настоящими id, а какие во временных слотах |
-| `/sc give <игроки> <id> [кол-во]` | выдать блок/предмет скрипта по его id |
+| `/sc help` | short help |
+| F3 + `` ` `` | studio: home, journal, and editing server scripts (operators only; the key is not in Controls) |
+| `/sc reload` | reload every script |
+| `/sc reload <script>` | reload one script |
+| `/sc enable <script>` | enable a disabled script |
+| `/sc disable <script>` | disable a script (the file is renamed to `-name.sc`) |
+| `/sc list` | scripts, commands, variables, and errors |
+| `/sc config reload` | reread `scriptcraft/config.toml` without reloading scripts |
+| `/sc resources reload` | reread `resources/assets` and send changes to online players |
+| `/sc ids` | which blocks and items have a real id, and which are still in a temporary slot |
+| `/sc give <players> <id> [count]` | give a script block or item by its id |
 
-> ✅ Свои **блоки и предметы** — гибрид: известные при запуске регистрируются под **настоящими id**
-> (`example:ruby_block` — ванильные `/give`, F3, автодополнение, поворот `facing`), а новые после `/sc reload`
-> появляются сразу во временных слотах `scriptcraft:dyn_block_N` / `dyn_item_N` и после перезапуска сервера и
-> клиента сами переезжают на настоящие id вместе с поставленными блоками и предметами. Скрипты с `define` клиентам
-> не нужны (клиент запоминает id сервера). Подробности и ограничения — в TECHNICAL.md.
+Custom blocks and items that exist at startup are registered under their real id (`example:ruby_block`: vanilla `/give`, F3, and `facing`). A block added with `/sc reload` shows up immediately in a temporary slot (`scriptcraft:dyn_block_N` / `dyn_item_N`) and moves to its real id, together with already placed copies, after the next server and client restart. Clients do not need the script files.
 
-## 📖 Документация
+## Documentation
 
-- 🌐 **Сайт документации:** **https://elgerelg.github.io/ScriptCraft/**. Там есть поиск по всему синтаксису,
-  фильтр по категориям и пример к каждой строке. Сайт собирается из папки [`docs/`](docs) через GitHub Pages
-  (Settings → Pages → Deploy from a branch → `main` / `docs`).
-- 🧩 **Примеры:** [готовые скрипты целиком](https://elgerelg.github.io/ScriptCraft/examples.html): меню, экономика, свой блок, лечение в радиусе и другие.
-- 🚀 **Начало работы:** [установка, первый скрипт, конфиг](https://elgerelg.github.io/ScriptCraft/start.html).
-- 📂 Файлы примеров лежат и в репозитории: [`examples/`](examples).
+- **Site:** https://elgerelg.github.io/ScriptCraft/ — search, categories, and an example on every syntax line. Built from [`docs/`](docs) with GitHub Pages (Settings, Pages, Deploy from a branch, `main` / `docs`).
+- **Examples:** https://elgerelg.github.io/ScriptCraft/examples.html
+- **Getting started:** https://elgerelg.github.io/ScriptCraft/start.html
+- **Source examples:** [`examples/`](examples)
 
-## 🔗 Ссылки
+## Links
 
 | | |
 |---|---|
-| 📦 Репозиторий | https://github.com/ElgerElg/ScriptCraft |
-| 🐞 Баги и идеи | https://github.com/ElgerElg/ScriptCraft/issues |
-| 📖 Документация | https://elgerelg.github.io/ScriptCraft/ |
-| 💬 Discord | скоро |
+| Repository | https://github.com/ElgerElg/ScriptCraft |
+| Issues | https://github.com/ElgerElg/ScriptCraft/issues |
+| Documentation | https://elgerelg.github.io/ScriptCraft/ |
+| License | [MIT](LICENSE) |
 
-## 🧪 Статус
+## Status
 
-**Alpha.** Основа работает, но мод ещё не проверен полностью в игре, поэтому возможны ошибки и изменения синтаксиса.
-Если что-то сломалось, [откройте issue](https://github.com/ElgerElg/ScriptCraft/issues) и приложите кусок лога.
+**Alpha (0.3.7).** The core works, and it has not been fully proven in every world, so bugs and syntax changes are still possible. If something breaks, [open an issue](https://github.com/ElgerElg/ScriptCraft/issues) and include the relevant log.
 
-## 🗺️ Roadmap
+A few limits worth knowing before you build on it:
 
-- [ ] Больше событий: смерть, возрождение, чат, ломание и установка блоков, клик, таймеры
-- [ ] Язык: `else if`, `and` / `or`, списки, циклы по числам, `wait`, арифметика, аргументы команд
-- [ ] Полноценные GUI: настоящие слоты, поля ввода, прокрутка, кнопки с серверной логикой
-- [ ] Эффекты и цели для мобов и блоков
-- [ ] Анимации (PlayerAnimator / GeckoLib)
-- [ ] Модели и blockstate «на лету», без JSON вручную
-- [ ] Каталог скриптов на сайте: загрузка, скачивание, рейтинг
-- [ ] Публичный API для аддонов, второй движок (JavaScript / Lua)
+- Screen slots and list rows are not a real chest. A click runs a command. The vanilla hotbar stays.
+- `on key` observes a key. It does not swallow it. To stop E from opening the inventory, use `on open inventory` with `cancel event`.
+- If `cancel event` appears anywhere in an `on open` handler, including inside `if`, the vanilla screen is always blocked.
+- Client and server jars must match. The network protocol is part of the version.
 
-## 🛠️ Для разработчиков
+## Roadmap
 
-Как устроен мод (архитектура, парсер, сеть, синхронизация ресурсов, конфиг целиком, все ограничения) и как
-добавлять записи на сайт документации, описано в **[docs/TECHNICAL.md](docs/TECHNICAL.md)**.
+- Real container slots (`AbstractContainerMenu`), text fields, and server-side button callbacks
+- Effects and targets for mobs and blocks
+- Animations (PlayerAnimator / GeckoLib)
+- Generated models and blockstates, without writing JSON by hand
+- A script catalog on the site
+- A public addon API, and a second engine (JavaScript or Lua)
+
+## For developers
+
+Architecture, the parser, networking, resource sync, the config, and how to add a documentation entry are in **[docs/TECHNICAL.md](docs/TECHNICAL.md)** (that file is still in Russian).
 
 ---
 
 <div align="center">
-<sub>Сделано для Minecraft Forge 1.20.1 · ScriptCraft не связан с Mojang, Microsoft и SkriptLang</sub>
+<sub>Made for Minecraft Forge 1.20.1 · ScriptCraft is not affiliated with Mojang, Microsoft, or SkriptLang</sub>
 </div>

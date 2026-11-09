@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="ru" data-lang="ru" data-theme="dark">
+<html lang="en" data-lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ScriptCraft Docs — синтаксис</title>
-<meta name="description" content="Документация языка скриптов ScriptCraft для Minecraft Forge 1.20.1: события, эффекты, условия, выражения, цели, экраны, примеры.">
+<title>ScriptCraft Docs — syntax</title>
+<meta name="description" content="ScriptCraft scripting language for Minecraft Forge 1.20.1: events, effects, conditions, expressions, targets, screens, and examples.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%235fb36b'/%3E%3Ctext x='16' y='22' font-size='16' font-family='sans-serif' font-weight='900' text-anchor='middle' fill='white'%3ESC%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/style.css">
 </head>
@@ -12,25 +12,25 @@
 <header class="top"><div class="top-in">
   <a class="logo" href="index.html"><span class="logo-mark">SC</span>ScriptCraft <b>Docs</b></a>
   <nav class="nav">
-    <a href="index.html" class="active" data-i18n="nav.docs">Документация</a>
-    <a href="examples.html" data-i18n="nav.examples">Примеры</a>
-    <a href="start.html" data-i18n="nav.start">Начало</a>
+    <a href="index.html" class="active" data-i18n="nav.docs">Docs</a>
+    <a href="examples.html" data-i18n="nav.examples">Examples</a>
+    <a href="start.html" data-i18n="nav.start">Getting started</a>
   </nav>
   <div class="tools">
-    <button class="btn" id="lang-toggle" type="button" data-i18n-title="lang.title" title="Switch to English"><span data-i18n="lang.btn">EN</span></button>
-    <button class="btn" id="theme-toggle" type="button" data-i18n-title="theme.title" title="Светлая / тёмная тема"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg></button>
+    <button class="btn" id="lang-toggle" type="button" data-i18n-title="lang.title" title="Переключить на русский"><span data-i18n="lang.btn">RU</span></button>
+    <button class="btn" id="theme-toggle" type="button" data-i18n-title="theme.title" title="Light / dark theme"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg></button>
     <a class="btn" href="https://github.com/ElgerElg/ScriptCraft" target="_blank" rel="noopener"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg><span class="txt" data-i18n="github">GitHub</span></a>
   </div>
 </div></header>
 <main class="wrap">
   <div class="hero">
-    <h1 data-i18n="docs.title">Синтаксис ScriptCraft</h1>
+    <h1 data-i18n="docs.title">ScriptCraft syntax</h1>
     <p data-i18n="docs.sub"></p>
   </div>
   <div class="searchbar">
     <label class="search">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="opacity:.6"><path d="M10 2a8 8 0 0 1 6.32 12.9l5.39 5.4-1.41 1.4-5.4-5.39A8 8 0 1 1 10 2zm0 2a6 6 0 1 0 0 12 6 6 0 0 0 0-12z"/></svg>
-      <input id="q" type="search" autocomplete="off" spellcheck="false" data-i18n-ph="search.ph" aria-label="Поиск">
+      <input id="q" type="search" autocomplete="off" spellcheck="false" data-i18n-ph="search.ph" aria-label="Search">
       <span class="hint" data-i18n="search.hint"></span>
     </label>
     <div class="chips" id="chips"></div>
@@ -38,7 +38,7 @@
   </div>
   <div class="layout">
     <aside class="side" id="side"></aside>
-    <div id="list"><noscript>Для поиска и списка синтаксиса нужен JavaScript.</noscript></div>
+    <div id="list"><noscript>JavaScript is required for search and the syntax list.</noscript></div>
   </div>
 </main>
 <footer class="foot"><span data-i18n-foot></span> · <a href="https://github.com/ElgerElg/ScriptCraft">github.com/ElgerElg/ScriptCraft</a></footer>
