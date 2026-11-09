@@ -15,7 +15,8 @@ public final class ModNetwork {
     // 3: HUD (HudPacket), слои у элементов, полосы прогресса, новые виды слотов.
     // 4: пул блоков/предметов и таблица привязок (BindingsPacket).
     // 6: журнал ошибок (LogRequest/Log) и всплывающие уведомления (Notify).
-    private static final String PROTOCOL_VERSION = "6";
+    // 7: студия — список скриптов, чтение, запись и перезагрузка.
+    private static final String PROTOCOL_VERSION = "7";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(ScriptCraft.MODID, "main"),
@@ -84,6 +85,36 @@ public final class ModNetwork {
                 .encoder(LogPacket::encode)
                 .decoder(LogPacket::decode)
                 .consumerMainThread(LogPacket::handle)
+                .add();
+        CHANNEL.messageBuilder(ScriptListPacket.class, id++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(ScriptListPacket::encode)
+                .decoder(ScriptListPacket::decode)
+                .consumerMainThread(ScriptListPacket::handle)
+                .add();
+        CHANNEL.messageBuilder(ScriptListPacket.Request.class, id++, NetworkDirection.PLAY_TO_SERVER)
+                .encoder(ScriptListPacket.Request::encode)
+                .decoder(ScriptListPacket.Request::decode)
+                .consumerMainThread(ScriptListPacket.Request::handle)
+                .add();
+        CHANNEL.messageBuilder(ScriptDataPacket.class, id++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(ScriptDataPacket::encode)
+                .decoder(ScriptDataPacket::decode)
+                .consumerMainThread(ScriptDataPacket::handle)
+                .add();
+        CHANNEL.messageBuilder(ScriptDataPacket.Read.class, id++, NetworkDirection.PLAY_TO_SERVER)
+                .encoder(ScriptDataPacket.Read::encode)
+                .decoder(ScriptDataPacket.Read::decode)
+                .consumerMainThread(ScriptDataPacket.Read::handle)
+                .add();
+        CHANNEL.messageBuilder(ScriptDataPacket.Save.class, id++, NetworkDirection.PLAY_TO_SERVER)
+                .encoder(ScriptDataPacket.Save::encode)
+                .decoder(ScriptDataPacket.Save::decode)
+                .consumerMainThread(ScriptDataPacket.Save::handle)
+                .add();
+        CHANNEL.messageBuilder(ScriptReloadPacket.class, id++, NetworkDirection.PLAY_TO_SERVER)
+                .encoder(ScriptReloadPacket::encode)
+                .decoder(ScriptReloadPacket::decode)
+                .consumerMainThread(ScriptReloadPacket::handle)
                 .add();
     }
 

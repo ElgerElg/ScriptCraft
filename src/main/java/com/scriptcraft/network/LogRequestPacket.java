@@ -22,7 +22,8 @@ public record LogRequestPacket() {
             if (player == null || !player.hasPermissions(2)) {
                 return;
             }
-            ModNetwork.sendTo(player, LogPacket.from(ScriptLoader.journal()));
+            ModNetwork.sendTo(player, LogPacket.from(ScriptLoader.journal(), true));
+            ModNetwork.sendTo(player, ScriptListPacket.ofServer());
         });
         ctx.get().setPacketHandled(true);
     }

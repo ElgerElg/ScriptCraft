@@ -185,4 +185,32 @@ public final class ScriptPaths {
     private static String fileNameOf(String relName) {
         return relName.substring(relName.lastIndexOf('/') + 1);
     }
+
+    /** Имя из студии: только файл внутри scripts, с расширением .sc, без выхода вверх. */
+    public static boolean contained(String rel) {
+        if (rel == null) {
+            return false;
+        }
+        String name = rel.replace('\\', '/').strip();
+        if (name.isEmpty() || name.length() > 160 || name.contains("..") || name.startsWith("/") || name.indexOf(':') >= 0) {
+            return false;
+        }
+        if (!name.endsWith(EXTENSION)) {
+            return false;
+        }
+        Path root = scriptsDir().toAbsolutePath().normalize();
+        Path path = root.resolve(name).normalize();
+        return path.startsWith(root);
+    }
+
+    /** Записывает скрипт в UTF-8. Папки по пути создаются. */
+    public static void write(String rel, String text) throws IOException {
+        if (!contained(rel)) {
+            throw new IOException("bad script path");
+        }
+        Path path = scriptsDir().toAbsolutePath().normalize().resolve(rel).normalize();
+        Files.createDirectories(path.getParent());
+        String body = text.replace("\r\n", "\n").replace('\r', '\n');
+        Files.writeString(path, body, StandardCharsets.UTF_8);
+    }
 }

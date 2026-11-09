@@ -18,8 +18,23 @@ public final class ClientPacketHandler {
         Minecraft.getInstance().setScreen(new ScriptScreen(description));
     }
 
-    public static void openLog(List<ScriptLog.Issue> issues, List<ScriptLog.Slice> files) {
-        Minecraft.getInstance().setScreen(new LogScreen(issues, files));
+    public static void openLog(List<ScriptLog.Issue> issues, List<ScriptLog.Slice> files, boolean open) {
+        StudioSession.journal(issues, files);
+        if (!open) {
+            return;
+        }
+        Minecraft minecraft = Minecraft.getInstance();
+        if (!(minecraft.screen instanceof StudioScreen)) {
+            minecraft.setScreen(new StudioScreen());
+        }
+    }
+
+    public static void studioCatalog(List<String> names) {
+        StudioSession.catalog(names);
+    }
+
+    public static void studioText(String name, String text) {
+        StudioSession.acceptText(name, text);
     }
 
     public static void toast(String text) {

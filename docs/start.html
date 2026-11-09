@@ -80,8 +80,8 @@ command /hello:
     send "&bHello, %player%! Ты написал: %args%" to player
     play sound entity.experience_orb.pickup to player
 </pre>
-  <p class="l-ru">Ошибки в скрипте (с номером строки) выводятся в чат тому, кто выполнил <code>/sc reload</code>, и в лог сервера. Весь синтаксис — на вкладке <a href="index.html">Документация</a>, готовые скрипты — в <a href="examples.html">Примерах</a>.</p>
-  <p class="l-en">Script errors (with line numbers) are shown to whoever ran <code>/sc reload</code> and written to the server log. All syntax is on the <a href="index.html">Docs</a> tab, complete scripts are in <a href="examples.html">Examples</a>.</p>
+  <p class="l-ru">Ошибки в скрипте (с номером строки) попадают в журнал студии (F3 + `) и в лог сервера. Короткий итог команды всплывает уведомлением, а не сообщением в чат. Весь синтаксис — на вкладке <a href="index.html">Документация</a>, готовые скрипты — в <a href="examples.html">Примерах</a>.</p>
+  <p class="l-en">Script errors (with line numbers) go to the studio journal (F3 + `) and the server log. A command's short result pops up as a notice, not a chat line. All syntax is on the <a href="index.html">Docs</a> tab, complete scripts are in <a href="examples.html">Examples</a>.</p>
 
   <h2 id="commands"><span class="l-ru">4. Команды мода</span><span class="l-en">4. Mod commands</span></h2>
   <p class="l-ru"><code>/scriptcraft</code>, <code>/sc</code> и <code>/script</code> — одно и то же. Нужен уровень оператора 2. Имена скриптов дополняются по Tab, <code>.sc</code> можно не писать.</p>
@@ -89,7 +89,7 @@ command /hello:
   <table>
     <tr><th><span class="l-ru">Команда</span><span class="l-en">Command</span></th><th><span class="l-ru">Что делает</span><span class="l-en">What it does</span></th></tr>
     <tr><td><code>/sc help</code></td><td><span class="l-ru">справка</span><span class="l-en">help</span></td></tr>
-    <tr><td><code>F3 + `</code></td><td><span class="l-ru">журнал ошибок (только оператор; клавиши нет в «Управлении»). Шестерёнка внутри меняет клавишу и всплывающие уведомления</span><span class="l-en">error journal (operators only; the key is not in Controls). The gear inside rebinds the key and the popup notices</span></td></tr>
+    <tr><td><code>F3 + `</code></td><td><span class="l-ru">студия (только оператор; клавиши нет в «Управлении»): главная, журнал и правка скриптов сервера. Ctrl+S сохраняет на сервер, Ctrl+R перезагружает. Шестерёнка меняет клавишу и уведомления</span><span class="l-en">studio (operators only; the key is not in Controls): home, journal and editing of the server's scripts. Ctrl+S saves to the server, Ctrl+R reloads. The gear rebinds the key and the notices</span></td></tr>
     <tr><td><code>/sc reload</code></td><td><span class="l-ru">перезагрузить все скрипты</span><span class="l-en">reload all scripts</span></td></tr>
     <tr><td><code>/sc reload &lt;скрипт&gt;</code></td><td><span class="l-ru">перезагрузить один файл (подпапки: <code>sub/name</code>)</span><span class="l-en">reload one file (subfolders: <code>sub/name</code>)</span></td></tr>
     <tr><td><code>/sc disable &lt;скрипт&gt;</code></td><td><span class="l-ru">выключить: выгрузить и переименовать в <code>-имя.sc</code></span><span class="l-en">disable: unload and rename to <code>-name.sc</code></span></td></tr>

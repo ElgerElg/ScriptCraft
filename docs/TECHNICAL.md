@@ -78,7 +78,7 @@ scriptcraft/
 | Команда | Что делает |
 |---|---|
 | `/sc` или `/sc help` | справка (всплывающие уведомления, не чат) |
-| F3 + `` ` `` | журнал ошибок, только оператор. Клавиша не в меню «Управление». Слева список, справа исходник без правки, строка ошибки подсвечена. Шестерёнка: клавиша, размер уведомлений, место, время |
+| F3 + `` ` `` | студия, только оператор. Клавиша не в меню «Управление». По умолчанию на весь экран: главная (если ошибок нет), журнал, вкладки скриптов сервера с правкой, Ctrl+S на сервер, Ctrl+R перезагрузка. Шестерёнка: клавиша, размер уведомлений, место, время |
 | `/sc reload` | перезагрузить **все** скрипты (логику: события, команды, сообщения, экраны) |
 | `/sc reload welcome` | перезагрузить только `welcome.sc` (подпапки так: `/sc reload sub/name`) |
 | `/sc disable welcome` | выключить скрипт: выгружает его события и команды и переименовывает файл в `-welcome.sc` |
@@ -742,8 +742,8 @@ src/main/java/com/scriptcraft/
                                (модели слотов и недостающие модели настоящих id), RewritingDataPack (id скриптов -> id
                                слотов в data/), AssetBindings, DefineCache (клиент: id define серверов)
   event/ServerEvents           Forge-события -> события скриптов, переменные, раздача ресурсов
-  network/                     ModNetwork (протокол 5), OpenScreenPacket, HudPacket, BindingsPacket, ResourceManifest/Request/ChunkPacket
-  screen/, client/             Screen API; client/ClientResources — кэш, DynamicTexture, перезагрузка ресурсов
+  network/                     ModNetwork (протокол 7), OpenScreenPacket, HudPacket, BindingsPacket, ResourceManifest/Request/ChunkPacket, LogPacket, ScriptList/Data/ReloadPacket
+  screen/, client/             Screen API; client/ClientResources — кэш; StudioScreen — окно мода на сессию (главная, журнал, редактор)
   hud/                         HUD поверх игры: HudManager (сервер), HudOp/HudEntry (диффы); client/ClientHud — рендер
 ```
 

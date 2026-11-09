@@ -11,9 +11,9 @@ import java.util.List;
 import java.util.function.Supplier;
 
 /** Сервер -> клиент: ошибки и фрагменты файлов для журнала. */
-public record LogPacket(List<ScriptLog.Issue> issues, List<ScriptLog.Slice> files) {
-    public static LogPacket from(ScriptLog.View view) {
-        return new LogPacket(view.issues(), view.files());
+public record LogPacket(List<ScriptLog.Issue> issues, List<ScriptLog.Slice> files, boolean open) {
+    public static LogPacket from(ScriptLog.View view, boolean open) {
+        return new LogPacket(view.issues(), view.files(), open);
     }
 
     public static void encode(LogPacket packet, FriendlyByteBuf buf) {
@@ -33,6 +33,7 @@ public record LogPacket(List<ScriptLog.Issue> issues, List<ScriptLog.Slice> file
                 buf.writeUtf(line, 200);
             }
         }
+        buf.writeBoolean(packet.open);
     }
 
     public static LogPacket decode(FriendlyByteBuf buf) {
@@ -53,13 +54,13 @@ public record LogPacket(List<ScriptLog.Issue> issues, List<ScriptLog.Slice> file
             }
             files.add(new ScriptLog.Slice(name, first, text));
         }
-        return new LogPacket(issues, files);
+        return new LogPacket(issues, files, buf.readBoolean());
     }
 
     public static void handle(LogPacket packet, Supplier<NetworkEvent.Context> ctx) {
         ctx.get().enqueueWork(() ->
                 DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () ->
-                        com.scriptcraft.client.ClientPacketHandler.openLog(packet.issues, packet.files)));
+                        com.scriptcraft.client.ClientPacketHandler.openLog(packet.issues, packet.files, packet.open)));
         ctx.get().setPacketHandled(true);
     }
 }

@@ -141,6 +141,50 @@ public final class Messages {
         add("log.sample", "&7reloaded welcome.sc", "&7скрипт welcome.sc перезагружен");
         add("log.errors_toast", "&e%d script error(s). Open the journal.", "&eОшибок в скриптах: %d. Откройте журнал.");
         add("log.runtime_toast", "&cError in %s: %s", "&cОшибка в %s: %s");
+
+        add("studio.home", "Home", "Главная");
+        add("studio.journal", "Journal", "Журнал");
+        add("studio.patches", "Patches and versions", "Патчи и версии");
+        add("studio.p1", "0.3.0 — studio: script tabs, save to the server, markers", "0.3.0 — студия: вкладки скриптов, запись на сервер, маркеры");
+        add("studio.p2", "0.2.3 — the journal no longer crashes on F3 + `", "0.2.3 — журнал больше не роняет игру на F3 + `");
+        add("studio.p3", "0.2.2 — error journal and notices instead of chat", "0.2.2 — журнал ошибок и уведомления вместо чата");
+        add("studio.p4", "0.2.0 — Skript-like events and effects, .sc scripts", "0.2.0 — события и эффекты в духе Skript, скрипты .sc");
+        add("studio.dev", "Developer", "Разработчик");
+        add("studio.role", "author of the mod", "автор мода");
+        add("studio.hint", "Open a script with + or File. On a server these are the server's scripts; in singleplayer, the local ones.", "Откройте скрипт кнопкой + или меню «Файл». На сервере это его скрипты, в одиночной игре — локальные.");
+        add("studio.parser", "Parser: events — yellow marker, textures and ids — blue. Hover a blue marker for the image and its size.", "Парсер: события — жёлтый маркер, текстуры и id — синий. Наведите на синий, чтобы увидеть картинку и размер.");
+        add("studio.loading", "Loading...", "Загрузка...");
+        add("studio.empty", "No scripts on this server yet", "На этом сервере пока нет скриптов");
+        add("studio.find", "Find", "Найти");
+        add("studio.none", "not found", "не найдено");
+        add("studio.unsaved", "&eUnsaved edits stayed in the editor", "&eНесохранённые правки остались в редакторе");
+        add("studio.read_failed", "&cCould not read %s", "&cНе удалось прочитать %s");
+        add("studio.bad_name", "&cBad script name: %s", "&cНеподходящее имя скрипта: %s");
+        add("studio.save_failed", "&cSave failed: %s", "&cНе удалось сохранить: %s");
+        add("studio.saved_disabled", "&eSaved %s (the script is disabled, so it was not reloaded)", "&eСохранено %s (скрипт выключен, поэтому не перезагружался)");
+        add("studio.reload_disabled", "&eScript %s is disabled", "&eСкрипт %s выключен");
+        add("studio.new_name", "name.sc", "имя.sc");
+        add("studio.m.file", "File", "Файл");
+        add("studio.m.edit", "Edit", "Правка");
+        add("studio.m.search", "Search", "Поиск");
+        add("studio.m.view", "View", "Вид");
+        add("studio.m.enc", "Encoding", "Кодировки");
+        add("studio.m.new", "New script", "Новый скрипт");
+        add("studio.m.open", "Open", "Открыть");
+        add("studio.m.save", "Save", "Сохранить");
+        add("studio.m.save_all", "Save all", "Сохранить всё");
+        add("studio.m.close", "Close tab", "Закрыть вкладку");
+        add("studio.m.exit", "Close window", "Закрыть окно");
+        add("studio.m.undo", "Undo", "Отменить");
+        add("studio.m.redo", "Redo", "Вернуть");
+        add("studio.m.cut", "Cut", "Вырезать");
+        add("studio.m.copy", "Copy", "Копировать");
+        add("studio.m.paste", "Paste", "Вставить");
+        add("studio.m.all", "Select all", "Выделить всё");
+        add("studio.m.find", "Find", "Найти");
+        add("studio.m.full", "Fullscreen", "На весь экран");
+        add("studio.m.window", "Window", "Окно");
+        add("studio.m.utf", "UTF-8", "UTF-8");
     }
 
     private Messages() {

@@ -15,7 +15,7 @@
  */
 window.SC_DOCS = window.SC_DOCS || {};
 window.SC_DOCS.syntax = {
-  version: "0.2.3",
+  version: "0.3.0",
   categories: [
     { id: "events",     ru: "События",            en: "Events" },
     { id: "structures", ru: "Структуры",          en: "Structures" },
@@ -1344,11 +1344,11 @@ show vanilla all for player`,
   },
   {
     id: "cmd-journal", category: "commands",
-    name: { ru: "Журнал ошибок", en: "Error journal" },
+    name: { ru: "Студия", en: "Studio" },
     syntax: ["F3 + `"],
     desc: {
-      ru: "Журнал только для оператора. Клавиша не видна в «Управлении»: по умолчанию F3 и ` (на русской раскладке это клавиша Ё). Открывается блокнот без правки: слева ошибки, справа файл, строка с ошибкой подсвечена, снизу причина. Шестерёнка на этом клиенте меняет клавишу (можно зажать F3 вместе с новой), размер уведомлений, их место (у чата или угол экрана) и через сколько секунд они гаснут. Ответы мода (`/sc reload`, включение и выключение скрипта и остальные) больше не пишутся в чат — это такие же уведомления. Сообщения самих скриптов (`send`) остаются в чате. Настройки лежат в `scriptcraft/client-ui.properties`.",
-      en: "Operator-only journal. The key is not listed in Controls: default is F3 and ` (Ё on a Russian layout). It opens a read-only notepad: errors on the left, the file on the right, the bad line highlighted, the reason along the bottom. The gear on this client changes the key (hold F3 with the new key if you want the combo), notice size, place (by the chat or a screen corner) and how many seconds they stay. Mod replies (`/sc reload`, enable, disable and the rest) are these notices instead of chat. Script `send` messages stay in chat. Settings are stored in `scriptcraft/client-ui.properties`."
+      ru: "Окно мода только для оператора. Клавиша не видна в «Управлении»: по умолчанию F3 и ` (на русской раскладке это Ё). Пока игрок не вышел с сервера, вкладки и размер окна помнятся; выход сбрасывает их. Если ошибок нет, открывается главная: патчи и медленно крутящаяся модель скина ElgerElg. Ошибки — вкладка «Журнал». Скрипты сервера (в одиночной игре это локальные файлы) открываются по одному на вкладку и правятся как в блокноте: копирование, отмена (Ctrl+Z / Ctrl+Y), поиск. Ctrl+S записывает файл на сервер и перезагружает скрипт, Ctrl+R перезагружает сохранённую версию. События подсвечены жёлтым маркером, пути текстур и id — синим; наведение на синий показывает картинку и её размер в пикселях. Окно по умолчанию на весь экран: свернуть оставляет заголовок, кнопка размера возвращает окно, закрытие — только кнопкой или Esc, снова открывается тем же сочетанием. У окна, которое не на весь экран, тянется заголовок и края. Шестерёнка меняет клавишу и всплывающие уведомления (`scriptcraft/client-ui.properties`). Клиент и сервер должны быть одной версии: протокол сети теперь 7.",
+      en: "Operator-only mod window. The key is not listed in Controls: default is F3 and ` (Ё on a Russian layout). Tabs and the window size stay until the player leaves the server; logout clears them. With no errors it opens on the home page: patches and a slowly rotating model of ElgerElg's skin. Errors are the Journal tab. Server scripts (the local files in singleplayer) open one tab each and edit like a notepad: copy, undo (Ctrl+Z / Ctrl+Y), find. Ctrl+S writes the file on the server and reloads the script, Ctrl+R reloads the saved copy. Events get a yellow marker, texture paths and ids a blue one; hovering a blue marker shows the image and its pixel size. The window is fullscreen by default: minimize leaves the title bar, the size button restores a window, close is the button or Esc, and the same key opens it again. A window that is not fullscreen can be dragged by the title and resized from the edges. The gear changes the key and the popup notices (`scriptcraft/client-ui.properties`). Client and server must be the same version: the network protocol is now 7."
     },
     example: "F3 + `",
     since: "0.2.2", related: ["cmd-reload", "cmd-config-reload"]

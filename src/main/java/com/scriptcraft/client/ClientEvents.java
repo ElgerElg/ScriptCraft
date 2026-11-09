@@ -24,6 +24,7 @@ public final class ClientEvents {
         ClientHud.reset();
         ClientBindings.onLoggingOut();
         ClientToasts.clear();
+        StudioSession.reset();
     }
 
     /**
