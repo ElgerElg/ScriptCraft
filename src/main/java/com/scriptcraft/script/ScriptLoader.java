@@ -4,6 +4,7 @@ import com.scriptcraft.ScriptCraft;
 import com.scriptcraft.command.ScriptCommands;
 import com.scriptcraft.config.ScriptCraftConfig;
 import com.scriptcraft.hud.HudManager;
+import com.scriptcraft.lang.Feedback;
 import com.scriptcraft.lang.Messages;
 import com.scriptcraft.registry.BindingSync;
 import com.scriptcraft.script.engine.ScriptEngine;
@@ -14,7 +15,6 @@ import com.scriptcraft.script.runtime.ScriptEvent;
 import com.scriptcraft.script.runtime.ScriptScheduler;
 import com.scriptcraft.script.variables.VariableStore;
 import net.minecraft.commands.CommandSourceStack;
-import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import org.jetbrains.annotations.Nullable;
@@ -62,6 +62,15 @@ public final class ScriptLoader {
         return lastErrors;
     }
 
+    /** Журнал для оператора: ошибки разбора и ошибки во время игры, плюс фрагменты файлов. */
+    public static ScriptLog.View journal() {
+        return ScriptLog.capture(SOURCES, lastErrors);
+    }
+
+    public static void noteRuntime(String file, String message, @Nullable ServerPlayer player, @Nullable MinecraftServer server) {
+        ScriptLog.runtime(file, message, player, server);
+    }
+
     /** Имена загруженных (включённых) скриптов. */
     public static List<String> loadedScripts() {
         return List.copyOf(SOURCES.keySet());
@@ -81,6 +90,7 @@ public final class ScriptLoader {
     }
 
     private static void loadAllFromDisk() {
+        ScriptLog.clearRuntime();
         SOURCES.clear();
         READ_ERRORS.clear();
         for (ScriptSource source : ScriptPaths.readAll(READ_ERRORS)) {
@@ -112,7 +122,7 @@ public final class ScriptLoader {
         afterChange(source);
         fireScriptEvent(ScriptEvent.LOAD, f -> true, server);
         int errors = lastErrors.size();
-        source.sendSuccess(() -> Messages.component("reload.all", SOURCES.size(), program.commandNames().size(), errors), true);
+        Feedback.ok(source, "reload.all", SOURCES.size(), program.commandNames().size(), errors);
         sendErrors(source);
         return errors == 0 ? 1 : 0;
     }
@@ -125,25 +135,26 @@ public final class ScriptLoader {
         String name = ScriptPaths.normalize(input);
         if (name == null || !Files.isRegularFile(ScriptPaths.resolve(name))) {
             if (name != null && Files.isRegularFile(ScriptPaths.resolve(ScriptPaths.disabledName(name)))) {
-                source.sendFailure(Messages.component("script.is_disabled", name));
+                Feedback.fail(source, "script.is_disabled", name);
             } else {
-                source.sendFailure(Messages.component("script.not_found", input));
+                Feedback.fail(source, "script.not_found", input);
             }
             return 0;
         }
         List<String> errors = new ArrayList<>();
         ScriptSource fresh = ScriptPaths.readOne(name, errors);
         if (fresh == null) {
-            errors.forEach(e -> source.sendFailure(Component.literal(e)));
+            errors.forEach(e -> Feedback.failText(source, e));
             return 0;
         }
+        ScriptLog.clearRuntime();
         ScriptScheduler.clear(name);
         fireScriptEvent(ScriptEvent.UNLOAD, name::equals, source.getServer());
         SOURCES.put(name, fresh);
         recompile();
         afterChange(source);
         fireScriptEvent(ScriptEvent.LOAD, name::equals, source.getServer());
-        source.sendSuccess(() -> Messages.component("reload.one", name, lastErrors.size()), true);
+        Feedback.ok(source, "reload.one", name, lastErrors.size());
         sendErrors(source);
         return 1;
     }
@@ -152,20 +163,20 @@ public final class ScriptLoader {
     public static int disable(CommandSourceStack source, String input) {
         String name = ScriptPaths.normalize(input);
         if (name == null) {
-            source.sendFailure(Messages.component("script.not_found", input));
+            Feedback.fail(source, "script.not_found", input);
             return 0;
         }
         String disabled = ScriptPaths.disabledName(name);
         if (!Files.isRegularFile(ScriptPaths.resolve(name))) {
-            source.sendFailure(Files.isRegularFile(ScriptPaths.resolve(disabled))
-                    ? Messages.component("script.already_disabled", name)
-                    : Messages.component("script.not_found", input));
+            Feedback.showColored(source, Files.isRegularFile(ScriptPaths.resolve(disabled))
+                    ? Messages.get("script.already_disabled", name)
+                    : Messages.get("script.not_found", input));
             return 0;
         }
         try {
             ScriptPaths.rename(name, disabled);
         } catch (IOException e) {
-            source.sendFailure(Messages.component("script.rename_failed", e.getMessage()));
+            Feedback.fail(source, "script.rename_failed", e.getMessage());
             return 0;
         }
         boolean hadDefines = hasDefines(SOURCES.get(name));
@@ -176,9 +187,9 @@ public final class ScriptLoader {
         SOURCES.remove(name);
         recompile();
         afterChange(source);
-        source.sendSuccess(() -> Messages.component("script.disabled", name, disabled), true);
+        Feedback.ok(source, "script.disabled", name, disabled);
         if (hadDefines) {
-            source.sendSuccess(() -> Messages.component("script.defines_warning"), false);
+            Feedback.ok(source, "script.defines_warning");
         }
         return 1;
     }
@@ -187,20 +198,20 @@ public final class ScriptLoader {
     public static int enable(CommandSourceStack source, String input) {
         String name = ScriptPaths.normalize(input);
         if (name == null) {
-            source.sendFailure(Messages.component("script.not_found", input));
+            Feedback.fail(source, "script.not_found", input);
             return 0;
         }
         String disabled = ScriptPaths.disabledName(name);
         if (!Files.isRegularFile(ScriptPaths.resolve(disabled))) {
-            source.sendFailure(Files.isRegularFile(ScriptPaths.resolve(name))
-                    ? Messages.component("script.already_enabled", name)
-                    : Messages.component("script.not_found", input));
+            Feedback.showColored(source, Files.isRegularFile(ScriptPaths.resolve(name))
+                    ? Messages.get("script.already_enabled", name)
+                    : Messages.get("script.not_found", input));
             return 0;
         }
         try {
             ScriptPaths.rename(disabled, name);
         } catch (IOException e) {
-            source.sendFailure(Messages.component("script.rename_failed", e.getMessage()));
+            Feedback.fail(source, "script.rename_failed", e.getMessage());
             return 0;
         }
         List<String> errors = new ArrayList<>();
@@ -212,8 +223,8 @@ public final class ScriptLoader {
         afterChange(source);
         // "on load:" / "on join or load:" — HUD и прочая подготовка сразу для игроков онлайн.
         fireScriptEvent(ScriptEvent.LOAD, name::equals, source.getServer());
-        source.sendSuccess(() -> Messages.component("script.enabled", name), true);
-        errors.forEach(e -> source.sendFailure(Component.literal(e)));
+        Feedback.ok(source, "script.enabled", name);
+        errors.forEach(e -> Feedback.failText(source, e));
         sendErrors(source);
         return 1;
     }
@@ -222,13 +233,13 @@ public final class ScriptLoader {
     public static int list(CommandSourceStack source) {
         List<String> disabled = ScriptPaths.listScripts().stream().filter(ScriptPaths::isDisabled).toList();
         String none = Messages.get("list.none");
-        source.sendSuccess(() -> Messages.component("list.scripts", SOURCES.isEmpty() ? none : String.join(", ", SOURCES.keySet())), false);
+        Feedback.ok(source, "list.scripts", SOURCES.isEmpty() ? none : String.join(", ", SOURCES.keySet()));
         if (!disabled.isEmpty()) {
-            source.sendSuccess(() -> Messages.component("list.disabled", String.join(", ", disabled)), false);
+            Feedback.ok(source, "list.disabled", String.join(", ", disabled));
         }
         String commands = program.commandNames().isEmpty() ? none : "/" + String.join(", /", program.commandNames());
-        source.sendSuccess(() -> Messages.component("list.summary", commands, program.blocks().size(),
-                program.items().size(), VariableStore.size(), lastErrors.size()), false);
+        Feedback.ok(source, "list.summary", commands, program.blocks().size(),
+                program.items().size(), VariableStore.size(), lastErrors.size());
         sendErrors(source);
         return 1;
     }
@@ -258,8 +269,8 @@ public final class ScriptLoader {
     }
 
     private static void sendErrors(CommandSourceStack source) {
-        for (String e : lastErrors) {
-            source.sendFailure(Component.literal(e));
+        if (!lastErrors.isEmpty()) {
+            Feedback.fail(source, "log.errors_toast", lastErrors.size());
         }
     }
 
@@ -285,6 +296,7 @@ public final class ScriptLoader {
             program.fireEvent(event, ctx);
         } catch (RuntimeException e) {
             ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка в 'on {}': {}", event.scriptName(), e.getMessage());
+            noteRuntime("", e.getMessage(), player, server);
         }
         return ctx;
     }
@@ -295,6 +307,7 @@ public final class ScriptLoader {
             program.tickEvery(server);
         } catch (RuntimeException e) {
             ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка периодических скриптов: {}", e.getMessage());
+            noteRuntime("", e.getMessage(), null, server);
         }
         ScriptScheduler.tick(server);
     }
@@ -305,6 +318,7 @@ public final class ScriptLoader {
             program.fireScriptEvent(event, files, server);
         } catch (RuntimeException e) {
             ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка в 'on {}': {}", event.scriptName(), e.getMessage());
+            noteRuntime("", e.getMessage(), null, server);
         }
     }
 
@@ -325,12 +339,12 @@ public final class ScriptLoader {
         try {
             if (!program.runCommand(name, ctx)) {
                 // Скрипт выключен или команда удалена, но узел Brigadier остаётся до перезапуска.
-                source.sendFailure(Messages.component("command.disabled", name));
+                Feedback.fail(source, "command.disabled", name);
                 return 0;
             }
             return 1;
         } catch (RuntimeException e) {
-            source.sendFailure(Messages.component("command.error", name, e.getMessage()));
+            Feedback.fail(source, "command.error", name, e.getMessage());
             return 0;
         }
     }

@@ -7,6 +7,7 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import com.scriptcraft.ScriptCraft;
 import com.scriptcraft.config.ScriptCraftConfig;
+import com.scriptcraft.lang.Feedback;
 import com.scriptcraft.lang.Messages;
 import com.scriptcraft.registry.Bindings;
 import com.scriptcraft.resources.ResourceIndex;
@@ -123,6 +124,8 @@ public final class ScriptCommands {
                                 .executes(ctx -> ScriptLoader.disable(ctx.getSource(),
                                         StringArgumentType.getString(ctx, "script")))))
                 .then(Commands.literal("list").executes(ctx -> ScriptLoader.list(ctx.getSource())))
+                .then(Commands.literal("config")
+                        .then(Commands.literal("reload").executes(ctx -> reloadConfig(ctx.getSource()))))
                 .then(Commands.literal("resources")
                         .then(Commands.literal("reload").executes(ctx -> reloadResources(ctx.getSource()))))
                 .then(Commands.literal("ids").executes(ctx -> ids(ctx.getSource())))
@@ -143,17 +146,17 @@ public final class ScriptCommands {
     private static int ids(CommandSourceStack source) {
         Bindings.Snapshot b = Bindings.current();
         if (b.isEmpty()) {
-            source.sendSuccess(() -> Messages.component("ids.none"), false);
+            Feedback.ok(source, "ids.none");
             return 1;
         }
-        source.sendSuccess(() -> Messages.component("ids.header"), false);
+        Feedback.ok(source, "ids.header");
         List<String> all = b.allIds();
         for (String id : all) {
             String poolId = b.poolId(id);
             if (poolId == null) {
-                source.sendSuccess(() -> Messages.component("ids.real", id), false);
+                Feedback.ok(source, "ids.real", id);
             } else {
-                source.sendSuccess(() -> Messages.component("ids.temporary", id, poolId), false);
+                Feedback.ok(source, "ids.temporary", id, poolId);
             }
         }
         return all.size();
@@ -166,7 +169,7 @@ public final class ScriptCommands {
                 .or(() -> "minecraft".equals(id.getNamespace()) ? ItemResolver.resolve(id.getPath()) : java.util.Optional.empty())
                 .orElse(null);
         if (item == null) {
-            source.sendFailure(Messages.component("give.unknown", id.toString()));
+            Feedback.fail(source, "give.unknown", id.toString());
             return 0;
         }
         int maxStack = new ItemStack(item).getMaxStackSize();
@@ -182,33 +185,44 @@ public final class ScriptCommands {
             }
         }
         Component name = new ItemStack(item).getHoverName();
-        source.sendSuccess(() -> Messages.component("give.done", count, name.getString(), targets.size()), true);
+        Feedback.ok(source, "give.done", count, name.getString(), targets.size());
         return targets.size();
+    }
+
+    /** /sc config reload: перечитать scriptcraft/config.toml, не трогая скрипты. */
+    private static int reloadConfig(CommandSourceStack source) {
+        String error = ScriptCraftConfig.reloadFromDisk();
+        if (error != null) {
+            Feedback.fail(source, "config.reload_failed", error);
+            return 0;
+        }
+        Feedback.ok(source, "config.reloaded", ScriptCraftConfig.language());
+        return 1;
     }
 
     /** /sc resources reload: перечитать scriptcraft/resources/assets и разослать изменения игрокам онлайн. */
     private static int reloadResources(CommandSourceStack source) {
         String error = ResourceSync.reloadAndPush(source.getServer());
         if (error != null) {
-            source.sendFailure(Messages.component("resources.reload_failed", error));
+            Feedback.fail(source, "resources.reload_failed", error);
             return 0;
         }
         int files = ResourceIndex.entries().size();
         long kb = ResourceIndex.totalBytes() / 1024;
         if (ScriptCraftConfig.syncResourcesToClients()) {
             int players = source.getServer().getPlayerList().getPlayerCount();
-            source.sendSuccess(() -> Messages.component("resources.reloaded", files, kb, players), true);
+            Feedback.ok(source, "resources.reloaded", files, kb, players);
         } else {
-            source.sendSuccess(() -> Messages.component("resources.reloaded_nosync", files, kb), true);
+            Feedback.ok(source, "resources.reloaded_nosync", files, kb);
         }
         // data/ (лут, теги, рецепты) перечитывает ванильная /reload — подсказываем.
-        source.sendSuccess(() -> Messages.component("resources.data_hint"), false);
+        Feedback.ok(source, "resources.data_hint");
         return 1;
     }
 
     private static int help(CommandSourceStack source, String root) {
         for (String line : Messages.helpLines(root)) {
-            source.sendSuccess(() -> Component.literal(line), false);
+            Feedback.showColored(source, line);
         }
         return 1;
     }

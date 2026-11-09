@@ -2,7 +2,7 @@ package com.scriptcraft.command;
 
 import com.scriptcraft.ScriptCraft;
 import com.scriptcraft.config.ScriptCraftConfig;
-import com.scriptcraft.lang.Messages;
+import com.scriptcraft.lang.Feedback;
 import com.scriptcraft.script.parser.ParseException;
 import com.scriptcraft.script.parser.ScriptParser;
 import com.scriptcraft.script.runtime.Action;
@@ -67,7 +67,7 @@ public final class EffectCommands {
 
     private static void run(MinecraftServer server, ServerPlayer player, String line) {
         if (!PermissionAPI.getPermission(player, PERMISSION)) {
-            player.sendSystemMessage(Messages.component("effectcmd.no_permission"));
+            Feedback.toPlayer(player, "effectcmd.no_permission");
             return;
         }
         ScriptCraft.LOGGER.info("[ScriptCraft] {} выполнил эффект-команду: {}", player.getGameProfile().getName(), line);
@@ -75,7 +75,7 @@ public final class EffectCommands {
         try {
             action = ScriptParser.parseEffectLine(line);
         } catch (ParseException e) {
-            player.sendSystemMessage(Messages.component("effectcmd.parse_error", e.getMessage()));
+            Feedback.toPlayer(player, "effectcmd.parse_error", e.getMessage());
             return;
         }
         ExecutionContext ctx = new ExecutionContext(server, player, player.createCommandSourceStack()).markEffectCommand();
@@ -83,10 +83,10 @@ public final class EffectCommands {
             Actions.runAll(List.of(action), ctx);
             if (ctx.hadOnlyEmptyTargets()) {
                 // В скриптах пустой набор целей — тихо ничего не делать; в чате скажем об этом.
-                player.sendSystemMessage(Messages.component("effectcmd.no_targets"));
+                Feedback.toPlayer(player, "effectcmd.no_targets");
             }
         } catch (RuntimeException e) {
-            player.sendSystemMessage(Messages.component("effectcmd.run_error", e.getMessage()));
+            Feedback.toPlayer(player, "effectcmd.run_error", e.getMessage());
         }
     }
 }

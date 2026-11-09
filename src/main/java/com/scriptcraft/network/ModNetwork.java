@@ -14,7 +14,8 @@ public final class ModNetwork {
     // 2: синхронизация ресурсов (манифест / запрос / куски файлов).
     // 3: HUD (HudPacket), слои у элементов, полосы прогресса, новые виды слотов.
     // 4: пул блоков/предметов и таблица привязок (BindingsPacket).
-    private static final String PROTOCOL_VERSION = "5";
+    // 6: журнал ошибок (LogRequest/Log) и всплывающие уведомления (Notify).
+    private static final String PROTOCOL_VERSION = "6";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(ScriptCraft.MODID, "main"),
@@ -68,6 +69,21 @@ public final class ModNetwork {
                 .encoder(BindingsPacket::encode)
                 .decoder(BindingsPacket::decode)
                 .consumerMainThread(BindingsPacket::handle)
+                .add();
+        CHANNEL.messageBuilder(NotifyPacket.class, id++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(NotifyPacket::encode)
+                .decoder(NotifyPacket::decode)
+                .consumerMainThread(NotifyPacket::handle)
+                .add();
+        CHANNEL.messageBuilder(LogRequestPacket.class, id++, NetworkDirection.PLAY_TO_SERVER)
+                .encoder(LogRequestPacket::encode)
+                .decoder(LogRequestPacket::decode)
+                .consumerMainThread(LogRequestPacket::handle)
+                .add();
+        CHANNEL.messageBuilder(LogPacket.class, id++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(LogPacket::encode)
+                .decoder(LogPacket::decode)
+                .consumerMainThread(LogPacket::handle)
                 .add();
     }
 

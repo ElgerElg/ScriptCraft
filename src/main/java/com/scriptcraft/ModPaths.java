@@ -20,6 +20,7 @@ import java.util.stream.Stream;
  *   variables/           variables.json + резервные копии variables-ГГГГММДД-ЧЧММСС.json
  *   resources/           assets/&lt;ns&gt;/... (текстуры, модели, lang) и data/&lt;ns&gt;/... (лут, теги, рецепты)
  *   cache/assets/        (клиент) ресурсы, полученные с сервера; подключены скрытым встроенным ресурспаком мода
+ *   client-ui.properties (клиент) клавиша журнала и всплывающие уведомления
  * </pre>
  */
 public final class ModPaths {

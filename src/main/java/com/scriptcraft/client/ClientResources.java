@@ -15,7 +15,6 @@ import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite;
 import net.minecraft.client.renderer.texture.TextureManager;
-import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
@@ -82,7 +81,7 @@ public final class ClientResources {
         long limit = ScriptCraftConfig.maxResourceSizeMb() * 1024L * 1024L;
         if (total > limit) {
             ScriptCraft.LOGGER.warn("[ScriptCraft] Ресурсы сервера ({} КБ) больше лимита maxResourceSizeMb, не скачиваю", total / 1024);
-            chat(Messages.get("resources.too_big", total / 1024 / 1024, ScriptCraftConfig.maxResourceSizeMb()));
+            ClientToasts.push(Messages.toast("resources.too_big", total / 1024 / 1024, ScriptCraftConfig.maxResourceSizeMb()));
             return;
         }
         Path cache = ModPaths.cache();
@@ -231,7 +230,7 @@ public final class ClientResources {
         CHANGED.clear();
         if (needReload) {
             // Атлас текстур блоков/предметов и запечённые модели собираются только при перезагрузке ресурсов.
-            chat(Messages.get("resources.reloading"));
+            ClientToasts.push(Messages.toast("resources.reloading"));
             Minecraft.getInstance().reloadResourcePacks();
         }
     }
@@ -269,10 +268,4 @@ public final class ClientResources {
         }
     }
 
-    private static void chat(String text) {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.player != null) {
-            mc.player.displayClientMessage(Component.literal(text), true);
-        }
-    }
 }

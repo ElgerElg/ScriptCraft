@@ -1,7 +1,7 @@
 package com.scriptcraft.registry;
 
 import com.scriptcraft.ScriptCraft;
-import com.scriptcraft.lang.Messages;
+import com.scriptcraft.lang.Feedback;
 import com.scriptcraft.network.BindingsPacket;
 import com.scriptcraft.network.ModNetwork;
 import com.scriptcraft.script.engine.ScriptProgram;
@@ -51,18 +51,18 @@ public final class BindingSync {
         r.added().forEach((id, poolId) -> {
             ScriptCraft.LOGGER.info("[ScriptCraft] {} -> {}", id, poolId);
             if (source != null) {
-                source.sendSuccess(() -> Messages.component("bindings.added", id, poolId), false);
+                Feedback.ok(source, "bindings.added", id, poolId);
             }
         });
         for (String id : r.full()) {
             ScriptCraft.LOGGER.warn("[ScriptCraft] Нет свободного слота для {}", id);
             if (source != null) {
-                source.sendFailure(Messages.component("bindings.pool_full", id,
-                        ScriptRegistries.BLOCK_SLOTS, ScriptRegistries.ITEM_SLOTS));
+                Feedback.fail(source, "bindings.pool_full", id,
+                        ScriptRegistries.BLOCK_SLOTS, ScriptRegistries.ITEM_SLOTS);
             }
         }
         if (r.dataChanged() && source != null) {
-            source.sendSuccess(() -> Messages.component("bindings.data_reload"), false);
+            Feedback.ok(source, "bindings.data_reload");
         }
     }
 

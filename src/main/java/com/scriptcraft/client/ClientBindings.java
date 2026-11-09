@@ -5,10 +5,8 @@ import com.scriptcraft.registry.ScriptRegistries;
 import com.scriptcraft.resources.AssetBindings;
 import com.scriptcraft.lang.Messages;
 import com.scriptcraft.resources.DefineCache;
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
@@ -65,8 +63,7 @@ public final class ClientBindings {
         }
         LocalPlayer player = Minecraft.getInstance().player;
         if (!temporary.isEmpty() && player != null) {
-            player.sendSystemMessage(Component.literal(Messages.get("bindings.restart_client", String.join(", ", temporary)))
-                    .withStyle(ChatFormatting.YELLOW));
+            ClientToasts.push(Messages.toast("bindings.restart_client", String.join(", ", temporary)));
         }
     }
 

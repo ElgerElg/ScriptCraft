@@ -1,6 +1,7 @@
 package com.scriptcraft.lang;
 
 import com.scriptcraft.config.ScriptCraftConfig;
+import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 
@@ -30,6 +31,8 @@ public final class Messages {
         add("help.help", "&e/%1$s help &7- this help", "&e/%1$s help &7- эта справка");
         add("help.resources", "&e/%1$s resources reload &7- rescan scriptcraft/resources and send changes to online players",
                 "&e/%1$s resources reload &7- перечитать scriptcraft/resources и отправить изменения игрокам онлайн");
+        add("help.config", "&e/%1$s config reload &7- reread scriptcraft/config.toml",
+                "&e/%1$s config reload &7- перечитать scriptcraft/config.toml");
         add("help.ids", "&e/%1$s ids &7- show which registry id each script block/item got", "&e/%1$s ids &7- какой id в реестре получил каждый блок/предмет скриптов");
         add("help.give", "&e/%1$s give <players> <id> [count] &7- give a script item (example:ruby_block)", "&e/%1$s give <игроки> <id> [кол-во] &7- выдать предмет скрипта (example:ruby_block)");
         add("help.aliases", "&7Aliases: /scriptcraft, /sc, /script", "&7Синонимы: /scriptcraft, /sc, /script");
@@ -38,6 +41,8 @@ public final class Messages {
         add("reload.all", "&aReloaded %d script(s): %d command(s), %d error(s)", "&aПерезагружено скриптов: %d, команд: %d, ошибок: %d");
         add("reload.one", "&aReloaded script %s (%d error(s) total)", "&aСкрипт %s перезагружен (всего ошибок: %d)");
         add("reload.time", "Scripts compiled in %d ms", "Скрипты скомпилированы за %d мс");
+        add("config.reloaded", "&aConfig reloaded (language: %s)", "&aКонфиг перечитан (язык: %s)");
+        add("config.reload_failed", "&cCould not reload config: %s", "&cНе удалось перечитать конфиг: %s");
         // --- привязка define к слотам пула (scriptcraft:dyn_block_N / dyn_item_N)
         add("bindings.added", "&aBlock/item %s is live as %s (temporary slot; after a server and client restart it gets its real id)",
                 "&aБлок/предмет %s доступен как %s (временный слот; после перезапуска сервера и клиента — настоящий id)");
@@ -81,7 +86,7 @@ public final class Messages {
         // --- выполнение
         add("command.disabled", "&cCommand /%s is disabled (its script was disabled or removed). It disappears after restart.",
                 "&cКоманда /%s выключена (её скрипт выключен или удалён). Она исчезнет после перезапуска.");
-        add("command.error", "&c[ScriptCraft] Error in /%s: %s", "&c[ScriptCraft] Ошибка в /%s: %s");
+        add("command.error", "&cError in /%s: %s", "&cОшибка в /%s: %s");
 
         // --- эффект-команды (?heal player)
         add("effectcmd.no_permission", "&cYou are not allowed to use effect commands (scriptcraft.effectcommands)",
@@ -112,10 +117,30 @@ public final class Messages {
         add("resources.reload_failed", "&cResource sync disabled: %s", "&cСинхронизация ресурсов отключена: %s");
         add("resources.data_hint", "&7Loot tables/tags/recipes from scriptcraft/resources/data are reloaded by vanilla /reload",
                 "&7Лут/теги/рецепты из scriptcraft/resources/data перечитывает ванильная /reload");
-        add("resources.reloading", "&e[ScriptCraft] Applying server textures/models (one resource reload)...",
-                "&e[ScriptCraft] Применяю текстуры/модели сервера (одна перезагрузка ресурсов)...");
-        add("resources.too_big", "&c[ScriptCraft] Server resources (%d MB) exceed your maxResourceSizeMb (%d MB) - not downloaded",
-                "&c[ScriptCraft] Ресурсы сервера (%d МБ) больше вашего maxResourceSizeMb (%d МБ) — не скачаны");
+        add("resources.reloading", "&eApplying server textures/models (one resource reload)...",
+                "&eПрименяю текстуры/модели сервера (одна перезагрузка ресурсов)...");
+        add("resources.too_big", "&cServer resources (%d MB) exceed your maxResourceSizeMb (%d MB) - not downloaded",
+                "&cРесурсы сервера (%d МБ) больше вашего maxResourceSizeMb (%d МБ) — не скачаны");
+
+        add("log.title", "Journal", "Журнал");
+        add("log.empty", "No script errors", "Ошибок в скриптах нет");
+        add("log.reason", "Reason", "Причина");
+        add("log.runtime", "while running", "во время игры");
+        add("log.no_file", "The file text is not available", "Текста файла нет");
+        add("log.line_missing", "(line is outside the shown fragment)", "(строка за пределами фрагмента)");
+        add("log.settings", "Notifications", "Уведомления");
+        add("log.key", "Open key", "Клавиша");
+        add("log.key_wait", "Press a key. Esc cancels", "Нажмите клавишу. Esc — отмена");
+        add("log.time", "Hide after", "Скрывать через");
+        add("log.size", "Size", "Размер");
+        add("log.place", "Position", "Позиция");
+        add("log.place.chat", "By the chat", "У чата");
+        add("log.place.tl", "Top left", "Сверху слева");
+        add("log.place.tr", "Top right", "Сверху справа");
+        add("log.place.br", "Bottom right", "Снизу справа");
+        add("log.sample", "&7reloaded welcome.sc", "&7скрипт welcome.sc перезагружен");
+        add("log.errors_toast", "&e%d script error(s). Open the journal.", "&eОшибок в скриптах: %d. Откройте журнал.");
+        add("log.runtime_toast", "&cError in %s: %s", "&cОшибка в %s: %s");
     }
 
     private Messages() {
@@ -130,20 +155,53 @@ public final class Messages {
         return "ru".equals(ScriptCraftConfig.language()) ? RU : EN;
     }
 
-    /** Строка по ключу на текущем языке; цветовые коды &x превращаются в §x. */
+    /** Строка по ключу на текущем языке; цветовые коды &x превращаются в §x. Без префикса — для лога и предметов. */
     public static String get(String key, Object... args) {
         String pattern = table().getOrDefault(key, EN.getOrDefault(key, key));
         String text = args.length == 0 ? pattern : String.format(Locale.ROOT, pattern, args);
-        return text.replaceAll("&([0-9a-fk-or])", "\u00a7$1");
+        return colorize(text);
     }
 
+    /** &7[&6ScriptCraft&7] — общий заголовок сообщений мода в чат. */
+    public static MutableComponent brand() {
+        return Component.literal("[").withStyle(ChatFormatting.GRAY)
+                .append(Component.literal("ScriptCraft").withStyle(ChatFormatting.GOLD))
+                .append(Component.literal("] ").withStyle(ChatFormatting.GRAY));
+    }
+
+    /** Цветной текст с заголовком &7[&6ScriptCraft&7], без компонента чата. */
+    public static String branded(String colored) {
+        return colorize("&7[&6ScriptCraft&7]&r ") + colored;
+    }
+
+    /** Текст всплывающего уведомления. */
+    public static String toast(String key, Object... args) {
+        return branded(get(key, args));
+    }
+
+    /** Сообщение в чат: префикс и текст ключа. */
     public static MutableComponent component(String key, Object... args) {
-        return Component.literal(get(key, args));
+        return withBrand(get(key, args));
+    }
+
+    /** Уже готовый текст (коды §) с тем же префиксом. */
+    public static MutableComponent withBrand(String colored) {
+        return brand().append(Component.literal(colored));
+    }
+
+    /** Ошибка скрипта без своего цвета: префикс и красный текст. */
+    public static MutableComponent errorLine(String plain) {
+        return withBrand("\u00a7c" + plain);
+    }
+
+    private static String colorize(String text) {
+        return text.replaceAll("&([0-9a-fk-or])", "\u00a7$1");
     }
 
     /** Строки справки для корневой команды {@code root}. */
     public static List<String> helpLines(String root) {
         return List.of(get("help.header"), get("help.reload", root), get("help.reload_one", root),
+                get("help.config", root),
                 get("help.enable", root), get("help.disable", root), get("help.list", root),
                 get("help.resources", root), get("help.ids", root), get("help.give", root), get("help.help", root),
                 get("help.aliases"));

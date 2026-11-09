@@ -66,6 +66,11 @@ final class ExprParser {
         if (i >= t.size()) {
             throw new ParseException("ожидается значение");
         }
+        // word() для кавычек возвращает "" (это не слово команды). Текст в кавычках — готовое значение,
+        // иначе set {a} to "сегодня" падает с «ожидается значение».
+        if (t.get(i).quoted()) {
+            return new Parsed(ScriptParser.expression(t.get(i)), i + 1);
+        }
         String w = word(t, i);
         if (w.equals("random")) {
             return parseRandom(t, i);

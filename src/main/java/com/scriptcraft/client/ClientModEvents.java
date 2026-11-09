@@ -17,5 +17,6 @@ public final class ClientModEvents {
     public static void onRegisterOverlays(RegisterGuiOverlaysEvent event) {
         event.registerBelowAll("hud_below", ClientHud::renderBelow);
         event.registerAboveAll("hud", ClientHud::renderAbove);
+        event.registerAboveAll("notices", ClientToasts::render);
     }
 }

@@ -89,6 +89,7 @@ command /hello:
   <table>
     <tr><th><span class="l-ru">Команда</span><span class="l-en">Command</span></th><th><span class="l-ru">Что делает</span><span class="l-en">What it does</span></th></tr>
     <tr><td><code>/sc help</code></td><td><span class="l-ru">справка</span><span class="l-en">help</span></td></tr>
+    <tr><td><code>F3 + `</code></td><td><span class="l-ru">журнал ошибок (только оператор; клавиши нет в «Управлении»). Шестерёнка внутри меняет клавишу и всплывающие уведомления</span><span class="l-en">error journal (operators only; the key is not in Controls). The gear inside rebinds the key and the popup notices</span></td></tr>
     <tr><td><code>/sc reload</code></td><td><span class="l-ru">перезагрузить все скрипты</span><span class="l-en">reload all scripts</span></td></tr>
     <tr><td><code>/sc reload &lt;скрипт&gt;</code></td><td><span class="l-ru">перезагрузить один файл (подпапки: <code>sub/name</code>)</span><span class="l-en">reload one file (subfolders: <code>sub/name</code>)</span></td></tr>
     <tr><td><code>/sc disable &lt;скрипт&gt;</code></td><td><span class="l-ru">выключить: выгрузить и переименовать в <code>-имя.sc</code></span><span class="l-en">disable: unload and rename to <code>-name.sc</code></span></td></tr>
@@ -96,6 +97,7 @@ command /hello:
     <tr><td><code>/sc list</code></td><td><span class="l-ru">скрипты, команды, число переменных и ошибок</span><span class="l-en">scripts, commands, variable and error counts</span></td></tr>
     <tr><td><code>/sc ids</code></td><td><span class="l-ru">какие id слотов получили блоки/предметы скриптов</span><span class="l-en">which slot ids script blocks/items got</span></td></tr>
     <tr><td><code>/sc give &lt;игроки&gt; &lt;id&gt; [кол-во]</code></td><td><span class="l-ru">выдать блок/предмет по id скрипта</span><span class="l-en">give a script block/item by its id</span></td></tr>
+    <tr><td><code>/sc config reload</code></td><td><span class="l-ru">перечитать <code>scriptcraft/config.toml</code> (язык, лимиты, эффект-команды) без перезагрузки скриптов</span><span class="l-en">reread <code>scriptcraft/config.toml</code> (language, limits, effect commands) without reloading scripts</span></td></tr>
     <tr><td><code>/sc resources reload</code></td><td><span class="l-ru">перечитать <code>resources/assets</code> и разослать изменения игрокам онлайн; <code>data/</code> перечитывает ванильная <code>/reload</code></span><span class="l-en">re-read <code>resources/assets</code> and send changes to online players; <code>data/</code> is reloaded by vanilla <code>/reload</code></span></td></tr>
   </table>
   <div class="note">
@@ -104,8 +106,8 @@ command /hello:
   </div>
 
   <h2 id="config"><span class="l-ru">5. Конфиг</span><span class="l-en">5. Config</span></h2>
-  <p class="l-ru">Файл <code>scriptcraft/config.toml</code> создаётся при первом запуске (ниже — значения по умолчанию; <code>language = "ru"</code> переключит сообщения мода на русский). Описание каждого параметра — в разделе <a href="index.html?cat=config">Конфиг</a>.</p>
-  <p class="l-en"><code>scriptcraft/config.toml</code> is created on first start (defaults below; <code>language = "ru"</code> switches mod messages to Russian). Every option is described in the <a href="index.html?cat=config">Config</a> section.</p>
+  <p class="l-ru">Файл <code>scriptcraft/config.toml</code> создаётся при первом запуске (ниже — значения по умолчанию; <code>language = "ru"</code> переключит сообщения мода на русский). После правки файла выполните <code>/sc config reload</code> — перезапуск не нужен. Описание каждого параметра — в разделе <a href="index.html?cat=config">Конфиг</a>.</p>
+  <p class="l-en"><code>scriptcraft/config.toml</code> is created on first start (defaults below; <code>language = "ru"</code> switches mod messages to Russian). After editing the file run <code>/sc config reload</code> — no restart needed. Every option is described in the <a href="index.html?cat=config">Config</a> section.</p>
 <pre data-lang="toml" data-title="scriptcraft/config.toml">
 [general]
     language = "en"

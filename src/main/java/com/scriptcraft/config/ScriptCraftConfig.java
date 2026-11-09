@@ -1,8 +1,13 @@
 package com.scriptcraft.config;
 
+import com.electronwill.nightconfig.core.file.CommentedFileConfig;
+import com.scriptcraft.ScriptCraft;
 import net.minecraftforge.common.ForgeConfigSpec;
+import net.minecraftforge.fml.config.ConfigTracker;
+import net.minecraftforge.fml.config.ModConfig;
 
 import java.util.List;
+import java.util.Set;
 import java.util.function.Supplier;
 
 /**
@@ -182,5 +187,35 @@ public final class ScriptCraftConfig {
 
     public static int resourceChunkSizeKb() {
         return safe(RESOURCE_CHUNK_KB::get, 256);
+    }
+
+    /**
+     * Перечитать scriptcraft/config.toml с диска в уже загруженный конфиг.
+     * Геттеры читают файл при каждом вызове, поэтому язык, лимиты и токен эффект-команд
+     * применяются сразу. Копии variables.json по-прежнему делаются только при старте сервера.
+     *
+     * @return null, если получилось, иначе короткий текст ошибки
+     */
+    public static String reloadFromDisk() {
+        Set<ModConfig> configs = ConfigTracker.INSTANCE.configSets().get(ModConfig.Type.COMMON);
+        if (configs == null) {
+            return "common configs are not tracked";
+        }
+        for (ModConfig config : configs) {
+            if (!ScriptCraft.MODID.equals(config.getModId())) {
+                continue;
+            }
+            if (!(config.getConfigData() instanceof CommentedFileConfig file)) {
+                return "config is not loaded yet";
+            }
+            try {
+                file.load();
+                return null;
+            } catch (RuntimeException e) {
+                String message = e.getMessage();
+                return message == null || message.isBlank() ? e.getClass().getSimpleName() : message;
+            }
+        }
+        return "scriptcraft config is not registered";
     }
 }

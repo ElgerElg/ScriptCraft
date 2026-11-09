@@ -15,7 +15,7 @@
  */
 window.SC_DOCS = window.SC_DOCS || {};
 window.SC_DOCS.syntax = {
-  version: "0.2.0",
+  version: "0.2.2",
   categories: [
     { id: "events",     ru: "События",            en: "Events" },
     { id: "structures", ru: "Структуры",          en: "Structures" },
@@ -1340,15 +1340,26 @@ show vanilla all for player`,
       en: "Help. `/scriptcraft`, `/sc` and `/script` are full aliases. All mod commands need operator level 2."
     },
     example: `/sc help`,
-    since: "0.1.0", related: ["cmd-reload"]
+    since: "0.1.0", related: ["cmd-reload", "cmd-journal"]
+  },
+  {
+    id: "cmd-journal", category: "commands",
+    name: { ru: "Журнал ошибок", en: "Error journal" },
+    syntax: ["F3 + `"],
+    desc: {
+      ru: "Журнал только для оператора. Клавиша не видна в «Управлении»: по умолчанию F3 и ` (на русской раскладке это клавиша Ё). Открывается блокнот без правки: слева ошибки, справа файл, строка с ошибкой подсвечена, снизу причина. Шестерёнка на этом клиенте меняет клавишу (можно зажать F3 вместе с новой), размер уведомлений, их место (у чата или угол экрана) и через сколько секунд они гаснут. Ответы мода (`/sc reload`, включение и выключение скрипта и остальные) больше не пишутся в чат — это такие же уведомления. Сообщения самих скриптов (`send`) остаются в чате. Настройки лежат в `scriptcraft/client-ui.properties`.",
+      en: "Operator-only journal. The key is not listed in Controls: default is F3 and ` (Ё on a Russian layout). It opens a read-only notepad: errors on the left, the file on the right, the bad line highlighted, the reason along the bottom. The gear on this client changes the key (hold F3 with the new key if you want the combo), notice size, place (by the chat or a screen corner) and how many seconds they stay. Mod replies (`/sc reload`, enable, disable and the rest) are these notices instead of chat. Script `send` messages stay in chat. Settings are stored in `scriptcraft/client-ui.properties`."
+    },
+    example: "F3 + `",
+    since: "0.2.2", related: ["cmd-reload", "cmd-config-reload"]
   },
   {
     id: "cmd-reload", category: "commands",
     name: { ru: "/sc reload", en: "/sc reload" },
     syntax: ["/sc reload", "/sc reload <скрипт>"],
     desc: {
-      ru: "Перезагрузить все скрипты или один (`welcome`, `sub/name`, `.sc` не обязателен). Ошибки выводятся как `файл:строка: текст`. Новые и изменённые `define` применяются сразу (привязка к слотам пула).",
-      en: "Reload all scripts or one (`welcome`, `sub/name`, `.sc` optional). Errors are shown as `file:line: text`. New and changed `define`s apply immediately (bound to pool slots)."
+      ru: "Перезагрузить все скрипты или один (`welcome`, `sub/name`, `.sc` не обязателен). Короткий итог всплывает уведомлением, а текст ошибки и строка — в журнале (F3 + `). Новые и изменённые `define` применяются сразу (привязка к слотам пула).",
+      en: "Reload all scripts or one (`welcome`, `sub/name`, `.sc` optional). A short result pops up as a notice; the error text and line are in the journal (F3 + `). New and changed `define`s apply immediately (bound to pool slots)."
     },
     example: `/sc reload
 /sc reload welcome`,
@@ -1389,6 +1400,17 @@ show vanilla all for player`,
     since: "0.1.2", related: ["cfg-syncResourcesToClients", "screen-image"]
   },
   {
+    id: "cmd-config-reload", category: "commands",
+    name: { ru: "/sc config reload", en: "/sc config reload" },
+    syntax: ["/sc config reload"],
+    desc: {
+      ru: "Перечитать `scriptcraft/config.toml` с диска, не перезагружая скрипты. Язык сообщений, лимиты скриптов, дальность `targeted player`, ресурсы и эффект-команды применяются сразу. Резервные копии `variables.json` по-прежнему делаются только при старте сервера. На выделенном сервере команда читает серверный файл; клиентские сообщения (перезагрузка текстур) берут язык из клиентского `config.toml`.",
+      en: "Reread `scriptcraft/config.toml` from disk without reloading scripts. Message language, script limits, `targeted player` range, resources and effect commands apply at once. `variables.json` backups are still made only at server start. On a dedicated server the command reads the server file; client messages (texture reload) use the language from the client's `config.toml`."
+    },
+    example: `/sc config reload`,
+    since: "0.2.1", related: ["cfg-language", "cmd-reload"]
+  },
+  {
     id: "cmd-ids", category: "commands",
     name: { ru: "/sc ids", en: "/sc ids" },
     syntax: ["/sc ids"],
@@ -1427,7 +1449,7 @@ show vanilla all for player`,
   // ================================================================== КОНФИГ
   { id: "cfg-language", category: "config", name: { ru: "general.language", en: "general.language" },
     syntax: ["language = \"en\" | \"ru\""],
-    desc: { ru: "Язык сообщений мода. По умолчанию `\"en\"`.", en: "Language of mod messages. Default `\"en\"`." },
+    desc: { ru: "Язык сообщений мода. По умолчанию `\"en\"`. Меняется сразу после `/sc config reload`.", en: "Language of mod messages. Default `\"en\"`. Applies right after `/sc config reload`." },
     example: `language = "ru"`, since: "0.1.0", related: [] },
   { id: "cfg-enableTemporaryVariables", category: "config", name: { ru: "general.enableTemporaryVariables", en: "general.enableTemporaryVariables" },
     syntax: ["enableTemporaryVariables = true"],

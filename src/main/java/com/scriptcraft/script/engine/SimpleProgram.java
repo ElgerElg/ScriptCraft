@@ -1,6 +1,7 @@
 package com.scriptcraft.script.engine;
 
 import com.scriptcraft.ScriptCraft;
+import com.scriptcraft.script.ScriptLoader;
 import com.scriptcraft.script.parser.BlockDefinition;
 import com.scriptcraft.script.parser.CommandDefinition;
 import com.scriptcraft.script.parser.EventHandler;
@@ -84,6 +85,7 @@ final class SimpleProgram implements ScriptProgram {
             runActions(handler.actions(), ctx);
         } catch (RuntimeException e) {
             ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка в 'on {}' ({}): {}", event.scriptName(), handler.file(), e.getMessage());
+            ScriptLoader.noteRuntime(handler.file(), e.getMessage(), ctx.player(), ctx.server());
         }
     }
 
@@ -112,6 +114,7 @@ final class SimpleProgram implements ScriptProgram {
                 runActions(handler.actions(), ctx);
             } catch (RuntimeException e) {
                 ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка в 'every' ({}): {}", handler.file(), e.getMessage());
+                ScriptLoader.noteRuntime(handler.file(), e.getMessage(), null, server);
             }
         }
     }
