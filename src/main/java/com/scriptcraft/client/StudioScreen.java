@@ -5,6 +5,7 @@ import com.mojang.math.Axis;
 import com.scriptcraft.lang.Messages;
 import com.scriptcraft.network.ModNetwork;
 import com.scriptcraft.network.ScriptDataPacket;
+import com.scriptcraft.network.ScriptDeletePacket;
 import com.scriptcraft.network.ScriptReloadPacket;
 import com.scriptcraft.network.LogRequestPacket;
 import com.scriptcraft.network.ScriptListPacket;
@@ -60,6 +61,10 @@ public class StudioScreen extends Screen {
     private int slider;
     private String tip;
     private int tipX, tipY;
+    /** close или delete: подтверждение. Закрытие всего окна его не спрашивает. */
+    private String ask;
+    private String askName;
+    private int askYesX, askNoX, askY;
     private TexturePreview.Image preview;
     private int previewX, previewY;
 
@@ -104,6 +109,9 @@ public class StudioScreen extends Screen {
         if (naming) {
             renderNameBox(g);
         }
+        if (ask != null) {
+            renderAsk(g, mouseX, mouseY);
+        }
         drawTip(g);
     }
 
@@ -139,18 +147,33 @@ public class StudioScreen extends Screen {
     private int plusX;
 
     private int tab(GuiGraphics g, int mx, int my, int x, String label, String id, boolean closable) {
-        int tw = Math.min(130, this.font.width(label) + (closable ? 22 : 12));
+        boolean dirty = dirty(id);
+        int tw = tabInner(label, closable, dirty);
         boolean on = id.equals(StudioSession.active);
         boolean hot = hover(mx, my, x, py + 3, tw, TITLE - 5);
         g.fill(x, py + 3, x + tw, py + TITLE - 1, on ? 0xFF2C3544 : hot ? 0xFF26303C : 0xFF1A212C);
         if (on) {
             g.fill(x, py + TITLE - 2, x + tw, py + TITLE - 1, GOLD);
         }
-        g.drawString(this.font, trim(label, tw - (closable ? 18 : 8)), x + 4, py + 7, on ? TEXT : MUTED, false);
+        int textX = x + 4;
+        if (dirty) {
+            drawPencil(g, x + 4, py + 7, GOLD);
+            textX += 10;
+        }
+        g.drawString(this.font, trim(label, tw - (closable ? 18 : 8) - (dirty ? 10 : 0)), textX, py + 7, on ? TEXT : MUTED, false);
         if (closable) {
             g.drawString(this.font, "x", x + tw - 10, py + 7, hot ? GOLD : MUTED, false);
         }
         return x + tw + 3;
+    }
+
+    private static boolean dirty(String id) {
+        ScriptDocument doc = StudioSession.docs.get(id);
+        return doc != null && doc.dirty();
+    }
+
+    private int tabInner(String label, boolean closable, boolean dirty) {
+        return Math.min(150, this.font.width(label) + (closable ? 22 : 12) + (dirty ? 10 : 0));
     }
 
     private void windowButton(GuiGraphics g, int mx, int my, int x, int y, String kind) {
@@ -187,8 +210,7 @@ public class StudioScreen extends Screen {
         x = menuWord(g, mx, my, x, y, "file", Messages.get("studio.m.file"));
         x = menuWord(g, mx, my, x, y, "edit", Messages.get("studio.m.edit"));
         x = menuWord(g, mx, my, x, y, "search", Messages.get("studio.m.search"));
-        x = menuWord(g, mx, my, x, y, "view", Messages.get("studio.m.view"));
-        menuWord(g, mx, my, x, y, "enc", Messages.get("studio.m.enc"));
+        menuWord(g, mx, my, x, y, "view", Messages.get("studio.m.view"));
     }
 
     private int menuWord(GuiGraphics g, int mx, int my, int x, int y, String id, String label) {
@@ -210,6 +232,7 @@ public class StudioScreen extends Screen {
         x = tool(g, mx, my, x, y, "save", Messages.get("studio.m.save"));
         x = tool(g, mx, my, x, y, "saveall", Messages.get("studio.m.save_all"));
         x = tool(g, mx, my, x, y, "closetab", Messages.get("studio.m.close"));
+        x = tool(g, mx, my, x, y, "delete", Messages.get("studio.m.delete"));
         x += 6;
         x = tool(g, mx, my, x, y, "cut", Messages.get("studio.m.cut"));
         x = tool(g, mx, my, x, y, "copy", Messages.get("studio.m.copy"));
@@ -227,24 +250,76 @@ public class StudioScreen extends Screen {
             tipX = mx;
             tipY = my;
         }
-        int c = hot ? GOLD : MUTED;
-        int ix = x + 3;
-        int iy = y + 5;
+        drawToolIcon(g, x + 2, y + 4, id, hot ? GOLD : MUTED);
+        return x + 18;
+    }
+
+    /** Маленькие значки 12×12, чтобы их можно было отличить друг от друга. */
+    private void drawToolIcon(GuiGraphics g, int x, int y, String id, int c) {
         switch (id) {
-            case "new", "open", "save", "saveall" -> {
-                g.fill(ix, iy, ix + 8, iy + 10, c);
-                g.fill(ix + 1, iy + 1, ix + 7, iy + 9, BG);
-                if ("new".equals(id)) {
-                    g.fill(ix + 3, iy + 3, ix + 5, iy + 8, c);
-                    g.fill(ix + 2, iy + 4, ix + 6, iy + 6, c);
+            case "new" -> {
+                g.fill(x + 2, y, x + 9, y + 11, c);
+                g.fill(x + 3, y + 1, x + 8, y + 10, BG);
+                g.fill(x + 5, y + 3, x + 6, y + 8, c);
+                g.fill(x + 3, y + 5, x + 8, y + 6, c);
+            }
+            case "open" -> {
+                g.fill(x, y + 3, x + 12, y + 11, c);
+                g.fill(x + 1, y + 4, x + 11, y + 10, BG);
+                g.fill(x, y + 1, x + 6, y + 4, c);
+            }
+            case "save", "saveall" -> {
+                g.fill(x + 1, y, x + 11, y + 11, c);
+                g.fill(x + 2, y + 1, x + 10, y + 10, BG);
+                g.fill(x + 3, y + 1, x + 9, y + 4, c);
+                g.fill(x + 4, y + 6, x + 8, y + 9, c);
+                if ("saveall".equals(id)) {
+                    g.fill(x + 4, y + 2, x + 12, y + 11, c);
+                    g.fill(x + 5, y + 3, x + 11, y + 10, BG);
                 }
             }
-            case "closetab" -> g.drawString(this.font, "x", ix + 2, iy, c, false);
-            case "cut", "copy", "paste" -> g.fill(ix, iy + 2, ix + 9, iy + 8, c);
-            case "undo" -> g.drawString(this.font, "<", ix + 2, iy, c, false);
-            default -> g.drawString(this.font, ">", ix + 2, iy, c, false);
+            case "closetab" -> {
+                g.fill(x + 2, y, x + 10, y + 11, c);
+                g.fill(x + 3, y + 1, x + 9, y + 10, BG);
+                g.fill(x + 4, y + 4, x + 8, y + 5, c);
+                g.fill(x + 5, y + 3, x + 6, y + 8, c);
+            }
+            case "delete" -> {
+                g.fill(x + 2, y + 3, x + 10, y + 11, c);
+                g.fill(x + 3, y + 4, x + 9, y + 10, BG);
+                g.fill(x + 1, y + 2, x + 11, y + 3, c);
+                g.fill(x + 4, y, x + 8, y + 2, c);
+            }
+            case "cut" -> {
+                g.fill(x + 1, y + 1, x + 4, y + 4, c);
+                g.fill(x + 8, y + 1, x + 11, y + 4, c);
+                g.fill(x + 5, y + 5, x + 7, y + 7, c);
+                g.fill(x + 2, y + 8, x + 5, y + 11, c);
+                g.fill(x + 7, y + 8, x + 10, y + 11, c);
+            }
+            case "copy" -> {
+                g.fill(x + 3, y, x + 11, y + 9, c);
+                g.fill(x + 4, y + 1, x + 10, y + 8, BG);
+                g.fill(x, y + 3, x + 8, y + 12, c);
+                g.fill(x + 1, y + 4, x + 7, y + 11, BG);
+            }
+            case "paste" -> {
+                g.fill(x + 2, y + 2, x + 10, y + 12, c);
+                g.fill(x + 3, y + 3, x + 9, y + 11, BG);
+                g.fill(x + 4, y, x + 8, y + 3, c);
+                g.fill(x + 5, y + 1, x + 7, y + 2, BG);
+            }
+            case "undo" -> {
+                g.fill(x + 2, y + 4, x + 8, y + 6, c);
+                g.fill(x + 2, y + 4, x + 4, y + 8, c);
+                g.fill(x + 1, y + 2, x + 5, y + 4, c);
+            }
+            default -> {
+                g.fill(x + 4, y + 4, x + 10, y + 6, c);
+                g.fill(x + 8, y + 4, x + 10, y + 8, c);
+                g.fill(x + 7, y + 2, x + 11, y + 4, c);
+            }
         }
-        return x + 18;
     }
 
     private void renderHome(GuiGraphics g) {
@@ -255,22 +330,24 @@ public class StudioScreen extends Screen {
         g.drawString(this.font, Messages.get("studio.p2"), left, y + 40, TEXT, false);
         g.drawString(this.font, Messages.get("studio.p3"), left, y + 54, TEXT, false);
         g.drawString(this.font, Messages.get("studio.p4"), left, y + 68, TEXT, false);
-        String hint = Messages.get("studio.hint");
-        int hintW = Math.max(80, pw / 2 - 24);
-        List<net.minecraft.util.FormattedCharSequence> lines = this.font.split(Component.literal(hint), hintW);
-        int hy = y + 96;
-        for (var line : lines) {
-            g.drawString(this.font, line, left, hy, MUTED, false);
-            hy += LINE_H;
-        }
-        int cardX = px + pw - 168;
-        int cardY = y + 8;
-        g.fill(cardX, cardY, cardX + 150, cardY + 150, 0xF0181E28);
-        border(g, cardX, cardY, 150, 150, EDGE);
-        SkinPortrait.render(g, cardX + 75, cardY + 128, 28f);
-        g.drawString(this.font, Messages.get("studio.dev"), cardX + 8, cardY + 6, MUTED, false);
-        g.drawString(this.font, "ElgerElg", cardX + 8, cardY + 16, GOLD, false);
-        g.drawString(this.font, Messages.get("studio.role"), cardX + 8, cardY + 26, MUTED, false);
+        int center = px + pw / 2;
+        int titleY = y + 86;
+        g.pose().pushPose();
+        g.pose().translate(center, titleY, 0);
+        g.pose().scale(3f, 3f, 1f);
+        String title = "ScriptCraft";
+        g.drawString(this.font, title, -this.font.width(title) / 2, 0, GOLD, false);
+        g.pose().popPose();
+        String[] tags = {"studio.tag.1", "studio.tag.2", "studio.tag.3", "studio.tag.4", "studio.tag.5"};
+        String tag = Messages.get(tags[(int) ((System.currentTimeMillis() / 4200L) % tags.length)]);
+        g.drawString(this.font, tag, center - this.font.width(tag) / 2, titleY + 36, TEXT, false);
+        int modelTop = titleY + 58;
+        SkinPortrait.render(g, center, modelTop, 62f);
+        String dev = "ElgerElg";
+        int foot = modelTop + 118;
+        g.drawString(this.font, dev, center - this.font.width(dev) / 2, foot, GOLD, false);
+        String role = Messages.get("studio.role");
+        g.drawString(this.font, role, center - this.font.width(role) / 2, foot + 12, MUTED, false);
     }
 
     private void renderJournal(GuiGraphics g, int mx, int my) {
@@ -279,13 +356,21 @@ public class StudioScreen extends Screen {
         int listW = Math.min(220, pw / 3);
         g.fill(px + 8, y, px + 8 + listW, y + h, 0xF0181E28);
         g.fill(px + 12 + listW, y, px + pw - 8, y + h, 0xF0181E28);
-        if (StudioSession.issues.isEmpty()) {
-            g.drawString(this.font, Messages.get("log.empty"), px + 16, y + 10, MUTED, false);
-            return;
+        int content = 4 + 16 + (StudioSession.issues.isEmpty() ? 16 : StudioSession.issues.size() * 24)
+                + 6 + 14 + Math.max(1, StudioSession.history.size()) * 14 + 8;
+        listMax = Math.max(0, content - h);
+        listScroll = Math.max(0, Math.min(listScroll, listMax));
+        if (!StudioSession.issues.isEmpty()) {
+            journal = Math.max(0, Math.min(StudioSession.issues.size() - 1, journal));
         }
-        journal = Math.max(0, Math.min(StudioSession.issues.size() - 1, journal));
         g.enableScissor(px + 8, y, px + 8 + listW, y + h);
         int row = y + 4 - listScroll;
+        g.drawString(this.font, Messages.get("studio.active"), px + 16, row, GOLD, false);
+        row += 16;
+        if (StudioSession.issues.isEmpty()) {
+            g.drawString(this.font, Messages.get("log.empty"), px + 16, row, MUTED, false);
+            row += 16;
+        }
         for (int i = 0; i < StudioSession.issues.size(); i++) {
             ScriptLog.Issue issue = StudioSession.issues.get(i);
             if (row + 24 >= y && row <= y + h) {
@@ -299,12 +384,35 @@ public class StudioScreen extends Screen {
             }
             row += 24;
         }
+        row += 6;
+        g.drawString(this.font, Messages.get("studio.history"), px + 16, row, GOLD, false);
+        row += 14;
+        if (StudioSession.history.isEmpty()) {
+            g.drawString(this.font, "—", px + 16, row, MUTED, false);
+        }
+        for (int i = StudioSession.history.size() - 1; i >= 0; i--) {
+            if (row + 14 >= y && row <= y + h) {
+                g.drawString(this.font, trim(StudioSession.history.get(i), listW - 20), px + 16, row, MUTED, false);
+            }
+            row += 14;
+        }
         g.disableScissor();
+        if (StudioSession.issues.isEmpty()) {
+            g.drawString(this.font, Messages.get("log.empty"), px + 16 + listW, y + 8, MUTED, false);
+            codeMax = 0;
+            journalListW = listW;
+            journalY = y;
+            journalH = h;
+            return;
+        }
         ScriptLog.Issue current = StudioSession.issues.get(journal);
         ScriptLog.Slice slice = slice(current.file());
         int codeX = px + 16 + listW;
         int codeW = pw - listW - 28;
         g.enableScissor(codeX, y, codeX + codeW, y + h - 22);
+        int lines = slice == null ? 0 : slice.lines().size();
+        codeMax = Math.max(0, lines * LINE_H - (h - 22));
+        codeScroll = Math.max(0, Math.min(codeScroll, codeMax));
         if (slice == null || slice.lines().isEmpty()) {
             g.drawString(this.font, Messages.get("log.no_file"), codeX + 6, y + 8, MUTED, false);
         } else {
@@ -317,7 +425,7 @@ public class StudioScreen extends Screen {
                     }
                     String num = Integer.toString(number);
                     g.drawString(this.font, num, codeX + 28 - this.font.width(num), ly, MUTED, false);
-                    g.drawString(this.font, this.font.plainSubstrByWidth(slice.lines().get(i), codeW - 40), codeX + 34, ly, TEXT, false);
+                    drawCode(g, slice.lines().get(i), codeX + 34, ly, TEXT, codeW - 40);
                 }
                 ly += LINE_H;
             }
@@ -329,7 +437,7 @@ public class StudioScreen extends Screen {
         journalH = h;
     }
 
-    private int journalListW, journalY, journalH;
+    private int journalListW, journalY, journalH, listMax, codeMax;
 
     private void renderEditor(GuiGraphics g, int mx, int my) {
         ScriptDocument doc = script();
@@ -359,13 +467,13 @@ public class StudioScreen extends Screen {
                 }
                 int[] sel = doc.selectionOn(i);
                 if (sel != null) {
-                    int x0 = editorX + 36 + this.font.width(line.substring(0, Math.min(sel[0], line.length())));
-                    int x1 = editorX + 36 + this.font.width(line.substring(0, Math.min(sel[1], line.length())));
+                    int x0 = editorX + 36 + spanWidth(line, sel[0]);
+                    int x1 = editorX + 36 + spanWidth(line, sel[1]);
                     g.fill(x0, ly - 1, Math.max(x1, x0 + 2), ly + LINE_H - 1, 0x883A6EA5);
                 }
                 for (ScriptMarkup.Mark mark : ScriptMarkup.of(line)) {
-                    int x0 = editorX + 36 + this.font.width(line.substring(0, mark.from()));
-                    int x1 = editorX + 36 + this.font.width(line.substring(0, mark.to()));
+                    int x0 = editorX + 36 + spanWidth(line, mark.from());
+                    int x1 = editorX + 36 + spanWidth(line, mark.to());
                     g.fill(x0, ly - 1, x1, ly + LINE_H - 1, mark.event() ? YELLOW : BLUE);
                     if (!mark.event() && hover(mx, my, x0, ly - 1, Math.max(1, x1 - x0), LINE_H)) {
                         TexturePreview.Image image = TexturePreview.lookup(mark.token());
@@ -378,9 +486,9 @@ public class StudioScreen extends Screen {
                 }
                 String num = Integer.toString(i + 1);
                 g.drawString(this.font, num, editorX + 30 - this.font.width(num), ly, MUTED, false);
-                g.drawString(this.font, this.font.plainSubstrByWidth(line, editorW - 44), editorX + 36, ly, TEXT, false);
+                drawCode(g, line, editorX + 36, ly, TEXT, editorW - 44);
                 if (i == doc.line && (System.currentTimeMillis() / 500) % 2 == 0) {
-                    int cx = editorX + 36 + this.font.width(line.substring(0, Math.min(doc.col, line.length())));
+                    int cx = editorX + 36 + spanWidth(line, Math.min(doc.col, line.length()));
                     g.fill(cx, ly - 1, cx + 1, ly + LINE_H - 2, TEXT);
                 }
             }
@@ -523,6 +631,14 @@ public class StudioScreen extends Screen {
         layout();
         int mx = (int) mouseX;
         int my = (int) mouseY;
+        if (ask != null) {
+            if (hover(mx, my, askYesX, askY, 48, 16)) {
+                confirmAsk();
+            } else if (hover(mx, my, askNoX, askY, 48, 16)) {
+                ask = null;
+            }
+            return true;
+        }
         Drag edge = edgeAt(mx, my);
         if (edge != Drag.NONE) {
             drag = edge;
@@ -579,10 +695,7 @@ public class StudioScreen extends Screen {
             String tab = tabAt(mx);
             if (tab != null) {
                 if (tab.startsWith("x:")) {
-                    StudioSession.docs.remove(tab.substring(2));
-                    if (tab.substring(2).equals(StudioSession.active)) {
-                        StudioSession.active = StudioSession.HOME;
-                    }
+                    requestClose(tab.substring(2));
                 } else {
                     StudioSession.active = tab;
                     settings = false;
@@ -692,9 +805,9 @@ public class StudioScreen extends Screen {
             doc.scroll = Math.max(0, doc.scroll + step);
         } else if (StudioSession.JOURNAL.equals(StudioSession.active)) {
             if (mouseX < px + 8 + journalListW) {
-                listScroll = Math.max(0, listScroll + step * 8);
+                listScroll = Math.max(0, Math.min(listMax, listScroll + step * 8));
             } else {
-                codeScroll = Math.max(0, codeScroll + step * LINE_H);
+                codeScroll = Math.max(0, Math.min(codeMax, codeScroll + step * LINE_H));
             }
         }
         return true;
@@ -722,6 +835,14 @@ public class StudioScreen extends Screen {
                 createScript();
             } else if (key == GLFW.GLFW_KEY_BACKSPACE && !nameBuf.isEmpty()) {
                 nameBuf = nameBuf.substring(0, nameBuf.length() - 1);
+            }
+            return true;
+        }
+        if (ask != null) {
+            if (key == GLFW.GLFW_KEY_ESCAPE) {
+                ask = null;
+            } else if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
+                confirmAsk();
             }
             return true;
         }
@@ -792,7 +913,11 @@ public class StudioScreen extends Screen {
             return true;
         }
         if (key == GLFW.GLFW_KEY_BACKSPACE) {
-            doc.backspace();
+            if (ctrl) {
+                doc.deleteWord();
+            } else {
+                doc.backspace();
+            }
             return true;
         }
         if (key == GLFW.GLFW_KEY_DELETE) {
@@ -804,7 +929,7 @@ public class StudioScreen extends Screen {
             return true;
         }
         if (key == GLFW.GLFW_KEY_TAB) {
-            doc.insert("    ");
+            doc.insert("\t");
             return true;
         }
         if (key == GLFW.GLFW_KEY_LEFT) {
@@ -1017,15 +1142,19 @@ public class StudioScreen extends Screen {
         String line = doc.lines.get(row);
         int local = mx - editorX - 36;
         int col = 0;
-        while (col < line.length() && this.font.width(line.substring(0, col + 1)) < local + 2) {
+        while (col < line.length() && spanWidth(line, col + 1) < local + 2) {
             col++;
         }
-        doc.move(row, col, keep);
+        if (hasAltDown() || (keep && doc.box)) {
+            doc.moveBox(row, col);
+        } else {
+            doc.move(row, col, keep);
+        }
     }
 
     private void toolClick(int mx) {
         int x = px + 6;
-        String[] ids = {"new", "open", "save", "saveall", "closetab", "", "cut", "copy", "paste", "", "undo", "redo"};
+        String[] ids = {"new", "open", "save", "saveall", "closetab", "delete", "", "cut", "copy", "paste", "", "undo", "redo"};
         for (String id : ids) {
             if (id.isEmpty()) {
                 x += 6;
@@ -1054,8 +1183,13 @@ public class StudioScreen extends Screen {
             case "saveall" -> saveAll();
             case "closetab" -> {
                 if (doc != null) {
-                    StudioSession.docs.remove(doc.name);
-                    StudioSession.active = StudioSession.HOME;
+                    requestClose(doc.name);
+                }
+            }
+            case "delete" -> {
+                if (doc != null) {
+                    ask = "delete";
+                    askName = doc.name;
                 }
             }
             case "cut" -> {
@@ -1092,13 +1226,13 @@ public class StudioScreen extends Screen {
     private List<String> menuItems() {
         return switch (menu == null ? "" : menu) {
             case "file" -> List.of(Messages.get("studio.m.new"), Messages.get("studio.m.open"), Messages.get("studio.m.save"),
-                    Messages.get("studio.m.save_all"), Messages.get("studio.m.close"), Messages.get("studio.m.exit"));
+                    Messages.get("studio.m.save_all"), Messages.get("studio.m.delete"), Messages.get("studio.m.close"),
+                    Messages.get("studio.m.exit"));
             case "edit" -> List.of(Messages.get("studio.m.undo"), Messages.get("studio.m.redo"), Messages.get("studio.m.cut"),
                     Messages.get("studio.m.copy"), Messages.get("studio.m.paste"), Messages.get("studio.m.all"));
             case "search" -> List.of(Messages.get("studio.m.find"));
             case "view" -> List.of(StudioSession.maximized ? Messages.get("studio.m.window") : Messages.get("studio.m.full"),
                     Messages.get("studio.journal"));
-            case "enc" -> List.of(Messages.get("studio.m.utf"));
             default -> List.of();
         };
     }
@@ -1120,9 +1254,11 @@ public class StudioScreen extends Screen {
                 } else if (index == 3) {
                     saveAll();
                 } else if (index == 4 && script() != null) {
-                    StudioSession.docs.remove(script().name);
-                    StudioSession.active = StudioSession.HOME;
-                } else if (index == 5) {
+                    ask = "delete";
+                    askName = script().name;
+                } else if (index == 5 && script() != null) {
+                    requestClose(script().name);
+                } else if (index == 6) {
                     onClose();
                 }
             }
@@ -1160,9 +1296,9 @@ public class StudioScreen extends Screen {
 
     private int menuX() {
         int x = px + 6;
-        String[] ids = {"file", "edit", "search", "view", "enc"};
+        String[] ids = {"file", "edit", "search", "view"};
         String[] labels = {Messages.get("studio.m.file"), Messages.get("studio.m.edit"), Messages.get("studio.m.search"),
-                Messages.get("studio.m.view"), Messages.get("studio.m.enc")};
+                Messages.get("studio.m.view")};
         for (int i = 0; i < ids.length; i++) {
             int w = this.font.width(labels[i]) + 10;
             if (ids[i].equals(menu)) {
@@ -1175,9 +1311,9 @@ public class StudioScreen extends Screen {
 
     private String menuAt(int mx) {
         int x = px + 6;
-        String[] ids = {"file", "edit", "search", "view", "enc"};
+        String[] ids = {"file", "edit", "search", "view"};
         String[] labels = {Messages.get("studio.m.file"), Messages.get("studio.m.edit"), Messages.get("studio.m.search"),
-                Messages.get("studio.m.view"), Messages.get("studio.m.enc")};
+                Messages.get("studio.m.view")};
         for (int i = 0; i < ids.length; i++) {
             int w = this.font.width(labels[i]) + 10;
             if (mx >= x && mx < x + w) {
@@ -1192,7 +1328,7 @@ public class StudioScreen extends Screen {
         int x = px + 8 + this.font.width("ScriptCraft") + 10;
         int limit = px + pw - 78;
         String home = hitTab(mx, x, Messages.get("studio.home"), false);
-        x += tabWidth(Messages.get("studio.home"), false);
+        x += tabWidth(Messages.get("studio.home"), false, false);
         if (home != null) {
             return StudioSession.HOME;
         }
@@ -1203,12 +1339,12 @@ public class StudioScreen extends Screen {
         if (hitTab(mx, x, journalLabel, false) != null) {
             return StudioSession.JOURNAL;
         }
-        x += tabWidth(journalLabel, false);
+        x += tabWidth(journalLabel, false, false);
         for (String name : new ArrayList<>(StudioSession.docs.keySet())) {
             if (x > limit - 70) {
                 break;
             }
-            int w = tabWidth(shortName(name), true);
+            int w = tabWidth(shortName(name), true, dirty(name));
             if (mx >= x + w - 12 && mx < x + w) {
                 return "x:" + name;
             }
@@ -1221,17 +1357,17 @@ public class StudioScreen extends Screen {
     }
 
     private String hitTab(int mx, int x, String label, boolean closable) {
-        int w = tabWidth(label, closable);
+        int w = tabWidth(label, closable, false);
         return mx >= x && mx < x + w ? label : null;
     }
 
-    private int tabWidth(String label, boolean closable) {
-        return Math.min(130, this.font.width(label) + (closable ? 22 : 12)) + 3;
+    private int tabWidth(String label, boolean closable, boolean dirty) {
+        return tabInner(label, closable, dirty) + 3;
     }
 
     private void journalClick(int mx, int my) {
         if (mx < px + 8 + journalListW) {
-            int index = (my - journalY - 4 + listScroll) / 24;
+            int index = (my - journalY - 4 + listScroll - 16) / 24;
             if (index >= 0 && index < StudioSession.issues.size()) {
                 journal = index;
                 ScriptLog.Issue issue = StudioSession.issues.get(index);
@@ -1352,6 +1488,110 @@ public class StudioScreen extends Screen {
             return text;
         }
         return this.font.plainSubstrByWidth(text, Math.max(8, width - 8)) + "…";
+    }
+
+    private void requestClose(String name) {
+        ScriptDocument doc = StudioSession.docs.get(name);
+        if (doc != null && doc.dirty()) {
+            ask = "close";
+            askName = name;
+            return;
+        }
+        dropTab(name);
+    }
+
+    private void confirmAsk() {
+        if (askName == null) {
+            ask = null;
+            return;
+        }
+        if ("delete".equals(ask)) {
+            ModNetwork.sendToServer(new ScriptDeletePacket(askName));
+            dropTab(askName);
+        } else if ("close".equals(ask)) {
+            dropTab(askName);
+        }
+        ask = null;
+    }
+
+    private void dropTab(String name) {
+        StudioSession.docs.remove(name);
+        if (name.equals(StudioSession.active)) {
+            StudioSession.active = StudioSession.HOME;
+        }
+    }
+
+    private void renderAsk(GuiGraphics g, int mx, int my) {
+        String text = Messages.get("delete".equals(ask) ? "studio.ask.delete" : "studio.ask.close", askName);
+        int w = Math.max(200, this.font.width(text) + 24);
+        int x = px + (pw - w) / 2;
+        int y = py + ph / 2 - 28;
+        g.fill(x, y, x + w, y + 52, 0xF0101418);
+        border(g, x, y, w, 52, GOLD);
+        g.drawString(this.font, text, x + 12, y + 8, TEXT, false);
+        askYesX = x + 12;
+        askNoX = x + 70;
+        askY = y + 28;
+        g.fill(askYesX, askY, askYesX + 48, askY + 16, hover(mx, my, askYesX, askY, 48, 16) ? 0xFF3A4A30 : 0xFF243028);
+        g.fill(askNoX, askY, askNoX + 48, askY + 16, hover(mx, my, askNoX, askY, 48, 16) ? 0xFF4A3030 : 0xFF2A2224);
+        String yes = Messages.get("studio.ask.yes");
+        String no = Messages.get("studio.ask.no");
+        g.drawString(this.font, yes, askYesX + (48 - this.font.width(yes)) / 2, askY + 4, TEXT, false);
+        g.drawString(this.font, no, askNoX + (48 - this.font.width(no)) / 2, askY + 4, TEXT, false);
+    }
+
+    private void drawPencil(GuiGraphics g, int x, int y, int color) {
+        g.fill(x + 1, y + 6, x + 6, y + 8, color);
+        g.fill(x + 4, y + 1, x + 6, y + 6, color);
+        g.fill(x + 5, y, x + 7, y + 2, color);
+    }
+
+    private int spanWidth(String line, int count) {
+        int width = 0;
+        int start = 0;
+        int end = Math.max(0, Math.min(count, line.length()));
+        int tab = this.font.width("    ");
+        for (int i = 0; i < end; i++) {
+            if (line.charAt(i) == '\t') {
+                width += this.font.width(line.substring(start, i)) + tab;
+                start = i + 1;
+            }
+        }
+        return width + this.font.width(line.substring(start, end));
+    }
+
+    /** Рисует строку кода: таб — тонкая палка, а не квадрат отсутствующего глифа. */
+    private void drawCode(GuiGraphics g, String line, int x, int y, int color, int max) {
+        int drawn = 0;
+        int start = 0;
+        int tab = this.font.width("    ");
+        for (int i = 0; i <= line.length(); i++) {
+            boolean isTab = i < line.length() && line.charAt(i) == '\t';
+            if (!isTab && i < line.length()) {
+                continue;
+            }
+            if (start < i) {
+                String part = line.substring(start, i);
+                int partW = this.font.width(part);
+                if (drawn + partW > max) {
+                    g.drawString(this.font, this.font.plainSubstrByWidth(part, Math.max(0, max - drawn)), x + drawn, y, color, false);
+                    return;
+                }
+                g.drawString(this.font, part, x + drawn, y, color, false);
+                drawn += partW;
+            }
+            if (!isTab) {
+                return;
+            }
+            if (drawn + 2 < max) {
+                g.fill(x + drawn + 1, y, x + drawn + 2, y + 9, 0xFF5C6A80);
+            }
+            drawn += tab;
+            start = i + 1;
+            if (drawn >= max) {
+                return;
+            }
+        }
     }
 
     private static boolean hover(int mx, int my, int x, int y, int w, int h) {

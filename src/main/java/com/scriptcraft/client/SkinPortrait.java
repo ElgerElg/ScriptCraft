@@ -1,5 +1,6 @@
 package com.scriptcraft.client;
 
+import com.mojang.blaze3d.platform.Lighting;
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
@@ -11,6 +12,7 @@ import net.minecraft.client.model.PlayerModel;
 import net.minecraft.client.model.geom.ModelLayers;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.texture.DynamicTexture;
+import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.client.resources.DefaultPlayerSkin;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
@@ -41,7 +43,11 @@ public final class SkinPortrait {
     private SkinPortrait() {
     }
 
-    public static void render(GuiGraphics graphics, int centerX, int bottom, float scale) {
+    /**
+     * Модель стоит ногами вниз: в кубах игрока плюс по Y — это вниз, и для экрана
+     * дополнительный переворот не нужен. Минус по Z разворачивает лицо к камере.
+     */
+    public static void render(GuiGraphics graphics, int centerX, int top, float scale) {
         ensure();
         PlayerModel<?> model = model();
         if (model == null) {
@@ -50,14 +56,15 @@ public final class SkinPortrait {
         float yaw = (System.currentTimeMillis() % 14000L) / 14000f * 360f;
         PoseStack pose = graphics.pose();
         pose.pushPose();
-        pose.translate(centerX, bottom, 80);
-        pose.scale(scale, scale, scale);
-        pose.mulPose(Axis.ZP.rotationDegrees(180f));
+        pose.translate(centerX, top, 120);
+        pose.scale(scale, scale, -scale);
         pose.mulPose(Axis.YP.rotationDegrees(yaw));
+        Lighting.setupForEntityInInventory();
         var buffer = graphics.bufferSource().getBuffer(RenderType.entityTranslucent(custom ? CUSTOM : FALLBACK));
-        model.renderToBuffer(pose, buffer, 0xF000F0, 655360, 1f, 1f, 1f, 1f);
+        model.renderToBuffer(pose, buffer, 0xF000F0, OverlayTexture.NO_OVERLAY, 1f, 1f, 1f, 1f);
         pose.popPose();
-        graphics.bufferSource().endBatch();
+        graphics.flush();
+        Lighting.setupFor3DItems();
     }
 
     private static PlayerModel<?> model() {
@@ -101,6 +108,9 @@ public final class SkinPortrait {
     private static void download() {
         try {
             Path cache = ModPaths.cache().resolve("skins").resolve("elgerelg.png");
+            if (Files.isRegularFile(cache) && Files.size(cache) < 100) {
+                Files.deleteIfExists(cache);
+            }
             if (!Files.isRegularFile(cache)) {
                 String profile = http("https://api.mojang.com/users/profiles/minecraft/" + NAME);
                 String id = between(profile, "\"id\":\"", "\"");
@@ -114,8 +124,8 @@ public final class SkinPortrait {
                 }
                 String decoded = new String(Base64.getDecoder().decode(value), StandardCharsets.UTF_8);
                 slim = decoded.contains("\"model\":\"slim\"") || decoded.contains("\"model\": \"slim\"");
-                String url = between(decoded, "\"url\":\"", "\"");
-                if (url == null || !url.startsWith("http://textures.minecraft.net/") && !url.startsWith("https://textures.minecraft.net/")) {
+                String url = skinUrl(decoded);
+                if (url == null) {
                     return;
                 }
                 byte[] png = bytes(url);
@@ -153,6 +163,22 @@ public final class SkinPortrait {
         try (InputStream in = connection.getInputStream()) {
             return in.readAllBytes();
         }
+    }
+
+    /** Адрес скина с textures.minecraft.net. В JSON слэши иногда экранированы. */
+    private static String skinUrl(String decoded) {
+        String flat = decoded.replace("\\/", "/");
+        int skin = flat.indexOf("\"SKIN\"");
+        String area = skin >= 0 ? flat.substring(skin) : flat;
+        String url = between(area, "\"url\":\"", "\"");
+        if (url == null) {
+            return null;
+        }
+        url = url.replace("\\/", "/");
+        if (url.startsWith("http://textures.minecraft.net/") || url.startsWith("https://textures.minecraft.net/")) {
+            return url;
+        }
+        return null;
     }
 
     private static String between(String text, String from, String to) {

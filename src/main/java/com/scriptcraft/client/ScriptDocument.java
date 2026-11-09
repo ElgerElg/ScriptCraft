@@ -18,6 +18,8 @@ public final class ScriptDocument {
     public int col;
     public int anchorLine = -1;
     public int anchorCol;
+    /** Прямоугольное выделение (Alt и кнопка мыши): правка идёт в каждую строку диапазона. */
+    public boolean box;
     public int scroll;
     public int horiz;
     private final ArrayDeque<Snap> undo = new ArrayDeque<>();
@@ -54,6 +56,7 @@ public final class ScriptDocument {
         line = 0;
         col = 0;
         anchorLine = -1;
+        box = false;
         scroll = 0;
         horiz = 0;
         undo.clear();
@@ -64,8 +67,22 @@ public final class ScriptDocument {
         if (!loaded || value.isEmpty()) {
             return;
         }
-        snapshot();
-        deleteSelection();
+        if (box && anchorLine >= 0) {
+            snapshot();
+            if (!value.contains("\n") && !value.contains("\r")) {
+                writeBox(value);
+                return;
+            }
+            int[] span = boxSpan();
+            writeBox("");
+            box = false;
+            anchorLine = -1;
+            line = span[0];
+            col = Math.min(span[2], lines.get(line).length());
+        } else {
+            snapshot();
+            deleteSelection();
+        }
         String chunk = value.replace("\r\n", "\n").replace('\r', '\n');
         String current = lines.get(line);
         String left = current.substring(0, col);
@@ -89,6 +106,16 @@ public final class ScriptDocument {
         if (!loaded) {
             return;
         }
+        if (box && anchorLine >= 0) {
+            snapshot();
+            int[] span = boxSpan();
+            if (span[2] != span[3]) {
+                writeBox("");
+            } else if (span[2] > 0) {
+                eraseBoxColumn(span[0], span[1], span[2] - 1);
+            }
+            return;
+        }
         if (anchorLine >= 0) {
             snapshot();
             deleteSelection();
@@ -110,8 +137,47 @@ public final class ScriptDocument {
         lines.set(line, lines.get(line) + current);
     }
 
+    /** Стирает назад до пробела или отступа, сам разделитель не задевает. */
+    public void deleteWord() {
+        if (!loaded) {
+            return;
+        }
+        if (box || anchorLine >= 0) {
+            backspace();
+            return;
+        }
+        if (col == 0 && line == 0) {
+            return;
+        }
+        if (col == 0) {
+            backspace();
+            return;
+        }
+        String current = lines.get(line);
+        int i = col;
+        if (isGap(current.charAt(i - 1))) {
+            while (i > 0 && isGap(current.charAt(i - 1))) {
+                i--;
+            }
+        } else {
+            while (i > 0 && !isGap(current.charAt(i - 1))) {
+                i--;
+            }
+        }
+        if (i == col) {
+            return;
+        }
+        snapshot();
+        lines.set(line, current.substring(0, i) + current.substring(col));
+        col = i;
+    }
+
     public void deleteForward() {
         if (!loaded) {
+            return;
+        }
+        if (box && anchorLine >= 0) {
+            backspace();
             return;
         }
         if (anchorLine >= 0) {
@@ -142,6 +208,16 @@ public final class ScriptDocument {
 
     /** Кусок выделения на строке: [от, до) или null. */
     public int[] selectionOn(int row) {
+        if (box && anchorLine >= 0) {
+            int[] span = boxSpan();
+            if (row < span[0] || row > span[1] || span[2] == span[3]) {
+                return null;
+            }
+            String text = lines.get(row);
+            int from = Math.min(span[2], text.length());
+            int to = Math.min(span[3], text.length());
+            return from >= to ? null : new int[]{from, to};
+        }
         Range range = range();
         if (range == null || row < range.fromLine || row > range.toLine) {
             return null;
@@ -152,6 +228,20 @@ public final class ScriptDocument {
     }
 
     public String selectedText() {
+        if (box && anchorLine >= 0) {
+            int[] span = boxSpan();
+            StringBuilder out = new StringBuilder();
+            for (int row = span[0]; row <= span[1]; row++) {
+                if (row > span[0]) {
+                    out.append('\n');
+                }
+                int[] piece = selectionOn(row);
+                if (piece != null) {
+                    out.append(lines.get(row), piece[0], piece[1]);
+                }
+            }
+            return out.toString();
+        }
         Range range = range();
         if (range == null) {
             return "";
@@ -177,7 +267,21 @@ public final class ScriptDocument {
             }
         } else {
             anchorLine = -1;
+            box = false;
         }
+        line = newLine;
+        col = newCol;
+    }
+
+    /** Начать или растянуть прямоугольник. Столбец может выходить за конец короткой строки. */
+    public void moveBox(int newLine, int newCol) {
+        newLine = Math.max(0, Math.min(lines.size() - 1, newLine));
+        newCol = Math.max(0, newCol);
+        if (anchorLine < 0 || !box) {
+            anchorLine = line;
+            anchorCol = col;
+        }
+        box = true;
         line = newLine;
         col = newCol;
     }
@@ -209,6 +313,55 @@ public final class ScriptDocument {
         if (scroll < 0) {
             scroll = 0;
         }
+    }
+
+    private static boolean isGap(char ch) {
+        return ch == ' ' || ch == '\t';
+    }
+
+    /** fromLine, toLine, fromCol, toCol. */
+    private int[] boxSpan() {
+        int r1 = Math.max(0, Math.min(anchorLine, line));
+        int r2 = Math.min(lines.size() - 1, Math.max(anchorLine, line));
+        int c1 = Math.min(anchorCol, col);
+        int c2 = Math.max(anchorCol, col);
+        return new int[]{r1, r2, c1, c2};
+    }
+
+    /** Вписывает один и тот же кусок в каждую строку прямоугольника. */
+    private void writeBox(String value) {
+        int[] span = boxSpan();
+        for (int row = span[0]; row <= span[1]; row++) {
+            String text = lines.get(row);
+            int from = span[2];
+            int to = span[3];
+            if (text.length() < from) {
+                text = text + " ".repeat(from - text.length());
+            }
+            int a = Math.min(from, text.length());
+            int b = Math.min(to, text.length());
+            lines.set(row, text.substring(0, a) + value + text.substring(b));
+        }
+        int next = span[2] + value.length();
+        anchorLine = span[0];
+        line = span[1];
+        anchorCol = next;
+        col = next;
+        box = true;
+    }
+
+    private void eraseBoxColumn(int fromLine, int toLine, int index) {
+        for (int row = fromLine; row <= toLine; row++) {
+            String text = lines.get(row);
+            if (index < text.length()) {
+                lines.set(row, text.substring(0, index) + text.substring(index + 1));
+            }
+        }
+        anchorLine = fromLine;
+        line = toLine;
+        anchorCol = index;
+        col = index;
+        box = true;
     }
 
     private void deleteSelection() {
@@ -281,6 +434,7 @@ public final class ScriptDocument {
         col = Math.max(0, Math.min(lines.get(line).length(), snap.col));
         anchorLine = snap.anchorLine;
         anchorCol = snap.anchorCol;
+        box = false;
     }
 
     private record Snap(String text, int line, int col, int anchorLine, int anchorCol) {

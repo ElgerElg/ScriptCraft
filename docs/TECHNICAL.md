@@ -762,7 +762,7 @@ src/main/java/com/scriptcraft/
                                (модели слотов и недостающие модели настоящих id), RewritingDataPack (id скриптов -> id
                                слотов в data/), AssetBindings, DefineCache (клиент: id define серверов)
   event/ServerEvents           Forge-события -> события скриптов, переменные, раздача ресурсов
-  network/                     ModNetwork (протокол 8), OpenScreenPacket, HudPacket, BindingsPacket, ResourceManifest/Request/ChunkPacket, LogPacket, ScriptList/Data/ReloadPacket
+  network/                     ModNetwork (протокол 9), OpenScreenPacket, HudPacket, BindingsPacket, ResourceManifest/Request/ChunkPacket, LogPacket, ScriptList/Data/Reload/DeletePacket
   screen/, client/             Screen API; client/ClientResources — кэш; StudioScreen — окно мода на сессию (главная, журнал, редактор)
   hud/                         HUD поверх игры: HudManager (сервер), HudOp/HudEntry (диффы); client/ClientHud — рендер
 ```

@@ -30,6 +30,8 @@ public final class StudioSession {
     public static List<String> catalog = List.of();
     public static List<ScriptLog.Issue> issues = List.of();
     public static List<ScriptLog.Slice> slices = List.of();
+    /** Строки под активными ошибками: перезагрузки, старые ошибки, уведомления. */
+    public static final List<String> history = new ArrayList<>();
     public static final Map<String, ScriptDocument> docs = new LinkedHashMap<>();
 
     private StudioSession() {
@@ -44,10 +46,24 @@ public final class StudioSession {
         catalog = List.of();
         issues = List.of();
         slices = List.of();
+        history.clear();
         docs.clear();
     }
 
     public static void journal(List<ScriptLog.Issue> nextIssues, List<ScriptLog.Slice> nextSlices) {
+        for (ScriptLog.Issue old : issues) {
+            boolean still = false;
+            for (ScriptLog.Issue next : nextIssues) {
+                if (next.file().equals(old.file()) && next.line() == old.line() && next.reason().equals(old.reason())) {
+                    still = true;
+                    break;
+                }
+            }
+            if (!still) {
+                String where = old.file().isEmpty() ? "" : old.file() + ":" + old.line() + " ";
+                remember(where + old.reason());
+            }
+        }
         issues = List.copyOf(nextIssues);
         slices = List.copyOf(nextSlices);
         if (!opened) {
@@ -78,5 +94,23 @@ public final class StudioSession {
 
     public static void catalog(List<String> names) {
         catalog = new ArrayList<>(names);
+    }
+
+    /** Одна строка истории. Повтор подряд не копится. */
+    public static void remember(String text) {
+        if (text == null || text.isBlank()) {
+            return;
+        }
+        String plain = text.replaceAll("(?i)§.", "").replaceAll("(?i)&[0-9a-fk-or]", "").strip();
+        if (plain.isEmpty()) {
+            return;
+        }
+        if (!history.isEmpty() && history.get(history.size() - 1).equals(plain)) {
+            return;
+        }
+        history.add(plain);
+        while (history.size() > 40) {
+            history.remove(0);
+        }
     }
 }

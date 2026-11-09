@@ -213,4 +213,17 @@ public final class ScriptPaths {
         String body = text.replace("\r\n", "\n").replace('\r', '\n');
         Files.writeString(path, body, StandardCharsets.UTF_8);
     }
+
+    /** Удаляет один файл скрипта. Имя проверяется так же, как при записи. */
+    public static void delete(String rel) throws IOException {
+        if (!contained(rel)) {
+            throw new IOException("bad script path");
+        }
+        Path root = scriptsDir().toAbsolutePath().normalize();
+        Path path = root.resolve(rel).normalize();
+        if (!path.startsWith(root)) {
+            throw new IOException("bad script path");
+        }
+        Files.deleteIfExists(path);
+    }
 }

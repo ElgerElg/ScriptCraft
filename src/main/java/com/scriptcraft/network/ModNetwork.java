@@ -17,7 +17,8 @@ public final class ModNetwork {
     // 6: журнал ошибок (LogRequest/Log) и всплывающие уведомления (Notify).
     // 7: студия — список скриптов, чтение, запись и перезагрузка.
     // 8: у блока в таблице привязок появились render и full.
-    private static final String PROTOCOL_VERSION = "8";
+    // 9: удаление скрипта из студии.
+    private static final String PROTOCOL_VERSION = "9";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(ScriptCraft.MODID, "main"),
@@ -116,6 +117,11 @@ public final class ModNetwork {
                 .encoder(ScriptReloadPacket::encode)
                 .decoder(ScriptReloadPacket::decode)
                 .consumerMainThread(ScriptReloadPacket::handle)
+                .add();
+        CHANNEL.messageBuilder(ScriptDeletePacket.class, id++, NetworkDirection.PLAY_TO_SERVER)
+                .encoder(ScriptDeletePacket::encode)
+                .decoder(ScriptDeletePacket::decode)
+                .consumerMainThread(ScriptDeletePacket::handle)
                 .add();
     }
 

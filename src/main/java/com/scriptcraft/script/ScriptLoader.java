@@ -194,6 +194,31 @@ public final class ScriptLoader {
         return 1;
     }
 
+    /** Удалить файл скрипта со студии. Включённый скрипт сначала выгружается. */
+    public static int removeScript(CommandSourceStack source, String rel) {
+        if (!ScriptPaths.contained(rel)) {
+            Feedback.fail(source, "studio.bad_name", rel);
+            return 0;
+        }
+        String enabled = ScriptPaths.enabledName(rel);
+        if (!ScriptPaths.isDisabled(rel) && SOURCES.containsKey(enabled)) {
+            ScriptScheduler.clear(enabled);
+            fireScriptEvent(ScriptEvent.UNLOAD, enabled::equals, source.getServer());
+            HudManager.unloadScript(enabled, source.getServer());
+            SOURCES.remove(enabled);
+            recompile();
+            afterChange(source);
+        }
+        try {
+            ScriptPaths.delete(rel);
+        } catch (IOException e) {
+            Feedback.fail(source, "studio.delete_failed", e.getMessage());
+            return 0;
+        }
+        Feedback.ok(source, "studio.deleted", rel);
+        return 1;
+    }
+
     /** /sc enable <скрипт> — переименовать "-имя.sc" обратно и загрузить. */
     public static int enable(CommandSourceStack source, String input) {
         String name = ScriptPaths.normalize(input);
