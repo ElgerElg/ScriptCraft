@@ -6,6 +6,8 @@ import com.scriptcraft.registry.BindingStore;
 import com.scriptcraft.registry.BindingSync;
 import com.scriptcraft.registry.SlotMigration;
 import com.scriptcraft.resources.ResourceSync;
+import com.scriptcraft.script.InputSync;
+import com.scriptcraft.script.InventoryWatch;
 import com.scriptcraft.script.ScriptLoader;
 import com.scriptcraft.script.runtime.ScriptEvent;
 import com.scriptcraft.script.variables.VariableStore;
@@ -73,6 +75,11 @@ public final class ServerEvents {
             // HUD, созданный до выхода игрока, отправляется заново (клиент при отключении его стёр).
             // Если скрипт "on join" создаст тот же HUD ещё раз, повторной отправки не будет — сервер сравнит.
             HudManager.onLogin(player);
+            // До скриптов входа: вещи с диска не считаются получением. give из on join — уже следующий тик.
+            InventoryWatch.baseline(player);
+            if (player.getServer() != null) {
+                InputSync.sync(player.getServer());
+            }
             if (player.getStats().getValue(Stats.CUSTOM.get(Stats.LEAVE_GAME)) == 0) {
                 ScriptLoader.fireEvent(ScriptEvent.FIRST_JOIN, player);
             }
@@ -85,6 +92,7 @@ public final class ServerEvents {
     public static void onPlayerQuit(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
             ScriptLoader.fireEvent(ScriptEvent.QUIT, player);
+            InventoryWatch.forget(player);
             ResourceSync.onLogout(player);
         }
     }
@@ -135,6 +143,7 @@ public final class ServerEvents {
         VariableStore.shutdown();
         ResourceSync.onServerStopped();
         HudManager.onServerStopped();
+        InventoryWatch.clear();
         SlotMigration.onServerStopped();
         BindingStore.onServerStopped();
     }
@@ -147,6 +156,7 @@ public final class ServerEvents {
             ResourceSync.tick(event.getServer());
             SlotMigration.tick(event.getServer());
             ScriptLoader.tick(event.getServer());
+            InventoryWatch.tick(event.getServer());
         }
     }
 

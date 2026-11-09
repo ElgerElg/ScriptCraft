@@ -34,6 +34,9 @@ public interface ScriptProgram {
     /** Выполняет все обработчики события игрока (join/quit) с этим контекстом. */
     void fireEvent(ScriptEvent event, ExecutionContext ctx);
 
+    /** Обработчики события, как их разобрал парсер (для синхронизации клавиш и меню на клиент). */
+    java.util.List<com.scriptcraft.script.parser.EventHandler> eventHandlers(ScriptEvent event);
+
     /**
      * События самого скрипта (load/unload) — только у файлов, прошедших {@code files}.
      * Обычный обработчик выполняется один раз без игрока, обработчик из "on join or load:" — для каждого

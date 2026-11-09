@@ -30,8 +30,17 @@ public enum ScriptEvent {
     LEFT_CLICK("left click", true, "leftclick", "left click block"),
     /** Выбросил предмет. Можно отменить. %item%. */
     DROP("drop", true, "drop item", "item drop"),
-    /** Подобрал предмет. Можно отменить. %item%. */
+    /** Подобрал предмет с земли. Можно отменить до того, как он попадёт в инвентарь. %item%. */
     PICKUP("pickup", true, "pick up", "item pickup"),
+    /**
+     * В инвентаре стало больше этого предмета: подбор, give, сундук, крафт, торговля, креатив.
+     * %item% — id, %amount% — на сколько выросло число. cancel event забирает эту добавку обратно.
+     */
+    RECEIVE("receive", true, "item receive", "receive item"),
+    /** Нажата клавиша (on key e:). %key% — имя. Клавиша при этом не проглатывается. */
+    KEY("key", true, "key press"),
+    /** Открывается ванильный экран (on open inventory:). %menu%. cancel event в теле блокирует экран на клиенте. */
+    OPEN("open", true, "open menu", "menu open"),
     /** Получил урон. Можно отменить. %damage%, %attacker%, %cause%. */
     DAMAGE("damage", true, "player damage", "hurt"),
     /** Сменил мир. %world% — новый, %from% — старый. */

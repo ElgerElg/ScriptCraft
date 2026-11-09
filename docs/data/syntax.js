@@ -15,7 +15,7 @@
  */
 window.SC_DOCS = window.SC_DOCS || {};
 window.SC_DOCS.syntax = {
-  version: "0.3.6",
+  version: "0.3.7",
   categories: [
     { id: "events",     ru: "События",            en: "Events" },
     { id: "structures", ru: "Структуры",          en: "Structures" },
@@ -147,7 +147,48 @@ on place:
 
 on pickup:
 	send "&7Поднято: %item%" to player`,
-    since: "0.2.0", related: ["eff-cancel", "eff-drop", "ph-event"]
+    since: "0.2.0", related: ["eff-cancel", "eff-drop", "ph-event", "event-receive"]
+  },
+  {
+    id: "event-receive", category: "events",
+    name: { ru: "Получение предмета", en: "Item received" },
+    syntax: ["on receive:"],
+    desc: {
+      ru: "В инвентаре стало больше этого предмета: подбор с земли, `give`, сундук, крафт, торговля, креатив. `%item%` — id, `%amount%` — на сколько выросло число. Перекладывание из слота в слот сумму не меняет и событие не поднимает. Первый снимок при входе молчит, вещи с диска не считаются добычей. `cancel event` забирает эту добавку обратно. Предмет уже лежит в инвентаре, когда событие бежит. Курсор и эндер-сундук не считаются. `on pickup` при подборе с земли срабатывает отдельно, ещё до инвентаря. Предметы, которые выдал сам обработчик `on receive`, вторым событием не приходят.",
+      en: "The inventory total of an item grew: a ground pickup, `give`, a chest, crafting, trading, creative. `%item%` is the id, `%amount%` is how many were added. Moving a stack between slots does not change the total, so it does not fire. The first snapshot on join is silent, so items loaded from disk do not count. `cancel event` removes that added amount. The item is already in the inventory when the event runs. The cursor and the ender chest are not counted. `on pickup` still fires on its own for a ground item, before it enters the inventory. Items the `on receive` handler itself gives do not fire a second time."
+    },
+    example: `on receive:
+	send "&7Получено: &f%item% &7x%amount%" to player
+	if %item% is "minecraft:diamond":
+		cancel event
+		send "&cАлмазы в этот инвентарь не кладутся" to player`,
+    since: "0.3.7", related: ["event-items", "eff-cancel", "eff-give-item", "ph-event"]
+  },
+  {
+    id: "event-key", category: "events",
+    name: { ru: "Клавиша", en: "Key press" },
+    syntax: ["on key <клавиша>:", "on key press <клавиша>:"],
+    desc: {
+      ru: "Игрок нажал клавишу, и ни один экран не открыт (чат и меню не считаются). Клавиша не проглатывается: так нельзя отменить E. Имена — латиница, физическая клавиша, раскладка не важна: `a-z`, `0-9`, `f1-f12`, `space`, `escape`, `tab`, `enter`, `backspace`, `delete`, `up`, `down`, `left`, `right`, `lshift`, `rshift`, `lctrl`, `rctrl`, `lalt`, `ralt`, `grave`. `%key%` — это имя.",
+      en: "The player pressed a key while no screen is open (chat and menus do not count). The key is not swallowed, so this cannot stop E. Names are Latin and physical, the layout does not matter: `a-z`, `0-9`, `f1-f12`, `space`, `escape`, `tab`, `enter`, `backspace`, `delete`, `up`, `down`, `left`, `right`, `lshift`, `rshift`, `lctrl`, `rctrl`, `lalt`, `ralt`, `grave`. `%key%` is that name."
+    },
+    example: `on key g:
+	send "&eНажата G" to player`,
+    since: "0.3.7", related: ["event-open", "ph-event"]
+  },
+  {
+    id: "event-open", category: "events",
+    name: { ru: "Открытие меню", en: "Menu open" },
+    syntax: ["on open <меню>:", "on open menu <меню>:", "on open any:"],
+    desc: {
+      ru: "Открывается ванильный экран. `%menu%` — его имя. Имена: `inventory` (и выживание, и креатив, то есть E), `chest` (в том числе эндер-сундук и большой сундук), `shulker`, `barrel`, `crafting`, `furnace` (печь, плавильня, коптильня), `anvil`, `enchanting`, `brewing`, `villager`, `hopper`, `horse`, `beacon`, `smithing`, `grindstone`, `loom`, `cartography`, `stonecutter`, `any`. `cancel event` где угодно в теле, даже внутри `if`, блокирует экран всегда: клиент закрывает его сразу и не ждёт сервер. Без `cancel event` меню открывается, а скрипт только узнаёт об этом. Экран самого скрипта (`open screen`) под `any` не попадает.",
+      en: "A vanilla screen is opening. `%menu%` is its name. Names: `inventory` (survival and creative, so E), `chest` (including the ender chest and a large chest), `shulker`, `barrel`, `crafting`, `furnace` (furnace, blast furnace, smoker), `anvil`, `enchanting`, `brewing`, `villager`, `hopper`, `horse`, `beacon`, `smithing`, `grindstone`, `loom`, `cartography`, `stonecutter`, `any`. A `cancel event` anywhere in the body, even inside `if`, always blocks the screen: the client closes it immediately and does not wait for the server. Without `cancel event` the menu still opens and the script only observes it. The script's own screen (`open screen`) is not matched by `any`."
+    },
+    example: `on open inventory:
+	cancel event
+	open screen "Сумка" to player:
+		text "Вместо инвентаря" at 0, 0`,
+    since: "0.3.7", related: ["event-key", "eff-cancel", "eff-open-screen", "screen-list"]
   },
   {
     id: "event-damage", category: "events",
@@ -1162,10 +1203,10 @@ give 50 xp to @r`,
   {
     id: "screen-text", category: "screen",
     name: { ru: "Текст на экране", en: "Screen text" },
-    syntax: ["text \"<текст>\" [at <X> <Y>] [anchor <точка>] [color #RRGGBB] [shadow]"],
+    syntax: ["text \"<текст>\" [at <X> <Y>] [anchor <точка>] [color #RRGGBB] [shadow] [run \"/<команда>\" | close]"],
     desc: {
-      ru: "Надпись. `color` — `#RRGGBB` или `#AARRGGBB`, `shadow` — с тенью. Плейсхолдеры и `{переменные}` подставляются при открытии.",
-      en: "A label. `color` is `#RRGGBB` or `#AARRGGBB`, `shadow` adds a shadow. Placeholders and `{variables}` are filled in when opening."
+      ru: "Надпись. `color` — `#RRGGBB` или `#AARRGGBB`, `shadow` — с тенью. Плейсхолдеры и `{переменные}` подставляются при открытии. `run` или `close` делают хитбокс: ЛКМ по тексту (или по `size`, если задан) выполняет команду и закрывает экран. На HUD клика нет.",
+      en: "A label. `color` is `#RRGGBB` or `#AARRGGBB`, `shadow` adds a shadow. Placeholders and `{variables}` are filled in when opening. `run` or `close` adds a hitbox: left click on the text (or on `size`, if set) runs the command and closes the screen. HUD elements are not clickable."
     },
     example: `text "Добро пожаловать, %player%!" at 0, -60 color #FFD700 shadow`,
     since: "0.1.0", related: ["eff-open-screen", "screen-layout"]
@@ -1187,8 +1228,8 @@ button "Закрыть" at 0, 40 size 120x20 close`,
     name: { ru: "Слот с предметом", en: "Item slot" },
     syntax: ["slot <предмет> [<количество>] [at <X> <Y>] [anchor <точка>]", "slot hotbar <1-9> | slot image \"<картинка>\" | slot text \"<текст>\""],
     desc: {
-      ru: "Показывает предмет с подсказкой при наведении. Только показ — брать нельзя. С 0.1.33 слот может показывать предмет из хотбара игрока, картинку или текст (см. «Слоты HUD»).",
-      en: "Shows an item with a tooltip on hover. Display only — it cannot be taken. Since 0.1.33 a slot can also show an item from the player's hotbar, an image or a text (see “HUD slots”)."
+      ru: "Показывает предмет с подсказкой при наведении. Сам по себе слот ничего не берёт. `run \"/команда\"` или `close` — хитбокс ЛКМ по прямоугольнику слота на `open screen` (на HUD клика нет). С 0.1.33 слот может показывать предмет из хотбара игрока, картинку или текст (см. «Слоты HUD»).",
+      en: "Shows an item with a tooltip on hover. By itself the slot takes nothing. `run \"/command\"` or `close` is a left-click hitbox on the slot rectangle in `open screen` (HUD elements are not clickable). Since 0.1.33 a slot can also show an item from the player's hotbar, an image or a text (see “HUD slots”)."
     },
     example: `slot diamond 5 at -30, -15
 slot example:ruby 4 at 60, -15`,
@@ -1199,8 +1240,8 @@ slot example:ruby 4 at 60, -15`,
     name: { ru: "Картинка", en: "Image" },
     syntax: ["image \"<ns>:<путь>.png\" [at <X> <Y>] [size <W>x<H>] [texture <W>x<H>] [anchor <точка>] [color #AARRGGBB]"],
     desc: {
-      ru: "Рисует текстуру. `texture` — реальный размер файла, `color` — оттенок. Картинки из `scriptcraft/resources/assets/<ns>/textures/gui/` сервер отправляет игрокам сам, они показываются сразу.",
-      en: "Draws a texture. `texture` is the real file size, `color` tints it. Images from `scriptcraft/resources/assets/<ns>/textures/gui/` are sent to players by the server and show up immediately."
+      ru: "Рисует текстуру. `texture` — реальный размер файла, `color` — оттенок. `run` или `close` — хитбокс ЛКМ по `size` (без размера это 16x16) на `open screen`. Картинки из `scriptcraft/resources/assets/<ns>/textures/gui/` сервер отправляет игрокам сам, они показываются сразу.",
+      en: "Draws a texture. `texture` is the real file size, `color` tints it. `run` or `close` is a left-click hitbox on `size` (16x16 when size is omitted) in `open screen`. Images from `scriptcraft/resources/assets/<ns>/textures/gui/` are sent to players by the server and show up immediately."
     },
     example: `image "example:textures/gui/menu_banner.png" at 0, -85 size 128x32 texture 128x32`,
     since: "0.1.0", related: ["eff-open-screen", "cmd-resources-reload"]
@@ -1215,6 +1256,31 @@ slot example:ruby 4 at 60, -15`,
     },
     example: `text "ScriptCraft" at -4, -4 anchor bottom_right color #808080`,
     since: "0.1.0", related: ["screen-text", "screen-button", "hud-layer"]
+  },
+  {
+    id: "screen-click", category: "screen",
+    name: { ru: "Хитбокс клика", en: "Click hitbox" },
+    syntax: ["text \"<текст>\" run \"/<команда>\"", "image \"<путь>\" size <W>x<H> run \"/<команда>\"", "slot <предмет> close"],
+    desc: {
+      ru: "ЛКМ по нарисованному элементу на `open screen`. Работает у `text`, `image` и `slot`: `run \"/команда\"` выполняет команду от игрока и закрывает экран, `close` только закрывает. Без `run` и `close` клика нет. Если у текста задан `size`, хитбокс — этот прямоугольник, иначе ширина надписи и высота строки. У картинки и слота — `size`, иначе 16x16 и 18x18. Попадает верхний `layer`. Кнопка по-прежнему виджет. На HUD клики не приходят.",
+      en: "Left click on a drawn element in `open screen`. Works on `text`, `image` and `slot`: `run \"/command\"` runs the command as the player and closes the screen, `close` only closes it. Without `run` and `close` there is no click. If a text has `size`, that rectangle is the hitbox, otherwise the label width and the line height. An image or a slot uses `size`, or 16x16 and 18x18. The higher `layer` wins. A button is still a widget. HUD elements do not receive clicks."
+    },
+    example: `image "minecraft:textures/item/diamond.png" at -40, -20 size 32x32 texture 16x16 run "/hand diamond"
+text "Взять алмаз" at -40, 16 run "/hand diamond"`,
+    since: "0.3.7", related: ["screen-text", "screen-image", "screen-slot", "screen-list", "eff-open-screen"]
+  },
+  {
+    id: "screen-list", category: "screen",
+    name: { ru: "Список", en: "List" },
+    syntax: ["list [vertical|horizontal] [at <X> <Y>] [size <W>x<H>] [anchor <точка>] [header \"<текст>\"] [select]:", "row \"<текст>\" [run \"/<команда>\" | close]"],
+    desc: {
+      ru: "Панель строк. `vertical` — столбец (по умолчанию), `horizontal` — ряд. `header` — строка над списком. `select` подсвечивает строку под курсором, это не выбор навсегда. `row` без `run` и `close` только рисуется. Клик по строке с действием выполняет команду и закрывает экран, как кнопка. Если строк больше, чем влезает в `size` (по умолчанию 120x140), список листается колёсиком. Цвета `&` в тексте строки и заголовка работают. В HUD список только рисуется.",
+      en: "A panel of rows. `vertical` is a column (the default), `horizontal` is a row. `header` is a line above the rows. `select` highlights the row under the cursor; it is not a stored choice. A `row` without `run` or `close` is only drawn. Clicking a row that has an action runs the command and closes the screen, like a button. If the rows do not fit in `size` (120x140 by default), the wheel scrolls the list. `&` color codes work in the row text and the header. On a HUD the list is display only."
+    },
+    example: `list vertical at -8, 0 size 140x160 anchor right header "&6Сумка" select:
+	row "&bАлмаз" run "/hand diamond"
+	row "&7Закрыть" close`,
+    since: "0.3.7", related: ["screen-click", "eff-open-screen", "event-open"]
   },
 
   // ================================================================== UI / HUD
@@ -1386,8 +1452,8 @@ show vanilla all for player`,
     name: { ru: "Студия", en: "Studio" },
     syntax: ["F3 + `"],
 	desc: {
-	  ru: "Окно мода только для оператора. Клавиша не видна в «Управлении»: по умолчанию F3 и ` (на русской раскладке это Ё). Пока игрок не вышел с сервера, вкладки и размер окна помнятся; выход сбрасывает их. Главная по центру показывает крупный заголовок ScriptCraft, сменяющиеся фразы и модель скина ElgerElg. Журнал делится на активные ошибки и историю (перезагрузки, старые ошибки, уведомления). Скрипт удаляется из меню «Файл» или с панели, после подтверждения. Закрытие вкладки с несохранённым текстом тоже спрашивает; закрытие всего окна ничего не спрашивает и оставляет вкладки на клиенте. Слева от имени вкладки карандаш, если текст отличается от последней сохранённой версии. Tab вставляет таб и рисуется тонкой палкой. Ctrl+Backspace стирает слово до пробела или отступа. Alt и левая кнопка выделяют прямоугольник: набор и удаление идут в каждую строку. Уведомления растут по высоте текста и показывают серую полоску оставшегося времени. Клиент и сервер должны быть одной версии: протокол сети 9.",
-      en: "Operator-only mod window. The key is not listed in Controls: default is F3 and ` (Ё on a Russian layout). Tabs and the window size stay until the player leaves the server; logout clears them. Home centers a large ScriptCraft title, rotating phrases, and ElgerElg's skin model. The journal splits into active errors and a history of reloads, old errors, and notices. A script is deleted from the File menu or the toolbar after a confirmation. Closing a tab with unsaved text also asks; closing the whole window does not ask and keeps the tabs on the client. A pencil sits left of a tab name when the text differs from the last saved copy. Tab inserts a tab drawn as a thin bar. Ctrl+Backspace deletes a word up to a space or indent. Alt and the left button select a rectangle: typing and deleting apply to every line. Notices grow with the text and show a gray bar of the time left. Client and server must be the same version: the network protocol is 9."
+	  ru: "Окно мода только для оператора. Клавиша не видна в «Управлении»: по умолчанию F3 и ` (на русской раскладке это Ё). Пока игрок не вышел с сервера, вкладки и размер окна помнятся; выход сбрасывает их. Главная по центру показывает крупный заголовок ScriptCraft, сменяющиеся фразы и модель скина ElgerElg. Журнал делится на активные ошибки и историю (перезагрузки, старые ошибки, уведомления). Скрипт удаляется из меню «Файл» или с панели, после подтверждения. Закрытие вкладки с несохранённым текстом тоже спрашивает; закрытие всего окна ничего не спрашивает и оставляет вкладки на клиенте. Слева от имени вкладки карандаш, если текст отличается от последней сохранённой версии. Tab вставляет таб и рисуется тонкой палкой. Ctrl+Backspace стирает слово до пробела или отступа. Alt и левая кнопка выделяют прямоугольник: набор и удаление идут в каждую строку. Уведомления растут по высоте текста и показывают серую полоску оставшегося времени. Клиент и сервер должны быть одной версии: протокол сети 10.",
+      en: "Operator-only mod window. The key is not listed in Controls: default is F3 and ` (Ё on a Russian layout). Tabs and the window size stay until the player leaves the server; logout clears them. Home centers a large ScriptCraft title, rotating phrases, and ElgerElg's skin model. The journal splits into active errors and a history of reloads, old errors, and notices. A script is deleted from the File menu or the toolbar after a confirmation. Closing a tab with unsaved text also asks; closing the whole window does not ask and keeps the tabs on the client. A pencil sits left of a tab name when the text differs from the last saved copy. Tab inserts a tab drawn as a thin bar. Ctrl+Backspace deletes a word up to a space or indent. Alt and the left button select a rectangle: typing and deleting apply to every line. Notices grow with the text and show a gray bar of the time left. Client and server must be the same version: the network protocol is 10."
 	},
 	example: "F3 + `",
     since: "0.2.2", related: ["cmd-reload", "cmd-config-reload"]

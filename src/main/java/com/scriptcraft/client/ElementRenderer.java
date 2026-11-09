@@ -5,6 +5,7 @@ import com.scriptcraft.screen.BarDirection;
 import com.scriptcraft.screen.BarElement;
 import com.scriptcraft.screen.ImageElement;
 import com.scriptcraft.screen.Layout;
+import com.scriptcraft.screen.ListElement;
 import com.scriptcraft.screen.ScreenElement;
 import com.scriptcraft.screen.SlotElement;
 import com.scriptcraft.screen.TextElement;
@@ -72,6 +73,14 @@ public final class ElementRenderer {
      * @return предмет под курсором (для подсказки на экране) или ItemStack.EMPTY
      */
     public static ItemStack render(GuiGraphics g, Font font, ScreenElement e, int screenW, int screenH, int mouseX, int mouseY) {
+        return render(g, font, e, screenW, screenH, mouseX, mouseY, 0);
+    }
+
+    /**
+     * @param listScroll сдвиг списка в пикселях (колёсико на open screen). Для HUD всегда 0.
+     */
+    public static ItemStack render(GuiGraphics g, Font font, ScreenElement e, int screenW, int screenH,
+                                   int mouseX, int mouseY, int listScroll) {
         if (e instanceof TextElement text) {
             renderText(g, font, text, screenW, screenH);
         } else if (e instanceof ImageElement image) {
@@ -80,8 +89,48 @@ public final class ElementRenderer {
             renderBar(g, font, bar, screenW, screenH);
         } else if (e instanceof SlotElement slot) {
             return renderSlot(g, font, slot, screenW, screenH, mouseX, mouseY);
+        } else if (e instanceof ListElement list) {
+            renderList(g, font, list, screenW, screenH, mouseX, mouseY, listScroll);
         }
         return ItemStack.EMPTY;
+    }
+
+    /**
+     * Хитбокс ЛКМ. null — мимо. Пустая строка — попали, но команда не задана (клик всё равно съедается у списка).
+     * Кнопки сюда не входят: их нажимает виджет.
+     */
+    @Nullable
+    public static String clickAction(Font font, ScreenElement e, int screenW, int screenH, double mouseX, double mouseY, int listScroll) {
+        if (e instanceof TextElement text) {
+            return hit(text.action(), textBounds(font, text, screenW, screenH), mouseX, mouseY);
+        }
+        if (e instanceof ImageElement image) {
+            Layout l = image.layout();
+            int w = l.width() > 0 ? l.width() : 16;
+            int h = l.height() > 0 ? l.height() : 16;
+            return hit(image.action(), box(l, screenW, screenH, w, h), mouseX, mouseY);
+        }
+        if (e instanceof SlotElement slot) {
+            Layout l = slot.layout();
+            int w = l.width() > 0 ? l.width() : SLOT_SIZE;
+            int h = l.height() > 0 ? l.height() : SLOT_SIZE;
+            return hit(slot.action(), box(l, screenW, screenH, w, h), mouseX, mouseY);
+        }
+        if (e instanceof ListElement list) {
+            return listAction(font, list, screenW, screenH, mouseX, mouseY, listScroll);
+        }
+        return null;
+    }
+
+    /** На сколько пикселей список вообще можно сдвинуть. */
+    public static int listMaxScroll(Font font, ListElement list, int screenW, int screenH) {
+        Box box = listBox(list, screenW, screenH);
+        int header = list.header().isEmpty() ? 0 : ListElement.ROW;
+        int view = list.horizontal() ? box.w : Math.max(0, box.h - header);
+        int content = list.horizontal()
+                ? list.rows().size() * rowSpan(font, list)
+                : list.rows().size() * ListElement.ROW;
+        return Math.max(0, content - view);
     }
 
     // ------------------------------------------------------------------ текст и картинки
@@ -341,6 +390,100 @@ public final class ElementRenderer {
             return Long.toString((long) r);
         }
         return String.format(Locale.ROOT, "%.1f", r);
+    }
+
+    private static void renderList(GuiGraphics g, Font font, ListElement list, int sw, int sh, int mouseX, int mouseY, int scroll) {
+        Box box = listBox(list, sw, sh);
+        int header = list.header().isEmpty() ? 0 : ListElement.ROW;
+        g.fill(box.x, box.y, box.x + box.w, box.y + box.h, 0xC0101010);
+        g.fill(box.x, box.y, box.x + box.w, box.y + 1, 0xFF3A3A3A);
+        if (header > 0) {
+            g.drawString(font, codes(list.header()), box.x + 4, box.y + 3, 0xFFFFD700, false);
+        }
+        int span = rowSpan(font, list);
+        g.enableScissor(box.x, box.y + header, box.x + box.w, box.y + box.h);
+        for (int i = 0; i < list.rows().size(); i++) {
+            ListElement.Row row = list.rows().get(i);
+            int rx = list.horizontal() ? box.x - scroll + i * span : box.x;
+            int ry = list.horizontal() ? box.y + header : box.y + header - scroll + i * ListElement.ROW;
+            int rw = list.horizontal() ? span : box.w;
+            if (list.select() && mouseX >= rx && mouseX < rx + rw && mouseY >= ry && mouseY < ry + ListElement.ROW
+                    && mouseY >= box.y + header && mouseY < box.y + box.h) {
+                g.fill(rx, ry, rx + rw, ry + ListElement.ROW, 0x40FFFFFF);
+            }
+            g.drawString(font, codes(row.text()), rx + 4, ry + 3, 0xFFFFFFFF, false);
+        }
+        g.disableScissor();
+    }
+
+    @Nullable
+    private static String listAction(Font font, ListElement list, int sw, int sh, double mouseX, double mouseY, int scroll) {
+        Box box = listBox(list, sw, sh);
+        if (mouseX < box.x || mouseY < box.y || mouseX >= box.x + box.w || mouseY >= box.y + box.h) {
+            return null;
+        }
+        int header = list.header().isEmpty() ? 0 : ListElement.ROW;
+        if (mouseY < box.y + header) {
+            return "";
+        }
+        int span = rowSpan(font, list);
+        int index = list.horizontal()
+                ? (int) ((mouseX - box.x + scroll) / span)
+                : (int) ((mouseY - box.y - header + scroll) / ListElement.ROW);
+        if (index < 0 || index >= list.rows().size()) {
+            return "";
+        }
+        return list.rows().get(index).action();
+    }
+
+    private static int rowSpan(Font font, ListElement list) {
+        if (!list.horizontal()) {
+            return ListElement.ROW;
+        }
+        int span = 48;
+        for (ListElement.Row row : list.rows()) {
+            span = Math.max(span, font.width(codes(row.text())) + 8);
+        }
+        return span;
+    }
+
+    private static Box listBox(ListElement list, int sw, int sh) {
+        Layout l = list.layout();
+        int w = l.width() > 0 ? l.width() : 120;
+        int h = l.height() > 0 ? l.height() : 140;
+        return box(l, sw, sh, w, h);
+    }
+
+    private static Box textBounds(Font font, TextElement text, int sw, int sh) {
+        Layout l = text.layout();
+        String s = placeholders(text.text(), null, 0, 0);
+        int w = l.width() > 0 ? l.width() : font.width(s);
+        int h = l.height() > 0 ? l.height() : font.lineHeight;
+        return box(l, sw, sh, w, h);
+    }
+
+    private static Box box(Layout l, int sw, int sh, int w, int h) {
+        return new Box(l.anchor().resolveX(sw, w, l.x()), l.anchor().resolveY(sh, h, l.y()), Math.max(1, w), Math.max(1, h));
+    }
+
+    /** null — курсор мимо. Пустая строка — попали в элемент без команды. */
+    @Nullable
+    private static String hit(String action, Box box, double mouseX, double mouseY) {
+        if (action.isEmpty()) {
+            return null;
+        }
+        if (mouseX < box.x || mouseY < box.y || mouseX >= box.x + box.w || mouseY >= box.y + box.h) {
+            return null;
+        }
+        return action;
+    }
+
+    /** &a в строке списка -> §a, как в чате. */
+    private static String codes(String text) {
+        return text.replace('&', '\u00a7');
+    }
+
+    private record Box(int x, int y, int w, int h) {
     }
 
     @Nullable

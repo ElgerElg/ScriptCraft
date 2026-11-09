@@ -15,7 +15,11 @@ import java.util.function.UnaryOperator;
  * @param frame рисовать ли стандартную рамку слота (в HUD часто выключают и подкладывают свою картинку слоем ниже)
  * TODO: настоящие слоты через AbstractContainerMenu, чтобы предметы можно было брать/класть.
  */
-public record SlotElement(Layout layout, Content content, String value, int count, boolean frame) implements ScreenElement {
+/**
+ * Слот. action "" — только показ. "close" или "/команда" — клик по рамке слота на open screen.
+ * Брать предмет из слота нельзя: клик запускает команду скрипта.
+ */
+public record SlotElement(Layout layout, Content content, String value, int count, boolean frame, String action) implements ScreenElement {
     /** Размер слота по умолчанию (как в ванильных инвентарях). */
     public static final int SIZE = 18;
 
@@ -35,18 +39,20 @@ public record SlotElement(Layout layout, Content content, String value, int coun
         buf.writeUtf(value);
         buf.writeVarInt(count);
         buf.writeBoolean(frame);
+        buf.writeUtf(action);
     }
 
     static SlotElement readData(Layout layout, FriendlyByteBuf buf) {
-        return new SlotElement(layout, buf.readEnum(Content.class), buf.readUtf(), buf.readVarInt(), buf.readBoolean());
+        return new SlotElement(layout, buf.readEnum(Content.class), buf.readUtf(), buf.readVarInt(), buf.readBoolean(), buf.readUtf());
     }
 
     @Override
     public ScreenElement format(UnaryOperator<String> formatter) {
-        return content == Content.TEXT ? withValue(formatter.apply(value)) : this;
+        String shown = content == Content.TEXT ? formatter.apply(value) : value;
+        return new SlotElement(layout, content, shown, count, frame, formatter.apply(action));
     }
 
     public SlotElement withValue(String newValue) {
-        return new SlotElement(layout, content, newValue, count, frame);
+        return new SlotElement(layout, content, newValue, count, frame, action);
     }
 }

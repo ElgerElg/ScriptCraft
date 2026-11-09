@@ -8,6 +8,8 @@ import com.scriptcraft.script.runtime.Action;
 import com.scriptcraft.script.runtime.Actions;
 import com.scriptcraft.script.runtime.Condition;
 import com.scriptcraft.script.runtime.Expression;
+import com.scriptcraft.script.runtime.KeyNames;
+import com.scriptcraft.script.runtime.MenuNames;
 import com.scriptcraft.script.runtime.HudActions;
 import com.scriptcraft.script.runtime.ScriptEvent;
 import com.scriptcraft.script.runtime.Target;
@@ -19,6 +21,7 @@ import com.scriptcraft.screen.BarElement;
 import com.scriptcraft.screen.ButtonElement;
 import com.scriptcraft.screen.ImageElement;
 import com.scriptcraft.screen.Layout;
+import com.scriptcraft.screen.ListElement;
 import com.scriptcraft.screen.ScreenElement;
 import com.scriptcraft.screen.SlotElement;
 import com.scriptcraft.screen.TextElement;
@@ -207,13 +210,22 @@ public final class ScriptParser {
         }
 
         if (lower.startsWith("on ")) {
+            String rest = lower.substring(3).strip();
+            if (rest.startsWith("key ")) {
+                parseKeyed(headerLine, ScriptEvent.KEY, keyFilter(headerLine, rest.substring(4).strip()), body);
+                return;
+            }
+            if (rest.startsWith("open ")) {
+                parseKeyed(headerLine, ScriptEvent.OPEN, menuFilter(headerLine, rest.substring(5).strip()), body);
+                return;
+            }
             // "on join:", "on load:", несколько событий — "on join or load:" (одно тело на все).
             List<ScriptEvent> list = new ArrayList<>();
             for (String part : lower.substring(3).split("\\s+or\\s+")) {
                 ScriptEvent event = ScriptEvent.byName(part);
                 if (event == null) {
                     error(headerLine, "неизвестное событие: " + part.strip()
-                            + " (join, quit, death, respawn, chat, break, place, right click, left click, drop, pickup, damage, first join, world change, gamemode change, load, unload)");
+                            + " (join, quit, death, respawn, chat, break, place, right click, left click, drop, pickup, receive, damage, first join, world change, gamemode change, load, unload, key <клавиша>, open <меню>)");
                     return;
                 }
                 if (list.contains(event)) {
@@ -228,7 +240,7 @@ public final class ScriptParser {
             List<Action> actions = parseActions(body);
             for (ScriptEvent event : list) {
                 events.computeIfAbsent(event, e -> new ArrayList<>())
-                        .add(new EventHandler(currentFile, actions, !event.playerEvent() && withPlayerEvent));
+                        .add(new EventHandler(currentFile, actions, !event.playerEvent() && withPlayerEvent, null));
             }
             return;
         }
@@ -1061,14 +1073,8 @@ public final class ScriptParser {
                     target = TargetParser.parseWhole(t, 4, "open screen \"Меню\" to players in radius 5 of player:");
                 }
                 List<ScreenElement> elements = new ArrayList<>();
-                for (Line child : children) {
-                    try {
-                        for (ParsedElement pe : parseElements(child)) {
-                            elements.add(pe.element());
-                        }
-                    } catch (ParseException e) {
-                        error(child, e.getMessage());
-                    }
+                for (ParsedElement pe : parseScreenBody(children)) {
+                    elements.add(pe.element());
                 }
                 return new Actions.OpenScreen(target, title, elements);
             }
@@ -1090,27 +1096,20 @@ public final class ScriptParser {
                 List<HudEntry> entries = new ArrayList<>();
                 Set<String> ids = new HashSet<>();
                 int auto = 0;
-                for (Line child : children) {
-                    try {
-                        for (ParsedElement pe : parseElements(child)) {
-                            if (pe.element() instanceof ButtonElement) {
-                                throw new ParseException("кнопки в HUD не поддерживаются (HUD не принимает клики) — используйте open screen");
-                            }
-                            String id = pe.id();
-                            if (id.isEmpty()) {
-                                // Безымянный элемент: обновлять его нельзя, но скрыть/удалить можно вместе с группой.
-                                do {
-                                    id = group + "#" + (++auto);
-                                } while (ids.contains(id));
-                            }
-                            if (!ids.add(id)) {
-                                throw new ParseException("элемент с именем '" + id + "' уже есть в этом HUD");
-                            }
-                            entries.add(new HudEntry(id, group, true, pe.element()));
-                        }
-                    } catch (ParseException e) {
-                        error(child, e.getMessage());
+                for (ParsedElement pe : parseScreenBody(children)) {
+                    if (pe.element() instanceof ButtonElement) {
+                        throw new ParseException("кнопки в HUD не поддерживаются (HUD не принимает клики) — используйте open screen");
                     }
+                    String id = pe.id();
+                    if (id.isEmpty()) {
+                        do {
+                            id = group + "#" + (++auto);
+                        } while (ids.contains(id));
+                    }
+                    if (!ids.add(id)) {
+                        throw new ParseException("элемент с именем '" + id + "' уже есть в этом HUD");
+                    }
+                    entries.add(new HudEntry(id, group, true, pe.element()));
                 }
                 if (entries.size() > com.scriptcraft.hud.HudManager.MAX_ELEMENTS) {
                     throw new ParseException("слишком много элементов в одном HUD (максимум "
@@ -1122,6 +1121,211 @@ public final class ScriptParser {
         }
     }
 
+    /** on key e: / on open inventory: — одно имя, фильтр хранится в обработчике. */
+    private void parseKeyed(Line headerLine, ScriptEvent event, @Nullable String filter, List<Line> body) {
+        if (filter == null) {
+            return;
+        }
+        events.computeIfAbsent(event, e -> new ArrayList<>())
+                .add(new EventHandler(currentFile, parseActions(body), false, filter));
+    }
+
+    @Nullable
+    private String keyFilter(Line header, String rest) {
+        String name = rest.toLowerCase(Locale.ROOT);
+        if (name.startsWith("press ")) {
+            name = name.substring(6).strip();
+        }
+        if (!KeyNames.known(name)) {
+            error(header, "неизвестная клавиша '" + name + "' (" + KeyNames.names() + ")");
+            return null;
+        }
+        return name;
+    }
+
+    @Nullable
+    private String menuFilter(Line header, String rest) {
+        String name = rest.toLowerCase(Locale.ROOT);
+        if (name.startsWith("menu ")) {
+            name = name.substring(5).strip();
+        }
+        if (!MenuNames.known(name)) {
+            error(header, "неизвестное меню '" + name + "' (inventory, chest, barrel, crafting, furnace, anvil, enchanting, villager, any)");
+            return null;
+        }
+        return name;
+    }
+
+    /** Строки элементов open screen / create hud. Вложенные строки есть только у list. */
+    private List<ParsedElement> parseScreenBody(List<Line> body) {
+        List<ParsedElement> out = new ArrayList<>();
+        if (body.isEmpty()) {
+            return out;
+        }
+        int base = body.get(0).indent();
+        int i = 0;
+        while (i < body.size()) {
+            Line line = body.get(i);
+            int end = blockEnd(body, i);
+            List<Line> nested = body.subList(i + 1, end);
+            if (line.indent() != base) {
+                error(line, "неверный отступ");
+            } else {
+                try {
+                    String text = line.text();
+                    if (text.endsWith(":")) {
+                        text = text.substring(0, text.length() - 1).strip();
+                    }
+                    String kind = text.toLowerCase(Locale.ROOT);
+                    int space = kind.indexOf(' ');
+                    if (space >= 0) {
+                        kind = kind.substring(0, space);
+                    }
+                    if (kind.equals("list")) {
+                        out.add(parseList(line, text, nested));
+                    } else if (!nested.isEmpty()) {
+                        error(nested.get(0), "вложенные строки бывают только у list");
+                    } else {
+                        out.addAll(parseElements(line));
+                    }
+                } catch (ParseException e) {
+                    error(line, e.getMessage());
+                }
+            }
+            i = end;
+        }
+        return out;
+    }
+
+    private ParsedElement parseList(Line line, String text, List<Line> nested) throws ParseException {
+        List<Token> t = Tokenizer.tokenize(text);
+        int idx = 1;
+        boolean horizontal = false;
+        boolean select = false;
+        String header = "";
+        String id = "";
+        int x = 0, y = 0, w = 120, h = 140, layer = 0;
+        int color = 0xFFFFFFFF;
+        Anchor anchor = Anchor.CENTER;
+        while (idx < t.size()) {
+            String opt = word(t, idx);
+            switch (opt) {
+                case "vertical" -> {
+                    horizontal = false;
+                    idx++;
+                }
+                case "horizontal" -> {
+                    horizontal = true;
+                    idx++;
+                }
+                case "select" -> {
+                    select = true;
+                    idx++;
+                }
+                case "header" -> {
+                    header = quoted(t, idx + 1);
+                    idx += 2;
+                }
+                case "at" -> {
+                    if (idx + 2 >= t.size()) {
+                        throw new ParseException("нужно: at X Y");
+                    }
+                    x = parseInt(t.get(idx + 1).value());
+                    y = parseInt(t.get(idx + 2).value());
+                    idx += 3;
+                }
+                case "size" -> {
+                    Matcher m = SIZE.matcher(idx + 1 < t.size() ? t.get(idx + 1).value() : "");
+                    if (!m.matches()) {
+                        throw new ParseException("нужно: size ШИРИНАxВЫСОТА, например 130x160");
+                    }
+                    w = Integer.parseInt(m.group(1));
+                    h = Integer.parseInt(m.group(2));
+                    idx += 2;
+                }
+                case "anchor" -> {
+                    Anchor a = Anchor.byName(idx + 1 < t.size() ? t.get(idx + 1).value() : "");
+                    if (a == null) {
+                        throw new ParseException("неизвестный anchor");
+                    }
+                    anchor = a;
+                    idx += 2;
+                }
+                case "layer" -> {
+                    if (idx + 1 >= t.size()) {
+                        throw new ParseException("нужно: layer N");
+                    }
+                    layer = parseInt(t.get(idx + 1).value());
+                    idx += 2;
+                }
+                case "color" -> {
+                    color = parseColor(idx + 1 < t.size() ? t.get(idx + 1).value() : "");
+                    idx += 2;
+                }
+                case "id" -> {
+                    if (idx + 1 >= t.size()) {
+                        throw new ParseException("нужно: id имя");
+                    }
+                    id = EffectPatterns.hudName(t.get(idx + 1).value());
+                    idx += 2;
+                }
+                default -> throw new ParseException("у list нет параметра '" + opt + "' (vertical, horizontal, select, header, at, size, anchor, layer, color, id)");
+            }
+        }
+        if (nested.isEmpty()) {
+            throw new ParseException("у list нет строк: row \"текст\" run \"/команда\"");
+        }
+        int base = nested.get(0).indent();
+        List<ListElement.Row> rows = new ArrayList<>();
+        int i = 0;
+        while (i < nested.size()) {
+            Line rowLine = nested.get(i);
+            int rowEnd = blockEnd(nested, i);
+            if (rowLine.indent() != base) {
+                error(rowLine, "неверный отступ");
+            } else if (rowEnd > i + 1) {
+                error(nested.get(i + 1), "у row нет вложенных строк");
+            } else {
+                rows.add(parseRow(rowLine));
+            }
+            i = rowEnd;
+        }
+        if (rows.isEmpty()) {
+            throw new ParseException("у list нет строк row");
+        }
+        Layout layout = new Layout(x, y, w, h, anchor, color, layer);
+        return new ParsedElement(id, new ListElement(layout, header, horizontal, select, List.copyOf(rows)));
+    }
+
+    private ListElement.Row parseRow(Line line) throws ParseException {
+        List<Token> t = Tokenizer.tokenize(line.text());
+        if (!word(t, 0).equals("row")) {
+            throw new ParseException("внутри list пишется row \"текст\" [run \"/команда\" | close]");
+        }
+        String label = quoted(t, 1);
+        String action = "";
+        if (t.size() > 2) {
+            String opt = word(t, 2);
+            if (opt.equals("run")) {
+                action = quoted(t, 3);
+                if (!action.startsWith("/")) {
+                    action = "/" + action;
+                }
+                if (t.size() > 4) {
+                    throw new ParseException("лишний текст в row");
+                }
+            } else if (opt.equals("close")) {
+                action = "close";
+                if (t.size() > 3) {
+                    throw new ParseException("лишний текст в row");
+                }
+            } else {
+                throw new ParseException("у row ожидается run \"/команда\" или close");
+            }
+        }
+        return new ListElement.Row(label, action);
+    }
+
     // ------------------------------------------------------------------ элементы экрана и HUD
 
     /** Разобранный элемент + имя для HUD ("" = без имени). */
@@ -1130,10 +1334,10 @@ public final class ScriptParser {
 
     /** Какие параметры допустимы у каждого вида элемента (лишний параметр — понятная ошибка, а не тихое игнорирование). */
     private static final Map<String, Set<String>> ELEMENT_OPTIONS = Map.of(
-            "text", Set.of("at", "anchor", "color", "shadow", "layer", "id"),
+            "text", Set.of("at", "anchor", "color", "shadow", "layer", "id", "run", "close"),
             "button", Set.of("at", "size", "anchor", "run", "close", "layer", "id"),
-            "image", Set.of("at", "size", "texture", "anchor", "color", "layer", "id"),
-            "slot", Set.of("at", "size", "anchor", "color", "no", "layer", "id"),
+            "image", Set.of("at", "size", "texture", "anchor", "color", "layer", "id", "run", "close"),
+            "slot", Set.of("at", "size", "anchor", "color", "no", "layer", "id", "run", "close"),
             "bar", Set.of("at", "size", "texture", "anchor", "color", "layer", "id", "value", "max", "direction",
                     "background", "fill", "text", "shadow"),
             "hotbar", Set.of("at", "size", "anchor", "color", "no", "layer", "id", "spacing"));
@@ -1205,7 +1409,8 @@ public final class ScriptParser {
         boolean colorSet = false, atSet = false, anchorSet = false;
         Anchor anchor = Anchor.CENTER;
         boolean shadow = false, frame = true;
-        String action = "close";
+        // У кнопки клик без run всё равно закрывает экран. У текста, картинки и слота клика нет, пока не написать run или close.
+        String action = kind.equals("button") ? "close" : "";
         // Полоса
         String value = "0", max = null, fillTexture = "", backgroundTexture = "", barText = "";
         BarDirection direction = BarDirection.LEFT_TO_RIGHT;
@@ -1339,12 +1544,12 @@ public final class ScriptParser {
         }
         Layout layout = new Layout(x, y, w, h, anchor, color, layer);
         ScreenElement element = switch (kind) {
-            case "text" -> new TextElement(layout, main, shadow);
+            case "text" -> new TextElement(layout, main, shadow, action);
             case "button" -> new ButtonElement(layout, main, action);
-            case "slot" -> new SlotElement(layout, slotContent, main, count, frame);
+            case "slot" -> new SlotElement(layout, slotContent, main, count, frame, action);
             case "bar" -> new BarElement(layout, id, value, max != null ? max : defaultMax(value), direction,
                     backgroundColor, fillTexture, backgroundTexture, texW, texH, barText, shadow);
-            default -> new ImageElement(layout, main, texW, texH);
+            default -> new ImageElement(layout, main, texW, texH, action);
         };
         return List.of(new ParsedElement(id, element));
     }
@@ -1396,7 +1601,7 @@ public final class ScriptParser {
             };
             Layout layout = new Layout(x + offset, y, w, h, anchor, color, layer);
             slots.add(new ParsedElement(id.isEmpty() ? "" : id + (i + 1),
-                    new SlotElement(layout, SlotElement.Content.HOTBAR, "", i + 1, frame)));
+                    new SlotElement(layout, SlotElement.Content.HOTBAR, "", i + 1, frame, "")));
         }
         return slots;
     }

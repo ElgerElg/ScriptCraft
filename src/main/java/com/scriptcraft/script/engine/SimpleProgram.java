@@ -59,8 +59,22 @@ final class SimpleProgram implements ScriptProgram {
     }
 
     @Override
+    public java.util.List<EventHandler> eventHandlers(ScriptEvent event) {
+        return parsed.events().getOrDefault(event, List.of());
+    }
+
+    @Override
     public void fireEvent(ScriptEvent event, ExecutionContext ctx) {
+        String filter = switch (event) {
+            case KEY -> ctx.placeholder("key");
+            case OPEN -> ctx.placeholder("menu");
+            default -> null;
+        };
         for (EventHandler handler : parsed.events().getOrDefault(event, List.of())) {
+            if (handler.filter() != null && filter != null
+                    && !handler.filter().equals(filter) && !handler.filter().equals("any")) {
+                continue;
+            }
             ctx.setScript(handler.file());
             runActions(handler.actions(), ctx);
         }

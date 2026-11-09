@@ -2,6 +2,7 @@ package com.scriptcraft.client;
 
 import com.scriptcraft.screen.ButtonElement;
 import com.scriptcraft.screen.Layout;
+import com.scriptcraft.screen.ListElement;
 import com.scriptcraft.screen.ScreenDescription;
 import com.scriptcraft.screen.ScreenElement;
 import net.minecraft.client.gui.GuiGraphics;
@@ -31,6 +32,8 @@ public class ScriptScreen extends Screen {
     private final List<ScreenElement> ordered;
     /** Кнопка-виджет для каждого ButtonElement (по ссылке: одинаковые кнопки — разные элементы). */
     private final Map<ScreenElement, Button> buttons = new IdentityHashMap<>();
+    /** Сдвиг списков колёсиком, в пикселях. */
+    private final Map<ListElement, Integer> scroll = new IdentityHashMap<>();
 
     public ScriptScreen(ScreenDescription description) {
         super(Component.literal(description.title()));
@@ -73,7 +76,8 @@ public class ScriptScreen extends Screen {
             if (widget != null) {
                 widget.render(graphics, mouseX, mouseY, partialTick);
             } else {
-                ItemStack stack = ElementRenderer.render(graphics, this.font, element, this.width, this.height, mouseX, mouseY);
+                int listScroll = element instanceof ListElement list ? scroll.getOrDefault(list, 0) : 0;
+                ItemStack stack = ElementRenderer.render(graphics, this.font, element, this.width, this.height, mouseX, mouseY, listScroll);
                 if (!stack.isEmpty()) {
                     hovered = stack;
                 }
@@ -94,7 +98,53 @@ public class ScriptScreen extends Screen {
     }
 
     private void onButton(ButtonElement button) {
-        String action = button.action();
+        activate(button.action());
+    }
+
+    /** ЛКМ по тексту, картинке, слоту или строке списка. Верхний слой перекрывает нижний. */
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (super.mouseClicked(mouseX, mouseY, button)) {
+            return true;
+        }
+        if (button != 0) {
+            return false;
+        }
+        for (int i = ordered.size() - 1; i >= 0; i--) {
+            ScreenElement element = ordered.get(i);
+            if (element instanceof ButtonElement) {
+                continue;
+            }
+            int listScroll = element instanceof ListElement list ? scroll.getOrDefault(list, 0) : 0;
+            String action = ElementRenderer.clickAction(this.font, element, this.width, this.height, mouseX, mouseY, listScroll);
+            if (action != null) {
+                if (!action.isEmpty()) {
+                    activate(action);
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+        for (int i = ordered.size() - 1; i >= 0; i--) {
+            if (!(ordered.get(i) instanceof ListElement list)) {
+                continue;
+            }
+            if (ElementRenderer.clickAction(this.font, list, this.width, this.height, mouseX, mouseY, 0) == null) {
+                continue;
+            }
+            int max = ElementRenderer.listMaxScroll(this.font, list, this.width, this.height);
+            int next = scroll.getOrDefault(list, 0) - (int) Math.signum(delta) * ListElement.ROW;
+            scroll.put(list, Math.max(0, Math.min(max, next)));
+            return true;
+        }
+        return super.mouseScrolled(mouseX, mouseY, delta);
+    }
+
+    private void activate(String action) {
         if (action.startsWith("/") && this.minecraft != null && this.minecraft.player != null) {
             // Команда уходит на сервер как обычная команда игрока — сервер сам проверит права.
             this.minecraft.player.connection.sendCommand(action.substring(1));

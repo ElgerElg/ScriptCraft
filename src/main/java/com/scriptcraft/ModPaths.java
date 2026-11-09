@@ -33,6 +33,7 @@ public final class ModPaths {
             "scripts/ruby.sc",
             "scripts/menu.sc",
             "scripts/hud.sc",
+            "scripts/bag.sc",
             "resources/assets/example/blockstates/ruby_block.json",
             "resources/assets/example/models/block/ruby_block.json",
             "resources/assets/example/models/item/ruby_block.json",
@@ -51,9 +52,9 @@ public final class ModPaths {
 
     /**
      * Примеры, которые копируются ВЫКЛЮЧЕННЫМИ ("-имя.sc"): hud.sc прячет ванильный HUD всем игрокам при входе,
-     * поэтому включать его по умолчанию нельзя — только командой /sc enable hud.
+     * bag.sc отменяет ванильный инвентарь на E. Включать их по умолчанию нельзя — только /sc enable.
      */
-    private static final java.util.Set<String> DISABLED_DEFAULTS = java.util.Set.of("scripts/hud.sc");
+    private static final java.util.Set<String> DISABLED_DEFAULTS = java.util.Set.of("scripts/hud.sc", "scripts/bag.sc");
 
     private ModPaths() {
     }

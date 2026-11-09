@@ -4,8 +4,11 @@ import net.minecraft.network.FriendlyByteBuf;
 
 import java.util.function.UnaryOperator;
 
-/** Текст на экране. Ширина вычисляется на клиенте по шрифту. */
-public record TextElement(Layout layout, String text, boolean shadow) implements ScreenElement {
+/**
+ * Текст на экране. Ширина вычисляется на клиенте по шрифту, если size не задан.
+ * action: "" — просто надпись; "close" или "/команда" — клик по хитбоксу текста (только open screen).
+ */
+public record TextElement(Layout layout, String text, boolean shadow, String action) implements ScreenElement {
     @Override
     public ElementType type() {
         return ElementType.TEXT;
@@ -15,18 +18,19 @@ public record TextElement(Layout layout, String text, boolean shadow) implements
     public void writeData(FriendlyByteBuf buf) {
         buf.writeUtf(text);
         buf.writeBoolean(shadow);
+        buf.writeUtf(action);
     }
 
     static TextElement readData(Layout layout, FriendlyByteBuf buf) {
-        return new TextElement(layout, buf.readUtf(), buf.readBoolean());
+        return new TextElement(layout, buf.readUtf(), buf.readBoolean(), buf.readUtf());
     }
 
     @Override
     public ScreenElement format(UnaryOperator<String> formatter) {
-        return new TextElement(layout, formatter.apply(text), shadow);
+        return new TextElement(layout, formatter.apply(text), shadow, formatter.apply(action));
     }
 
     public TextElement withText(String newText) {
-        return new TextElement(layout, newText, shadow);
+        return new TextElement(layout, newText, shadow, action);
     }
 }

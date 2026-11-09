@@ -280,6 +280,9 @@ id без своего blockstate генерируются варианты `fac
 | `on quit:`                           | игрок вышел       |
 | `on load:` / `on script load:`       | этот скрипт загружен: старт сервера, `/sc reload`, `/sc reload <скрипт>`, `/sc enable <скрипт>`; игрока нет |
 | `on unload:` / `on script unload:`   | этот скрипт выгружается: `/sc disable`, перед `reload` (старая версия), остановка сервера; игрока нет |
+| `on receive:`                        | в инвентаре стало больше предмета (`%item%`, `%amount%`); `cancel event` забирает добавку |
+| `on key <клавиша>:`                  | нажатие без открытого экрана; клавиша не проглатывается |
+| `on open <меню>:`                    | открывается ванильный экран (`inventory` — и E в выживании, и в креативе); `cancel event` в теле блокирует его всегда |
 
 События можно объединять через `or`: `on join or load:` — одно тело и при входе, и при загрузке скрипта.
 Если `load`/`unload` стоит рядом с `join`/`quit`, при загрузке/выгрузке тело выполняется **для каждого игрока онлайн**
@@ -602,18 +605,25 @@ command /menu:
 
 | Элемент | Параметры |
 |---|---|
-| `text "..."` | `at X Y`, `anchor`, `color #RRGGBB` / `#AARRGGBB`, `shadow` |
+| `text "..."` | `at X Y`, `anchor`, `color #RRGGBB` / `#AARRGGBB`, `shadow`, `run "/команда"` или `close` (хитбокс ЛКМ) |
 | `button "..."` | `at`, `size WxH` (по умолчанию 100x20), `anchor`, `run "/команда"` или `close` |
-| `slot <предмет> [кол-во]` | `at`, `anchor`, `size`, `no frame` (только показ и подсказка, брать нельзя) |
+| `slot <предмет> [кол-во]` | `at`, `anchor`, `size`, `no frame`; сам слот ничего не берёт, `run` / `close` — хитбокс |
 | `slot hotbar N` / `slot image "..."` / `slot text "..."` | предмет из N-го слота хотбара игрока, картинка или текст в слоте |
-| `image "ns:путь.png"` | `at`, `size WxH`, `texture WxH` (реальный размер файла), `anchor`, `color` (оттенок) |
+| `image "ns:путь.png"` | `at`, `size WxH`, `texture WxH` (реальный размер файла), `anchor`, `color` (оттенок), `run` / `close` |
 | `bar ["имя"]` | полоса прогресса: `value`, `max`, `direction`, `background`, `fill`, `text` — см. 5.1 |
 | `hotbar` | 9 слотов хотбара игрока в ряд — см. 5.1 |
+| `list` | `vertical` или `horizontal`, `header`, `select`, вложенные `row` — см. ниже |
 
 У каждого элемента есть `layer N` (больше = выше, по умолчанию 0) — порядок отрисовки, в том числе относительно кнопок и предметов.
 
 `anchor`: `top_left`, `top`, `top_right`, `left`, `center` (по умолчанию), `right`, `bottom_left`, `bottom`, `bottom_right`.
 Позиция считается так: элемент выравнивается по точке привязки и сдвигается на `X Y` (минус означает влево или вверх).
+
+`run "/команда"` и `close` у `text`, `image` и `slot` — хитбокс левой кнопки на `open screen`. Команда уходит от игрока, экран закрывается. Без этих слов клика нет. Верхний `layer` перекрывает нижний. На HUD клики не приходят.
+
+`list` — панель строк. После двоеточия идут `row "текст" run "/команда"` или `close`. `vertical` (по умолчанию) или `horizontal`, `header "текст"`, `select` (подсветка под курсором, не выбор навсегда). Если строки не влезают в `size` (по умолчанию 120x140), список листается колёсиком. Пример — `examples/scripts/bag.sc` (копируется выключенным, потому что отменяет ванильный инвентарь).
+
+`on open inventory: cancel event` закрывает и выживание, и креатив. `cancel event` внутри `if` всё равно блокирует экран всегда: клиент не успевает спросить сервер. `on key` клавишу не проглатывает.
 
 Картинки из `scriptcraft/resources/assets/<ns>/textures/gui/` сервер отправляет игрокам сам, и они показываются
 **сразу, без перезагрузки ресурсов** (см. раздел 6). Пример — баннер в [`menu.sc`](../examples/scripts/menu.sc).
@@ -700,7 +710,7 @@ command /boss:
 регистрируется как `DynamicTexture`. Так картинка, которую пытались нарисовать до докачки (или namespace, которого
 ещё нет в ресурспаке-кэше), подхватывается сама, без перезахода; без файла проверка повторяется раз в секунду.
 Ванильные части прячутся отменой `RenderGuiOverlayEvent.Pre` по id оверлея. Лимит — 128 элементов на игрока.
-Протокол сети — `9` (клиент и сервер должны быть одной версии).
+Протокол сети — `10` (клиент и сервер должны быть одной версии).
 
 ```
 com.scriptcraft.hud
@@ -787,7 +797,7 @@ src/main/java/com/scriptcraft/
                                (модели слотов и недостающие модели настоящих id), RewritingDataPack (id скриптов -> id
                                слотов в data/), AssetBindings, DefineCache (клиент: id define серверов)
   event/ServerEvents           Forge-события -> события скриптов, переменные, раздача ресурсов
-  network/                     ModNetwork (протокол 9), OpenScreenPacket, HudPacket, BindingsPacket, ResourceManifest/Request/ChunkPacket, LogPacket, ScriptList/Data/Reload/DeletePacket
+  network/                     ModNetwork (протокол 10), OpenScreenPacket, HudPacket, BindingsPacket, ResourceManifest/Request/ChunkPacket, LogPacket, ScriptList/Data/Reload/DeletePacket, InputSyncPacket, InputPacket
   screen/, client/             Screen API; client/ClientResources — кэш; StudioScreen — окно мода на сессию (главная, журнал, редактор)
   hud/                         HUD поверх игры: HudManager (сервер), HudOp/HudEntry (диффы); client/ClientHud — рендер
 ```

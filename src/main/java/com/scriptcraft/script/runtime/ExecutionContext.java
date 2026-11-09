@@ -185,6 +185,12 @@ public final class ExecutionContext {
         return targetQueries > 0 && targetHits == 0;
     }
 
+    /** Плейсхолдер события (%key%, %menu%, %item%) или пустая строка. */
+    public String placeholder(String name) {
+        String value = variables.get(name.toLowerCase(Locale.ROOT));
+        return value == null ? "" : value;
+    }
+
     /** Задаёт плейсхолдер %name% (например, %args% для команд, %message% в on chat). */
     public void setPlaceholder(String name, String value) {
         variables.put(name.toLowerCase(Locale.ROOT), value);

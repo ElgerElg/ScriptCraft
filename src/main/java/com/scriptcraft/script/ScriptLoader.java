@@ -123,6 +123,7 @@ public final class ScriptLoader {
         loadAllFromDisk();
         afterChange(source);
         fireScriptEvent(ScriptEvent.LOAD, f -> true, server);
+        InputSync.sync(server);
         int errors = lastErrors.size();
         Feedback.ok(source, "reload.all", SOURCES.size(), program.commandNames().size(), errors);
         sendErrors(source);
@@ -156,6 +157,7 @@ public final class ScriptLoader {
         recompile();
         afterChange(source);
         fireScriptEvent(ScriptEvent.LOAD, name::equals, source.getServer());
+        InputSync.sync(source.getServer());
         Feedback.ok(source, "reload.one", name, lastErrors.size());
         sendErrors(source);
         return 1;
@@ -189,6 +191,7 @@ public final class ScriptLoader {
         SOURCES.remove(name);
         recompile();
         afterChange(source);
+        InputSync.sync(source.getServer());
         Feedback.ok(source, "script.disabled", name, disabled);
         if (hadDefines) {
             Feedback.ok(source, "script.defines_warning");
@@ -210,6 +213,7 @@ public final class ScriptLoader {
             SOURCES.remove(enabled);
             recompile();
             afterChange(source);
+            InputSync.sync(source.getServer());
         }
         try {
             ScriptPaths.delete(rel);
@@ -250,6 +254,7 @@ public final class ScriptLoader {
         afterChange(source);
         // "on load:" / "on join or load:" — HUD и прочая подготовка сразу для игроков онлайн.
         fireScriptEvent(ScriptEvent.LOAD, name::equals, source.getServer());
+        InputSync.sync(source.getServer());
         Feedback.ok(source, "script.enabled", name);
         errors.forEach(e -> Feedback.failText(source, e));
         sendErrors(source);
@@ -352,6 +357,7 @@ public final class ScriptLoader {
     /** Сервер запущен (мир загружен, переменные прочитаны): "on load:" всех включённых скриптов. */
     public static void onServerStarted(MinecraftServer server) {
         fireScriptEvent(ScriptEvent.LOAD, f -> true, server);
+        InputSync.sync(server);
     }
 
     /** Сервер останавливается (игроки ещё на месте, переменные ещё не сохранены): "on unload:" всех скриптов. */

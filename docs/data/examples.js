@@ -1,7 +1,7 @@
 /*
  * ScriptCraft — большие примеры для вкладки «Примеры».
  * Каждый пример: id, title {ru,en}, intro {ru,en}, blocks[] (lang: sc | json | toml | text), notes {ru[], en[]}, related[] (id из syntax.js).
- * Скрипты взяты из examples/scripts (welcome.sc, menu.sc, hud.sc, ruby.sc) — держите их в согласии.
+ * Скрипты взяты из examples/scripts (welcome.sc, menu.sc, hud.sc, ruby.sc, bag.sc) — держите их в согласии.
  * Отступ в скриптах — Tab.
  */
 window.SC_DOCS = window.SC_DOCS || {};
@@ -621,5 +621,41 @@ every 10 seconds:
     ],
     notes: { ru: ["wait откладывает только строки ниже на том же отступе и не дольше 5 минут.","cancel event в чате не даёт сообщению появиться у других.","random integer between 1 and 6 — целое, обе границы входят."], en: ["wait delays only the lines below it at the same indent, and not for longer than 5 minutes.","cancel event in chat keeps the message from appearing for others.","random integer between 1 and 6 is a whole number, both ends included."] },
     related: ["event-world", "event-chat", "expr-property", "expr-random", "struct-every", "struct-wait", "eff-cancel", "cond-and"]
+  },
+  {
+    id: "bag",
+    title: { ru: "Сумка вместо инвентаря", en: "A bag instead of the inventory" },
+    intro: { ru: "bag.sc копируется выключенным (-bag.sc): он отменяет ванильный инвентарь на E. Включить: /sc enable bag. Это не сундук и не хотбар — список и картинка запускают команду, а команда делает give.", en: "bag.sc is copied disabled (-bag.sc): it cancels the vanilla inventory on E. Enable it with /sc enable bag. It is not a chest and not the hotbar — a list row and an image run a command, and the command gives the item." },
+    blocks: [
+      { lang: "sc", title: { ru: "scriptcraft/scripts/-bag.sc", en: "scriptcraft/scripts/-bag.sc" }, code: `# bag.sc копируется выключенным. Включить: /sc enable bag
+
+on receive:
+	send "&7Получено: &f%item% &7x%amount%" to player
+
+on key g:
+	send "&eНажата G" to player
+
+on open inventory:
+	cancel event
+	open screen "Сумка" to player:
+		list vertical at -8, 0 size 140x160 anchor right header "&6Сумка" select:
+			row "&bАлмаз" run "/hand diamond"
+			row "&cРубин" run "/hand ruby"
+			row "&7Закрыть" close
+		image "minecraft:textures/item/diamond.png" at -170, -24 size 32x32 texture 16x16 anchor right run "/hand diamond"
+		text "Взять алмаз" at -170, 16 anchor right color #FFFFFF run "/hand diamond"
+		button "Закрыть" at 0, 80 size 80x20 close
+
+command /hand <text>:
+	permission: 0
+	if arg-1 is "diamond":
+		give player diamond 1
+	else if arg-1 is "ruby":
+		give player example:ruby 1
+	else:
+		send "&cНет такого предмета: &f%arg-1%" to player` }
+    ],
+    notes: { ru: ["on receive видит рост суммы предмета: give, сундук, крафт, подбор, креатив. Перекладывание слотов не считается. cancel event забирает добавку.","on key только наблюдает. E отменяется через on open inventory, и cancel event внутри if всё равно закрывает меню всегда.","Клик по строке, тексту и картинке есть только у open screen. Хотбар остаётся ванильным."], en: ["on receive sees the inventory total grow: give, a chest, crafting, a pickup, creative. Moving stacks does not count. cancel event removes the added amount.","on key only observes. E is stopped with on open inventory, and a cancel event inside if still always blocks the menu.","A click on a row, a text or an image exists only on open screen. The hotbar stays vanilla."] },
+    related: ["event-receive", "event-key", "event-open", "screen-list", "screen-click", "eff-open-screen", "eff-give-item"]
   }
 ];

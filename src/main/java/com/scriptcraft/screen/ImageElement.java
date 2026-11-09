@@ -8,7 +8,11 @@ import java.util.function.UnaryOperator;
  * Картинка из ресурсов (ресурспака или мода), например "minecraft:textures/item/diamond.png".
  * Рисуется целиком, растянутой до width x height; textureWidth/Height — реальный размер файла.
  */
-public record ImageElement(Layout layout, String texture, int textureWidth, int textureHeight) implements ScreenElement {
+/**
+ * Картинка. action "" — только рисунок; "close" или "/команда" — клик по прямоугольнику size
+ * (если size нет, 16x16). Хитбокс работает на open screen, не на HUD.
+ */
+public record ImageElement(Layout layout, String texture, int textureWidth, int textureHeight, String action) implements ScreenElement {
     @Override
     public ElementType type() {
         return ElementType.IMAGE;
@@ -19,14 +23,15 @@ public record ImageElement(Layout layout, String texture, int textureWidth, int 
         buf.writeUtf(texture);
         buf.writeVarInt(textureWidth);
         buf.writeVarInt(textureHeight);
+        buf.writeUtf(action);
     }
 
     static ImageElement readData(Layout layout, FriendlyByteBuf buf) {
-        return new ImageElement(layout, buf.readUtf(), buf.readVarInt(), buf.readVarInt());
+        return new ImageElement(layout, buf.readUtf(), buf.readVarInt(), buf.readVarInt(), buf.readUtf());
     }
 
     @Override
     public ScreenElement format(UnaryOperator<String> formatter) {
-        return this;
+        return new ImageElement(layout, texture, textureWidth, textureHeight, formatter.apply(action));
     }
 }
