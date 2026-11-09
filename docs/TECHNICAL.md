@@ -210,11 +210,18 @@ id в namespace `minecraft`/`forge`/`c` и совпадающие со слот�
   одного id, чтобы зарегистрировать блок без риска «разъехавшихся» состояний. У неповоротных блоков `facing` всегда
   `north` (видно в F3).
 
-**Поворот** — новое свойство `facing: none | horizontal | all` (`true` = horizontal). Блок при установке смотрит на
-игрока; `rotate`/`mirror` (структуры) работают у поворотных. Модели: у слотов и у настоящих id без своего blockstate
-генерируются варианты `facing=…` (поворот модели x/y, как у печи/раздатчика); свой blockstate автора у настоящего id
-берётся как есть. Для настоящих id без своих файлов генерируются blockstate, модель-куб и модель предмета в их
-namespace (скрытый клиентский пак).
+**Поворот** — свойство `facing: none | horizontal | all` (`true` = horizontal). Блок при установке смотрит на
+игрока; `rotate`/`mirror` (структуры) работают у поворотных. Модель должна смотреть на север. У слотов и у настоящих
+id без своего blockstate генерируются варианты `facing=…` (поворот модели x/y, как у печи/раздатчика). Свой blockstate
+автора без ключей `facing=` поворачивается так же; если ключи `facing=` уже написаны, файл берётся как есть.
+Для настоящих id без своих файлов генерируются blockstate, модель-куб и модель предмета в их namespace (скрытый клиентский пак).
+
+**Прозрачность и 3D** — `render: solid | cutout | translucent` (`transparent` = cutout, `glass` = translucent) и
+`full: true | false`. cutout — дырки в png (листва, решётка, цветок), translucent — полупрозрачные пиксели (стекло).
+В модель дописывается `render_type`, если автор его не задал. `full: false` (и любой render кроме solid, если full не задан)
+не прячет грани соседей: пол под 3D-моделью и мир за дыркой остаются видны, небо через такой блок проходит.
+Столкновение при этом остаётся полным кубом. Форма заслона не запекается (`dynamicShape`), но кэш отрисовки граней
+помнит первую пару состояний до перезапуска клиента.
 
 **Перевод слотов на настоящие id (миграция мира).** Таблица `id -> слот` в данных мира (`scriptcraft_bindings.dat`)
 и есть постоянная таблица «слот -> настоящий id»: запись **никогда не удаляется**, слот не выдаётся другому id
@@ -249,8 +256,9 @@ namespace (скрытый клиентский пак).
   и сервера, а конфиг Forge читается уже после регистрации). Изменение размера пула ломает миры;
 - удалённый `define` держит свой слот в этом мире (иначе поставленные блоки сменили бы тип) — «нет свободного слота»
   пишется в чат при `reload`;
-- блоки скриптов — обычные непрозрачные кубы (render type solid; свойства только `light` и `facing`; у слота из
-  чужого blockstate берётся вариант `""`, `facing=north` или первый, повороты делает мод); `light` записывается в блок при установке — уже стоящие блоки сохраняют прежний свет;
+- у блока нет своей формы столкновения: даже `full: false` и 3D-модель занимают целый куб. Прозрачность — это отрисовка
+  (`render`) и видимость соседних граней (`full`), не хитбокс. У слота из чужого blockstate берётся вариант `""`,
+  `facing=north` или первый, повороты делает мод, если своих ключей `facing=` нет. `light` записывается в блок при установке — уже стоящие блоки сохраняют прежний свет;
 - для блоков во временных слотах автодополнение ванильных `/give`, `/setblock` предлагает только
   `scriptcraft:dyn_*`, а id скрипта клиент подсвечивает красным (но отправляет — команда выполнится). Подсказки `ItemArgument` строятся на клиенте из его
   реестра, подменить их без mixin нельзя; подсказки id скриптов есть в `/sc give`;
@@ -487,6 +495,18 @@ define block ruby_block:
     sound: metal           # stone, wood, metal, glass, grass, sand, wool, gravel
     light: 7               # свечение 0..15
     requires_tool: true    # дроп только подходящим инструментом
+    facing: horizontal     # none | horizontal (4 стороны) | all (6, как раздатчик)
+    render: solid          # solid | cutout (дырки) | translucent (стекло)
+    full: true             # false — 3D-модель, пол под блоком остаётся видимым
+
+# Фонарь: дырявая текстура и модель не на весь куб. Модель смотрит на север.
+define block ruby_lantern:
+    name: "Рубиновый фонарь"
+    sound: glass
+    light: 12
+    facing: all
+    render: cutout
+    full: false
 
 define item ruby:
     name: "Рубин"
@@ -742,7 +762,7 @@ src/main/java/com/scriptcraft/
                                (модели слотов и недостающие модели настоящих id), RewritingDataPack (id скриптов -> id
                                слотов в data/), AssetBindings, DefineCache (клиент: id define серверов)
   event/ServerEvents           Forge-события -> события скриптов, переменные, раздача ресурсов
-  network/                     ModNetwork (протокол 7), OpenScreenPacket, HudPacket, BindingsPacket, ResourceManifest/Request/ChunkPacket, LogPacket, ScriptList/Data/ReloadPacket
+  network/                     ModNetwork (протокол 8), OpenScreenPacket, HudPacket, BindingsPacket, ResourceManifest/Request/ChunkPacket, LogPacket, ScriptList/Data/ReloadPacket
   screen/, client/             Screen API; client/ClientResources — кэш; StudioScreen — окно мода на сессию (главная, журнал, редактор)
   hud/                         HUD поверх игры: HudManager (сервер), HudOp/HudEntry (диффы); client/ClientHud — рендер
 ```

@@ -186,6 +186,9 @@ define block ruby_block:
     sound: metal
     light: 7
     requires_tool: true
+    facing: horizontal   # модель смотрит на север, мод повернёт её
+    render: solid        # solid | cutout (дырки) | translucent (стекло)
+    full: true           # false — 3D-модель, пол под блоком остаётся видимым
 
 define item ruby:
     stack_size: 64

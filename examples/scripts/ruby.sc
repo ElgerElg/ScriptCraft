@@ -20,6 +20,9 @@ define block ruby_block:
     sound: metal
     light: 7
     requires_tool: true
+    # facing: horizontal   модель должна смотреть на север; all — ещё вверх и вниз
+    # render: solid        cutout — дырки в png (или transparent); translucent — стекло (или glass)
+    # full: true           false — модель не на весь куб, грань пола под блоком не пропадает
 
 define item ruby:
     stack_size: 64

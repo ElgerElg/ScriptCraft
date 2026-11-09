@@ -16,7 +16,8 @@ public final class ModNetwork {
     // 4: пул блоков/предметов и таблица привязок (BindingsPacket).
     // 6: журнал ошибок (LogRequest/Log) и всплывающие уведомления (Notify).
     // 7: студия — список скриптов, чтение, запись и перезагрузка.
-    private static final String PROTOCOL_VERSION = "7";
+    // 8: у блока в таблице привязок появились render и full.
+    private static final String PROTOCOL_VERSION = "8";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(ScriptCraft.MODID, "main"),

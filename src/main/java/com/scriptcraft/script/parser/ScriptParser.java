@@ -12,6 +12,7 @@ import com.scriptcraft.script.runtime.HudActions;
 import com.scriptcraft.script.runtime.ScriptEvent;
 import com.scriptcraft.script.runtime.Target;
 import net.minecraft.world.level.GameType;
+import org.jetbrains.annotations.Nullable;
 import com.scriptcraft.screen.Anchor;
 import com.scriptcraft.screen.BarDirection;
 import com.scriptcraft.screen.BarElement;
@@ -282,10 +283,20 @@ public final class ScriptParser {
                         error(headerLine, "facing: ожидается none, horizontal или all, а не '" + props.get("facing") + "'");
                         return;
                     }
+                    String render = BlockDefinition.parseRender(props.get("render"));
+                    if (render == null) {
+                        error(headerLine, "render: ожидается solid, cutout или translucent, а не '" + props.get("render") + "'");
+                        return;
+                    }
+                    Boolean full = fullProp(props.get("full"));
+                    if (props.containsKey("full") && full == null) {
+                        error(headerLine, "full: ожидается true или false, а не '" + props.get("full") + "'");
+                        return;
+                    }
                     blocks.put(id, new BlockDefinition(id, props.get("name"),
                             floatProp(props, "hardness", 1.5f), floatProp(props, "resistance", 6f),
                             props.getOrDefault("sound", "stone").toLowerCase(Locale.ROOT),
-                            (int) floatProp(props, "light", 0), boolProp(props, "requires_tool"), facing));
+                            (int) floatProp(props, "light", 0), boolProp(props, "requires_tool"), facing, render, full));
                 } else {
                     items.put(id, new ItemDefinition(id, props.get("name"),
                             (int) floatProp(props, "stack_size", 64), boolProp(props, "fire_resistant"),
@@ -347,6 +358,22 @@ public final class ScriptParser {
 
     private static boolean boolProp(Map<String, String> props, String key) {
         return "true".equalsIgnoreCase(props.get(key));
+    }
+
+    /** null — свойства нет или оно непонятное (вызывающий различает это сам). */
+    @Nullable
+    private static Boolean fullProp(@Nullable String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String v = raw.replace("\"", "").strip().toLowerCase(Locale.ROOT);
+        if (v.equals("true") || v.equals("yes")) {
+            return Boolean.TRUE;
+        }
+        if (v.equals("false") || v.equals("no")) {
+            return Boolean.FALSE;
+        }
+        return null;
     }
 
     // ------------------------------------------------------------------ действия

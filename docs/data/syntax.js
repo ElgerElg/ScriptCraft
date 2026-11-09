@@ -15,7 +15,7 @@
  */
 window.SC_DOCS = window.SC_DOCS || {};
 window.SC_DOCS.syntax = {
-  version: "0.3.0",
+  version: "0.3.1",
   categories: [
     { id: "events",     ru: "События",            en: "Events" },
     { id: "structures", ru: "Структуры",          en: "Structures" },
@@ -275,8 +275,8 @@ command /kit permission 2:
     name: { ru: "Свой блок", en: "Custom block" },
     syntax: ["define block <id>:", "define block <namespace>:<id>:"],
     desc: {
-      ru: "Регистрирует блок (вместе с предметом-блоком) во вкладке творческого режима ScriptCraft. Свойства (все необязательные): `name:` название, `hardness:` прочность (1.5), `resistance:` взрывоустойчивость (6), `sound:` stone/wood/metal/glass/grass/sand/wool/gravel, `light:` свечение 0–15, `requires_tool:` true — дроп только подходящим инструментом, `facing:` none/horizontal/all — блок поворачивается лицом к игроку при установке (horizontal — 4 стороны, как печь; all — 6, как раздатчик; с 0.1.9). id — только `a-z 0-9 _ . -`. С 0.1.9 блок, который есть в скриптах при запуске сервера, регистрируется под **настоящим id** (`example:ruby_block`): работают ванильные `/give`, `/setblock example:ruby_block[facing=east]`, F3 и автодополнение (у клиента — после первого входа и перезапуска клиента). Новый `define` после `/sc reload` появляется сразу, без перезапуска, во временном слоте `scriptcraft:dyn_block_N` (ванильные команды всё равно принимают id скрипта); после перезапуска сервера и клиента он получает настоящий id, а поставленные блоки и предметы переводятся на него автоматически. Свет записывается в блок при установке (и через `/setblock`).",
-      en: "Registers a block (plus its block item) in the ScriptCraft creative tab. Properties (all optional): `name:` display name, `hardness:` (1.5), `resistance:` (6), `sound:` stone/wood/metal/glass/grass/sand/wool/gravel, `light:` 0–15, `requires_tool:` true — drops only with the right tool, `facing:` none/horizontal/all — the block turns to face the player when placed (horizontal — 4 sides like a furnace; all — 6 like a dispenser; since 0.1.9). id: only `a-z 0-9 _ . -`. Since 0.1.9 a block that is in the scripts when the server starts is registered under its **real id** (`example:ruby_block`): vanilla `/give`, `/setblock example:ruby_block[facing=east]`, F3 and tab completion work (on a client — after the first join and a client restart). A new `define` after `/sc reload` appears at once, without a restart, in a temporary slot `scriptcraft:dyn_block_N` (vanilla commands still accept the script id); after a server and client restart it gets its real id and placed blocks and items are converted automatically. Light is stored in the block when placed (also via `/setblock`)."
+      ru: "Регистрирует блок (вместе с предметом-блоком) во вкладке творческого режима ScriptCraft. Свойства (все необязательные): `name:` название, `hardness:` прочность (1.5), `resistance:` взрывоустойчивость (6), `sound:` stone/wood/metal/glass/grass/sand/wool/gravel, `light:` свечение 0–15, `requires_tool:` true — дроп только подходящим инструментом, `facing:` none/horizontal/all — блок поворачивается лицом к игроку при установке (horizontal — 4 стороны, как печь; all — 6, как раздатчик; с 0.1.9). id — только `a-z 0-9 _ . -`. С 0.1.9 блок, который есть в скриптах при запуске сервера, регистрируется под **настоящим id** (`example:ruby_block`): работают ванильные `/give`, `/setblock example:ruby_block[facing=east]`, F3 и автодополнение (у клиента — после первого входа и перезапуска клиента). Новый `define` после `/sc reload` появляется сразу, без перезапуска, во временном слоте `scriptcraft:dyn_block_N` (ванильные команды всё равно принимают id скрипта); после перезапуска сервера и клиента он получает настоящий id, а поставленные блоки и предметы переводятся на него автоматически. Свет записывается в блок при установке (и через `/setblock`). `render:` solid (обычный куб) / cutout (дырки в текстуре, как листва или решётка; можно писать transparent) / translucent (полупрозрачность, как стекло; можно писать glass). У cutout и translucent пол и стены рядом остаются видимыми. `full: false` — то же для непрозрачной 3D-модели: блок не занимает весь куб, грань пола под ним не пропадает (`full: true` возвращает поведение куба). Модель для поворота должна смотреть на север: мод сам повернёт blockstate, если в нём ещё нет ключей `facing=`. Смена `render`/`full` у уже стоящих блоков видна после перезапуска клиента.",
+      en: "Registers a block (plus its block item) in the ScriptCraft creative tab. Properties (all optional): `name:` display name, `hardness:` (1.5), `resistance:` (6), `sound:` stone/wood/metal/glass/grass/sand/wool/gravel, `light:` 0–15, `requires_tool:` true — drops only with the right tool, `facing:` none/horizontal/all — the block turns to face the player when placed (horizontal — 4 sides like a furnace; all — 6 like a dispenser; since 0.1.9). id: only `a-z 0-9 _ . -`. Since 0.1.9 a block that is in the scripts when the server starts is registered under its **real id** (`example:ruby_block`): vanilla `/give`, `/setblock example:ruby_block[facing=east]`, F3 and tab completion work (on a client — after the first join and a client restart). A new `define` after `/sc reload` appears at once, without a restart, in a temporary slot `scriptcraft:dyn_block_N` (vanilla commands still accept the script id); after a server and client restart it gets its real id and placed blocks and items are converted automatically. Light is stored in the block when placed (also via `/setblock`). `render:` solid (a normal cube) / cutout (holes in the texture, like leaves or a grate; `transparent` is the same) / translucent (partial alpha, like glass; `glass` is the same). cutout and translucent keep neighbouring faces, so the floor under the block stays visible. `full: false` does the same for an opaque 3D model that does not fill the cube (`full: true` hides neighbours again). A model that should rotate must face north: the mod turns the blockstate itself when it has no `facing=` keys yet. Changing `render`/`full` on blocks already in the world shows up after a client restart.",
     },
     example: `define block ruby_block:
     name: "Рубиновый блок"
@@ -285,7 +285,17 @@ command /kit permission 2:
     sound: metal
     light: 7
     requires_tool: true
-    facing: horizontal`,
+    facing: horizontal
+    render: solid
+    full: true
+
+define block ruby_lantern:
+    name: "Рубиновый фонарь"
+    sound: glass
+    light: 12
+    facing: all
+    render: cutout
+    full: false`,
     since: "0.1.0", related: ["struct-define-item", "struct-namespace"]
   },
   {

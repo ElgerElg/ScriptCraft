@@ -145,7 +145,7 @@ public final class Messages {
         add("studio.home", "Home", "Главная");
         add("studio.journal", "Journal", "Журнал");
         add("studio.patches", "Patches and versions", "Патчи и версии");
-        add("studio.p1", "0.3.0 — studio: script tabs, save to the server, markers", "0.3.0 — студия: вкладки скриптов, запись на сервер, маркеры");
+        add("studio.p1", "0.3.1 — transparent textures, 3D blocks, facing turns the model", "0.3.1 — прозрачные текстуры, 3D-блоки, поворот модели");
         add("studio.p2", "0.2.3 — the journal no longer crashes on F3 + `", "0.2.3 — журнал больше не роняет игру на F3 + `");
         add("studio.p3", "0.2.2 — error journal and notices instead of chat", "0.2.2 — журнал ошибок и уведомления вместо чата");
         add("studio.p4", "0.2.0 — Skript-like events and effects, .sc scripts", "0.2.0 — события и эффекты в духе Skript, скрипты .sc");

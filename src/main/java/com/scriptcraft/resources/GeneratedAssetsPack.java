@@ -44,6 +44,10 @@ public class GeneratedAssetsPack extends PathPackResources {
             }
         }
         if (type == PackType.CLIENT_RESOURCES) {
+            byte[] patched = AssetBindings.patchAuthor(location.getNamespace(), location.getPath());
+            if (patched != null) {
+                return () -> new ByteArrayInputStream(patched);
+            }
             IoSupplier<InputStream> own = super.getResource(type, location);
             if (own != null) {
                 return own; // файл автора из кэша важнее сгенерированного
@@ -59,7 +63,13 @@ public class GeneratedAssetsPack extends PathPackResources {
         boolean ours = type == PackType.CLIENT_RESOURCES && ScriptCraft.MODID.equals(namespace);
         Set<String> generated = ours ? new HashSet<>(AssetBindings.generatedPaths()) : Set.of();
         super.listResources(type, namespace, path, (location, supplier) -> {
-            if (!generated.contains(location.getPath())) {
+            if (generated.contains(location.getPath())) {
+                return;
+            }
+            byte[] patched = AssetBindings.patchAuthor(location.getNamespace(), location.getPath());
+            if (patched != null) {
+                output.accept(location, () -> new ByteArrayInputStream(patched));
+            } else {
                 output.accept(location, supplier);
             }
         });

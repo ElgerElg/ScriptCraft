@@ -26,6 +26,8 @@ import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.level.storage.loot.LootTable;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParamSets;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
+import net.minecraft.world.phys.shapes.Shapes;
+import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
@@ -41,6 +43,7 @@ import java.util.List;
  * (из устаревшего кэша) — нет, все номера состояний после него разъехались бы и мир отображался бы мусором.
  * Одинаковый набор свойств делает регистрацию по одному лишь id безопасной. Поворачивается ли блок — решает
  * define (facing: none | horizontal | all); у неповоротных facing всегда north.
+ * Прячет ли блок грани соседей — тоже define (render и full), считается на лету: форма не запекается при регистрации.
  *
  * Свет — свойство состояния: движок освещения кэширует свечение по состоянию, поэтому значение
  * записывается при установке (и в onPlace — для /setblock, /fill, структур).
@@ -51,7 +54,8 @@ public abstract class ScriptBlock extends Block {
 
     protected ScriptBlock() {
         // Базовые свойства — как у камня; реальные значения подставляют переопределения ниже.
-        super(Properties.of().strength(1.5f, 6f).lightLevel(state -> state.getValue(LIGHT)));
+        // dynamicShape: форма заслона не запекается. Иначе /sc reload не смог бы включить дырки и 3D-модель.
+        super(Properties.of().strength(1.5f, 6f).lightLevel(state -> state.getValue(LIGHT)).dynamicShape());
         registerDefaultState(stateDefinition.any().setValue(LIGHT, 0).setValue(FACING, Direction.NORTH));
     }
 
@@ -65,6 +69,25 @@ public abstract class ScriptBlock extends Block {
     /** Лут-таблица, когда define нет (null — дроп самим блоком). */
     @Nullable
     protected abstract ResourceLocation fallbackLootTable();
+
+    /**
+     * Полный куб прячет грань соседа. Дырявая текстура и 3D-модель — нет, иначе пол под блоком пропадает.
+     * Уже просчитанная пара состояний остаётся в кэше отрисовки до перезапуска клиента.
+     */
+    @Override
+    @SuppressWarnings("deprecation")
+    public VoxelShape getOcclusionShape(BlockState state, BlockGetter level, BlockPos pos) {
+        BlockDefinition def = definition();
+        return def != null && !def.occludes() ? Shapes.empty() : Shapes.block();
+    }
+
+    /** Сквозь неполный блок небо проходит, как сквозь стекло и цветок. */
+    @Override
+    @SuppressWarnings("deprecation")
+    public boolean propagatesSkylightDown(BlockState state, BlockGetter level, BlockPos pos) {
+        BlockDefinition def = definition();
+        return def != null && !def.occludes() || super.propagatesSkylightDown(state, level, pos);
+    }
 
     @Override
     protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {

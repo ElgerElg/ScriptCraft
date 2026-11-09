@@ -274,6 +274,8 @@ public final class Bindings {
             buf.writeVarInt(d.lightLevel());
             buf.writeBoolean(d.requiresTool());
             buf.writeUtf(d.facing());
+            buf.writeUtf(d.render());
+            buf.writeByte(d.full() == null ? 0 : d.full() ? 2 : 1);
         }
 
         private static BlockDefinition readBlock(FriendlyByteBuf buf) {
@@ -285,8 +287,12 @@ public final class Bindings {
             int light = buf.readVarInt();
             boolean requiresTool = buf.readBoolean();
             String facing = BlockDefinition.parseFacing(buf.readUtf(MAX_TEXT));
+            String render = BlockDefinition.parseRender(buf.readUtf(MAX_TEXT));
+            int fullByte = buf.readByte();
+            Boolean full = fullByte == 2 ? Boolean.TRUE : fullByte == 1 ? Boolean.FALSE : null;
             return new BlockDefinition(id, name, hardness, resistance, sound, light, requiresTool,
-                    facing == null ? BlockDefinition.FACING_NONE : facing);
+                    facing == null ? BlockDefinition.FACING_NONE : facing,
+                    render == null ? BlockDefinition.RENDER_SOLID : render, full);
         }
 
         private static void writeItem(FriendlyByteBuf buf, ItemDefinition d) {
