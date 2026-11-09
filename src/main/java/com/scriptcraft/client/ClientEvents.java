@@ -46,7 +46,6 @@ public final class ClientEvents {
             }
         }
         ModNetwork.sendToServer(new LogRequestPacket());
-        event.setCanceled(true);
     }
 
     /** Скрытие частей ванильного HUD по команде скрипта (hide vanilla hotbar for player). */
