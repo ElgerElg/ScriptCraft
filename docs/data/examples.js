@@ -2,6 +2,7 @@
  * ScriptCraft — большие примеры для вкладки «Примеры».
  * Каждый пример: id, title {ru,en}, intro {ru,en}, blocks[] (lang: sc | json | toml | text), notes {ru[], en[]}, related[] (id из syntax.js).
  * Скрипты взяты из examples/scripts (welcome.sc, menu.sc, hud.sc, ruby.sc, bag.sc) — держите их в согласии.
+ * pouch — только эта страница: мод его в папку scripts не копирует.
  * Отступ в скриптах — Tab.
  */
 window.SC_DOCS = window.SC_DOCS || {};
@@ -657,5 +658,119 @@ command /hand <text>:
     ],
     notes: { ru: ["on receive видит рост суммы предмета: give, сундук, крафт, подбор, креатив. Перекладывание слотов не считается. cancel event забирает добавку.","on key только наблюдает. E отменяется через on open inventory, и cancel event внутри if всё равно закрывает меню всегда.","Клик по строке, тексту и картинке есть только у open screen. Хотбар остаётся ванильным."], en: ["on receive sees the inventory total grow: give, a chest, crafting, a pickup, creative. Moving stacks does not count. cancel event removes the added amount.","on key only observes. E is stopped with on open inventory, and a cancel event inside if still always blocks the menu.","A click on a row, a text or an image exists only on open screen. The hotbar stays vanilla."] },
     related: ["event-receive", "event-key", "event-open", "screen-list", "screen-click", "eff-open-screen", "eff-give-item"]
+  },
+  {
+    id: "pouch",
+    title: { ru: "Сумка: свои предметы вместо инвентаря", en: "A pouch instead of the inventory" },
+    intro: { ru: "Учебный инвентарь только для этой страницы: мод не кладёт его в scripts. E закрывает ванильное меню. Алмаз, железо, золото и хлеб при получении уходят в переменные и снимаются с ванильного инвентаря. ЛКМ по слоту или строке кладёт одну штуку в руку. Это не сундук: строки заданы в скрипте, хотбар остаётся ванильным.", en: "A teaching inventory that lives only on this page: the mod does not copy it into scripts. E closes the vanilla menu. Diamonds, iron, gold and bread are stored in variables and removed from the vanilla inventory when received. Left click on a slot or a row puts one into the hand. It is not a chest: the rows are written in the script, and the hotbar stays vanilla." },
+    blocks: [
+      { lang: "sc", title: { ru: "scriptcraft/scripts/pouch.sc", en: "scriptcraft/scripts/pouch.sc" }, code: `# Сумка вместо инвентаря. Скопируйте в scriptcraft/scripts/pouch.sc и выполните /sc reload.
+# E больше не откроет ванильный инвентарь. Хотбар остаётся.
+# Слот и строка только запускают команду. Новые виды предметов сами в список не добавляются.
+
+on join:
+	if {pouch::%player%::diamond} is not set:
+		set {pouch::%player%::diamond} to 0
+	if {pouch::%player%::iron} is not set:
+		set {pouch::%player%::iron} to 0
+	if {pouch::%player%::gold} is not set:
+		set {pouch::%player%::gold} to 0
+	if {pouch::%player%::bread} is not set:
+		set {pouch::%player%::bread} to 0
+
+# give из /pouch take тоже попадает в on receive. Флаг говорит: эту штуку оставить в руке.
+on receive:
+	if {-handing::%player%} is %item%:
+		delete {-handing::%player%}
+		stop
+	if %item% is "minecraft:diamond":
+		cancel event
+		add %amount% to {pouch::%player%::diamond}
+		stop
+	if %item% is "minecraft:iron_ingot":
+		cancel event
+		add %amount% to {pouch::%player%::iron}
+		stop
+	if %item% is "minecraft:gold_ingot":
+		cancel event
+		add %amount% to {pouch::%player%::gold}
+		stop
+	if %item% is "minecraft:bread":
+		cancel event
+		add %amount% to {pouch::%player%::bread}
+
+on open inventory:
+	cancel event
+	open screen "Сумка" to player:
+		text "&6Сумка" at 0, -78
+		text "&7Клик — взять одну штуку в руку" at 0, -62 color #AAAAAA
+		slot diamond at -72, -24 run "/pouch take diamond"
+		text "&b{pouch::%player%::diamond}" at -72, 2
+		slot iron_ingot at -24, -24 run "/pouch take iron"
+		text "&f{pouch::%player%::iron}" at -24, 2
+		slot gold_ingot at 24, -24 run "/pouch take gold"
+		text "&e{pouch::%player%::gold}" at 24, 2
+		slot bread at 72, -24 run "/pouch take bread"
+		text "&6{pouch::%player%::bread}" at 72, 2
+		list vertical at -8, 8 size 160x100 anchor right header "&6Взять" select:
+			row "&bАлмаз &8x{pouch::%player%::diamond}" run "/pouch take diamond"
+			row "&fЖелезо &8x{pouch::%player%::iron}" run "/pouch take iron"
+			row "&eЗолото &8x{pouch::%player%::gold}" run "/pouch take gold"
+			row "&6Хлеб &8x{pouch::%player%::bread}" run "/pouch take bread"
+		button "Закрыть" at 0, 78 size 80x20 close
+
+command /pouch take <text>:
+	permission: 0
+	if arg-1 is "diamond":
+		if {pouch::%player%::diamond} >= 1:
+			set {-handing::%player%} to "minecraft:diamond"
+			remove 1 from {pouch::%player%::diamond}
+			give player diamond 1
+		else:
+			send "&cАлмазов нет" to player
+		stop
+	if arg-1 is "iron":
+		if {pouch::%player%::iron} >= 1:
+			set {-handing::%player%} to "minecraft:iron_ingot"
+			remove 1 from {pouch::%player%::iron}
+			give player iron_ingot 1
+		else:
+			send "&cЖелеза нет" to player
+		stop
+	if arg-1 is "gold":
+		if {pouch::%player%::gold} >= 1:
+			set {-handing::%player%} to "minecraft:gold_ingot"
+			remove 1 from {pouch::%player%::gold}
+			give player gold_ingot 1
+		else:
+			send "&cЗолота нет" to player
+		stop
+	if arg-1 is "bread":
+		if {pouch::%player%::bread} >= 1:
+			set {-handing::%player%} to "minecraft:bread"
+			remove 1 from {pouch::%player%::bread}
+			give player bread 1
+		else:
+			send "&cХлеба нет" to player
+		stop
+	send "&cНет такого кармана" to player` }
+    ],
+    notes: {
+      ru: [
+        "Файл в игру сам не копируется. Вставьте текст в scriptcraft/scripts/pouch.sc.",
+        "cancel event в on open inventory закрывает E всегда, даже если поставить его внутрь if. Выживание и креатив — оба.",
+        "В сумку попадают только четыре id. Остальное остаётся в ванильном инвентаре, который этот экран прячет.",
+        "{-handing::%player%} нужен, чтобы give из команды не забрала строка on receive. Флаг живёт до перезапуска сервера.",
+        "Числа на экране — снимок на момент открытия. Хотбар ванильный."
+      ],
+      en: [
+        "The mod does not copy this file. Paste it into scriptcraft/scripts/pouch.sc.",
+        "cancel event in on open inventory always blocks E, even inside if. Survival and creative both use this menu.",
+        "Only these four ids go into the pouch. Everything else stays in the vanilla inventory, which this screen hides.",
+        "{-handing::%player%} stops on receive from taking back the item the command just gave. The flag lasts until the server restarts.",
+        "The numbers are a snapshot from when the screen opened. The hotbar stays vanilla."
+      ]
+    },
+    related: ["event-receive", "event-open", "screen-list", "screen-click", "screen-slot", "eff-give-item", "eff-add-var", "eff-stop", "expr-temp-variable"]
   }
 ];
