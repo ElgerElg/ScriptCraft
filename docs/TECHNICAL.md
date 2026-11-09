@@ -268,7 +268,7 @@ id без своего blockstate генерируются варианты `fac
 
 ## 4. Синтаксис скриптов
 
-Блоки верхнего уровня заканчиваются двоеточием, действия внутри пишутся с отступом (пробелы или Tab).
+Блоки верхнего уровня заканчиваются двоеточием, действия внутри пишутся с отступом. В примерах это Tab (один Tab = 4 пробела), пробелы тоже понимаются.
 Строка, которая начинается с `#`, считается комментарием. Ошибка в строке не ломает весь файл:
 строка пропускается, а ошибка показывается в логе и при `reload` в формате `файл:строка: текст`.
 
@@ -291,13 +291,13 @@ id без своего blockstate генерируются варианты `fac
 
 ```
 command /hello:                  # для всех; хвост строки — %args%
-    send "Привет из %script%" to player
+	send "Привет из %script%" to player
 
 command /heal <player> [integer]:
-    permission: 2
-    aliases: h, healme
-    executable by: players and console
-    heal arg-1 by arg-2
+	permission: 2
+	aliases: h, healme
+	executable by: players and console
+	heal arg-1 by arg-2
 ```
 Права, псевдонимы и кто может вызывать команду пишутся **под** ней, с отступом.
 `permission: 0–4` (0 — все). `aliases: h, /healme` — короткие имена той же команды.
@@ -358,20 +358,20 @@ command /heal <player> [integer]:
 
 ```
 command /buffall:
-    give players in radius 20 of player effect regeneration for 10 seconds
-    send "&a%player% вылечил всех рядом" to other players in radius 20 of player
+	give players in radius 20 of player effect regeneration for 10 seconds
+	send "&a%player% вылечил всех рядом" to other players in radius 20 of player
 
 command /who:
-    if targeted player is set:
-        send "Ты смотришь на %targeted%" to player
-        send title "&cНа тебя смотрят" to targeted player
-    else:
-        send "Ты ни на кого не смотришь" to player
+	if targeted player is set:
+		send "Ты смотришь на %targeted%" to player
+		send title "&cНа тебя смотрят" to targeted player
+	else:
+		send "Ты ни на кого не смотришь" to player
 
 command /gather permission 2:
-    teleport other players in radius 100 of player to player
-    loop all players:
-        send "&e%loop-player%, сбор у %player%!" to loop-player
+	teleport other players in radius 100 of player to player
+	loop all players:
+		send "&e%loop-player%, сбор у %player%!" to loop-player
 ```
 
 - Селекторы выполняются от лица игрока из контекста (его позиция и мир; из консоли — от сервера, где `@s` пуст)
@@ -462,8 +462,8 @@ rule("ignite %target% for %num% seconds|second|sec", c -> new Effects.Ignite(c.t
 
 ```
 command /coins:
-    add 1 to {coins::%player%}
-    send "&eМонет: {coins::%player%}" to player
+	add 1 to {coins::%player%}
+	send "&eМонет: {coins::%player%}" to player
 ```
 
 - Имя переменной пишется в фигурных скобках. `%player%` и другие плейсхолдеры внутри имени подставляются,
@@ -488,10 +488,10 @@ command /coins:
 
 ```
 command /rich:
-    if {coins::%player%} >= 10:
-        send "&aТы богат!" to player
-    else:
-        send "&cНужно ещё монет" to player
+	if {coins::%player%} >= 10:
+		send "&aТы богат!" to player
+	else:
+		send "&cНужно ещё монет" to player
 ```
 
 | Условие | Пример |
@@ -501,8 +501,8 @@ command /rich:
 | задана / не задана | `if {x} is set:` / `if {x} is not set:` |
 | есть ли игроки в цели | `if targeted player is set:` / `if players in radius 5 of player is not set:` |
 
-Условия могут быть вложенными. `else:` пишется на том же отступе, что и `if`, сразу после его блока.
-Пока нет `else if`, `and`/`or`: используй вложенные `if`.
+Условия могут быть вложенными. `else:` и `else if` пишутся на том же отступе, что и `if`, сразу после его блока.
+`and` и `or` связывают условия в одной строке, `and` теснее. Отступ в примерах — Tab (один Tab = 4 пробела).
 
 ### Блок через скрипт (пример)
 
@@ -510,30 +510,30 @@ command /rich:
 namespace example
 
 define block ruby_block:
-    name: "Рубиновый блок"
-    hardness: 5            # прочность (камень 1.5)
-    resistance: 6          # взрывоустойчивость
-    sound: metal           # stone, wood, metal, glass, grass, sand, wool, gravel
-    light: 7               # свечение 0..15
-    requires_tool: true    # дроп только подходящим инструментом
-    facing: horizontal     # none | horizontal (4 стороны) | all (6, как раздатчик)
-    render: solid          # solid | cutout (дырки) | translucent (стекло)
-    full: true             # false — 3D-модель, пол под блоком остаётся видимым
+	name: "Рубиновый блок"
+	hardness: 5            # прочность (камень 1.5)
+	resistance: 6          # взрывоустойчивость
+	sound: metal           # stone, wood, metal, glass, grass, sand, wool, gravel
+	light: 7               # свечение 0..15
+	requires_tool: true    # дроп только подходящим инструментом
+	facing: horizontal     # none | horizontal (4 стороны) | all (6, как раздатчик)
+	render: solid          # solid | cutout (дырки) | translucent (стекло)
+	full: true             # false — 3D-модель, пол под блоком остаётся видимым
 
 # Фонарь: дырявая текстура и модель не на весь куб. Модель смотрит на север.
 define block ruby_lantern:
-    name: "Рубиновый фонарь"
-    sound: glass
-    light: 12
-    facing: all
-    render: cutout
-    full: false
+	name: "Рубиновый фонарь"
+	sound: glass
+	light: 12
+	facing: all
+	render: cutout
+	full: false
 
 define item ruby:
-    name: "Рубин"
-    stack_size: 64
-    rarity: rare           # common, uncommon, rare, epic
-    fire_resistant: false
+	name: "Рубин"
+	stack_size: 64
+	rarity: rare           # common, uncommon, rare, epic
+	fire_resistant: false
 ```
 
 Получится `example:ruby_block` (блок вместе с предметом) и `example:ruby`. Оба попадут во вкладку творческого режима **ScriptCraft**
@@ -551,10 +551,10 @@ define item ruby:
 namespace mymod                 # или "namespace mymod:" / "modid mymod:"
 
 define block ruby_block:        # -> mymod:ruby_block
-    name: "Рубиновый блок"
+	name: "Рубиновый блок"
 
 define item othermod:gem:       # полный id в обход строки namespace
-    name: "Самоцвет"
+	name: "Самоцвет"
 ```
 
 - namespace — часть id скрипта (ключи перевода, пути ресурсов). В реестре блок живёт в слоте пула
@@ -591,13 +591,13 @@ Blockbench часто пишет `textures/block/имя` без namespace: иг�
 
 ```
 command /menu:
-    open screen "Главное меню" to player:
-        text "Привет, %player%!" at 0, -60 color #FFD700 shadow
-        image "minecraft:textures/item/diamond.png" at 0, -40 size 16x16 texture 16x16
-        slot diamond 5 at -30, -15
-        button "Сказать привет" at 0, 15 size 120x20 run "/hello"
-        button "Закрыть" at 0, 40 size 120x20 close
-        text "v0.1" at -4, -4 anchor bottom_right color #808080
+	open screen "Главное меню" to player:
+		text "Привет, %player%!" at 0, -60 color #FFD700 shadow
+		image "minecraft:textures/item/diamond.png" at 0, -40 size 16x16 texture 16x16
+		slot diamond 5 at -30, -15
+		button "Сказать привет" at 0, 15 size 120x20 run "/hello"
+		button "Закрыть" at 0, 40 size 120x20 close
+		text "v0.1" at -4, -4 anchor bottom_right color #808080
 ```
 
 | Элемент | Параметры |
@@ -641,15 +641,15 @@ HUD создаётся в `on join or load:`, поэтому после `/sc ena
 
 ```
 on join or load:
-    hide vanilla hotbar for player
-    create hud "stats" for player:
-        hotbar id hb color #FFD700
-        bar "hp" value health at -51, -28 size 80x8 anchor bottom fill "example:textures/gui/bar_fill_hp.png" layer 1
-        image "example:textures/gui/bar_frame.png" at -51, -26 size 84x12 anchor bottom layer 2
-        text "%health%/%max_health%" at -51, -38 anchor bottom shadow layer 3
+	hide vanilla hotbar for player
+	create hud "stats" for player:
+		hotbar id hb color #FFD700
+		bar "hp" value health at -51, -28 size 80x8 anchor bottom fill "example:textures/gui/bar_fill_hp.png" layer 1
+		image "example:textures/gui/bar_frame.png" at -51, -26 size 84x12 anchor bottom layer 2
+		text "%health%/%max_health%" at -51, -38 anchor bottom shadow layer 3
 
 command /boss:
-    set progress of bar "boss_hp" for all players to 75
+	set progress of bar "boss_hp" for all players to 75
 ```
 
 | Действие | Что делает |
@@ -699,7 +699,7 @@ command /boss:
 регистрируется как `DynamicTexture`. Так картинка, которую пытались нарисовать до докачки (или namespace, которого
 ещё нет в ресурспаке-кэше), подхватывается сама, без перезахода; без файла проверка повторяется раз в секунду.
 Ванильные части прячутся отменой `RenderGuiOverlayEvent.Pre` по id оверлея. Лимит — 128 элементов на игрока.
-Протокол сети поднят до `3` (клиент и сервер должны быть одной версии).
+Протокол сети — `9` (клиент и сервер должны быть одной версии).
 
 ```
 com.scriptcraft.hud
@@ -869,7 +869,7 @@ docs/
   syntax: ["heal <цель>"],              // один или несколько шаблонов
   desc: { ru: "Описание, `код` и **жирный** можно.", en: "Description." },
   example: `command /healme:
-    heal player`,                       // пример (для config — строка из config.toml)
+	heal player`,                       // пример (для config — строка из config.toml)
   since: "0.1.2",                       // версия мода, где появилось
   related: ["eff-feed", "target-radius"] // id других записей (могут быть пустыми: [])
 }

@@ -70,15 +70,15 @@ scriptcraft/
   <p class="l-en">Files from the previous version, <code>*.sk</code>, are renamed to <code>*.sc</code> when the mod starts.</p>
 
   <h2 id="first"><span class="l-ru">3. Первый скрипт</span><span class="l-en">3. Your first script</span></h2>
-  <p class="l-ru">Создайте файл <code>scriptcraft/scripts/hello.sc</code> (кодировка UTF-8, отступ — 4 пробела или Tab) и выполните в игре <code>/sc reload hello</code>:</p>
-  <p class="l-en">Create <code>scriptcraft/scripts/hello.sc</code> (UTF-8, indent with 4 spaces or a Tab) and run <code>/sc reload hello</code> in game:</p>
+  <p class="l-ru">Создайте файл <code>scriptcraft/scripts/hello.sc</code> (кодировка UTF-8, отступ — Tab) и выполните в игре <code>/sc reload hello</code>:</p>
+  <p class="l-en">Create <code>scriptcraft/scripts/hello.sc</code> (UTF-8, indent with Tab) and run <code>/sc reload hello</code> in game:</p>
 <pre data-lang="sc" data-title="scriptcraft/scripts/hello.sc">
 on join:
-    send "&aПривет, %player%!" to player
+	send "&aПривет, %player%!" to player
 
 command /hello:
-    send "&bHello, %player%! Ты написал: %args%" to player
-    play sound entity.experience_orb.pickup to player
+	send "&bHello, %player%! Ты написал: %args%" to player
+	play sound entity.experience_orb.pickup to player
 </pre>
   <p class="l-ru">Ошибки в скрипте (с номером строки) попадают в журнал студии (F3 + `) и в лог сервера. Короткий итог команды всплывает уведомлением, а не сообщением в чат. Весь синтаксис — на вкладке <a href="index.html">Документация</a>, готовые скрипты — в <a href="examples.html">Примерах</a>.</p>
   <p class="l-en">Script errors (with line numbers) go to the studio journal (F3 + `) and the server log. A command's short result pops up as a notice, not a chat line. All syntax is on the <a href="index.html">Docs</a> tab, complete scripts are in <a href="examples.html">Examples</a>.</p>

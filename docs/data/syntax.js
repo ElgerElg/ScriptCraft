@@ -15,7 +15,7 @@
  */
 window.SC_DOCS = window.SC_DOCS || {};
 window.SC_DOCS.syntax = {
-  version: "0.3.4",
+  version: "0.3.5",
   categories: [
     { id: "events",     ru: "События",            en: "Events" },
     { id: "structures", ru: "Структуры",          en: "Structures" },
@@ -39,8 +39,8 @@ window.SC_DOCS.syntax = {
       en: "Fires when a player joins the server. Inside, `player` is the joining player. With `on join or load:` the same body also runs when the script is loaded, once for every online player — so a HUD and other setup appear right after `/sc enable`, without re-joining."
     },
     example: `on join:
-    send "&aПривет, %player%!" to player
-    broadcast "&7%player% зашёл (онлайн: %online%)"`,
+	send "&aПривет, %player%!" to player
+	broadcast "&7%player% зашёл (онлайн: %online%)"`,
     since: "0.1.0", related: ["event-quit", "event-load", "ph-player", "eff-send", "eff-broadcast"]
   },
   {
@@ -52,7 +52,7 @@ window.SC_DOCS.syntax = {
       en: "Fires when a player leaves the server. Inside, `player` is the leaving player."
     },
     example: `on quit:
-    broadcast "&7%player% вышел с сервера"`,
+	broadcast "&7%player% вышел с сервера"`,
     since: "0.1.0", related: ["event-join", "event-unload"]
   },
   {
@@ -64,11 +64,11 @@ window.SC_DOCS.syntax = {
       en: "Fires once for this script when it is loaded: on server start, `/sc reload`, `/sc reload <script>` and `/sc enable <script>` (only for the affected files). There is no player — use `all players`/`broadcast`. In `on join or load:` the body runs for every online player with them as `player`; several events can be joined with `or`."
     },
     example: `on load:
-    broadcast "&7Скрипт событий загружен"
+	broadcast "&7Скрипт событий загружен"
 
 on join or load:
-    create hud "coins" for player:
-        text "{coins::%player%}" at 4, 4 anchor top_left`,
+	create hud "coins" for player:
+		text "{coins::%player%}" at 4, 4 anchor top_left`,
     since: "0.1.5", related: ["event-unload", "event-join", "hud-create", "cmd-disable"]
   },
   {
@@ -80,7 +80,7 @@ on join or load:
       en: "Fires before the script is unloaded: `/sc disable <script>`, before `/sc reload` (old version) and on server stop. There is no player; `on quit or unload:` runs for every online player. A HUD created by the script is removed automatically on `/sc disable`."
     },
     example: `on unload:
-    broadcast "&7Скрипт событий выключен"`,
+	broadcast "&7Скрипт событий выключен"`,
     since: "0.1.5", related: ["event-load", "event-quit", "cmd-disable"]
   },
   {
@@ -92,13 +92,13 @@ on join or load:
       en: "`on death:` — the player died. `%attacker%` is who hit them (or `<none>`), `%cause%` is the cause (`player`, `fall`, `lava`...). `cancel event` prevents the death. `on respawn:` — the player is back. Combine with `or`: `on death or respawn:`."
     },
     example: `on death:
-    broadcast "&c%player% погиб (%cause%)"
-    if %attacker% is not "<none>":
-        send "&7Тебя убил %attacker%" to player
+	broadcast "&c%player% погиб (%cause%)"
+	if %attacker% is not "<none>":
+		send "&7Тебя убил %attacker%" to player
 
 on respawn:
-    heal player
-    feed player`,
+	heal player
+	feed player`,
     since: "0.2.0", related: ["eff-cancel", "eff-heal", "event-damage"]
   },
   {
@@ -110,9 +110,9 @@ on respawn:
       en: "A player sent a chat message. The text is `%message%`. `cancel event` stops it from being sent."
     },
     example: `on chat:
-    if %message% is "ping":
-        cancel event
-        send "&aПонг!" to player`,
+	if %message% is "ping":
+		cancel event
+		send "&aПонг!" to player`,
     since: "0.2.0", related: ["eff-cancel", "eff-send", "ph-event"]
   },
   {
@@ -124,12 +124,12 @@ on respawn:
       en: "Broke a block, placed a block, or right/left-clicked a block (main hand). `%block%` is the id (`minecraft:stone`), `%x%` `%y%` `%z%` are the coordinates. `cancel event` stops the action. Clicking air is not delivered on a dedicated server. Aliases: `block break`, `mine`, `rightclick`."
     },
     example: `on break:
-    if %block% is "minecraft:diamond_ore":
-        send "&bТы нашёл алмазы на %x% %y% %z%" to player
+	if %block% is "minecraft:diamond_ore":
+		send "&bТы нашёл алмазы на %x% %y% %z%" to player
 
 on place:
-    if %block% is "example:ruby_block":
-        play sound block.amethyst_block.place to player`,
+	if %block% is "example:ruby_block":
+		play sound block.amethyst_block.place to player`,
     since: "0.2.0", related: ["eff-cancel", "ph-event", "eff-sound"]
   },
   {
@@ -141,12 +141,12 @@ on place:
       en: "The player tossed an item (Q) or picked one up. `%item%` is the item id. `cancel event` cancels it. A toss is already removed from the inventory: cancelling does not put it back."
     },
     example: `on drop:
-    if %item% is "minecraft:diamond":
-        cancel event
-        send "&cАлмазы выбрасывать нельзя" to player
+	if %item% is "minecraft:diamond":
+		cancel event
+		send "&cАлмазы выбрасывать нельзя" to player
 
 on pickup:
-    send "&7Поднято: %item%" to player`,
+	send "&7Поднято: %item%" to player`,
     since: "0.2.0", related: ["eff-cancel", "eff-drop", "ph-event"]
   },
   {
@@ -158,10 +158,10 @@ on pickup:
       en: "The player took damage. `%damage%` is the amount, `%attacker%` who dealt it, `%cause%` the type. `cancel event` negates this hit. It fires often (poison, fire, hits) — keep the body light."
     },
     example: `on damage:
-    if player is in creative:
-        stop
-    if %damage% >= 10:
-        send "&cСильный удар: %damage%" to player`,
+	if player is in creative:
+		stop
+	if %damage% >= 10:
+		send "&cСильный удар: %damage%" to player`,
     since: "0.2.0", related: ["eff-cancel", "eff-stop", "cond-gamemode"]
   },
   {
@@ -173,14 +173,14 @@ on pickup:
       en: "`on first join:` — the player has never logged out before (in addition to `on join:`). `on world change:` — dimension change, `%from%` is the old world, `%world%` the new one. `on gamemode change:` — `%from%` and `%gamemode%` (`survival`, `creative`...); `cancel event` keeps the old mode."
     },
     example: `on first join:
-    give player bread 16
-    send "&aДобро пожаловать, %player%!" to player
+	give player bread 16
+	send "&aДобро пожаловать, %player%!" to player
 
 on world change:
-    send "&7%from% → %world%" to player
+	send "&7%from% → %world%" to player
 
 on gamemode change:
-    send "&eТеперь ты в %gamemode%" to player`,
+	send "&eТеперь ты в %gamemode%" to player`,
     since: "0.2.0", related: ["event-join", "eff-cancel", "eff-gamemode"]
   },
 
@@ -194,12 +194,12 @@ on gamemode change:
       en: "Declares a command. Name: a-z 0-9 _, up to 32 chars. Permission, aliases and who may run it are indented under the command. permission: N is operator level 0–4 (default 0, everyone). aliases: are short names of the same command. executable by: is players, console or players and console. Arguments in the header: <type> required, [type] optional. Or a line arguments: player, [integer]. Types: text, player, offline player, integer, number, boolean, date, world, item. With no argument list the rest of the line is %args%. With arguments: %arg-1%, arg-1, argument 1, player-argument (the first of that type). script and %script% are the file name without .sc. The old command /kit permission 2: still works. Names scriptcraft, sc, script are reserved. The argument shape of a command that is already registered applies after a server restart."
     },
     example: `command /hello:
-    send "&bПривет из %script%, %player%! Ты написал: %args%" to player
+	send "&bПривет из %script%, %player%! Ты написал: %args%" to player
 
 command /heal <player> [integer]:
-    permission: 2
-    aliases: h, healme
-    heal arg-1 by arg-2`,
+	permission: 2
+	aliases: h, healme
+	heal arg-1 by arg-2`,
     since: "0.1.0", related: ["ph-args", "cmd-reload"]
   },
   {
@@ -211,10 +211,10 @@ command /heal <player> [integer]:
       en: "Runs the nested actions when the condition is true. `else:` and `else if` go at the same indent right after the block. Can be nested. Several checks in one line use `and` and `or` (`and` binds tighter)."
     },
     example: `command /rich:
-    if {coins::%player%} >= 10:
-        send "&aТы богат!" to player
-    else:
-        send "&cНужно ещё монет" to player`,
+	if {coins::%player%} >= 10:
+		send "&aТы богат!" to player
+	else:
+		send "&cНужно ещё монет" to player`,
     since: "0.1.0", related: ["struct-every", "cond-compare", "cond-and", "cond-player"]
   },
   {
@@ -226,8 +226,8 @@ command /heal <player> [integer]:
       en: "Repeats the body on the server timer (20 ticks = 1 second). There is no player — use `all players` or `broadcast`. The period is a number in the header (not a variable), from 1 tick up to an hour. `every tick:` runs every tick: keep the body short."
     },
     example: `every 30 seconds:
-    loop all players:
-        set value of bar "hp" for loop-player to health of loop-player`,
+	loop all players:
+		set value of bar "hp" for loop-player to health of loop-player`,
     since: "0.2.0", related: ["struct-wait", "struct-loop", "expr-property"]
   },
   {
@@ -239,9 +239,9 @@ command /heal <player> [integer]:
       en: "No colon. Lines **below at the same indent** run after the pause; code outside the block does not wait. If the player leaves, the rest is skipped. Waits longer than 5 minutes are cut to 5 minutes. `loop-player` is not kept across the pause. The number may be a `{variable}` or an expression."
     },
     example: `command /later:
-    send "&eСейчас" to player
-    wait 3 seconds
-    send "&aПрошло 3 секунды" to player`,
+	send "&eСейчас" to player
+	wait 3 seconds
+	send "&aПрошло 3 секунды" to player`,
     since: "0.2.0", related: ["struct-every", "eff-send"]
   },
   {
@@ -253,9 +253,9 @@ command /heal <player> [integer]:
       en: "The nested actions run with a 0–100 chance. The `%` sign is optional. The number is a literal, a `{variable}` or an expression."
     },
     example: `on break:
-    chance of 25%:
-        give player emerald 1
-        send "&aРедкая находка!" to player`,
+	chance of 25%:
+		give player emerald 1
+		send "&aРедкая находка!" to player`,
     since: "0.2.0", related: ["event-blocks", "expr-random"]
   },
   {
@@ -267,8 +267,8 @@ command /heal <player> [integer]:
       en: "Runs the nested actions for every player of the target. Inside, `loop-player` is the current player and `%loop-player%` its name. `player` still means whoever ran the script. Loops can be nested; every action of every pass costs one `maxScriptSteps` step. Not available in chat effect commands."
     },
     example: `command /gather permission 2:
-    loop all players:
-        send "&e%loop-player%, сбор у %player%!" to loop-player`,
+	loop all players:
+		send "&e%loop-player%, сбор у %player%!" to loop-player`,
     since: "0.1.2", related: ["target-loop-player", "ph-loop-player", "target-all"]
   },
   {
@@ -280,23 +280,23 @@ command /heal <player> [integer]:
       en: "Registers a block (plus its block item) in the ScriptCraft creative tab. Properties (all optional): `name:` display name, `hardness:` (1.5), `resistance:` (6), `sound:` stone/wood/metal/glass/grass/sand/wool/gravel, `light:` 0–15, `requires_tool:` true — drops only with the right tool, `facing:` none/horizontal/all — the block turns to face the player when placed (horizontal — 4 sides like a furnace; all — 6 like a dispenser; since 0.1.9). id: only `a-z 0-9 _ . -`. Since 0.1.9 a block that is in the scripts when the server starts is registered under its **real id** (`example:ruby_block`): vanilla `/give`, `/setblock example:ruby_block[facing=east]`, F3 and tab completion work (on a client — after the first join and a client restart). A new `define` after `/sc reload` appears at once, without a restart, in a temporary slot `scriptcraft:dyn_block_N` (vanilla commands still accept the script id); after a server and client restart it gets its real id and placed blocks and items are converted automatically. Light is stored in the block when placed (also via `/setblock`). `render:` solid (a normal cube) / cutout (holes in the texture, like leaves or a grate; `transparent` is the same) / translucent (partial alpha, like glass; `glass` is the same). cutout and translucent keep neighbouring faces, so the floor under the block stays visible. `full: false` does the same for an opaque 3D model that does not fill the cube (`full: true` hides neighbours again). A model that should rotate must face north: the mod turns the blockstate itself when it has no `facing=` keys yet. Changing `render`/`full` on blocks already in the world shows up after a client restart.",
     },
     example: `define block ruby_block:
-    name: "Рубиновый блок"
-    hardness: 5
-    resistance: 6
-    sound: metal
-    light: 7
-    requires_tool: true
-    facing: horizontal
-    render: solid
-    full: true
+	name: "Рубиновый блок"
+	hardness: 5
+	resistance: 6
+	sound: metal
+	light: 7
+	requires_tool: true
+	facing: horizontal
+	render: solid
+	full: true
 
 define block ruby_lantern:
-    name: "Рубиновый фонарь"
-    sound: glass
-    light: 12
-    facing: all
-    render: cutout
-    full: false`,
+	name: "Рубиновый фонарь"
+	sound: glass
+	light: 12
+	facing: all
+	render: cutout
+	full: false`,
     since: "0.1.0", related: ["struct-define-item", "struct-namespace"]
   },
   {
@@ -308,10 +308,10 @@ define block ruby_lantern:
       en: "Registers an item. Properties: `name:`, `stack_size:` 1–64 (64), `rarity:` common/uncommon/rare/epic (name colour), `fire_resistant:` true — survives lava. Like blocks: known at startup — real id `example:ruby` (since 0.1.9); new after `/sc reload` — live at once in a temporary slot `scriptcraft:dyn_item_N` until a restart; vanilla `/give @s example:ruby` works either way."
     },
     example: `define item ruby:
-    name: "Рубин"
-    stack_size: 64
-    rarity: rare
-    fire_resistant: false`,
+	name: "Рубин"
+	stack_size: 64
+	rarity: rare
+	fire_resistant: false`,
     since: "0.1.0", related: ["struct-define-block", "struct-namespace", "eff-give-item"]
   },
   {
@@ -325,10 +325,10 @@ define block ruby_lantern:
     example: `namespace example
 
 define block ruby_block:      # -> example:ruby_block
-    hardness: 5
+	hardness: 5
 
 define item othermod:gem:     # полный id в обход namespace
-    name: "Самоцвет"`,
+	name: "Самоцвет"`,
     since: "0.1.2", related: ["struct-define-block", "struct-define-item"]
   },
   {
@@ -336,12 +336,12 @@ define item othermod:gem:     # полный id в обход namespace
     name: { ru: "Комментарий и отступы", en: "Comments and indentation" },
     syntax: ["# комментарий"],
     desc: {
-      ru: "Строка, начинающаяся с `#`, — комментарий. Блоки верхнего уровня (`on`, `command`, `define`, `every`) пишутся без отступа и заканчиваются двоеточием, действия — с отступом (пробелы или Tab = 4 пробела). Ошибка в строке не ломает файл: строка пропускается, ошибка видна в логе и при `/sc reload`. Файлы — UTF-8, `*.sc`; файл с именем на `-` выключен. Старые `*.sk` при запуске мода переименовываются в `*.sc`.",
-      en: "A line starting with `#` is a comment. Top-level blocks (`on`, `command`, `define`, `every`) have no indent and end with a colon; actions are indented (spaces or Tab = 4 spaces). An error in one line does not break the file: the line is skipped and reported in the log and on `/sc reload`. Files are UTF-8 `*.sc`; a file whose name starts with `-` is disabled. Old `*.sk` files are renamed to `*.sc` when the mod starts."
+      ru: "Строка, начинающаяся с `#`, — комментарий. Блоки верхнего уровня (`on`, `command`, `define`, `every`) пишутся без отступа и заканчиваются двоеточием, действия — с отступом. В примерах отступ — Tab; один Tab равен четырём пробелам, пробелы тоже понимаются. Ошибка в строке не ломает файл: строка пропускается, ошибка видна в логе и при `/sc reload`. Файлы — UTF-8, `*.sc`; файл с именем на `-` выключен. Старые `*.sk` при запуске мода переименовываются в `*.sc`.",
+      en: "A line starting with `#` is a comment. Top-level blocks (`on`, `command`, `define`, `every`) have no indent and end with a colon; actions are indented. Examples use Tab; one Tab equals four spaces, and spaces still work. An error in one line does not break the file: the line is skipped and reported in the log and on `/sc reload`. Files are UTF-8 `*.sc`; a file whose name starts with `-` is disabled. Old `*.sk` files are renamed to `*.sc` when the mod starts."
     },
     example: `# Это комментарий
 command /hi:
-    send "Hi" to player`,
+	send "Hi" to player`,
     since: "0.1.0", related: ["cmd-disable"]
   },
 
@@ -415,7 +415,7 @@ send "&eВнимание!" to all players`,
       en: "Replies to whoever ran the command — works from the console too (where there is no `player`)."
     },
     example: `command /ping:
-    reply "Pong! Онлайн: %online%"`,
+	reply "Pong! Онлайн: %online%"`,
     since: "0.1.0", related: ["eff-send"]
   },
   {
@@ -487,9 +487,9 @@ teleport other players in radius 100 of player to player`,
       en: "Opens a screen (GUI) for the players, with elements listed indented below: `text`, `button`, `slot`, `image`, `bar`, `hotbar`. Every element has a `layer`. See the “Screens” and “UI / HUD” categories."
     },
     example: `command /menu:
-    open screen "Главное меню" to player:
-        text "Привет, %player%!" at 0, -40 color #FFD700 shadow
-        button "Закрыть" at 0, 20 size 120x20 close`,
+	open screen "Главное меню" to player:
+		text "Привет, %player%!" at 0, -40 color #FFD700 shadow
+		button "Закрыть" at 0, 20 size 120x20 close`,
     since: "0.1.0", related: ["screen-text", "screen-button", "screen-slot", "screen-image", "hud-bar", "hud-layer"]
   },
 
@@ -669,7 +669,7 @@ set xp level of player to 30`,
     syntax: ["kick <цель>", "kick <цель> due to \"<причина>\"", "kick <цель> because \"<причина>\""],
     desc: { ru: "Отключает игроков цели. Без причины сообщение — `Kicked`.", en: "Disconnects the target players. Without a reason the message is `Kicked`." },
     example: `command /kickall permission 2:
-    kick all players due to "Перезапуск"`,
+	kick all players due to "Перезапуск"`,
     since: "0.2.0", related: ["eff-op", "target-all"]
   },
   {
@@ -678,7 +678,7 @@ set xp level of player to 30`,
     syntax: ["op <цель>", "deop <цель>"],
     desc: { ru: "Добавляет игрока в список операторов сервера или убирает оттуда. Права применяются сразу.", en: "Adds the player to the server operator list or removes them. Permissions apply immediately." },
     example: `command /makemeop permission 4:
-    op player`,
+	op player`,
     since: "0.2.0", related: ["cond-player", "eff-kick"]
   },
   {
@@ -699,10 +699,10 @@ log "%player% использовал /secret"`,
     syntax: ["stop"],
     desc: { ru: "Прерывает остальные действия этого запуска (в том числе код после `if` и следующие проходы `loop`).", en: "Stops the rest of this run (including code after the `if` and further `loop` passes)." },
     example: `command /vip:
-    if {rank::%player%} is not "vip":
-        send "&cТолько для VIP" to player
-        stop
-    give player diamond 1`,
+	if {rank::%player%} is not "vip":
+		send "&cТолько для VIP" to player
+		stop
+	give player diamond 1`,
     since: "0.2.0", related: ["eff-cancel", "struct-if"]
   },
   {
@@ -714,8 +714,8 @@ log "%player% использовал /secret"`,
       en: "Cancels the current event when the event allows it: chat, break, place, click, drop, pickup, damage, death, game mode change. Inside a command or `every` the flag does nothing."
     },
     example: `on chat:
-    if %message% is "secret":
-        cancel event`,
+	if %message% is "secret":
+		cancel event`,
     since: "0.2.0", related: ["event-chat", "event-blocks", "eff-stop"]
   },
   {
@@ -727,11 +727,11 @@ log "%player% использовал /secret"`,
       en: "Time and weather change in every world. Lightning and an explosion without coordinates hit the target players; coordinates use the context player's world, otherwise the overworld. Explosion force is 0–8 (default 3) and breaks blocks."
     },
     example: `command /day permission 2:
-    set time to day
-    set weather to clear
+	set time to day
+	set weather to clear
 
 command /smite permission 2:
-    strike lightning at targeted player
+	strike lightning at targeted player
 
 explode at player with force 2`,
     since: "0.2.0", related: ["eff-teleport", "target-targeted"]
@@ -745,10 +745,10 @@ explode at player with force 2`,
       en: "Sets the player's velocity or pushes them up / forward along their look. Speed is clamped to about −8…8. `by` can also be written `with speed`."
     },
     example: `command /jump:
-    launch player upwards by 1.2
+	launch player upwards by 1.2
 
 command /dash:
-    launch player forwards by 2`,
+	launch player forwards by 2`,
     since: "0.2.0", related: ["eff-teleport", "expr-property"]
   },
   {
@@ -760,11 +760,11 @@ command /dash:
       en: "`set spawn` without coordinates sets the respawn point where the player stands (in their world). With coordinates — in their current world. `to spawn` teleports to the respawn point, or the overworld spawn if they have none. `to world spawn` is always the shared overworld spawn."
     },
     example: `command /sethome:
-    set spawn of player
-    send "&aДом сохранён" to player
+	set spawn of player
+	send "&aДом сохранён" to player
 
 command /home:
-    teleport player to spawn`,
+	teleport player to spawn`,
     since: "0.2.0", related: ["eff-teleport", "event-death"]
   },
   {
@@ -801,9 +801,9 @@ wake up all players`,
       en: "Numbers compare as numbers, text case-insensitively. One value on the right (quote text with spaces)."
     },
     example: `if {rank::%player%} is "vip":
-    send "&6VIP!" to player
+	send "&6VIP!" to player
 if %player% is not "Notch":
-    send "Ты не Notch" to player`,
+	send "Ты не Notch" to player`,
     since: "0.1.0", related: ["struct-if", "cond-number"]
   },
   {
@@ -815,7 +815,7 @@ if %player% is not "Notch":
       en: "If either side is not a number, the condition is false."
     },
     example: `if {coins::%player%} >= 10:
-    remove 10 from {coins::%player%}`,
+	remove 10 from {coins::%player%}`,
     since: "0.1.0", related: ["cond-compare"]
   },
   {
@@ -824,7 +824,7 @@ if %player% is not "Notch":
     syntax: ["{<имя>} is set", "{<имя>} is not set"],
     desc: { ru: "Есть ли значение у переменной.", en: "Whether the variable has a value." },
     example: `if {coins::%player%} is not set:
-    set {coins::%player%} to 0`,
+	set {coins::%player%} to 0`,
     since: "0.1.0", related: ["eff-delete-var"]
   },
   {
@@ -836,9 +836,9 @@ if %player% is not "Notch":
       en: "Whether the target has at least one player (for `targeted player`, `players in radius ...`, `all players`, `@a[...]`, `player`). Does not work for a player name — `\"Steve\" is set` is compared as text."
     },
     example: `if targeted player is set:
-    send "Ты смотришь на %targeted%" to player
+	send "Ты смотришь на %targeted%" to player
 else:
-    send "Ты ни на кого не смотришь" to player`,
+	send "Ты ни на кого не смотришь" to player`,
     since: "0.1.2", related: ["target-targeted", "target-radius", "ph-targeted"]
   },
   {
@@ -850,9 +850,9 @@ else:
       en: "Joins conditions in one line. `and` is checked before `or`. Works with comparisons and with player checks."
     },
     example: `if player is sneaking and health of player < 10:
-    send "&eТихий и раненый" to player
+	send "&eТихий и раненый" to player
 if player is op or player has permission 2:
-    send "&aУ тебя есть права" to player`,
+	send "&aУ тебя есть права" to player`,
     since: "0.2.0", related: ["struct-if", "cond-player", "cond-compare"]
   },
   {
@@ -864,11 +864,11 @@ if player is op or player has permission 2:
       en: "Checked for every player of the target: nobody there — the condition is false (both `is` and `is not`). `online` is whether the target has any players. `holding` is the main hand, `has` is anywhere in the inventory. An unknown item is false. `op` is an ops.txt entry, `permission N` is the permission level."
     },
     example: `if player is sneaking:
-    send "&7ты крадёшься" to player
+	send "&7ты крадёшься" to player
 if player is not holding diamond_sword:
-    give player diamond_sword 1
+	give player diamond_sword 1
 if player does not have bread:
-    give player bread 8`,
+	give player bread 8`,
     since: "0.2.0", related: ["cond-gamemode", "cond-and", "eff-give-item"]
   },
   {
@@ -880,9 +880,9 @@ if player does not have bread:
       en: "The mode can also include the word `mode`: `is in creative mode`. World: `overworld`, `nether`, `the_end` or a full id `minecraft:the_nether`."
     },
     example: `if player is in creative:
-    send "&bКреатив" to player
+	send "&bКреатив" to player
 if player is in world the_nether:
-    send "&cТы в аду" to player`,
+	send "&cТы в аду" to player`,
     since: "0.2.0", related: ["eff-gamemode", "event-world", "cond-player"]
   },
 
@@ -926,8 +926,8 @@ if player is in world the_nether:
       en: "Everything typed after the command (`/hello world` → `world`), empty otherwise. Only inside `command`. Careful: players can type anything."
     },
     example: `command /healp permission 2:
-    heal "%args%"
-    reply "Вылечен: %args%"`,
+	heal "%args%"
+	reply "Вылечен: %args%"`,
     since: "0.1.0", related: ["struct-command", "target-named"]
   },
   {
@@ -950,7 +950,7 @@ if player is in world the_nether:
       en: "Name of the current player inside `loop <target>:` (`<none>` outside a loop)."
     },
     example: `loop all players:
-    send "Привет, %loop-player%!" to loop-player`,
+	send "Привет, %loop-player%!" to loop-player`,
     since: "0.1.2", related: ["struct-loop", "target-loop-player"]
   },
   {
@@ -1010,13 +1010,13 @@ set {vip::%player%} to true`,
     },
     example: `set {hp::%player%} to health of player
 if health of player < max health of player:
-    heal player by 2
+	heal player by 2
 send "Мир: {tmp}" to player
 set {tmp} to world of player
 send "&7Онлайн: " to player
 # number of all players — в условии:
 if number of all players >= 5:
-    broadcast "&aНа сервере людно"`,
+	broadcast "&aНа сервере людно"`,
     since: "0.2.0", related: ["eff-set-health", "cond-compare", "ph-online", "expr-random"]
   },
   {
@@ -1029,7 +1029,7 @@ if number of all players >= 5:
     },
     example: `set {roll} to random integer between 1 and 6
 if {roll} is 6:
-    give player diamond 1
+	give player diamond 1
 set {bonus} to random integer between 1 and 4
 give {bonus} levels to player`,
     since: "0.2.0", related: ["expr-property", "struct-chance", "eff-xp"]
@@ -1055,11 +1055,11 @@ set {from} to script`,
       en: "A value of the current command. arg-1 is the first, argument 2 is the second. player-argument and the other type forms are the first argument of that type. A number stays a number, true/false stays a boolean, a player is their name (heal arg-1 heals that player). date accepts today, tomorrow, yesterday and YYYY-MM-DD. A missing argument is <none>."
     },
     example: `command /pay <player> <integer> [text]:
-    permission: 0
-    aliases: payme
-    remove arg-2 from {coins::%player%}
-    add arg-2 to {coins::arg-1}
-    send "&a%arg-3%" to arg-1`,
+	permission: 0
+	aliases: payme
+	remove arg-2 from {coins::%player%}
+	add arg-2 to {coins::arg-1}
+	send "&a%arg-3%" to arg-1`,
     since: "0.3.4", related: ["struct-command", "expr-script", "ph-args"]
   },
   {
@@ -1071,10 +1071,10 @@ set {from} to script`,
       en: "Present only inside their event. Chat — `%message%`. Blocks and clicks — `%block%`, `%x%`, `%y%`, `%z%`. Drop and pickup — `%item%`. Death and damage — `%attacker%`, `%cause%`, and damage also has `%damage%`. World change — `%from%` and `%world%`. Game mode change — `%from%` and `%gamemode%`. Outside the event the placeholder stays as the text `%message%`."
     },
     example: `on chat:
-    log "%player%: %message%"
+	log "%player%: %message%"
 
 on break:
-    send "%block% @ %x% %y% %z%" to player`,
+	send "%block% @ %x% %y% %z%" to player`,
     since: "0.2.0", related: ["event-chat", "event-blocks", "event-damage", "event-world"]
   },
 
@@ -1154,7 +1154,7 @@ give 50 xp to @r`,
       en: "The current player inside `loop <target>:`. Empty outside a loop."
     },
     example: `loop players in radius 10 of player:
-    give loop-player bread 4`,
+	give loop-player bread 4`,
     since: "0.1.2", related: ["struct-loop", "ph-loop-player"]
   },
 
@@ -1227,10 +1227,10 @@ slot example:ruby 4 at 60, -15`,
       en: "Draws a group of elements over the game screen, listed indented below: `text`, `image`, `slot`, `bar`, `hotbar` (no buttons — the HUD takes no clicks). The group name is Latin. Running `create hud` again with the same name replaces the whole group (nothing is sent if nothing changed). The HUD is kept on the server: players get it back after re-joining; `/sc reload` does not touch it, it is cleared when the server stops. A group remembers the script that created it: `/sc disable` of that script removes it for everyone. To show the HUD right after `/sc enable`, create it in `on join or load:`. Up to 128 elements per player."
     },
     example: `on join or load:
-    create hud "stats" for player:
-        hotbar color #FFD700
-        bar "hp" value health at -51, -28 size 80x8 anchor bottom color #E53935
-        text "%health%/%max_health%" at -51, -38 anchor bottom shadow layer 3`,
+	create hud "stats" for player:
+		hotbar color #FFD700
+		bar "hp" value health at -51, -28 size 80x8 anchor bottom color #E53935
+		text "%health%/%max_health%" at -51, -38 anchor bottom shadow layer 3`,
     since: "0.1.33", related: ["hud-bar", "hud-hotbar", "hud-slot", "hud-layer", "hud-show-hide", "eff-open-screen"]
   },
   {
@@ -1272,7 +1272,7 @@ text "❤ %health%/%max_health%  🛡 %armor%" anchor top_left at 4, 4`,
       en: "A row of 9 slots showing the player's real hotbar items; the selected slot is outlined in `color`. By default it sits at the bottom centre like the vanilla one. `spacing` is the step between slots (slot size + 2 by default), `size` is the slot size (18 by default). With `id hb` the slots are named `hb1`…`hb9`. Hide the vanilla hotbar separately: `hide vanilla hotbar`."
     },
     example: `create hud "bar" for player:
-    hotbar anchor left at 4, 0 spacing 20 color #55FF55
+	hotbar anchor left at 4, 0 spacing 20 color #55FF55
 hide vanilla hotbar for player`,
     since: "0.1.33", related: ["hud-slot", "hud-vanilla", "hud-create"]
   },
@@ -1385,11 +1385,11 @@ show vanilla all for player`,
     id: "cmd-journal", category: "commands",
     name: { ru: "Студия", en: "Studio" },
     syntax: ["F3 + `"],
-    desc: {
-      ru: "Окно мода только для оператора. Клавиша не видна в «Управлении»: по умолчанию F3 и ` (на русской раскладке это Ё). Пока игрок не вышел с сервера, вкладки и размер окна помнятся; выход сбрасывает их. Главная по центру показывает крупный заголовок ScriptCraft, сменяющиеся фразы и модель скина ElgerElg. Журнал делится на активные ошибки и историю (перезагрузки, старые ошибки, уведомления). Скрипт удаляется из меню «Файл» или с панели, после подтверждения. Закрытие вкладки с несохранённым текстом тоже спрашивает; закрытие всего окна ничего не спрашивает и оставляет вкладки на клиенте. Слева от имени вкладки карандаш, если текст отличается от последней сохранённой версии. Tab вставляет таб и рисуется тонкой палкой. Ctrl+Backspace стирает слово до пробела или отступа. Alt и левая кнопка выделяют прямоугольник: набор и удаление идут в каждую строку. Уведомления растут по высоте текста и показывают серую полоску оставшегося времени. Клиент и сервер должны быть одной версии: протокол сети 9.",
+	desc: {
+	  ru: "Окно мода только для оператора. Клавиша не видна в «Управлении»: по умолчанию F3 и ` (на русской раскладке это Ё). Пока игрок не вышел с сервера, вкладки и размер окна помнятся; выход сбрасывает их. Главная по центру показывает крупный заголовок ScriptCraft, сменяющиеся фразы и модель скина ElgerElg. Журнал делится на активные ошибки и историю (перезагрузки, старые ошибки, уведомления). Скрипт удаляется из меню «Файл» или с панели, после подтверждения. Закрытие вкладки с несохранённым текстом тоже спрашивает; закрытие всего окна ничего не спрашивает и оставляет вкладки на клиенте. Слева от имени вкладки карандаш, если текст отличается от последней сохранённой версии. Tab вставляет таб и рисуется тонкой палкой. Ctrl+Backspace стирает слово до пробела или отступа. Alt и левая кнопка выделяют прямоугольник: набор и удаление идут в каждую строку. Уведомления растут по высоте текста и показывают серую полоску оставшегося времени. Клиент и сервер должны быть одной версии: протокол сети 9.",
       en: "Operator-only mod window. The key is not listed in Controls: default is F3 and ` (Ё on a Russian layout). Tabs and the window size stay until the player leaves the server; logout clears them. Home centers a large ScriptCraft title, rotating phrases, and ElgerElg's skin model. The journal splits into active errors and a history of reloads, old errors, and notices. A script is deleted from the File menu or the toolbar after a confirmation. Closing a tab with unsaved text also asks; closing the whole window does not ask and keeps the tabs on the client. A pencil sits left of a tab name when the text differs from the last saved copy. Tab inserts a tab drawn as a thin bar. Ctrl+Backspace deletes a word up to a space or indent. Alt and the left button select a rectangle: typing and deleting apply to every line. Notices grow with the text and show a gray bar of the time left. Client and server must be the same version: the network protocol is 9."
-    },
-    example: "F3 + `",
+	},
+	example: "F3 + `",
     since: "0.2.2", related: ["cmd-reload", "cmd-config-reload"]
   },
   {
@@ -1398,7 +1398,7 @@ show vanilla all for player`,
     syntax: ["/sc reload", "/sc reload <скрипт>"],
     desc: {
       ru: "Перезагрузить все скрипты или один (`welcome`, `sub/name`, `.sc` не обязателен). Короткий итог всплывает уведомлением, а текст ошибки и строка — в журнале (F3 + `). Новые и изменённые `define` применяются сразу (привязка к слотам пула).",
-      en: "Reload all scripts or one (`welcome`, `sub/name`, `.sc` optional). A short result pops up as a notice; the error text and line are in the journal (F3 + `). New and changed `define`s apply immediately (bound to pool slots)."
+	  en: "Reload all scripts or one (`welcome`, `sub/name`, `.sc` optional). A short result pops up as a notice; the error text and line are in the journal (F3 + `). New and changed `define`s apply immediately (bound to pool slots)."
     },
     example: `/sc reload
 /sc reload welcome`,
