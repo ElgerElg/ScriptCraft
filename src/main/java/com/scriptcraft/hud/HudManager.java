@@ -10,10 +10,12 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -21,6 +23,8 @@ import java.util.UUID;
  *
  * - Если новое значение совпадает с уже отправленным, пакет не уходит (можно спокойно обновлять полосу
  *   из частых событий — сеть не забивается).
+ * - {переменная} в тексте или в value/max полосы запоминается. Запись этой переменной сразу пересчитывает
+ *   элемент и шлёт пакет только если строка изменилась. Нет подписчиков — запись переменной ничего не шлёт.
  * - Состояние хранится в памяти сервера: при выходе игрока оно сохраняется, а при входе отправляется
  *   заново (клиент свой HUD при отключении стирает). Очищается при остановке сервера.
  * - /sc reload HUD не трогает: повторный create hud с тем же именем заменит группу (обычно из "on join or load:").
@@ -35,6 +39,17 @@ public final class HudManager {
 
     private static final Map<UUID, PlayerHud> HUDS = new HashMap<>();
 
+    /** Имя переменной -> элементы HUD, которые её показывают. Пусто для переменных вне HUD. */
+    private static final Map<String, Set<Watch>> BY_VAR = new HashMap<>();
+
+    /** Сервер, чтобы при записи переменной найти игрока и отправить ему пакет. */
+    @Nullable
+    private static MinecraftServer server;
+
+    /** Элемент HUD одного игрока, который следит за переменной. */
+    private record Watch(UUID player, String elementId) {
+    }
+
     /** Владелец для действий не из файла (эффект-команды в чате): автоматически не убирается. */
     private static final String NO_OWNER = "";
 
@@ -44,6 +59,8 @@ public final class HudManager {
         final Map<String, String> groupOwners = new HashMap<>();
         /** Файл скрипта -> какие ванильные части он спрятал. Итоговая маска — объединение. */
         final Map<String, Integer> vanillaByOwner = new HashMap<>();
+        /** id элемента -> шаблон с {переменными}, если элемент за ними следит. */
+        final Map<String, HudBinding> bindings = new HashMap<>();
         int vanillaMask;
 
         int computeVanillaMask() {
@@ -81,7 +98,9 @@ public final class HudManager {
      * create hud "группа": заменяет все элементы группы новыми. Элементы с теми же id из ДРУГИХ групп
      * тоже заменяются (id уникален у игрока). Если группа не изменилась — ничего не отправляется.
      */
-    public static void create(ServerPlayer player, String group, List<HudEntry> newEntries, @Nullable String script) {
+    public static void create(ServerPlayer player, String group, List<HudEntry> newEntries, List<HudBinding> bindings,
+                               @Nullable String script) {
+        server = player.getServer();
         PlayerHud hud = hud(player);
         hud.groupOwners.put(group, owner(script));
         List<HudEntry> old = new ArrayList<>();
@@ -91,6 +110,7 @@ public final class HudManager {
             }
         }
         if (old.equals(newEntries)) {
+            install(player.getUUID(), hud, bindings);
             return;
         }
         // Проверка лимита ДО изменения состояния.
@@ -103,6 +123,11 @@ public final class HudManager {
         if (remaining + newEntries.size() > MAX_ELEMENTS) {
             throw new ScriptRuntimeException(Messages.get("hud.too_many", MAX_ELEMENTS));
         }
+        for (HudEntry e : old) {
+            if (newEntries.stream().noneMatch(n -> n.id().equals(e.id()))) {
+                dropElement(hud, player.getUUID(), e.id());
+            }
+        }
         List<HudOp> ops = new ArrayList<>();
         if (!old.isEmpty()) {
             hud.entries.values().removeIf(e -> e.group().equals(group));
@@ -114,7 +139,46 @@ public final class HudManager {
         }
         ops.add(new HudOp.Put(List.copyOf(newEntries)));
         hud.pruneOwners();
+        install(player.getUUID(), hud, bindings);
         send(player, ops);
+    }
+
+    /**
+     * Переменная записана или удалена. Обновляет только те элементы HUD, которые её показывают,
+     * и только если текст на экране действительно другой.
+     */
+    public static void onVariable(String name) {
+        Set<Watch> watches = BY_VAR.get(name);
+        if (watches == null || watches.isEmpty()) {
+            return;
+        }
+        for (Watch watch : List.copyOf(watches)) {
+            refresh(watch);
+        }
+    }
+
+    /** set text заново привязывает текст к шаблону. null — в тексте больше нет {переменных}. */
+    public static void rebindText(ServerPlayer player, String id, @Nullable String textTemplate) {
+        PlayerHud hud = HUDS.get(player.getUUID());
+        if (hud == null || !hud.entries.containsKey(id)) {
+            return;
+        }
+        HudBinding old = hud.bindings.get(id);
+        installOne(player.getUUID(), hud, new HudBinding(id, textTemplate,
+                old == null ? null : old.value(), old == null ? null : old.max()));
+    }
+
+    /** set value/max. touch=false — это поле не трогали. template null — поле больше не следит за переменной. */
+    public static void rebindBar(ServerPlayer player, String id, boolean touchValue, @Nullable String valueTemplate,
+                                 boolean touchMax, @Nullable String maxTemplate) {
+        PlayerHud hud = HUDS.get(player.getUUID());
+        if (hud == null || !hud.entries.containsKey(id)) {
+            return;
+        }
+        HudBinding old = hud.bindings.get(id);
+        String value = touchValue ? valueTemplate : (old == null ? null : old.value());
+        String max = touchMax ? maxTemplate : (old == null ? null : old.max());
+        installOne(player.getUUID(), hud, new HudBinding(id, old == null ? null : old.text(), value, max));
     }
 
     /** set value/max of bar: null — оставить как было. Неизвестный id или не полоса — тихо пропускается. */
@@ -172,11 +236,24 @@ public final class HudManager {
             return;
         }
         List<HudOp> ops = new ArrayList<>();
+        List<String> gone = new ArrayList<>();
         if (hud.entries.remove(name) != null) {
+            gone.add(name);
             ops.add(new HudOp.Remove(name));
         }
-        if (hud.entries.values().removeIf(e -> e.group().equals(name))) {
+        List<String> groupIds = new ArrayList<>();
+        for (HudEntry e : hud.entries.values()) {
+            if (e.group().equals(name)) {
+                groupIds.add(e.id());
+            }
+        }
+        if (!groupIds.isEmpty()) {
+            groupIds.forEach(hud.entries::remove);
+            gone.addAll(groupIds);
             ops.add(new HudOp.RemoveGroup(name));
+        }
+        for (String id : gone) {
+            dropElement(hud, player.getUUID(), id);
         }
         hud.pruneOwners();
         send(player, ops);
@@ -188,6 +265,7 @@ public final class HudManager {
         if (hud == null) {
             return;
         }
+        dropAll(player.getUUID(), hud);
         List<HudOp> ops = new ArrayList<>();
         if (!hud.entries.isEmpty()) {
             ops.add(new HudOp.Clear());
@@ -229,7 +307,17 @@ public final class HudManager {
                 if (go.getValue().equals(script)) {
                     String group = go.getKey();
                     hud.groupOwners.remove(group);
-                    if (hud.entries.values().removeIf(e -> e.group().equals(group))) {
+                    List<String> ids = new ArrayList<>();
+                    for (HudEntry e : hud.entries.values()) {
+                        if (e.group().equals(group)) {
+                            ids.add(e.id());
+                        }
+                    }
+                    if (!ids.isEmpty()) {
+                        ids.forEach(hud.entries::remove);
+                        for (String id : ids) {
+                            dropElement(hud, me.getKey(), id);
+                        }
                         ops.add(new HudOp.RemoveGroup(group));
                     }
                 }
@@ -251,6 +339,7 @@ public final class HudManager {
 
     /** Вход игрока: клиент начинает с пустого HUD, поэтому отправляем всё сохранённое состояние целиком. */
     public static void onLogin(ServerPlayer player) {
+        server = player.getServer();
         PlayerHud hud = HUDS.get(player.getUUID());
         if (hud == null) {
             return;
@@ -268,5 +357,111 @@ public final class HudManager {
     /** Остановка сервера (в одиночной игре — выход из мира): следующий мир начинает с чистого HUD. */
     public static void onServerStopped() {
         HUDS.clear();
+        BY_VAR.clear();
+        server = null;
+    }
+
+    private static void refresh(Watch watch) {
+        PlayerHud hud = HUDS.get(watch.player());
+        HudBinding binding = hud == null ? null : hud.bindings.get(watch.elementId());
+        if (hud == null || binding == null || !hud.entries.containsKey(watch.elementId())) {
+            if (hud != null && binding != null) {
+                dropElement(hud, watch.player(), watch.elementId());
+            } else {
+                BY_VAR.values().forEach(set -> set.remove(watch));
+                BY_VAR.values().removeIf(Set::isEmpty);
+            }
+            return;
+        }
+        if (binding.text() != null) {
+            applyText(watch.player(), watch.elementId(), com.scriptcraft.script.runtime.ExecutionContext.fillVariables(binding.text()));
+        }
+        if (binding.value() != null || binding.max() != null) {
+            String value = binding.value() == null ? null
+                    : com.scriptcraft.script.runtime.ExecutionContext.fillVariables(binding.value());
+            String max = binding.max() == null ? null
+                    : com.scriptcraft.script.runtime.ExecutionContext.fillVariables(binding.max());
+            applyBar(watch.player(), watch.elementId(), value, max);
+        }
+    }
+
+    private static void applyText(UUID uuid, String id, String text) {
+        PlayerHud hud = HUDS.get(uuid);
+        HudEntry entry = hud == null ? null : hud.entries.get(id);
+        if (entry == null) {
+            return;
+        }
+        HudEntry updated = entry.withText(text);
+        if (updated == null || updated.equals(entry)) {
+            return;
+        }
+        hud.entries.put(id, updated);
+        ServerPlayer online = server == null ? null : server.getPlayerList().getPlayer(uuid);
+        if (online != null) {
+            send(online, List.of(new HudOp.Text(id, text)));
+        }
+    }
+
+    private static void applyBar(UUID uuid, String id, @Nullable String value, @Nullable String max) {
+        PlayerHud hud = HUDS.get(uuid);
+        HudEntry entry = hud == null ? null : hud.entries.get(id);
+        if (entry == null || !(entry.element() instanceof com.scriptcraft.screen.BarElement bar)) {
+            return;
+        }
+        String v = value != null ? value : bar.value();
+        String m = max != null ? max : bar.max();
+        if (v.equals(bar.value()) && m.equals(bar.max())) {
+            return;
+        }
+        hud.entries.put(id, Objects.requireNonNull(entry.withValues(v, m)));
+        ServerPlayer online = server == null ? null : server.getPlayerList().getPlayer(uuid);
+        if (online != null) {
+            send(online, List.of(new HudOp.Value(id, v, m)));
+        }
+    }
+
+    private static void install(UUID uuid, PlayerHud hud, List<HudBinding> bindings) {
+        for (HudBinding binding : bindings) {
+            installOne(uuid, hud, binding);
+        }
+    }
+
+    private static void installOne(UUID uuid, PlayerHud hud, HudBinding binding) {
+        dropElement(hud, uuid, binding.id());
+        if (binding.isEmpty()) {
+            return;
+        }
+        hud.bindings.put(binding.id(), binding);
+        Set<String> names = new HashSet<>();
+        binding.collectNames(names);
+        for (String name : names) {
+            BY_VAR.computeIfAbsent(name, k -> new HashSet<>()).add(new Watch(uuid, binding.id()));
+        }
+    }
+
+    private static void dropAll(UUID uuid, PlayerHud hud) {
+        for (String id : List.copyOf(hud.bindings.keySet())) {
+            dropElement(hud, uuid, id);
+        }
+    }
+
+    private static void dropElement(PlayerHud hud, UUID uuid, String id) {
+        HudBinding binding = hud.bindings.remove(id);
+        if (binding == null) {
+            return;
+        }
+        Set<String> names = new HashSet<>();
+        binding.collectNames(names);
+        Watch watch = new Watch(uuid, id);
+        for (String name : names) {
+            Set<Watch> set = BY_VAR.get(name);
+            if (set == null) {
+                continue;
+            }
+            set.remove(watch);
+            if (set.isEmpty()) {
+                BY_VAR.remove(name);
+            }
+        }
     }
 }

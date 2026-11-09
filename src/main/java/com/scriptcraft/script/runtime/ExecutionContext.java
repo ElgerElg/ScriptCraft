@@ -226,6 +226,26 @@ public final class ExecutionContext {
         return expandPlaceholders(rawName.strip());
     }
 
+    /** Плейсхолдеры %player% и остальные, без подстановки {переменных}. Нужно, чтобы HUD запомнил шаблон. */
+    public String expandPlaceholders(String raw) {
+        return expandPlaceholders0(raw);
+    }
+
+    /**
+     * Подставляет {переменные} и цветовые коды в уже развёрнутый шаблон HUD.
+     * Плейсхолдеры вроде %health% не трогает — их считает клиент.
+     */
+    public static String fillVariables(String template) {
+        Matcher m = VARIABLE.matcher(template);
+        StringBuilder sb = new StringBuilder();
+        while (m.find()) {
+            String value = Expression.toText(VariableStore.get(m.group(1).strip()));
+            m.appendReplacement(sb, Matcher.quoteReplacement(value));
+        }
+        m.appendTail(sb);
+        return COLOR.matcher(sb.toString()).replaceAll("\u00a7$1");
+    }
+
     public Object getVariable(String name) {
         return VariableStore.get(name);
     }
@@ -249,7 +269,7 @@ public final class ExecutionContext {
      * Значения переменных повторно не разбираются — так текст из переменной не может "подставить" что-то лишнее.
      */
     public String format(String raw) {
-        String text = expandPlaceholders(raw);
+        String text = expandPlaceholders0(raw);
         Matcher m = VARIABLE.matcher(text);
         StringBuilder sb = new StringBuilder();
         while (m.find()) {
@@ -260,7 +280,7 @@ public final class ExecutionContext {
         return COLOR.matcher(sb.toString()).replaceAll("\u00a7$1");
     }
 
-    private String expandPlaceholders(String raw) {
+    private String expandPlaceholders0(String raw) {
         Matcher m = PLACEHOLDER.matcher(raw);
         StringBuilder sb = new StringBuilder();
         while (m.find()) {

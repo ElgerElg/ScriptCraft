@@ -9,6 +9,7 @@ import com.google.gson.JsonPrimitive;
 import com.scriptcraft.ModPaths;
 import com.scriptcraft.ScriptCraft;
 import com.scriptcraft.config.ScriptCraftConfig;
+import com.scriptcraft.hud.HudManager;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.storage.LevelResource;
 import org.jetbrains.annotations.Nullable;
@@ -23,6 +24,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Stream;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -70,20 +72,29 @@ public final class VariableStore {
     }
 
     public static void set(String name, Object value) {
-        if (isTemporary(name)) {
-            TEMPORARY.put(name, value);
-        } else {
-            PERSISTENT.put(name, value);
+        boolean temporary = isTemporary(name);
+        Map<String, Object> map = temporary ? TEMPORARY : PERSISTENT;
+        if (Objects.equals(map.get(name), value)) {
+            return;
+        }
+        map.put(name, value);
+        if (!temporary) {
             dirty = true;
         }
+        // HUD с {этой переменной} обновляется здесь же. Нет подписчиков — один поиск в таблице и выход.
+        HudManager.onVariable(name);
     }
 
     public static void delete(String name) {
-        if (isTemporary(name)) {
-            TEMPORARY.remove(name);
-        } else if (PERSISTENT.remove(name) != null) {
+        boolean temporary = isTemporary(name);
+        Object removed = temporary ? TEMPORARY.remove(name) : PERSISTENT.remove(name);
+        if (removed == null) {
+            return;
+        }
+        if (!temporary) {
             dirty = true;
         }
+        HudManager.onVariable(name);
     }
 
     public static int size() {

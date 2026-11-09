@@ -15,11 +15,21 @@ import java.util.Locale;
  * Действия HUD (create hud, set value of bar, show/hide/remove hud, hide vanilla ...).
  * Сами действия только вычисляют значения; состояние и отправку изменений клиенту ведёт {@link HudManager}.
  *
- * Как и у open screen, тексты форматируются ОДИН раз в контексте скрипта (%player% — игрок события),
- * а результат отправляется всем целям. Для своего текста каждому игроку — loop all players + %loop-player%.
+ * Плейсхолдеры считаются один раз в контексте скрипта (%player% — игрок события).
+ * {переменная} в тексте или в value/max полосы остаётся связью: запись переменной сама обновляет HUD.
+ * Для своего текста каждому игроку — loop all players + %loop-player%.
  */
 public final class HudActions {
     private HudActions() {
+    }
+
+    /** {coins::%player%} -> "{coins::Steve}". Число и источник health за связью не следят. */
+    @Nullable
+    private static String liveVariable(Expression expression, ExecutionContext ctx) {
+        if (expression instanceof Expression.Variable variable) {
+            return "{" + ctx.variableName(variable.rawName()) + "}";
+        }
+        return null;
     }
 
     /**
@@ -47,11 +57,13 @@ public final class HudActions {
                 return;
             }
             List<HudEntry> formatted = new ArrayList<>(entries.size());
+            List<com.scriptcraft.hud.HudBinding> bindings = new ArrayList<>(entries.size());
             for (HudEntry e : entries) {
+                bindings.add(com.scriptcraft.hud.HudBinding.capture(e, ctx));
                 formatted.add(e.withElement(e.element().format(ctx::format)));
             }
             for (ServerPlayer p : players) {
-                HudManager.create(p, group, formatted, ctx.script());
+                HudManager.create(p, group, formatted, bindings, ctx.script());
             }
         }
     }
@@ -66,8 +78,12 @@ public final class HudActions {
             }
             String v = value == null ? null : barValue(value, ctx);
             String m = max == null ? null : barValue(max, ctx);
+            // {переменная} остаётся живой связью. Число или health/food эту связь снимает.
+            String liveValue = value == null ? null : liveVariable(value, ctx);
+            String liveMax = max == null ? null : liveVariable(max, ctx);
             for (ServerPlayer p : players) {
                 HudManager.setBar(p, id, v, m);
+                HudManager.rebindBar(p, id, value != null, liveValue, max != null, liveMax);
             }
         }
     }
@@ -81,8 +97,11 @@ public final class HudActions {
                 return;
             }
             String formatted = ctx.format(text);
+            String template = ctx.expandPlaceholders(text);
+            String live = template.indexOf('{') >= 0 ? template : null;
             for (ServerPlayer p : players) {
                 HudManager.setText(p, id, formatted);
+                HudManager.rebindText(p, id, live);
             }
         }
     }

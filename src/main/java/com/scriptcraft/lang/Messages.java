@@ -145,7 +145,7 @@ public final class Messages {
         add("studio.home", "Home", "Главная");
         add("studio.journal", "Journal", "Журнал");
         add("studio.patches", "Patches and versions", "Патчи и версии");
-        add("studio.p1", "0.3.5 — example scripts to learn from, Tab indent", "0.3.5 — примеры, на которых можно учиться, отступ Tab");
+        add("studio.p1", "0.3.6 — HUD updates when a variable changes", "0.3.6 — HUD обновляется вместе с переменной");
         add("studio.links", "Links", "Ссылки");
         add("studio.link.github", "GitHub", "GitHub");
         add("studio.link.docs", "Documentation", "Документация");
@@ -165,10 +165,10 @@ public final class Messages {
         add("studio.ask.no", "No", "Нет");
         add("studio.deleted", "Deleted %s", "Удалено %s");
         add("studio.delete_failed", "&cCould not delete: %s", "&cНе удалось удалить: %s");
-        add("studio.p2", "0.3.4 — command arguments, aliases, script", "0.3.4 — аргументы команд, псевдонимы, script");
-        add("studio.p3", "0.3.3 — the player's own skin in the studio", "0.3.3 — в студии скин самого игрока");
-        add("studio.p4", "0.3.1 — transparent textures, 3D blocks, facing", "0.3.1 — прозрачные текстуры, 3D-блоки, поворот");
-        add("studio.p5", "0.3.0 — studio window, tabs and the editor", "0.3.0 — окно студии, вкладки и блокнот");
+        add("studio.p2", "0.3.5 — example scripts to learn from, Tab indent", "0.3.5 — примеры, на которых можно учиться, отступ Tab");
+        add("studio.p3", "0.3.4 — command arguments, aliases, script", "0.3.4 — аргументы команд, псевдонимы, script");
+        add("studio.p4", "0.3.3 — the player's own skin in the studio", "0.3.3 — в студии скин самого игрока");
+        add("studio.p5", "0.3.1 — transparent textures, 3D blocks, facing", "0.3.1 — прозрачные текстуры, 3D-блоки, поворот");
         add("studio.dev", "Developer", "Разработчик");
         add("studio.role", "author of the mod", "автор мода");
         add("studio.hint", "Open a script with + or File. On a server these are the server's scripts; in singleplayer, the local ones.", "Откройте скрипт кнопкой + или меню «Файл». На сервере это его скрипты, в одиночной игре — локальные.");

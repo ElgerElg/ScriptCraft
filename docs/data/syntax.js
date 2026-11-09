@@ -15,7 +15,7 @@
  */
 window.SC_DOCS = window.SC_DOCS || {};
 window.SC_DOCS.syntax = {
-  version: "0.3.5",
+  version: "0.3.6",
   categories: [
     { id: "events",     ru: "События",            en: "Events" },
     { id: "structures", ru: "Структуры",          en: "Structures" },
@@ -1223,8 +1223,8 @@ slot example:ruby 4 at 60, -15`,
     name: { ru: "Создать HUD", en: "Create HUD" },
     syntax: ["create hud \"<группа>\":", "create hud \"<группа>\" for <цель>:"],
     desc: {
-      ru: "Рисует поверх экрана игры группу элементов, перечисленных с отступом ниже: `text`, `image`, `slot`, `bar`, `hotbar` (кнопок нет — HUD не принимает клики). Имя группы — латиница. Повторный `create hud` с тем же именем заменяет группу целиком (если ничего не изменилось — пакет не отправляется). HUD хранится на сервере: после перезахода игрок получает его снова; `/sc reload` его не трогает, при остановке сервера он очищается. Группа запоминает создавший её скрипт: `/sc disable` этого скрипта убирает её у всех. Чтобы HUD появлялся сразу после `/sc enable`, создавайте его в `on join or load:`. До 128 элементов на игрока.",
-      en: "Draws a group of elements over the game screen, listed indented below: `text`, `image`, `slot`, `bar`, `hotbar` (no buttons — the HUD takes no clicks). The group name is Latin. Running `create hud` again with the same name replaces the whole group (nothing is sent if nothing changed). The HUD is kept on the server: players get it back after re-joining; `/sc reload` does not touch it, it is cleared when the server stops. A group remembers the script that created it: `/sc disable` of that script removes it for everyone. To show the HUD right after `/sc enable`, create it in `on join or load:`. Up to 128 elements per player."
+      ru: "Рисует поверх экрана игры группу элементов, перечисленных с отступом ниже: `text`, `image`, `slot`, `bar`, `hotbar` (кнопок нет — HUD не принимает клики). Имя группы — латиница. Повторный `create hud` с тем же именем заменяет группу целиком (если ничего не изменилось — пакет не отправляется). Если в тексте, `value` или `max` есть `{переменная}`, HUD обновляет её сам в момент записи: пакет уходит только этому игроку и только если строка изменилась. HUD хранится на сервере: после перезахода игрок получает его снова; `/sc reload` его не трогает, при остановке сервера он очищается. Группа запоминает создавший её скрипт: `/sc disable` этого скрипта убирает её у всех. Чтобы HUD появлялся сразу после `/sc enable`, создавайте его в `on join or load:`. До 128 элементов на игрока.",
+      en: "Draws a group of elements over the game screen, listed indented below: `text`, `image`, `slot`, `bar`, `hotbar` (no buttons — the HUD takes no clicks). The group name is Latin. Running `create hud` again with the same name replaces the whole group (nothing is sent if nothing changed). If a text, `value` or `max` contains a `{variable}`, the HUD updates it when that variable is written: a packet goes only to that player, and only if the text changed. The HUD is kept on the server: players get it back after re-joining; `/sc reload` does not touch it, it is cleared when the server stops. A group remembers the script that created it: `/sc disable` of that script removes it for everyone. To show the HUD right after `/sc enable`, create it in `on join or load:`. Up to 128 elements per player."
     },
     example: `on join or load:
 	create hud "stats" for player:
@@ -1256,8 +1256,8 @@ bar "air" value air direction bottom_to_top size 6x40 anchor right at -8, 0 colo
       "%health% %food% ... | %value% %max% %percent%"
     ],
     desc: {
-      ru: "Если `value`/`max` полосы — имя источника, клиент сам берёт значение у игрока каждый кадр: полоса HP всегда актуальна без пакетов и без событий. `xp` — прогресс уровня от 0 до 1. Те же имена работают как плейсхолдеры `%health%` в любом тексте HUD и экранов. Внутри `text` полосы ещё есть `%value%`, `%max%`, `%percent%`. `%player%` и `{переменные}` подставляет сервер в момент `create hud` / `set text`.",
-      en: "If a bar's `value`/`max` is a source name, the client reads it from the player every frame: the HP bar is always current with no packets or events. `xp` is the level progress from 0 to 1. The same names work as `%health%`-style placeholders in any HUD or screen text. Inside a bar's `text` there are also `%value%`, `%max%`, `%percent%`. `%player%` and `{variables}` are filled in by the server at `create hud` / `set text` time."
+      ru: "Если `value`/`max` полосы — имя источника, клиент сам берёт значение у игрока каждый кадр: полоса HP всегда актуальна без пакетов и без событий. `xp` — прогресс уровня от 0 до 1. Те же имена работают как плейсхолдеры `%health%` в любом тексте HUD и экранов. Внутри `text` полосы ещё есть `%value%`, `%max%`, `%percent%`. `{переменная}` в `value`, `max` или тексте обновляется сервером в момент записи: один пакет этому игроку, и только если число или текст изменились. Открытый `open screen` так не обновляется — это снимок на момент открытия.",
+      en: "If a bar's `value`/`max` is a source name, the client reads it from the player every frame: the HP bar is always current with no packets or events. `xp` is the level progress from 0 to 1. The same names work as `%health%`-style placeholders in any HUD or screen text. Inside a bar's `text` there are also `%value%`, `%max%`, `%percent%`. A `{variable}` in `value`, `max` or text is refreshed by the server when it is written: one packet to that player, and only if the number or text changed. An open `open screen` is not refreshed — it is a snapshot from when it opened."
     },
     example: `bar "food" value food direction right_to_left text "%percent%%"
 text "❤ %health%/%max_health%  🛡 %armor%" anchor top_left at 4, 4`,
@@ -1326,8 +1326,8 @@ set value of bar "coins_goal" for player to {coins::%player%}`,
     name: { ru: "Текст элемента HUD", en: "HUD element text" },
     syntax: ["set text of hud \"<имя>\" [for <цель>] to \"<текст>\""],
     desc: {
-      ru: "Меняет текст у `text`, `slot text` или надпись на полосе `bar`. `%player%` и `{переменные}` подставляются один раз — для игрока из контекста скрипта (того, кто вызвал команду/событие).",
-      en: "Changes the text of a `text`, a `slot text` or the label on a `bar`. `%player%` and `{variables}` are filled in once — for the script's context player (whoever triggered the command/event)."
+      ru: "Меняет текст у `text`, `slot text` или надпись на полосе `bar`. `%player%` подставляется для игрока из контекста. Если в тексте есть `{переменная}`, элемент и дальше следит за ней. Текст без переменных эту связь снимает.",
+      en: "Changes the text of a `text`, a `slot text` or the label on a `bar`. `%player%` is filled in for the context player. If the text contains a `{variable}`, the element keeps following it. Text without a variable drops that link."
     },
     example: `set text of hud "coins_text" for player to "{coins::%player%}"`,
     since: "0.1.33", related: ["hud-set-bar", "hud-layer"]
