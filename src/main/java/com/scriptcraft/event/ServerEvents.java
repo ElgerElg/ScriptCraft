@@ -57,7 +57,7 @@ public final class ServerEvents {
     /** Регистрация команд. Forge вызывает это при старте сервера и при ванильном /reload. */
     @SubscribeEvent
     public static void onRegisterCommands(RegisterCommandsEvent event) {
-        ScriptCommands.registerAll(event.getDispatcher());
+        ScriptCommands.registerAll(event.getDispatcher(), event.getBuildContext());
     }
 
     /** "on join:" */

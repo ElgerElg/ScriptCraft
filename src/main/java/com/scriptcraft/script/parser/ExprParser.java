@@ -84,6 +84,10 @@ final class ExprParser {
         if (prop != null) {
             return prop;
         }
+        Parsed arg = tryArgument(t, i);
+        if (arg != null) {
+            return arg;
+        }
         if (w.isEmpty() || STOP.contains(w)) {
             throw new ParseException("ожидается значение, а не '" + (i < t.size() ? t.get(i).value() : "") + "'");
         }
@@ -109,6 +113,18 @@ final class ExprParser {
                 ? new Expression.RandomInt(a.expression(), b.expression())
                 : new Expression.RandomNum(a.expression(), b.expression());
         return new Parsed(value, b.end());
+    }
+
+    /** arg 1, argument 2, offline player-argument. Одно слово (arg-1, script) разбирает ScriptParser.expression. */
+    private static Parsed tryArgument(List<Token> t, int i) {
+        String w = word(t, i);
+        if ((w.equals("arg") || w.equals("argument")) && word(t, i + 1).matches("[1-9]\\d*")) {
+            return new Parsed(new Expression.Arg(Integer.parseInt(word(t, i + 1)), null), i + 2);
+        }
+        if (w.equals("offline") && word(t, i + 1).equals("player-argument")) {
+            return new Parsed(new Expression.Arg(0, com.scriptcraft.script.runtime.ArgType.OFFLINE), i + 2);
+        }
+        return null;
     }
 
     private static Parsed tryProperty(List<Token> t, int i) throws ParseException {

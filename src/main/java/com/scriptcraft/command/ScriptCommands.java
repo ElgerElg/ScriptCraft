@@ -1,9 +1,13 @@
 package com.scriptcraft.command;
 
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.BoolArgumentType;
+import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.builder.ArgumentBuilder;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import com.scriptcraft.ScriptCraft;
 import com.scriptcraft.config.ScriptCraftConfig;
@@ -14,22 +18,32 @@ import com.scriptcraft.resources.ResourceIndex;
 import com.scriptcraft.resources.ResourceSync;
 import com.scriptcraft.script.ScriptLoader;
 import com.scriptcraft.script.ScriptPaths;
+import com.scriptcraft.script.parser.ArgSpec;
+import com.scriptcraft.script.parser.CommandDefinition;
+import com.scriptcraft.script.runtime.ArgType;
 import com.scriptcraft.script.runtime.ItemResolver;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
+import net.minecraft.commands.arguments.DimensionArgument;
 import net.minecraft.commands.arguments.EntityArgument;
+import net.minecraft.commands.arguments.GameProfileArgument;
 import net.minecraft.commands.arguments.ResourceLocationArgument;
+import net.minecraft.commands.arguments.item.ItemArgument;
+import net.minecraft.commands.arguments.item.ItemInput;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.Item;
+import org.jetbrains.annotations.Nullable;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.network.chat.Component;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
@@ -51,6 +65,8 @@ public final class ScriptCommands {
 
     /** Имена, которые зарегистрировали мы (чтобы не путать со своими при повторной регистрации). */
     private static final Set<String> REGISTERED = new HashSet<>();
+    /** Нужен ItemArgument: без него тип item в команде скрипта не собрать. */
+    private static net.minecraft.commands.CommandBuildContext BUILD;
 
     /** Подсказки: включённые скрипты (для reload и disable). */
     private static final SuggestionProvider<CommandSourceStack> ENABLED_SCRIPTS = (ctx, builder) ->
@@ -86,7 +102,9 @@ public final class ScriptCommands {
     }
 
     /** Вызывается из RegisterCommandsEvent — каждый раз с НОВЫМ диспетчером. */
-    public static void registerAll(CommandDispatcher<CommandSourceStack> dispatcher) {
+    public static void registerAll(CommandDispatcher<CommandSourceStack> dispatcher,
+                                   net.minecraft.commands.CommandBuildContext build) {
+        BUILD = build;
         REGISTERED.clear();
         for (String root : ROOTS) {
             if (root.equals("script") && dispatcher.getRoot().getChild(root) != null) {
@@ -237,18 +255,114 @@ public final class ScriptCommands {
                 ScriptCraft.LOGGER.warn("[ScriptCraft] Команда /{} уже существует (ваниль или другой мод) — пропущена", name);
                 continue;
             }
-            dispatcher.register(Commands.literal(name)
-                    // Права читаются при каждой проверке, поэтому смена "permission N" работает после reload.
-                    .requires(src -> {
-                        int level = ScriptLoader.getProgram().commandPermission(name);
-                        return level <= 0 || src.hasPermission(level);
-                    })
-                    .executes(ctx -> ScriptLoader.runCommand(name, ctx.getSource(), ""))
-                    // Всё после имени команды доступно в скрипте как %args%.
-                    .then(Commands.argument("args", StringArgumentType.greedyString())
-                            .executes(ctx -> ScriptLoader.runCommand(name, ctx.getSource(),
-                                    StringArgumentType.getString(ctx, "args")))));
+            CommandDefinition def = ScriptLoader.getProgram().command(name);
+            LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal(name)
+                    .requires(src -> ScriptLoader.commandAllowed(name, src));
+            if (def == null || def.arguments().isEmpty()) {
+                root.executes(ctx -> ScriptLoader.runCommand(name, ctx.getSource(), "", List.of(), List.of()));
+                root.then(Commands.argument("args", StringArgumentType.greedyString())
+                        .executes(ctx -> ScriptLoader.runCommand(name, ctx.getSource(),
+                                StringArgumentType.getString(ctx, "args"), List.of(), List.of())));
+            } else {
+                attachArguments(root, name, def.arguments(), 0);
+            }
+            dispatcher.register(root);
             REGISTERED.add(name);
         }
+    }
+
+    /** Обязательный аргумент только в цепочке. Необязательный можно пропустить: команда выполняется и до него. */
+    private static void attachArguments(ArgumentBuilder<CommandSourceStack, ?> parent, String name,
+                                        List<ArgSpec> specs, int index) {
+        if (index >= specs.size()) {
+            parent.executes(ctx -> invoke(name, ctx, specs));
+            return;
+        }
+        if (specs.get(index).optional()) {
+            parent.executes(ctx -> invoke(name, ctx, specs));
+        }
+        boolean last = index == specs.size() - 1;
+        var next = Commands.argument("a" + index, argumentType(specs.get(index).type(), last));
+        attachArguments(next, name, specs, index + 1);
+        parent.then(next);
+    }
+
+    private static int invoke(String name, CommandContext<CommandSourceStack> ctx, List<ArgSpec> specs) {
+        List<ArgType> types = new ArrayList<>();
+        List<Object> values = new ArrayList<>();
+        for (int i = 0; i < specs.size(); i++) {
+            types.add(specs.get(i).type());
+            values.add(readArgument(ctx, specs.get(i).type(), "a" + i));
+        }
+        return ScriptLoader.runCommand(name, ctx.getSource(), null, types, values);
+    }
+
+    private static com.mojang.brigadier.arguments.ArgumentType<?> argumentType(ArgType type, boolean last) {
+        return switch (type) {
+            case TEXT -> last ? StringArgumentType.greedyString() : StringArgumentType.string();
+            case DATE -> StringArgumentType.string();
+            case PLAYER -> EntityArgument.player();
+            case OFFLINE -> GameProfileArgument.gameProfile();
+            case INTEGER -> IntegerArgumentType.integer();
+            case NUMBER -> DoubleArgumentType.doubleArg();
+            case BOOLEAN -> BoolArgumentType.bool();
+            case WORLD -> DimensionArgument.dimension();
+            case ITEM -> ItemArgument.item(BUILD);
+        };
+    }
+
+    @Nullable
+    private static Object readArgument(CommandContext<CommandSourceStack> ctx, ArgType type, String id) {
+        try {
+            ctx.getArgument(id, Object.class);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+        try {
+            return readPresent(ctx, type, id);
+        } catch (com.mojang.brigadier.exceptions.CommandSyntaxException e) {
+            return null;
+        }
+    }
+
+    private static Object readPresent(CommandContext<CommandSourceStack> ctx, ArgType type, String id)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        return switch (type) {
+            case TEXT -> StringArgumentType.getString(ctx, id);
+            case DATE -> dateText(StringArgumentType.getString(ctx, id));
+            case PLAYER -> EntityArgument.getPlayer(ctx, id).getGameProfile().getName();
+            case OFFLINE -> {
+                Collection<com.mojang.authlib.GameProfile> profiles = GameProfileArgument.getGameProfiles(ctx, id);
+                yield profiles.isEmpty() ? "" : profiles.iterator().next().getName();
+            }
+            case INTEGER -> (double) IntegerArgumentType.getInteger(ctx, id);
+            case NUMBER -> DoubleArgumentType.getDouble(ctx, id);
+            case BOOLEAN -> BoolArgumentType.getBool(ctx, id);
+            case WORLD -> DimensionArgument.getDimension(ctx, id).dimension().location().toString();
+            case ITEM -> {
+                ItemInput input = ItemArgument.getItem(ctx, id);
+                var key = net.minecraftforge.registries.ForgeRegistries.ITEMS.getKey(input.getItem());
+                yield key == null ? "minecraft:air" : key.toString();
+            }
+        };
+    }
+
+    /** today, tomorrow, yesterday и ГГГГ-ММ-ДД. Незнакомое слово остаётся как есть. */
+    private static String dateText(String raw) {
+        String s = raw.strip().toLowerCase(Locale.ROOT);
+        LocalDate today = LocalDate.now();
+        LocalDate date = switch (s) {
+            case "today", "now" -> today;
+            case "tomorrow" -> today.plusDays(1);
+            case "yesterday" -> today.minusDays(1);
+            default -> {
+                try {
+                    yield LocalDate.parse(s);
+                } catch (RuntimeException e) {
+                    yield null;
+                }
+            }
+        };
+        return date == null ? raw : date.toString();
     }
 }

@@ -15,7 +15,7 @@
  */
 window.SC_DOCS = window.SC_DOCS || {};
 window.SC_DOCS.syntax = {
-  version: "0.3.3",
+  version: "0.3.4",
   categories: [
     { id: "events",     ru: "События",            en: "Events" },
     { id: "structures", ru: "Структуры",          en: "Structures" },
@@ -188,17 +188,18 @@ on gamemode change:
   {
     id: "struct-command", category: "structures",
     name: { ru: "Своя команда", en: "Custom command" },
-    syntax: ["command /<имя>:", "command /<имя> permission <0-4>:"],
+    syntax: ["command /<имя>:", "command /<имя> <тип> [тип]:", "permission: <0-4>", "aliases: <имя>, <имя>", "arguments: <тип>, [тип]", "executable by: players | console | players and console"],
     desc: {
-      ru: "Объявляет команду. Имя: `a-z 0-9 _` до 32 символов. `permission N` — нужный уровень оператора (0–4, по умолчанию 0 — все). Всё, что написано после команды, доступно как `%args%`. Имена `scriptcraft`, `sc`, `script` заняты модом; если команда уже есть в ванилле или другом моде, она пропускается.",
-      en: "Declares a command. Name: `a-z 0-9 _`, up to 32 chars. `permission N` is the required operator level (0–4, default 0 = everyone). Everything after the command is available as `%args%`. Names `scriptcraft`, `sc`, `script` are reserved; a command that already exists in vanilla or another mod is skipped."
+      ru: "Объявляет команду. Имя: a-z 0-9 _ до 32 символов. Права, псевдонимы и кто вызывает команду пишутся под ней с отступом. permission: N — уровень оператора 0–4 (по умолчанию 0, все). aliases: — короткие имена той же команды. executable by: — players, console или players and console. Аргументы в заголовке: <тип> обязательный, [тип] можно не писать. Либо строка arguments: player, [integer]. Типы: text, player, offline player, integer, number, boolean, date, world, item. Без списка аргументов хвост строки — %args%. С аргументами: %arg-1%, arg-1, argument 1, player-argument (первый такого типа). script и %script% — имя файла без .sc. Старая запись command /kit permission 2: всё ещё работает. Имена scriptcraft, sc, script заняты модом. Форма аргументов у уже зарегистрированной команды применяется после перезапуска сервера.",
+      en: "Declares a command. Name: a-z 0-9 _, up to 32 chars. Permission, aliases and who may run it are indented under the command. permission: N is operator level 0–4 (default 0, everyone). aliases: are short names of the same command. executable by: is players, console or players and console. Arguments in the header: <type> required, [type] optional. Or a line arguments: player, [integer]. Types: text, player, offline player, integer, number, boolean, date, world, item. With no argument list the rest of the line is %args%. With arguments: %arg-1%, arg-1, argument 1, player-argument (the first of that type). script and %script% are the file name without .sc. The old command /kit permission 2: still works. Names scriptcraft, sc, script are reserved. The argument shape of a command that is already registered applies after a server restart."
     },
     example: `command /hello:
-    send "&bПривет, %player%! Ты написал: %args%" to player
+    send "&bПривет из %script%, %player%! Ты написал: %args%" to player
 
-command /kit permission 2:
-    give player diamond 3
-    heal player`,
+command /heal <player> [integer]:
+    permission: 2
+    aliases: h, healme
+    heal arg-1 by arg-2`,
     since: "0.1.0", related: ["ph-args", "cmd-reload"]
   },
   {
@@ -1032,6 +1033,34 @@ if {roll} is 6:
 set {bonus} to random integer between 1 and 4
 give {bonus} levels to player`,
     since: "0.2.0", related: ["expr-property", "struct-chance", "eff-xp"]
+  },
+  {
+    id: "expr-script", category: "expressions",
+    name: { ru: "Имя скрипта", en: "Script name" },
+    syntax: ["script", "%script%"],
+    desc: {
+      ru: "Имя файла, чей код сейчас выполняется, без пути и без .sc. Пустая строка у эффект-команды в чате. Работает в тексте, в set и в условии.",
+      en: "The file whose code is running, without the path and without .sc. Empty for a chat effect command. Works in text, in set and in a condition."
+    },
+    example: `send "&7Это скрипт %script%" to player
+set {from} to script`,
+    since: "0.3.4", related: ["struct-command", "expr-argument"]
+  },
+  {
+    id: "expr-argument", category: "expressions",
+    name: { ru: "Аргумент команды", en: "Command argument" },
+    syntax: ["arg-1", "argument 1", "%arg-1%", "player-argument", "text-argument", "integer-argument", "number-argument", "boolean-argument", "date-argument", "world-argument", "item-argument", "offline player-argument"],
+    desc: {
+      ru: "Значение аргумента текущей команды. arg-1 — первый, argument 2 — второй. player-argument и остальные — первый аргумент этого типа. Число остаётся числом, true/false — логическим значением, игрок — его именем (heal arg-1 лечит этого игрока). date понимает today, tomorrow, yesterday и ГГГГ-ММ-ДД. Нет аргумента — <none>.",
+      en: "A value of the current command. arg-1 is the first, argument 2 is the second. player-argument and the other type forms are the first argument of that type. A number stays a number, true/false stays a boolean, a player is their name (heal arg-1 heals that player). date accepts today, tomorrow, yesterday and YYYY-MM-DD. A missing argument is <none>."
+    },
+    example: `command /pay <player> <integer> [text]:
+    permission: 0
+    aliases: payme
+    remove arg-2 from {coins::%player%}
+    add arg-2 to {coins::arg-1}
+    send "&a%arg-3%" to arg-1`,
+    since: "0.3.4", related: ["struct-command", "expr-script", "ph-args"]
   },
   {
     id: "ph-event", category: "expressions",

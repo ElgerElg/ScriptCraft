@@ -290,10 +290,31 @@ id без своего blockstate генерируются варианты `fac
 ### Команды
 
 ```
-command /hello:                  # для всех
-command /kit permission 2:       # только операторы (0–4)
+command /hello:                  # для всех; хвост строки — %args%
+    send "Привет из %script%" to player
+
+command /heal <player> [integer]:
+    permission: 2
+    aliases: h, healme
+    executable by: players and console
+    heal arg-1 by arg-2
 ```
-Всё, что игрок написал после команды, доступно как `%args%`.
+Права, псевдонимы и кто может вызывать команду пишутся **под** ней, с отступом.
+`permission: 0–4` (0 — все). `aliases: h, /healme` — короткие имена той же команды.
+`executable by: players`, `console` или `players and console` (по умолчанию и те, и другие).
+Старая запись `command /kit permission 2:` по-прежнему работает.
+
+Аргументы — в заголовке (`<тип>` обязательный, `[тип]` можно не писать) или строкой
+`arguments: player, [integer]`. Типы: `text`, `player`, `offline player`, `integer`, `number`,
+`boolean`, `date`, `world`, `item`. Необязательный не ставится перед обязательным.
+`text` в конце забирает всю оставшуюся строку. `date` — одно слово: `today`, `tomorrow`,
+`yesterday` или `2026-11-09`.
+
+Внутри команды: `%arg-1%` (и `arg-1`, `argument 1`), `%args%` — все аргументы через пробел,
+`player-argument` — первый аргумент этого типа, `script` и `%script%` — имя файла без `.sc`.
+Если список аргументов не задан, всё после команды по-прежнему одно `%args%`.
+Форма аргументов запоминается при запуске сервера: смена списка у уже существующей команды
+начинает работать после перезапуска (сами действия и `permission` — сразу после `/sc reload`).
 
 ### Действия (белый список)
 
@@ -312,7 +333,7 @@ command /kit permission 2:       # только операторы (0–4)
 | удалить переменную | `delete {coins::%player%}` (или `clear {...}`) |
 | условие | `if {coins::%player%} >= 10:` + действия с отступом, затем `else:` (необязательно) |
 
-Плейсхолдеры: `%player%`, `%uuid%`, `%online%`, `%args%`, `%targeted%` (имя игрока, на которого смотрит `player`,
+Плейсхолдеры: `%player%`, `%uuid%`, `%online%`, `%script%`, `%args%`, `%arg-1%`, `%targeted%` (имя игрока, на которого смотрит `player`,
 или `<none>`), `%loop-player%` (текущий игрок цикла). Цвета: `&a`, `&e`, `&l` и т.д. (как в Bukkit).
 Если у предмета не указан мод (`diamond`), мод сначала ищет `minecraft:diamond`, потом `scriptcraft:diamond`,
 потом тот же путь в других namespace из скриптов (`example:diamond`). Надёжнее писать полный id: `give player example:ruby 1`.

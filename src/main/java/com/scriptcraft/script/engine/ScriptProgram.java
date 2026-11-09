@@ -1,7 +1,9 @@
 package com.scriptcraft.script.engine;
 
 import com.scriptcraft.script.parser.BlockDefinition;
+import com.scriptcraft.script.parser.CommandDefinition;
 import com.scriptcraft.script.parser.ItemDefinition;
+import org.jetbrains.annotations.Nullable;
 import com.scriptcraft.script.runtime.ExecutionContext;
 import com.scriptcraft.script.runtime.ScriptEvent;
 
@@ -24,6 +26,10 @@ public interface ScriptProgram {
 
     /** Уровень прав для команды (0 — все игроки, 2 — операторы) или -1, если такой команды нет. */
     int commandPermission(String name);
+
+    /** Команда или её псевдоним. null — в текущих скриптах такой команды нет. */
+    @Nullable
+    CommandDefinition command(String name);
 
     /** Выполняет все обработчики события игрока (join/quit) с этим контекстом. */
     void fireEvent(ScriptEvent event, ExecutionContext ctx);

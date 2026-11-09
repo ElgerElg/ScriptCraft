@@ -2,6 +2,7 @@ package com.scriptcraft.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
+import com.scriptcraft.ModPaths;
 import com.scriptcraft.lang.Messages;
 import com.scriptcraft.network.ModNetwork;
 import com.scriptcraft.network.ScriptDataPacket;
@@ -10,6 +11,7 @@ import com.scriptcraft.network.ScriptReloadPacket;
 import com.scriptcraft.network.LogRequestPacket;
 import com.scriptcraft.network.ScriptListPacket;
 import com.scriptcraft.script.ScriptLog;
+import net.minecraft.Util;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -17,6 +19,7 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import org.lwjgl.glfw.GLFW;
 
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -65,6 +68,8 @@ public class StudioScreen extends Screen {
     private String ask;
     private String askName;
     private int askYesX, askNoX, askY;
+    /** Ссылки главной, собранные в последнем кадре. */
+    private final List<HomeLink> homeLinks = new ArrayList<>();
     private TexturePreview.Image preview;
     private int previewX, previewY;
 
@@ -94,7 +99,7 @@ public class StudioScreen extends Screen {
         if (settings) {
             renderSettings(g, mouseX, mouseY);
         } else if (StudioSession.HOME.equals(StudioSession.active)) {
-            renderHome(g);
+            renderHome(g, mouseX, mouseY);
         } else if (StudioSession.JOURNAL.equals(StudioSession.active)) {
             renderJournal(g, mouseX, mouseY);
         } else if (script() != null) {
@@ -322,19 +327,21 @@ public class StudioScreen extends Screen {
         }
     }
 
-    private void renderHome(GuiGraphics g) {
+    private void renderHome(GuiGraphics g, int mx, int my) {
+        homeLinks.clear();
         int y = contentY();
-        int left = px + 16;
-        int patchTop = py + ph - 70;
-        g.drawString(this.font, Messages.get("studio.patches"), left, patchTop, GOLD, false);
-        g.drawString(this.font, Messages.get("studio.p1"), left, patchTop + 14, TEXT, false);
-        g.drawString(this.font, Messages.get("studio.p2"), left, patchTop + 26, TEXT, false);
-        g.drawString(this.font, Messages.get("studio.p3"), left, patchTop + 38, TEXT, false);
-        g.drawString(this.font, Messages.get("studio.p4"), left, patchTop + 50, TEXT, false);
-        int bottom = patchTop - 4;
-        int center = px + pw / 2;
-        int titleY = y + 4;
-        float titleScale = ph > 420 ? 3f : 2.2f;
+        int h = contentH();
+        int col = Math.max(128, Math.min(210, pw / 4));
+        int leftX = px + 8;
+        int rightX = px + pw - 8 - col;
+        g.fill(leftX, y, leftX + col, y + h, 0xF0181E28);
+        g.fill(rightX, y, rightX + col, y + h, 0xF0181E28);
+        drawPatchColumn(g, leftX + 8, y + 8, col - 16, h - 16);
+        drawLinkColumn(g, mx, my, rightX + 8, y + 8, col - 16, h - 16);
+        int center = (leftX + col + rightX) / 2;
+        int centerW = rightX - (leftX + col);
+        int titleY = y + 6;
+        float titleScale = centerW > 260 ? 2.6f : 1.8f;
         g.pose().pushPose();
         g.pose().translate(center, titleY, 0);
         g.pose().scale(titleScale, titleScale, 1f);
@@ -343,17 +350,87 @@ public class StudioScreen extends Screen {
         g.pose().popPose();
         String[] tags = {"studio.tag.1", "studio.tag.2", "studio.tag.3", "studio.tag.4", "studio.tag.5"};
         String tag = Messages.get(tags[(int) ((System.currentTimeMillis() / 4200L) % tags.length)]);
-        int tagY = titleY + Math.round(12 * titleScale) + 6;
+        int tagY = titleY + Math.round(11 * titleScale) + 8;
         g.drawString(this.font, tag, center - this.font.width(tag) / 2, tagY, TEXT, false);
-        int modelTop = tagY + 16;
-        int room = bottom - modelTop - 26;
-        float scale = Math.max(48f, Math.min(160f, room / 2.05f));
+        int caption = 28;
+        int modelTop = tagY + 14;
+        int room = y + h - modelTop - caption - 4;
+        // Рост модели — два блока, поэтому делитель 2. Центр теперь на всю высоту окна
+        // (патчи ушли в колонку), и фигура выходит примерно вдвое крупнее прежней.
+        float scale = Math.max(36f, Math.min(room / 2.05f, (centerW - 12) / 1.05f));
         SkinPortrait.render(g, center, modelTop, scale);
         String dev = "ElgerElg";
-        int foot = modelTop + Math.round(scale * 2.0f);
+        int foot = modelTop + Math.round(scale * 2.0f) + 4;
         g.drawString(this.font, dev, center - this.font.width(dev) / 2, foot, GOLD, false);
         String role = Messages.get("studio.role");
         g.drawString(this.font, role, center - this.font.width(role) / 2, foot + 12, MUTED, false);
+    }
+
+    /** Патчи сверху вниз на всю высоту левой колонки, а не одной кучкой. */
+    private void drawPatchColumn(GuiGraphics g, int x, int y, int w, int h) {
+        g.drawString(this.font, Messages.get("studio.patches"), x, y, GOLD, false);
+        String[] keys = {"studio.p1", "studio.p2", "studio.p3", "studio.p4", "studio.p5"};
+        int top = y + 16;
+        int slot = Math.max(LINE_H, (h - 16) / keys.length);
+        for (int i = 0; i < keys.length; i++) {
+            int row = top + i * slot;
+            drawWrapped(g, Messages.get(keys[i]), x, row, w, TEXT, row + slot - 2);
+        }
+    }
+
+    private void drawLinkColumn(GuiGraphics g, int mx, int my, int x, int y, int w, int h) {
+        g.drawString(this.font, Messages.get("studio.links"), x, y, GOLD, false);
+        int row = y + 18;
+        row = linkRow(g, mx, my, x, row, w, Messages.get("studio.link.github"), "https://github.com/ElgerElg/ScriptCraft", false);
+        row = linkRow(g, mx, my, x, row, w, Messages.get("studio.link.docs"), "https://elgerelg.github.io/ScriptCraft/", false);
+        row = linkRow(g, mx, my, x, row, w, Messages.get("studio.link.examples"),
+                "https://github.com/ElgerElg/ScriptCraft/tree/main/examples", false);
+        row += 6;
+        g.drawString(this.font, Messages.get("studio.about"), x, row, GOLD, false);
+        row += 16;
+        String version = modVersion();
+        row = drawWrapped(g, version, x, row, w, TEXT, y + h);
+        row += 4;
+        linkRow(g, mx, my, x, row, w, Messages.get("studio.link.folder"), ModPaths.scripts().toString(), true);
+    }
+
+    private int linkRow(GuiGraphics g, int mx, int my, int x, int y, int w, String label, String target, boolean file) {
+        boolean hot = hover(mx, my, x, y - 1, w, 12);
+        g.drawString(this.font, trim(label, w), x, y, hot ? GOLD : 0xFF8FB4E8, false);
+        homeLinks.add(new HomeLink(x, y - 1, w, 12, target, file));
+        return y + 14;
+    }
+
+    private int drawWrapped(GuiGraphics g, String text, int x, int y, int width, int color, int maxY) {
+        for (var line : this.font.split(Component.literal(text), Math.max(40, width))) {
+            if (y > maxY) {
+                break;
+            }
+            g.drawString(this.font, line, x, y, color, false);
+            y += LINE_H;
+        }
+        return y;
+    }
+
+    private static String modVersion() {
+        return net.minecraftforge.fml.ModList.get().getModContainerById("scriptcraft")
+                .map(c -> c.getModInfo().getVersion().toString())
+                .orElse("ScriptCraft");
+    }
+
+    private void openHomeLink(HomeLink link) {
+        try {
+            if (link.file) {
+                Util.getPlatform().openFile(java.nio.file.Path.of(link.target).toFile());
+            } else {
+                Util.getPlatform().openUri(URI.create(link.target));
+            }
+        } catch (Exception e) {
+            ClientToasts.push(e.getMessage() == null ? "link" : e.getMessage());
+        }
+    }
+
+    private record HomeLink(int x, int y, int w, int h, String target, boolean file) {
     }
 
     private void renderJournal(GuiGraphics g, int mx, int my) {
@@ -640,10 +717,18 @@ public class StudioScreen extends Screen {
         if (ask != null) {
             if (hover(mx, my, askYesX, askY, 48, 16)) {
                 confirmAsk();
-            } else if (hover(mx, my, askNoX, askY, 48, 16)) {
+            } else             if (hover(mx, my, askNoX, askY, 48, 16)) {
                 ask = null;
             }
             return true;
+        }
+        if (StudioSession.HOME.equals(StudioSession.active) && !settings) {
+            for (HomeLink link : homeLinks) {
+                if (hover(mx, my, link.x, link.y, link.w, link.h)) {
+                    openHomeLink(link);
+                    return true;
+                }
+            }
         }
         Drag edge = edgeAt(mx, my);
         if (edge != Drag.NONE) {

@@ -32,7 +32,9 @@ define item ruby:
 # define item example:ruby_shard:
 #     name: "Осколок рубина"
 
-command /ruby permission 2:
+command /ruby:
+    permission: 2
+    aliases: gems
     give player example:ruby_block 1
     give player example:ruby 8
-    send "&cДержи рубины!" to player
+    send "&cДержи рубины! Скрипт: %script%" to player

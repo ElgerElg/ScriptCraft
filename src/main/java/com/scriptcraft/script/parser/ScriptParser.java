@@ -67,7 +67,9 @@ public final class ScriptParser {
     private static final Pattern NAMESPACE = Pattern.compile("[a-z0-9_.-]{1,64}");
     /** Пространства имён, которые скрипты занимать не могут. */
     private static final java.util.Set<String> RESERVED_NAMESPACES = java.util.Set.of("minecraft", "forge", "neoforge", "c");
-    private static final Pattern COMMAND_HEADER = Pattern.compile("command\\s+/([a-z0-9_]{1,32})(?:\\s+permission\\s+([0-4]))?");
+    private static final Pattern COMMAND_HEADER = Pattern.compile("command\\s+/([a-z0-9_]{1,32})(.*)");
+    private static final Pattern COMMAND_ARG = Pattern.compile("<([^>]+)>|\\[([^\\]]+)]");
+    private static final Pattern LEGACY_PERMISSION = Pattern.compile("\\s*permission\\s+([0-4])\\s*");
     /** Корневые команды мода — скрипты не могут их перекрыть. */
     private static final java.util.Set<String> RESERVED_COMMANDS = java.util.Set.of("scriptcraft", "sc", "script");
     private static final Pattern NUMBER = Pattern.compile("-?\\d+(\\.\\d+)?");
@@ -233,17 +235,7 @@ public final class ScriptParser {
 
         Matcher cmd = COMMAND_HEADER.matcher(lower);
         if (cmd.matches()) {
-            String name = cmd.group(1);
-            int permission = cmd.group(2) != null ? Integer.parseInt(cmd.group(2)) : 0;
-            if (RESERVED_COMMANDS.contains(name)) {
-                error(headerLine, "имя /" + name + " зарезервировано модом (scriptcraft, sc, script)");
-                return;
-            }
-            if (commands.containsKey(name)) {
-                error(headerLine, "команда /" + name + " уже объявлена в другом месте");
-                return;
-            }
-            commands.put(name, new CommandDefinition(name, permission, parseActions(body), currentFile));
+            parseCommand(headerLine, cmd.group(1), cmd.group(2), body);
             return;
         }
 
@@ -377,6 +369,174 @@ public final class ScriptParser {
     }
 
     // ------------------------------------------------------------------ действия
+
+    private void parseCommand(Line headerLine, String name, String rest, List<Line> body) {
+        if (RESERVED_COMMANDS.contains(name)) {
+            error(headerLine, "имя /" + name + " зарезервировано модом (scriptcraft, sc, script)");
+            return;
+        }
+        if (commands.containsKey(name)) {
+            error(headerLine, "команда /" + name + " уже объявлена в другом месте");
+            return;
+        }
+        int permission = 0;
+        Matcher legacy = LEGACY_PERMISSION.matcher(rest);
+        if (legacy.find()) {
+            permission = Integer.parseInt(legacy.group(1));
+            rest = (rest.substring(0, legacy.start()) + " " + rest.substring(legacy.end())).strip();
+        }
+        List<ArgSpec> arguments = new ArrayList<>();
+        StringBuilder unknown = new StringBuilder();
+        Matcher args = COMMAND_ARG.matcher(rest);
+        int cursor = 0;
+        while (args.find()) {
+            unknown.append(rest, cursor, args.start());
+            boolean optional = args.group(2) != null;
+            String typeName = optional ? args.group(2) : args.group(1);
+            com.scriptcraft.script.runtime.ArgType type = com.scriptcraft.script.runtime.ArgType.parse(typeName);
+            if (type == null) {
+                error(headerLine, "неизвестный тип аргумента '" + typeName.strip()
+                        + "' (text, player, offline player, integer, number, boolean, date, world, item)");
+            } else if (!arguments.isEmpty() && arguments.get(arguments.size() - 1).optional() && !optional) {
+                error(headerLine, "обязательный аргумент не может стоять после необязательного");
+            } else {
+                arguments.add(new ArgSpec(type, optional));
+            }
+            cursor = args.end();
+        }
+        unknown.append(rest.substring(cursor));
+        if (!unknown.toString().strip().isEmpty()) {
+            error(headerLine, "после имени команды ожидаются аргументы <тип> или [тип], а не '" + unknown.toString().strip() + "'");
+        }
+        List<String> aliases = new ArrayList<>();
+        boolean players = true;
+        boolean console = true;
+        List<Line> actions = new ArrayList<>();
+        int base = body.isEmpty() ? 0 : body.stream().mapToInt(Line::indent).min().orElse(0);
+        for (Line line : body) {
+            if (line.indent() == base && commandProperty(line.text())) {
+                applyCommandProperty(line, name, aliases, arguments);
+                if (line.text().toLowerCase(Locale.ROOT).startsWith("permission")) {
+                    Integer level = permissionValue(line);
+                    if (level != null) {
+                        permission = level;
+                    }
+                }
+                if (line.text().toLowerCase(Locale.ROOT).startsWith("executable")) {
+                    boolean[] who = executableBy(line);
+                    if (who != null) {
+                        players = who[0];
+                        console = who[1];
+                    }
+                }
+            } else {
+                actions.add(line);
+            }
+        }
+        CommandDefinition def = new CommandDefinition(name, permission, List.copyOf(aliases), List.copyOf(arguments),
+                players, console, parseActions(actions), currentFile);
+        commands.put(name, def);
+        for (String alias : aliases) {
+            commands.put(alias, def);
+        }
+    }
+
+    private static boolean commandProperty(String text) {
+        String l = text.toLowerCase(Locale.ROOT);
+        return l.startsWith("permission:") || l.startsWith("permission ")
+                || l.startsWith("aliases:") || l.startsWith("alias:")
+                || l.startsWith("arguments:") || l.startsWith("argument:")
+                || l.startsWith("executable by:") || l.startsWith("executable:");
+    }
+
+    private void applyCommandProperty(Line line, String command, List<String> aliases, List<ArgSpec> arguments) {
+        String text = line.text();
+        String lower = text.toLowerCase(Locale.ROOT);
+        int colon = text.indexOf(':');
+        String value = colon >= 0 ? text.substring(colon + 1).strip() : "";
+        if (lower.startsWith("permission")) {
+            if (permissionValue(line) == null) {
+                error(line, "permission: число от 0 до 4");
+            }
+            return;
+        }
+        if (lower.startsWith("executable")) {
+            if (executableBy(line) == null) {
+                error(line, "executable by: players, console или players and console");
+            }
+            return;
+        }
+        if (lower.startsWith("alias")) {
+            if (value.isEmpty()) {
+                error(line, "aliases: короткое имя, несколько через запятую");
+                return;
+            }
+            for (String part : value.split(",")) {
+                String alias = part.strip().toLowerCase(Locale.ROOT);
+                if (alias.startsWith("/")) {
+                    alias = alias.substring(1);
+                }
+                if (!alias.matches("[a-z0-9_]{1,32}")) {
+                    error(line, "псевдоним '" + part.strip() + "' — только a-z, 0-9 и _");
+                } else if (alias.equals(command) || RESERVED_COMMANDS.contains(alias) || commands.containsKey(alias)
+                        || aliases.contains(alias)) {
+                    error(line, "псевдоним /" + alias + " уже занят");
+                } else {
+                    aliases.add(alias);
+                }
+            }
+            return;
+        }
+        if (value.isEmpty()) {
+            error(line, "arguments: типы через запятую, необязательные в [скобках]");
+            return;
+        }
+        for (String part : value.split(",")) {
+            String piece = part.strip();
+            if (piece.isEmpty()) {
+                continue;
+            }
+            boolean optional = piece.startsWith("[") && piece.endsWith("]");
+            if (piece.startsWith("<") && piece.endsWith(">")) {
+                piece = piece.substring(1, piece.length() - 1).strip();
+            } else if (optional) {
+                piece = piece.substring(1, piece.length() - 1).strip();
+            }
+            com.scriptcraft.script.runtime.ArgType type = com.scriptcraft.script.runtime.ArgType.parse(piece);
+            if (type == null) {
+                error(line, "неизвестный тип аргумента '" + piece + "'");
+            } else if (!arguments.isEmpty() && arguments.get(arguments.size() - 1).optional() && !optional) {
+                error(line, "обязательный аргумент не может стоять после необязательного");
+            } else {
+                arguments.add(new ArgSpec(type, optional));
+            }
+        }
+    }
+
+    @Nullable
+    private Integer permissionValue(Line line) {
+        String text = line.text();
+        int colon = text.indexOf(':');
+        String value = (colon >= 0 ? text.substring(colon + 1) : text.replaceFirst("(?i)permission", "")).strip();
+        if (value.matches("[0-4]")) {
+            return Integer.parseInt(value);
+        }
+        return null;
+    }
+
+    /** [игроки, консоль] или null, если строка не разобралась. */
+    @Nullable
+    private boolean[] executableBy(Line line) {
+        String text = line.text();
+        int colon = text.indexOf(':');
+        String value = (colon >= 0 ? text.substring(colon + 1) : "").strip().toLowerCase(Locale.ROOT);
+        return switch (value) {
+            case "players", "player" -> new boolean[]{true, false};
+            case "console" -> new boolean[]{false, true};
+            case "players and console", "console and players", "everyone", "all" -> new boolean[]{true, true};
+            default -> null;
+        };
+    }
 
     private List<Action> parseActions(List<Line> body) {
         List<Action> actions = new ArrayList<>();
@@ -781,7 +941,30 @@ public final class ScriptParser {
         if (v.equalsIgnoreCase("true") || v.equalsIgnoreCase("false")) {
             return new Expression.Literal(Boolean.parseBoolean(v.toLowerCase(Locale.ROOT)));
         }
-        return new Expression.Text(v);
+        Expression named = namedWord(v);
+        return named != null ? named : new Expression.Text(v);
+    }
+
+    /** script, arg-1, player-argument — одно слово, которое не является текстом. */
+    @Nullable
+    static Expression namedWord(String raw) {
+        String w = raw.toLowerCase(Locale.ROOT);
+        if (w.equals("script")) {
+            return new Expression.Script();
+        }
+        java.util.regex.Matcher index = java.util.regex.Pattern.compile("arg(?:ument)?-(\\d+)").matcher(w);
+        if (index.matches()) {
+            int n = Integer.parseInt(index.group(1));
+            return n > 0 ? new Expression.Arg(n, null) : null;
+        }
+        if (w.endsWith("-argument")) {
+            com.scriptcraft.script.runtime.ArgType type = com.scriptcraft.script.runtime.ArgType.parse(
+                    w.substring(0, w.length() - "-argument".length()));
+            if (type != null) {
+                return new Expression.Arg(0, type);
+            }
+        }
+        return null;
     }
 
     /** Токен {имя} -> "имя" (без скобок, регистр сохраняется). */

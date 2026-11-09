@@ -9,6 +9,7 @@ import org.jetbrains.annotations.Nullable;
 import com.scriptcraft.script.variables.VariableStore;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -42,6 +43,9 @@ public final class ExecutionContext {
     /** Файл скрипта, чей код сейчас выполняется (владелец созданного HUD); null — эффект-команда в чате. */
     @Nullable
     private String script;
+    /** Разобранные аргументы команды и их типы. Пусто вне команды и у команды без списка аргументов. */
+    private List<Object> commandArgs = List.of();
+    private List<ArgType> commandArgTypes = List.of();
     private int targetQueries;
     private int targetHits;
     /** stop — прервать остальные действия этого запуска. */
@@ -94,7 +98,67 @@ public final class ExecutionContext {
     /** Ставится движком перед запуском обработчика события или команды из файла. */
     public ExecutionContext setScript(@Nullable String script) {
         this.script = script;
+        variables.put("script", scriptNameOf(script));
         return this;
+    }
+
+    /** Имя скрипта для выражения script и %script%: путь и .sc отброшены. */
+    public String scriptName() {
+        return scriptNameOf(script);
+    }
+
+    private static String scriptNameOf(@Nullable String script) {
+        if (script == null || script.isEmpty()) {
+            return "";
+        }
+        String name = script;
+        int slash = Math.max(name.lastIndexOf('/'), name.lastIndexOf('\\'));
+        if (slash >= 0) {
+            name = name.substring(slash + 1);
+        }
+        if (name.endsWith(".sc")) {
+            name = name.substring(0, name.length() - 3);
+        }
+        return name;
+    }
+
+    /** Кладёт arg-1, %args% и значения для player-argument и остальных. */
+    public void setCommandArguments(List<ArgType> types, List<Object> values) {
+        commandArgTypes = List.copyOf(types);
+        commandArgs = List.copyOf(values);
+        StringBuilder all = new StringBuilder();
+        for (int i = 0; i < values.size(); i++) {
+            Object value = values.get(i);
+            if (value == null) {
+                continue;
+            }
+            String text = Expression.toText(value);
+            if (!all.isEmpty()) {
+                all.append(' ');
+            }
+            all.append(text);
+            setPlaceholder("arg-" + (i + 1), text);
+            setPlaceholder("arg" + (i + 1), text);
+        }
+        setPlaceholder("args", all.toString());
+    }
+
+    @Nullable
+    public Object commandArg(int index) {
+        if (index < 1 || index > commandArgs.size()) {
+            return null;
+        }
+        return commandArgs.get(index - 1);
+    }
+
+    @Nullable
+    public Object commandArgOfType(ArgType type) {
+        for (int i = 0; i < commandArgTypes.size() && i < commandArgs.size(); i++) {
+            if (commandArgTypes.get(i) == type && commandArgs.get(i) != null) {
+                return commandArgs.get(i);
+            }
+        }
+        return null;
     }
 
     @Nullable
@@ -224,6 +288,9 @@ public final class ExecutionContext {
             }
             case "loop-player" -> {
                 return loopPlayer == null ? "<none>" : loopPlayer.getGameProfile().getName();
+            }
+            case "script" -> {
+                return scriptName();
             }
             default -> {
                 return fallback;

@@ -112,6 +112,25 @@ public interface Expression {
         }
     }
 
+    /** Имя файла скрипта, чей код сейчас выполняется, без .sc. */
+    record Script() implements Expression {
+        @Override
+        public Object evaluate(ExecutionContext ctx) {
+            return ctx.scriptName();
+        }
+    }
+
+    /**
+     * Аргумент команды. index от 1 — arg-1. index 0 и type — первый аргумент этого типа
+     * (player-argument и остальные).
+     */
+    record Arg(int index, @Nullable ArgType type) implements Expression {
+        @Override
+        public Object evaluate(ExecutionContext ctx) {
+            return type != null ? ctx.commandArgOfType(type) : ctx.commandArg(index);
+        }
+    }
+
     /** random number between A and B — дробное число в промежутке. */
     record RandomNum(Expression min, Expression max) implements Expression {
         @Override

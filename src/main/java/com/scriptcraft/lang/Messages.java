@@ -145,7 +145,13 @@ public final class Messages {
         add("studio.home", "Home", "Главная");
         add("studio.journal", "Journal", "Журнал");
         add("studio.patches", "Patches and versions", "Патчи и версии");
-        add("studio.p1", "0.3.3 — player skin, Blockbench textures", "0.3.3 — скин игрока, текстуры Blockbench");
+        add("studio.p1", "0.3.4 — command arguments, aliases, script", "0.3.4 — аргументы команд, псевдонимы, script");
+        add("studio.links", "Links", "Ссылки");
+        add("studio.link.github", "GitHub", "GitHub");
+        add("studio.link.docs", "Documentation", "Документация");
+        add("studio.link.examples", "Script examples", "Примеры скриптов");
+        add("studio.link.folder", "Open the scripts folder", "Открыть папку скриптов");
+        add("studio.about", "Mod", "О моде");
         add("studio.tag.1", "ready to craft?", "готовы крафтить?");
         add("studio.tag.2", "scripts instead of plugins", "скрипты вместо плагинов");
         add("studio.tag.3", "your server, your rules", "свой сервер, свои правила");
@@ -159,9 +165,10 @@ public final class Messages {
         add("studio.ask.no", "No", "Нет");
         add("studio.deleted", "Deleted %s", "Удалено %s");
         add("studio.delete_failed", "&cCould not delete: %s", "&cНе удалось удалить: %s");
-        add("studio.p2", "0.2.3 — the journal no longer crashes on F3 + `", "0.2.3 — журнал больше не роняет игру на F3 + `");
-        add("studio.p3", "0.2.2 — error journal and notices instead of chat", "0.2.2 — журнал ошибок и уведомления вместо чата");
-        add("studio.p4", "0.2.0 — Skript-like events and effects, .sc scripts", "0.2.0 — события и эффекты в духе Skript, скрипты .sc");
+        add("studio.p2", "0.3.3 — the player's own skin in the studio", "0.3.3 — в студии скин самого игрока");
+        add("studio.p3", "0.3.1 — transparent textures, 3D blocks, facing", "0.3.1 — прозрачные текстуры, 3D-блоки, поворот");
+        add("studio.p4", "0.3.0 — studio window, tabs and the editor", "0.3.0 — окно студии, вкладки и блокнот");
+        add("studio.p5", "0.2.0 — Skript-like events and effects, .sc scripts", "0.2.0 — события и эффекты в духе Skript, скрипты .sc");
         add("studio.dev", "Developer", "Разработчик");
         add("studio.role", "author of the mod", "автор мода");
         add("studio.hint", "Open a script with + or File. On a server these are the server's scripts; in singleplayer, the local ones.", "Откройте скрипт кнопкой + или меню «Файл». На сервере это его скрипты, в одиночной игре — локальные.");

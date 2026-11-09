@@ -194,10 +194,12 @@ define item ruby:
     stack_size: 64
     rarity: rare
 
-command /ruby permission 2:
+command /ruby:
+    permission: 2
+    aliases: gems
     give player example:ruby_block 1
     give player example:ruby 8
-    send "&cДержи рубины!" to player` },
+    send "&cДержи рубины! Скрипт: %script%" to player` },
       { lang: "text", title: { ru: "Раскладка папки resources", en: "resources folder layout" }, code: `scriptcraft/resources/
   assets/example/
     blockstates/ruby_block.json

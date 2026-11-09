@@ -5,10 +5,13 @@ import com.scriptcraft.script.runtime.Action;
 import java.util.List;
 
 /**
- * Команда из "command /<name> [permission N]:".
+ * Команда из "command /имя:" и строк под ней: permission, aliases, arguments.
  *
- * @param permissionLevel 0 — все игроки, 2 — операторы (как у ванильных команд)
- * @param file            файл скрипта, в котором объявлена команда (владелец созданного ею HUD)
+ * @param permissionLevel 0 — все, 2 — операторы
+ * @param players         можно вызывать игроком
+ * @param console         можно вызывать из консоли
+ * @param file            файл скрипта, в котором объявлена команда
  */
-public record CommandDefinition(String name, int permissionLevel, List<Action> actions, String file) {
+public record CommandDefinition(String name, int permissionLevel, List<String> aliases, List<ArgSpec> arguments,
+                                boolean players, boolean console, List<Action> actions, String file) {
 }

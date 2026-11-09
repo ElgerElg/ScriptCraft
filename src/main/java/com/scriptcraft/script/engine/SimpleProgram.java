@@ -54,6 +54,11 @@ final class SimpleProgram implements ScriptProgram {
     }
 
     @Override
+    public CommandDefinition command(String name) {
+        return parsed.commands().get(name);
+    }
+
+    @Override
     public void fireEvent(ScriptEvent event, ExecutionContext ctx) {
         for (EventHandler handler : parsed.events().getOrDefault(event, List.of())) {
             ctx.setScript(handler.file());

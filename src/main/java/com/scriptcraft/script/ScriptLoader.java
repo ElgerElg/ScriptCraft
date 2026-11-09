@@ -7,9 +7,11 @@ import com.scriptcraft.hud.HudManager;
 import com.scriptcraft.lang.Feedback;
 import com.scriptcraft.lang.Messages;
 import com.scriptcraft.registry.BindingSync;
+import com.scriptcraft.script.parser.CommandDefinition;
 import com.scriptcraft.script.engine.ScriptEngine;
 import com.scriptcraft.script.engine.ScriptProgram;
 import com.scriptcraft.script.engine.SimpleScriptEngine;
+import com.scriptcraft.script.runtime.ArgType;
 import com.scriptcraft.script.runtime.ExecutionContext;
 import com.scriptcraft.script.runtime.ScriptEvent;
 import com.scriptcraft.script.runtime.ScriptScheduler;
@@ -357,10 +359,34 @@ public final class ScriptLoader {
         fireScriptEvent(ScriptEvent.UNLOAD, f -> true, server);
     }
 
+    /**
+     * Можно ли этому источнику видеть команду. Команды, которой уже нет в скриптах,
+     * остаются доступными: обработчик ответит «выключена».
+     */
+    public static boolean commandAllowed(String name, CommandSourceStack source) {
+        CommandDefinition def = getProgram().command(name);
+        if (def == null) {
+            return true;
+        }
+        boolean player = source.getEntity() instanceof ServerPlayer;
+        if (player && !def.players()) {
+            return false;
+        }
+        if (!player && !def.console()) {
+            return false;
+        }
+        return def.permissionLevel() <= 0 || source.hasPermission(def.permissionLevel());
+    }
+
     /** Запуск команды из скрипта. Возвращает результат для Brigadier (1 — успех). */
-    public static int runCommand(String name, CommandSourceStack source, @Nullable String args) {
+    public static int runCommand(String name, CommandSourceStack source, @Nullable String rawArgs,
+                                 List<ArgType> types, List<Object> values) {
         ExecutionContext ctx = new ExecutionContext(source.getServer(), source.getPlayer(), source);
-        ctx.setPlaceholder("args", args == null ? "" : args);
+        if (types.isEmpty()) {
+            ctx.setPlaceholder("args", rawArgs == null ? "" : rawArgs);
+        } else {
+            ctx.setCommandArguments(types, values);
+        }
         try {
             if (!program.runCommand(name, ctx)) {
                 // Скрипт выключен или команда удалена, но узел Brigadier остаётся до перезапуска.
