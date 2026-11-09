@@ -40,20 +40,20 @@ public class GeneratedAssetsPack extends PathPackResources {
         if (type == PackType.CLIENT_RESOURCES && ScriptCraft.MODID.equals(location.getNamespace())) {
             byte[] generated = AssetBindings.generate(location.getPath());
             if (generated != null) {
-                return () -> new ByteArrayInputStream(generated);
+                return bytes(location, generated);
             }
         }
         if (type == PackType.CLIENT_RESOURCES) {
             byte[] patched = AssetBindings.patchAuthor(location.getNamespace(), location.getPath());
             if (patched != null) {
-                return () -> new ByteArrayInputStream(patched);
+                return bytes(location, patched);
             }
             IoSupplier<InputStream> own = super.getResource(type, location);
             if (own != null) {
-                return own; // файл автора из кэша важнее сгенерированного
+                return dressed(location, own);
             }
             byte[] real = AssetBindings.generateReal(location.getNamespace(), location.getPath());
-            return real == null ? null : () -> new ByteArrayInputStream(real);
+            return real == null ? null : bytes(location, real);
         }
         return super.getResource(type, location);
     }
@@ -68,9 +68,9 @@ public class GeneratedAssetsPack extends PathPackResources {
             }
             byte[] patched = AssetBindings.patchAuthor(location.getNamespace(), location.getPath());
             if (patched != null) {
-                output.accept(location, () -> new ByteArrayInputStream(patched));
+                output.accept(location, bytes(location, patched));
             } else {
-                output.accept(location, supplier);
+                output.accept(location, dressed(location, supplier));
             }
         });
         String prefix = path.endsWith("/") ? path : path + "/";
@@ -81,7 +81,7 @@ public class GeneratedAssetsPack extends PathPackResources {
                     ResourceLocation location = ResourceLocation.tryBuild(namespace, p);
                     byte[] data = AssetBindings.generateReal(namespace, p);
                     if (location != null && data != null) {
-                        output.accept(location, () -> new ByteArrayInputStream(data));
+                        output.accept(location, bytes(location, data));
                     }
                 }
             }
@@ -91,10 +91,26 @@ public class GeneratedAssetsPack extends PathPackResources {
                 if (p.startsWith(prefix)) {
                     ResourceLocation location = ResourceLocation.tryBuild(ScriptCraft.MODID, p);
                     if (location != null) {
-                        output.accept(location, () -> new ByteArrayInputStream(AssetBindings.generate(p)));
+                        output.accept(location, bytes(location, AssetBindings.generate(p)));
                     }
                 }
             }
         }
+    }
+
+    private static IoSupplier<InputStream> bytes(ResourceLocation location, byte[] data) {
+        byte[] dressed = AssetBindings.dressTextures(location.getNamespace(), location.getPath(), data);
+        return () -> new ByteArrayInputStream(dressed);
+    }
+
+    /** Файл автора: текстуры без namespace получают namespace модели. */
+    private static IoSupplier<InputStream> dressed(ResourceLocation location, IoSupplier<InputStream> supplier) {
+        if (!location.getPath().startsWith("models/") || !location.getPath().endsWith(".json")) {
+            return supplier;
+        }
+        return () -> {
+            byte[] raw = supplier.get().readAllBytes();
+            return new ByteArrayInputStream(AssetBindings.dressTextures(location.getNamespace(), location.getPath(), raw));
+        };
     }
 }

@@ -145,7 +145,7 @@ public final class Messages {
         add("studio.home", "Home", "Главная");
         add("studio.journal", "Journal", "Журнал");
         add("studio.patches", "Patches and versions", "Патчи и версии");
-        add("studio.p1", "0.3.2 — studio, delete, column edit", "0.3.2 — студия, удаление, прямоугольник");
+        add("studio.p1", "0.3.3 — player skin, Blockbench textures", "0.3.3 — скин игрока, текстуры Blockbench");
         add("studio.tag.1", "ready to craft?", "готовы крафтить?");
         add("studio.tag.2", "scripts instead of plugins", "скрипты вместо плагинов");
         add("studio.tag.3", "your server, your rules", "свой сервер, свои правила");

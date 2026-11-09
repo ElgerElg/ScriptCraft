@@ -493,4 +493,63 @@ public final class AssetBindings {
     private static String path(String id) {
         return id.substring(id.indexOf(':') + 1);
     }
+
+    /**
+     * Blockbench пишет текстуру как {@code textures/block/имя} без namespace.
+     * Minecraft тогда ищет {@code minecraft:textures/block/имя} и рисует отсутствующую текстуру.
+     * Здесь путь приводится к {@code namespace:block/имя}.
+     */
+    static byte[] dressTextures(String namespace, String path, byte[] data) {
+        if (data == null || !path.startsWith("models/") || !path.endsWith(".json")) {
+            return data;
+        }
+        try {
+            JsonElement parsed = JsonParser.parseString(new String(data, StandardCharsets.UTF_8));
+            if (!parsed.isJsonObject()) {
+                return data;
+            }
+            JsonObject textures = parsed.getAsJsonObject().getAsJsonObject("textures");
+            if (textures == null) {
+                return data;
+            }
+            boolean changed = false;
+            for (String key : new ArrayList<>(textures.keySet())) {
+                JsonElement value = textures.get(key);
+                if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) {
+                    continue;
+                }
+                String fixed = textureRef(namespace, value.getAsString());
+                if (!fixed.equals(value.getAsString())) {
+                    textures.addProperty(key, fixed);
+                    changed = true;
+                }
+            }
+            return changed ? parsed.toString().getBytes(StandardCharsets.UTF_8) : data;
+        } catch (RuntimeException e) {
+            return data;
+        }
+    }
+
+    private static String textureRef(String namespace, String value) {
+        if (value.startsWith("#")) {
+            return value;
+        }
+        String ns = namespace;
+        String body = value;
+        int colon = value.indexOf(':');
+        if (colon >= 0) {
+            ns = value.substring(0, colon);
+            body = value.substring(colon + 1);
+        }
+        if (body.startsWith("textures/")) {
+            body = body.substring("textures/".length());
+        }
+        if (body.endsWith(".png")) {
+            body = body.substring(0, body.length() - 4);
+        }
+        if (ns.isEmpty()) {
+            ns = namespace;
+        }
+        return ns + ":" + body;
+    }
 }
