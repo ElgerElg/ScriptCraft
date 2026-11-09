@@ -1,7 +1,7 @@
 /*
  * ScriptCraft — большие примеры для вкладки «Примеры».
  * Каждый пример: id, title {ru,en}, intro {ru,en}, blocks[] (lang: sk | json | toml | text), notes {ru[], en[]}, related[] (id из syntax.js).
- * Скрипты взяты из examples/scripts репозитория (welcome.sk, menu.sk, ruby.sk, hud.sk) — держите их в согласии.
+ * Скрипты взяты из examples/scripts репозитория (welcome.sc, menu.sc, ruby.sc, hud.sc) — держите их в согласии.
  */
 window.SC_DOCS = window.SC_DOCS || {};
 window.SC_DOCS.examples = [
@@ -13,7 +13,7 @@ window.SC_DOCS.examples = [
       en: "`/menu` opens a screen for the player. The banner lives in `scriptcraft/resources/assets/example/textures/gui/` — the server sends it to players itself and it shows without a resource reload. A button with `run` runs the command as the player and closes the screen. The second command opens a screen for every nearby player at once."
     },
     blocks: [
-      { lang: "sk", title: { ru: "scriptcraft/scripts/menu.sk", en: "scriptcraft/scripts/menu.sk" }, code: `command /menu:
+      { lang: "sc", title: { ru: "scriptcraft/scripts/menu.sc", en: "scriptcraft/scripts/menu.sc" }, code: `command /menu:
     open screen "Главное меню" to player:
         # Картинка из scriptcraft/resources/assets/example/textures/gui/
         image "example:textures/gui/menu_banner.png" at 0, -85 size 128x32 texture 128x32
@@ -54,7 +54,7 @@ command /announce permission 2:
       en: "On join (and instantly for everyone online on `/sc enable hud`, `/sc reload` and server start, thanks to `on join or load:`) the player gets a custom HUD: a hotbar of 9 real slots, health and hunger bars with fill images and a frame (the frame is a separate image on a higher layer), and a coin counter with an image slot. The vanilla hotbar, hearts and hunger are hidden. Bars with `health`/`food` values are updated by the client every frame — no packets. Images live in `scriptcraft/resources/assets/example/textures/gui/` and are sent to players automatically."
     },
     blocks: [
-      { lang: "sk", title: { ru: "scriptcraft/scripts/hud.sk", en: "scriptcraft/scripts/hud.sk" }, code: `on join or load:
+      { lang: "sc", title: { ru: "scriptcraft/scripts/hud.sc", en: "scriptcraft/scripts/hud.sc" }, code: `on join or load:
     # Прячем ванильные хотбар, сердечки и голод — рисуем свои
     hide vanilla hotbar for player
     hide vanilla health for player
@@ -131,7 +131,7 @@ command /hudreset:
       en: "Each player has their own balance `{coins::%player%}` — saved to `scriptcraft/variables/variables.json`, survives restarts. `/work` can be used once per server run: tracked by the temporary variable `{-worked::%player%}`."
     },
     blocks: [
-      { lang: "sk", title: { ru: "scriptcraft/scripts/economy.sk", en: "scriptcraft/scripts/economy.sk" }, code: `# /coins — показать баланс (незаданная переменная = <none>, поэтому сначала проверяем)
+      { lang: "sc", title: { ru: "scriptcraft/scripts/economy.sc", en: "scriptcraft/scripts/economy.sc" }, code: `# /coins — показать баланс (незаданная переменная = <none>, поэтому сначала проверяем)
 command /coins:
     if {coins::%player%} is not set:
         set {coins::%player%} to 0
@@ -178,7 +178,7 @@ command /resetcoins permission 2:
       en: "The script declares `example:ruby_block` and `example:ruby` (the mod itself has no content in the `scriptcraft` namespace — everything is in the example). Models, textures and names live in `scriptcraft/resources/assets/example/`, loot and the pickaxe tag in `scriptcraft/resources/data/`. The server sends `assets` and the block table to players itself: clients don't need the script, new blocks appear after `/sc reload` without a restart. F3 shows the block as `scriptcraft:dyn_block_N` (`/sc ids`)."
     },
     blocks: [
-      { lang: "sk", title: { ru: "scriptcraft/scripts/ruby.sk", en: "scriptcraft/scripts/ruby.sk" }, code: `namespace example
+      { lang: "sc", title: { ru: "scriptcraft/scripts/ruby.sc", en: "scriptcraft/scripts/ruby.sc" }, code: `namespace example
 
 define block ruby_block:
     hardness: 5
@@ -249,7 +249,7 @@ command /ruby permission 2:
       en: "A target is a set of players: the action runs for each, an empty set does nothing. Use `loop` when each player needs something personal (e.g. their name in a message)."
     },
     blocks: [
-      { lang: "sk", title: { ru: "scriptcraft/scripts/targets.sk", en: "scriptcraft/scripts/targets.sk" }, code: `# /healall — вылечить и накормить всех рядом (включая себя)
+      { lang: "sc", title: { ru: "scriptcraft/scripts/targets.sc", en: "scriptcraft/scripts/targets.sc" }, code: `# /healall — вылечить и накормить всех рядом (включая себя)
 command /healall permission 2:
     heal players in radius 20 of player
     feed players in radius 20 of player
@@ -298,7 +298,7 @@ command /nearbuff permission 2:
     enableEffectCommands = true
     effectCommandToken = "?"
     effectCommandsRequireOp = true` },
-      { lang: "sk", title: { ru: "В чате игры", en: "In the game chat" }, code: `?heal player
+      { lang: "sc", title: { ru: "В чате игры", en: "In the game chat" }, code: `?heal player
 ?set player's gamemode to creative
 ?give player effect night_vision for 600 seconds
 ?send title "Тест" to "Steve"
@@ -327,7 +327,7 @@ command /nearbuff permission 2:
       en: "Count a player's joins in a persistent variable and greet newcomers differently. The temporary variable `{-online_since::%player%}` only lives until the server restarts."
     },
     blocks: [
-      { lang: "sk", title: { ru: "scriptcraft/scripts/welcome.sk", en: "scriptcraft/scripts/welcome.sk" }, code: `on join:
+      { lang: "sc", title: { ru: "scriptcraft/scripts/welcome.sc", en: "scriptcraft/scripts/welcome.sc" }, code: `on join:
     # Постоянная переменная (сохраняется в scriptcraft/variables/variables.json)
     add 1 to {joins::%player%}
     if {joins::%player%} is 1:
@@ -349,5 +349,51 @@ on quit:
            "`%online%` is the online player count; `{joins::%player%}` in text is replaced by its value."]
     },
     related: ["event-join", "event-quit", "expr-temp-variable", "expr-variable", "eff-broadcast"]
+  },
+  {
+    id: "features-02",
+    title: { ru: "События, условия и таймер (0.2.0)", en: "Events, conditions and a timer (0.2.0)" },
+    intro: {
+      ru: "Короткий набор синтаксиса 0.2.0: первый вход, чат, свойства игрока, `else if`, таймер и пауза. Файл можно положить в `scriptcraft/scripts/features.sc`.",
+      en: "A short sample of the 0.2.0 syntax: first join, chat, player properties, `else if`, a timer and a pause. Put it in `scriptcraft/scripts/features.sc`."
+    },
+    blocks: [
+      { lang: "sc", title: { ru: "scriptcraft/scripts/features.sc", en: "scriptcraft/scripts/features.sc" }, code: `on first join:
+    give player bread 16
+    send "&aДобро пожаловать, %player%!" to player
+
+on chat:
+    if %message% is "hp":
+        cancel event
+        set {hp} to health of player
+        set {max} to max health of player
+        send "&cЗдоровье: {hp} / {max}" to player
+
+command /roll:
+    set {roll} to random integer between 1 and 6
+    if {roll} is 6:
+        send "&aШестёрка!" to player
+        give 2 levels to player
+    else if {roll} >= 4:
+        send "&eВыпало {roll}" to player
+    else:
+        send "&7Выпало {roll}" to player
+    wait 1 second
+    send "&7Бросок учтён" to player
+
+every 10 seconds:
+    loop all players:
+        if health of loop-player < 6 and loop-player is not in creative:
+            heal loop-player by 2` }
+    ],
+    notes: {
+      ru: ["`wait` откладывает только строки ниже на том же отступе, не длиннее 5 минут.",
+           "`every` выполняется без игрока в `player` — внутри используйте `loop` или `all players`.",
+           "`cancel event` в чате не даёт сообщению появиться у других."],
+      en: ["`wait` delays only the lines below it at the same indent, and not for longer than 5 minutes.",
+           "`every` runs with no `player` — use `loop` or `all players` inside.",
+           "`cancel event` in chat keeps the message from appearing."]
+    },
+    related: ["event-world", "event-chat", "expr-property", "expr-random", "struct-every", "struct-wait", "eff-cancel", "cond-and"]
   }
 ];

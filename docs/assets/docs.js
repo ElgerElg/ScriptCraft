@@ -106,7 +106,7 @@
       '<a class="perma" href="#' + e.id + '" title="' + SC.esc(SC.t("card.link")) + '">#</a></div>' +
       '<div class="syntax">' + e.syntax.map(function (s) { return "<code>" + mark(s, ts) + "</code>"; }).join("") + "</div>" +
       '<div class="desc">' + SC.paras(SC.tr(e.desc)) + "</div>" +
-      SC.codeBlock(e.example, e.category === "config" ? "toml" : "sk", SC.t("card.example") + (e.category === "config" ? " · scriptcraft/config.toml" : "")) +
+      SC.codeBlock(e.example, e.category === "config" ? "toml" : "sc", SC.t("card.example") + (e.category === "config" ? " · scriptcraft/config.toml" : "")) +
       (related ? '<div class="related"><span>' + SC.esc(SC.t("card.related")) + "</span>" + related + "</div>" : "") +
       "</article>";
   }

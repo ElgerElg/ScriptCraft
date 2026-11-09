@@ -2,21 +2,29 @@ package com.scriptcraft.script.runtime;
 
 import com.scriptcraft.config.ScriptCraftConfig;
 import com.scriptcraft.lang.Messages;
+import com.scriptcraft.ScriptCraft;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
 import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
 import net.minecraft.network.protocol.game.ClientboundSetTitlesAnimationPacket;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LightningBolt;
 import net.minecraft.world.food.FoodData;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.GameType;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.registries.ForgeRegistries;
 import org.jetbrains.annotations.Nullable;
 
@@ -240,8 +248,8 @@ public final class Effects {
 
     // ------------------------------------------------------------------ звук, титры, опыт, полёт
 
-    /** play sound entity.player.levelup to player (слышит только этот игрок) */
-    public record PlaySound(Target target, String soundId) implements Action {
+    /** play sound entity.player.levelup to player [with volume N] [pitch N] (слышит только этот игрок) */
+    public record PlaySound(Target target, String soundId, @Nullable Expression volume, @Nullable Expression pitch) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
             ResourceLocation rl = id(soundId);
@@ -249,8 +257,10 @@ public final class Effects {
             if (sound == null || !ForgeRegistries.SOUND_EVENTS.containsKey(rl)) {
                 throw new ScriptRuntimeException(Messages.get("effect.unknown_sound", rl));
             }
+            float vol = volume == null ? 1f : (float) Math.max(0, Math.min(10, number(volume, ctx)));
+            float pit = pitch == null ? 1f : (float) Math.max(0.5, Math.min(2, number(pitch, ctx)));
             for (ServerPlayer p : target.resolve(ctx)) {
-                p.playNotifySound(sound, SoundSource.MASTER, 1f, 1f);
+                p.playNotifySound(sound, SoundSource.MASTER, vol, pit);
             }
         }
     }
@@ -290,6 +300,17 @@ public final class Effects {
             int v = (int) Math.max(0, Math.min(1_000_000, number(value, ctx)));
             for (ServerPlayer p : target.resolve(ctx)) {
                 p.setExperienceLevels(v);
+            }
+        }
+    }
+
+    /** give 3 levels to player (уровни, можно отрицательное — снять) */
+    public record GiveLevels(Target target, Expression amount) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            int v = (int) Math.max(-1000, Math.min(1000, number(amount, ctx)));
+            for (ServerPlayer p : target.resolve(ctx)) {
+                p.giveExperienceLevels(v);
             }
         }
     }
@@ -419,5 +440,307 @@ public final class Effects {
                 ctx.server().getCommands().performPrefixedCommand(p.createCommandSourceStack(), cmd);
             }
         }
+    }
+
+    // ------------------------------------------------------------------ кик, права, чат, мир
+
+    /** kick player [due to "причина"] */
+    public record Kick(Target target, @Nullable String reason) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            Component message = Component.literal(reason == null ? "Kicked" : ctx.format(reason));
+            for (ServerPlayer p : target.resolve(ctx)) {
+                p.connection.disconnect(message);
+            }
+        }
+    }
+
+    /** op player / deop player */
+    public record ChangeOp(Target target, boolean op) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            var list = ctx.server().getPlayerList();
+            for (ServerPlayer p : target.resolve(ctx)) {
+                if (op) {
+                    list.op(p.getGameProfile());
+                } else {
+                    list.deop(p.getGameProfile());
+                }
+            }
+        }
+    }
+
+    /** make player say "текст" — сообщение в чат от имени игрока. */
+    public record Say(Target target, String text) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            String body = ctx.format(text);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                Component line = Component.translatable("chat.type.text", p.getDisplayName(), Component.literal(body));
+                ctx.server().getPlayerList().broadcastSystemMessage(line, false);
+            }
+        }
+    }
+
+    /** log "текст" — строка в лог сервера. */
+    public record Log(String text) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            ScriptCraft.LOGGER.info("[Script] {}", ctx.format(text));
+        }
+    }
+
+    /** close inventory of player */
+    public record CloseInventory(Target target) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            for (ServerPlayer p : target.resolve(ctx)) {
+                p.closeContainer();
+            }
+        }
+    }
+
+    /** wake up player */
+    public record Wake(Target target) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            for (ServerPlayer p : target.resolve(ctx)) {
+                if (p.isSleeping()) {
+                    p.stopSleeping();
+                }
+            }
+        }
+    }
+
+    /** set walk speed / fly speed of player to N (ванильные значения: ходьба 0.1, полёт 0.05). */
+    public record SetSpeed(Target target, boolean flying, Expression value) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            float v = (float) Math.max(0, Math.min(1, number(value, ctx)));
+            for (ServerPlayer p : target.resolve(ctx)) {
+                if (flying) {
+                    p.getAbilities().setFlyingSpeed(v);
+                } else {
+                    p.getAbilities().setWalkingSpeed(v);
+                }
+                p.onUpdateAbilities();
+            }
+        }
+    }
+
+    /** set air of player to N */
+    public record SetAir(Target target, Expression value) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            int v = (int) number(value, ctx);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                p.setAirSupply(Math.max(0, Math.min(p.getMaxAirSupply(), v)));
+            }
+        }
+    }
+
+    /** set absorption of player to N */
+    public record SetAbsorption(Target target, Expression value) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            float v = (float) Math.max(0, Math.min(2048, number(value, ctx)));
+            for (ServerPlayer p : target.resolve(ctx)) {
+                p.setAbsorptionAmount(v);
+            }
+        }
+    }
+
+    /** strike lightning at player / at x y z (в мире игрока из контекста, иначе в обычном мире). */
+    public record Lightning(Target target, @Nullable Expression x, @Nullable Expression y, @Nullable Expression z) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            if (x != null && y != null && z != null) {
+                bolt(levelOf(ctx), number(x, ctx), number(y, ctx), number(z, ctx));
+                return;
+            }
+            for (ServerPlayer p : target.resolve(ctx)) {
+                bolt(p.serverLevel(), p.getX(), p.getY(), p.getZ());
+            }
+        }
+    }
+
+    /** set time to day|night|noon|midnight|<число> — во всех мирах. */
+    public record SetTime(Expression value) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            long time = timeOf(value.evaluate(ctx));
+            for (ServerLevel level : ctx.server().getAllLevels()) {
+                level.setDayTime(time);
+            }
+        }
+
+        private static long timeOf(Object v) {
+            if (v instanceof String s) {
+                long named = switch (s.strip().toLowerCase(java.util.Locale.ROOT)) {
+                    case "day", "daytime" -> 1000;
+                    case "noon" -> 6000;
+                    case "sunset", "evening" -> 12000;
+                    case "night" -> 13000;
+                    case "midnight" -> 18000;
+                    case "sunrise" -> 23000;
+                    default -> Long.MIN_VALUE;
+                };
+                if (named != Long.MIN_VALUE) {
+                    return named;
+                }
+            }
+            Double n = Expression.toNumber(v);
+            if (n == null) {
+                throw new ScriptRuntimeException("неизвестное время: " + Expression.toText(v)
+                        + " (day, noon, night, midnight или число тиков)");
+            }
+            return Math.floorMod(n.longValue(), 24000L);
+        }
+    }
+
+    /** set weather to clear|rain|thunder [for N seconds] — во всех мирах. */
+    public record SetWeather(String kind, @Nullable Expression seconds) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            int duration = seconds == null ? 6000 : ticks(number(seconds, ctx));
+            boolean rain = kind.equals("rain") || kind.equals("thunder");
+            boolean thunder = kind.equals("thunder");
+            for (ServerLevel level : ctx.server().getAllLevels()) {
+                if (rain) {
+                    level.setWeatherParameters(0, duration, true, thunder);
+                } else {
+                    level.setWeatherParameters(duration, 0, false, false);
+                }
+            }
+        }
+    }
+
+    /** drop [N] <предмет> at <цель> */
+    public record DropItem(Target target, String itemId, @Nullable Expression count) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            Item item = ItemResolver.resolve(itemId)
+                    .orElseThrow(() -> new ScriptRuntimeException("Неизвестный предмет: " + itemId));
+            int total = count == null ? 1 : (int) Math.max(1, Math.min(64 * 36, number(count, ctx)));
+            for (ServerPlayer p : target.resolve(ctx)) {
+                int left = total;
+                int maxStack = new ItemStack(item).getMaxStackSize();
+                while (left > 0) {
+                    int size = Math.min(left, maxStack);
+                    p.drop(new ItemStack(item, size), false);
+                    left -= size;
+                }
+            }
+        }
+    }
+
+    /**
+     * teleport player to spawn — точка возрождения (кровать), иначе спавн обычного мира.
+     * teleport player to world spawn — общий спавн обычного мира.
+     */
+    public record TeleportSpawn(Target target, boolean worldSpawn) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            for (ServerPlayer p : target.resolve(ctx)) {
+                ServerLevel level;
+                BlockPos pos;
+                float yaw = p.getYRot();
+                if (worldSpawn) {
+                    level = ctx.server().overworld();
+                    pos = level.getSharedSpawnPos();
+                    yaw = level.getSharedSpawnAngle();
+                } else {
+                    ResourceKey<Level> dim = p.getRespawnDimension();
+                    BlockPos bed = p.getRespawnPosition();
+                    level = ctx.server().getLevel(dim);
+                    if (bed == null || level == null) {
+                        level = ctx.server().overworld();
+                        pos = level.getSharedSpawnPos();
+                        yaw = level.getSharedSpawnAngle();
+                    } else {
+                        pos = bed;
+                    }
+                }
+                p.teleportTo(level, pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, yaw, p.getXRot());
+            }
+        }
+    }
+
+    /** set spawn of player — здесь; set spawn of player to x y z — в его текущем мире. */
+    public record SetSpawn(Target target, @Nullable Expression x, @Nullable Expression y, @Nullable Expression z) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            Double tx = x == null ? null : number(x, ctx);
+            Double ty = y == null ? null : number(y, ctx);
+            Double tz = z == null ? null : number(z, ctx);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                BlockPos pos = tx == null
+                        ? p.blockPosition()
+                        : BlockPos.containing(tx, ty, tz);
+                p.setRespawnPosition(p.serverLevel().dimension(), pos, p.getYRot(), true, false);
+            }
+        }
+    }
+
+    /** set velocity of player to x y z */
+    public record SetVelocity(Target target, Expression x, Expression y, Expression z) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            double vx = number(x, ctx), vy = number(y, ctx), vz = number(z, ctx);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                motion(p, vx, vy, vz);
+            }
+        }
+    }
+
+    /** launch player upwards|forwards [by N] */
+    public record Launch(Target target, boolean forwards, @Nullable Expression speed) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            double v = speed == null ? (forwards ? 1.5 : 1.2) : Math.max(-8, Math.min(8, number(speed, ctx)));
+            for (ServerPlayer p : target.resolve(ctx)) {
+                if (forwards) {
+                    Vec3 look = p.getLookAngle();
+                    motion(p, look.x * v, look.y * v, look.z * v);
+                } else {
+                    motion(p, 0, v, 0);
+                }
+            }
+        }
+    }
+
+    /** explode at player [with force N] / explode at x y z [with force N]. Сила 0–8, по умолчанию 3. Ломает блоки. */
+    public record Explode(@Nullable Target target, @Nullable Expression x, @Nullable Expression y, @Nullable Expression z,
+                          @Nullable Expression force) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            float power = force == null ? 3f : (float) Math.max(0, Math.min(8, number(force, ctx)));
+            if (x != null && y != null && z != null) {
+                levelOf(ctx).explode(null, number(x, ctx), number(y, ctx), number(z, ctx), power, Level.ExplosionInteraction.BLOCK);
+                return;
+            }
+            for (ServerPlayer p : target.resolve(ctx)) {
+                p.serverLevel().explode(null, p.getX(), p.getY(), p.getZ(), power, Level.ExplosionInteraction.BLOCK);
+            }
+        }
+    }
+
+    private static void motion(ServerPlayer p, double x, double y, double z) {
+        p.setDeltaMovement(x, y, z);
+        p.hurtMarked = true;
+        p.hasImpulse = true;
+    }
+
+    private static ServerLevel levelOf(ExecutionContext ctx) {
+        return ctx.player() != null ? ctx.player().serverLevel() : ctx.server().overworld();
+    }
+
+    private static void bolt(ServerLevel level, double x, double y, double z) {
+        LightningBolt bolt = EntityType.LIGHTNING_BOLT.create(level);
+        if (bolt == null) {
+            return;
+        }
+        bolt.moveTo(x, y, z);
+        level.addFreshEntity(bolt);
     }
 }

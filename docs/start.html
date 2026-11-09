@@ -53,11 +53,11 @@
 <pre data-lang="text" data-title="scriptcraft/">
 scriptcraft/
   config.toml              (настройки / settings)
-  scripts/                 (*.sk, UTF-8; подпапки читаются; "-имя.sk" — выключен)
-    welcome.sk
-    menu.sk
-    ruby.sk
-    -hud.sk                (пример HUD, выключен / disabled: /sc enable hud)
+  scripts/                 (*.sc, UTF-8; подпапки читаются; "-имя.sc" — выключен)
+    welcome.sc
+    menu.sc
+    ruby.sc
+    -hud.sc                (пример HUD, выключен / disabled: /sc enable hud)
   variables/
     variables.json         (постоянные переменные / persistent variables)
     variables-20261104-153000.json   (резервные копии / backups)
@@ -66,11 +66,13 @@ scriptcraft/
     data/&lt;namespace&gt;/...     (лут, теги, рецепты — только сервер)
   cache/assets/...         (клиент: ресурсы, полученные с серверов)
 </pre>
+  <p class="l-ru">Файлы прошлой версии <code>*.sk</code> при запуске мода переименовываются в <code>*.sc</code>.</p>
+  <p class="l-en">Files from the previous version, <code>*.sk</code>, are renamed to <code>*.sc</code> when the mod starts.</p>
 
   <h2 id="first"><span class="l-ru">3. Первый скрипт</span><span class="l-en">3. Your first script</span></h2>
-  <p class="l-ru">Создайте файл <code>scriptcraft/scripts/hello.sk</code> (кодировка UTF-8, отступ — 4 пробела или Tab) и выполните в игре <code>/sc reload hello</code>:</p>
-  <p class="l-en">Create <code>scriptcraft/scripts/hello.sk</code> (UTF-8, indent with 4 spaces or a Tab) and run <code>/sc reload hello</code> in game:</p>
-<pre data-lang="sk" data-title="scriptcraft/scripts/hello.sk">
+  <p class="l-ru">Создайте файл <code>scriptcraft/scripts/hello.sc</code> (кодировка UTF-8, отступ — 4 пробела или Tab) и выполните в игре <code>/sc reload hello</code>:</p>
+  <p class="l-en">Create <code>scriptcraft/scripts/hello.sc</code> (UTF-8, indent with 4 spaces or a Tab) and run <code>/sc reload hello</code> in game:</p>
+<pre data-lang="sc" data-title="scriptcraft/scripts/hello.sc">
 on join:
     send "&aПривет, %player%!" to player
 
@@ -82,14 +84,14 @@ command /hello:
   <p class="l-en">Script errors (with line numbers) are shown to whoever ran <code>/sc reload</code> and written to the server log. All syntax is on the <a href="index.html">Docs</a> tab, complete scripts are in <a href="examples.html">Examples</a>.</p>
 
   <h2 id="commands"><span class="l-ru">4. Команды мода</span><span class="l-en">4. Mod commands</span></h2>
-  <p class="l-ru"><code>/scriptcraft</code>, <code>/sc</code> и <code>/script</code> — одно и то же. Нужен уровень оператора 2. Имена скриптов дополняются по Tab, <code>.sk</code> можно не писать.</p>
-  <p class="l-en"><code>/scriptcraft</code>, <code>/sc</code> and <code>/script</code> are the same command. Operator level 2 is required. Script names tab-complete, <code>.sk</code> is optional.</p>
+  <p class="l-ru"><code>/scriptcraft</code>, <code>/sc</code> и <code>/script</code> — одно и то же. Нужен уровень оператора 2. Имена скриптов дополняются по Tab, <code>.sc</code> можно не писать.</p>
+  <p class="l-en"><code>/scriptcraft</code>, <code>/sc</code> and <code>/script</code> are the same command. Operator level 2 is required. Script names tab-complete, <code>.sc</code> is optional.</p>
   <table>
     <tr><th><span class="l-ru">Команда</span><span class="l-en">Command</span></th><th><span class="l-ru">Что делает</span><span class="l-en">What it does</span></th></tr>
     <tr><td><code>/sc help</code></td><td><span class="l-ru">справка</span><span class="l-en">help</span></td></tr>
     <tr><td><code>/sc reload</code></td><td><span class="l-ru">перезагрузить все скрипты</span><span class="l-en">reload all scripts</span></td></tr>
     <tr><td><code>/sc reload &lt;скрипт&gt;</code></td><td><span class="l-ru">перезагрузить один файл (подпапки: <code>sub/name</code>)</span><span class="l-en">reload one file (subfolders: <code>sub/name</code>)</span></td></tr>
-    <tr><td><code>/sc disable &lt;скрипт&gt;</code></td><td><span class="l-ru">выключить: выгрузить и переименовать в <code>-имя.sk</code></span><span class="l-en">disable: unload and rename to <code>-name.sk</code></span></td></tr>
+    <tr><td><code>/sc disable &lt;скрипт&gt;</code></td><td><span class="l-ru">выключить: выгрузить и переименовать в <code>-имя.sc</code></span><span class="l-en">disable: unload and rename to <code>-name.sc</code></span></td></tr>
     <tr><td><code>/sc enable &lt;скрипт&gt;</code></td><td><span class="l-ru">включить обратно и загрузить</span><span class="l-en">enable again and load</span></td></tr>
     <tr><td><code>/sc list</code></td><td><span class="l-ru">скрипты, команды, число переменных и ошибок</span><span class="l-en">scripts, commands, variable and error counts</span></td></tr>
     <tr><td><code>/sc ids</code></td><td><span class="l-ru">какие id слотов получили блоки/предметы скриптов</span><span class="l-en">which slot ids script blocks/items got</span></td></tr>

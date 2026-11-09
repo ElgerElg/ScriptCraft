@@ -66,12 +66,22 @@ public final class ScriptCommands {
     private ScriptCommands() {
     }
 
-    /** Имена скриптов без ".sk" и без ведущего "-" (как их удобно набирать). */
+    /** Имена скриптов без ".sc" и без ведущего "-" (как их удобно набирать). */
     private static Stream<String> suggestions(Predicate<String> filter) {
         return ScriptPaths.listScripts().stream()
                 .filter(filter)
                 .map(ScriptPaths::enabledName)
-                .map(n -> n.endsWith(".sk") ? n.substring(0, n.length() - 3) : n);
+                .map(ScriptCommands::withoutExtension);
+    }
+
+    private static String withoutExtension(String name) {
+        if (name.endsWith(ScriptPaths.EXTENSION)) {
+            return name.substring(0, name.length() - ScriptPaths.EXTENSION.length());
+        }
+        if (name.endsWith(ScriptPaths.LEGACY_EXTENSION)) {
+            return name.substring(0, name.length() - ScriptPaths.LEGACY_EXTENSION.length());
+        }
+        return name;
     }
 
     /** Вызывается из RegisterCommandsEvent — каждый раз с НОВЫМ диспетчером. */

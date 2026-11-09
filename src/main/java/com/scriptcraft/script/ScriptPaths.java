@@ -12,12 +12,15 @@ import java.util.List;
 import java.util.stream.Stream;
 
 /**
- * Работа с папкой скриптов: <папка игры>/scriptcraft/scripts/*.sk (создаётся в {@link ModPaths#ensureLayout()})
- * Выключенные скрипты (как в Skript) — файлы с минусом в начале имени: -welcome.sk. Они не загружаются.
+ * Работа с папкой скриптов: &lt;папка игры&gt;/scriptcraft/scripts/*.sc (создаётся в {@link ModPaths#ensureLayout()}).
+ * Выключенные скрипты (как в Skript) — файлы с минусом в начале имени: -welcome.sc. Они не загружаются.
+ * Старые файлы *.sk при запуске переименовываются в *.sc ({@link #migrateLegacyExtension()}).
  */
 public final class ScriptPaths {
     /** Расширение файлов скриптов. */
-    public static final String EXTENSION = ".sk";
+    public static final String EXTENSION = ".sc";
+    /** Прежнее расширение. Читается, только если файла *.sc с тем же именем ещё нет. */
+    public static final String LEGACY_EXTENSION = ".sk";
 
     private ScriptPaths() {
     }
@@ -28,8 +31,8 @@ public final class ScriptPaths {
     }
 
     /**
-     * Все файлы скриптов (включая выключенные "-имя.sk"), пути относительно папки scripts, через '/'.
-     * Отсортированы по алфавиту.
+     * Все файлы скриптов (включая выключенные "-имя.sc"), пути относительно папки scripts, через '/'.
+     * Отсортированы по алфавиту. Старый *.sk попадает в список, только если рядом нет такого же *.sc.
      */
     public static List<String> listScripts() {
         Path dir = scriptsDir();
@@ -37,7 +40,7 @@ public final class ScriptPaths {
             return List.of();
         }
         try (Stream<Path> stream = Files.walk(dir, 4)) {
-            return stream.filter(p -> Files.isRegularFile(p) && p.getFileName().toString().endsWith(EXTENSION))
+            return stream.filter(p -> Files.isRegularFile(p) && isScriptFile(p))
                     .map(p -> dir.relativize(p).toString().replace('\\', '/'))
                     .sorted()
                     .toList();
@@ -46,12 +49,56 @@ public final class ScriptPaths {
         }
     }
 
+    /**
+     * welcome.sk → welcome.sc (и -welcome.sk → -welcome.sc), если файла *.sc ещё нет.
+     * Вызывается при старте мода, чтобы старые скрипты не пропали после смены расширения.
+     */
+    public static void migrateLegacyExtension() {
+        Path dir = scriptsDir();
+        if (!Files.isDirectory(dir)) {
+            return;
+        }
+        List<Path> legacy;
+        try (Stream<Path> stream = Files.walk(dir, 4)) {
+            legacy = stream.filter(p -> Files.isRegularFile(p) && p.getFileName().toString().endsWith(LEGACY_EXTENSION)).toList();
+        } catch (IOException e) {
+            com.scriptcraft.ScriptCraft.LOGGER.warn("[ScriptCraft] Не удалось проверить старые скрипты *.sk: {}", e.getMessage());
+            return;
+        }
+        for (Path file : legacy) {
+            String name = file.getFileName().toString();
+            Path dest = file.resolveSibling(name.substring(0, name.length() - LEGACY_EXTENSION.length()) + EXTENSION);
+            if (Files.exists(dest)) {
+                continue;
+            }
+            try {
+                Files.move(file, dest);
+                com.scriptcraft.ScriptCraft.LOGGER.info("[ScriptCraft] Скрипт {} переименован в {}", name, dest.getFileName());
+            } catch (IOException e) {
+                com.scriptcraft.ScriptCraft.LOGGER.warn("[ScriptCraft] Не удалось переименовать {} в {}: {}",
+                        name, dest.getFileName(), e.getMessage());
+            }
+        }
+    }
+
+    private static boolean isScriptFile(Path file) {
+        String name = file.getFileName().toString();
+        if (name.endsWith(EXTENSION)) {
+            return true;
+        }
+        if (!name.endsWith(LEGACY_EXTENSION)) {
+            return false;
+        }
+        String sc = name.substring(0, name.length() - LEGACY_EXTENSION.length()) + EXTENSION;
+        return !Files.exists(file.resolveSibling(sc));
+    }
+
     /** Выключен ли скрипт: имя файла (не папки) начинается с '-', как в Skript. */
     public static boolean isDisabled(String relName) {
         return fileNameOf(relName).startsWith("-");
     }
 
-    /** "sub/-a.sk" -> "sub/a.sk" */
+    /** "sub/-a.sc" -> "sub/a.sc" */
     public static String enabledName(String relName) {
         int slash = relName.lastIndexOf('/');
         String file = fileNameOf(relName);
@@ -61,7 +108,7 @@ public final class ScriptPaths {
         return relName.substring(0, slash + 1) + file;
     }
 
-    /** "sub/a.sk" -> "sub/-a.sk" */
+    /** "sub/a.sc" -> "sub/-a.sc" */
     public static String disabledName(String relName) {
         String enabled = enabledName(relName);
         int slash = enabled.lastIndexOf('/');
@@ -69,7 +116,8 @@ public final class ScriptPaths {
     }
 
     /**
-     * Ввод игрока -> нормальное (включённое) имя скрипта: "welcome", "welcome.sk", "-welcome.sk" -> "welcome.sk".
+     * Ввод игрока -> нормальное (включённое) имя скрипта: "welcome", "welcome.sc", "-welcome.sc" -> "welcome.sc".
+     * Старое "welcome.sk" тоже принимается. Если на диске остался только *.sk (переименовать не вышло) — вернётся он.
      * Возвращает null, если путь выходит за пределы папки scripts (защита от "../").
      */
     @Nullable
@@ -78,10 +126,20 @@ public final class ScriptPaths {
         if (name.isEmpty() || name.contains("..") || name.startsWith("/") || name.contains(":")) {
             return null;
         }
-        if (!name.endsWith(EXTENSION)) {
+        if (name.endsWith(LEGACY_EXTENSION)) {
+            name = name.substring(0, name.length() - LEGACY_EXTENSION.length()) + EXTENSION;
+        } else if (!name.endsWith(EXTENSION)) {
             name = name + EXTENSION;
         }
-        return enabledName(name);
+        String enabled = enabledName(name);
+        if (Files.isRegularFile(resolve(enabled)) || Files.isRegularFile(resolve(disabledName(enabled)))) {
+            return enabled;
+        }
+        String legacy = enabled.substring(0, enabled.length() - EXTENSION.length()) + LEGACY_EXTENSION;
+        if (Files.isRegularFile(resolve(legacy)) || Files.isRegularFile(resolve(disabledName(legacy)))) {
+            return enabledName(legacy);
+        }
+        return enabled;
     }
 
     /** Абсолютный путь файла скрипта по относительному имени. */
@@ -107,7 +165,7 @@ public final class ScriptPaths {
     }
 
     /**
-     * Читает все ВКЛЮЧЁННЫЕ *.sk файлы (выключенные "-имя.sk" пропускаются) в алфавитном порядке.
+     * Читает все ВКЛЮЧЁННЫЕ *.sc файлы (выключенные "-имя.sc" пропускаются) в алфавитном порядке.
      * Ошибки чтения добавляются в {@code errors}, остальные файлы всё равно загружаются.
      */
     public static List<ScriptSource> readAll(List<String> errors) {

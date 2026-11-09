@@ -52,7 +52,7 @@ gradlew.bat runServer    :: запустить выделенный сервер
 ```
 scriptcraft/
   config.toml              настройки мода (см. «Конфиг»)
-  scripts/                 скрипты *.sk (UTF-8, подпапки читаются; выключенные — "-имя.sk")
+  scripts/                 скрипты *.sc (UTF-8, подпапки читаются; выключенные — "-имя.sc")
   variables/
     variables.json         все постоянные переменные (один общий файл)
     variables-20261104-153000.json   резервные копии (последние variableBackups штук)
@@ -62,6 +62,7 @@ scriptcraft/
   cache/assets/...         (клиент) ресурсы, полученные с серверов
 ```
 
+- Скрипты — файлы **`*.sc`**. Если с прошлой версии остались `*.sk`, мод при запуске переименовывает их в `*.sc` (когда файла `*.sc` с тем же именем ещё нет).
 - При первом запуске мод создаёт эти папки и копирует примеры из [`examples/scripts`](../examples/scripts)
   и [`examples/resources`](../examples/resources) (если папок `scripts/` или `resources/` ещё нет).
 - **Переезд со старой версии:** если рядом лежит старая папка `scripts/` (от предыдущих версий мода), а `scriptcraft/scripts/` ещё нет,
@@ -72,15 +73,15 @@ scriptcraft/
 ### Команды мода
 
 Корневая команда **`/scriptcraft`**, у неё есть полноценные синонимы **`/sc`** и **`/script`**: все три работают одинаково.
-Нужен уровень оператора 2. Имена скриптов подсказываются по Tab, расширение `.sk` писать не обязательно.
+Нужен уровень оператора 2. Имена скриптов подсказываются по Tab, расширение `.sc` писать не обязательно.
 
 | Команда | Что делает |
 |---|---|
 | `/sc` или `/sc help` | справка |
 | `/sc reload` | перезагрузить **все** скрипты (логику: события, команды, сообщения, экраны) |
-| `/sc reload welcome` | перезагрузить только `welcome.sk` (подпапки так: `/sc reload sub/name`) |
-| `/sc disable welcome` | выключить скрипт: выгружает его события и команды и переименовывает файл в `-welcome.sk` |
-| `/sc enable welcome` | включить: переименовывает `-welcome.sk` обратно в `welcome.sk` и загружает его |
+| `/sc reload welcome` | перезагрузить только `welcome.sc` (подпапки так: `/sc reload sub/name`) |
+| `/sc disable welcome` | выключить скрипт: выгружает его события и команды и переименовывает файл в `-welcome.sc` |
+| `/sc enable welcome` | включить: переименовывает `-welcome.sc` обратно в `welcome.sc` и загружает его |
 | `/sc list` | загруженные и выключенные скрипты, команды, число переменных и ошибок |
 | `/sc resources reload` | перечитать `scriptcraft/resources/assets` и разослать изменения всем игрокам онлайн (они скачают только изменённые файлы). `data/` перечитывает ванильная `/reload` |
 | `/sc ids` | какие технические id (`scriptcraft:dyn_block_N` / `dyn_item_N`) получили блоки и предметы из скриптов |
@@ -519,7 +520,7 @@ define item othermod:gem:       # полный id в обход строки nam
   невозможен — пишите транслитом: `svoymod:rubinovyj_blok`, а русское название задайте через `name: "Рубиновый блок"`
   или в `lang/ru_ru.json`. Заглавные буквы приводятся к строчным.
 - Ресурсы такого блока ищутся в `assets/mymod/...` и `data/mymod/...` — кладите их в `scriptcraft/resources/` (см. ниже).
-- Пример: [`examples/scripts/ruby.sk`](../examples/scripts/ruby.sk) объявляет `example:ruby_block`/`example:ruby`
+- Пример: [`examples/scripts/ruby.sc`](../examples/scripts/ruby.sc) объявляет `example:ruby_block`/`example:ruby`
   (модели, текстуры, названия — в `scriptcraft/resources/assets/example`, дроп и тег кирки — в `scriptcraft/resources/data`).
   В jar мода своих блоков, предметов, моделей, текстур и рецептов нет.
 
@@ -568,7 +569,7 @@ command /menu:
 Позиция считается так: элемент выравнивается по точке привязки и сдвигается на `X Y` (минус означает влево или вверх).
 
 Картинки из `scriptcraft/resources/assets/<ns>/textures/gui/` сервер отправляет игрокам сам, и они показываются
-**сразу, без перезагрузки ресурсов** (см. раздел 6). Пример — баннер в [`menu.sk`](../examples/scripts/menu.sk).
+**сразу, без перезагрузки ресурсов** (см. раздел 6). Пример — баннер в [`menu.sc`](../examples/scripts/menu.sc).
 
 Устройство в коде:
 ```
@@ -588,7 +589,7 @@ com.scriptcraft.client        (ТОЛЬКО клиент, @OnlyIn(Dist.CLIENT))
 
 ### 5.1 HUD, полосы и слои
 
-Свой интерфейс **поверх экрана игры** (без открытия GUI). Полный пример — [`hud.sk`](../examples/scripts/hud.sk) (при первом запуске копируется выключенным как `-hud.sk`: он прячет ванильный HUD, включить — `/sc enable hud`).
+Свой интерфейс **поверх экрана игры** (без открытия GUI). Полный пример — [`hud.sc`](../examples/scripts/hud.sc) (при первом запуске копируется выключенным как `-hud.sc`: он прячет ванильный HUD, включить — `/sc enable hud`).
 HUD создаётся в `on join or load:`, поэтому после `/sc enable hud` он сразу появляется у всех онлайн.
 
 ```
@@ -721,7 +722,7 @@ src/main/java/com/scriptcraft/
                                BindingStore (данные мира + scriptcraft/bindings.json), BindingSync (рассылка, MissingMappings),
                                SlotMigration (слоты -> настоящие id в мире), IdRewriter (id в командах и данных)
   script/
-    ScriptPaths, ScriptSource  чтение scriptcraft/scripts/, выключенные "-имя.sk"
+    ScriptPaths, ScriptSource  чтение scriptcraft/scripts/, выключенные "-имя.sc"
     ScriptLoader               текущая программа, reload всего/одного, enable/disable, запуск событий/команд
     variables/VariableStore    переменные: scriptcraft/variables/variables.json + резервные копии + временные {-имя}
     engine/                    ScriptEngine (интерфейс) -> SimpleScriptEngine -> ScriptProgram
@@ -764,7 +765,7 @@ src/main/java/com/scriptcraft/
 
 - [ ] **Аддон PlayerAnimator и GeckoLib**: действие `play animation "staff_cast" on player`, анимация от третьего лица плюс анимация предмета от первого лица по одному ключу.
 - [ ] **Полноценная GUI-система**: настоящие слоты через `AbstractContainerMenu`, поля ввода, прокрутка, вкладки, серверные колбэки кнопок (пакет клиент -> сервер вместо `run "/cmd"`), обновление открытого экрана.
-- [ ] **Сайт в стиле ScriptHub**: каталог скриптов, загрузка и скачивание `.sk`, версии, рейтинг, документация по синтаксису.
+- [ ] **Сайт в стиле ScriptHub**: каталог скриптов, загрузка и скачивание `.sc`, версии, рейтинг, документация по синтаксису.
 - [ ] **Движок Rhino (JavaScript) или LuaJ** как вторая реализация `ScriptEngine`, с белым списком API через `ClassShutter`.
 - [ ] **Больше событий**: death, respawn, chat, block break/place, right click, item use, tick/таймеры.
 - [x] Переменные (`set/add/remove/delete`, `{x::%player%}`, временные `{-x}`) и условия `if/else`.

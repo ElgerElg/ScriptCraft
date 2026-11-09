@@ -1,5 +1,6 @@
 package com.scriptcraft;
 
+import com.scriptcraft.script.ScriptPaths;
 import net.minecraftforge.fml.loading.FMLPaths;
 
 import java.io.IOException;
@@ -15,7 +16,7 @@ import java.util.stream.Stream;
  * <pre>
  * scriptcraft/
  *   config.toml          настройки (Forge config)
- *   scripts/             *.sk (выключенные: -имя.sk)
+ *   scripts/             *.sc (выключенные: -имя.sc; старые *.sk переименовываются при запуске)
  *   variables/           variables.json + резервные копии variables-ГГГГММДД-ЧЧММСС.json
  *   resources/           assets/&lt;ns&gt;/... (текстуры, модели, lang) и data/&lt;ns&gt;/... (лут, теги, рецепты)
  *   cache/assets/        (клиент) ресурсы, полученные с сервера; подключены скрытым встроенным ресурспаком мода
@@ -27,10 +28,10 @@ public final class ModPaths {
 
     /** Примеры внутри jar (build.gradle -> processResources -> scriptcraft_defaults/). Копируются при первом запуске. */
     private static final List<String> DEFAULT_FILES = List.of(
-            "scripts/welcome.sk",
-            "scripts/ruby.sk",
-            "scripts/menu.sk",
-            "scripts/hud.sk",
+            "scripts/welcome.sc",
+            "scripts/ruby.sc",
+            "scripts/menu.sc",
+            "scripts/hud.sc",
             "resources/assets/example/blockstates/ruby_block.json",
             "resources/assets/example/models/block/ruby_block.json",
             "resources/assets/example/models/item/ruby_block.json",
@@ -48,10 +49,10 @@ public final class ModPaths {
             "resources/data/minecraft/tags/blocks/mineable/pickaxe.json");
 
     /**
-     * Примеры, которые копируются ВЫКЛЮЧЕННЫМИ ("-имя.sk"): hud.sk прячет ванильный HUD всем игрокам при входе,
+     * Примеры, которые копируются ВЫКЛЮЧЕННЫМИ ("-имя.sc"): hud.sc прячет ванильный HUD всем игрокам при входе,
      * поэтому включать его по умолчанию нельзя — только командой /sc enable hud.
      */
-    private static final java.util.Set<String> DISABLED_DEFAULTS = java.util.Set.of("scripts/hud.sk");
+    private static final java.util.Set<String> DISABLED_DEFAULTS = java.util.Set.of("scripts/hud.sc");
 
     private ModPaths() {
     }
@@ -105,6 +106,7 @@ public final class ModPaths {
                 Files.createDirectories(resources());
                 copyDefaults("resources/");
             }
+            ScriptPaths.migrateLegacyExtension();
         } catch (IOException e) {
             ScriptCraft.LOGGER.error("[ScriptCraft] Не удалось создать папку {}", root(), e);
         }

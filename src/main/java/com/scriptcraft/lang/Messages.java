@@ -25,7 +25,7 @@ public final class Messages {
         add("help.reload", "&e/%1$s reload &7- reload all scripts", "&e/%1$s reload &7- перезагрузить все скрипты");
         add("help.reload_one", "&e/%1$s reload <script> &7- reload one script", "&e/%1$s reload <скрипт> &7- перезагрузить один скрипт");
         add("help.enable", "&e/%1$s enable <script> &7- enable a disabled script", "&e/%1$s enable <скрипт> &7- включить выключенный скрипт");
-        add("help.disable", "&e/%1$s disable <script> &7- disable a script (renames it to -name.sk)", "&e/%1$s disable <скрипт> &7- выключить скрипт (переименует в -имя.sk)");
+        add("help.disable", "&e/%1$s disable <script> &7- disable a script (renames it to -name.sc)", "&e/%1$s disable <скрипт> &7- выключить скрипт (переименует в -имя.sc)");
         add("help.list", "&e/%1$s list &7- show loaded scripts, commands and errors", "&e/%1$s list &7- загруженные скрипты, команды и ошибки");
         add("help.help", "&e/%1$s help &7- this help", "&e/%1$s help &7- эта справка");
         add("help.resources", "&e/%1$s resources reload &7- rescan scriptcraft/resources and send changes to online players",

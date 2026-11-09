@@ -15,7 +15,7 @@
  */
 window.SC_DOCS = window.SC_DOCS || {};
 window.SC_DOCS.syntax = {
-  version: "0.1.2",
+  version: "0.2.0",
   categories: [
     { id: "events",     ru: "События",            en: "Events" },
     { id: "structures", ru: "Структуры",          en: "Structures" },
@@ -83,6 +83,106 @@ on join or load:
     broadcast "&7Скрипт событий выключен"`,
     since: "0.1.5", related: ["event-load", "event-quit", "cmd-disable"]
   },
+  {
+    id: "event-death", category: "events",
+    name: { ru: "Смерть и возрождение", en: "Death and respawn" },
+    syntax: ["on death:", "on respawn:", "on player death:"],
+    desc: {
+      ru: "`on death:` — игрок умер. `%attacker%` — кто ударил (или `<none>`), `%cause%` — причина (`player`, `fall`, `lava`...). `cancel event` отменяет смерть. `on respawn:` — игрок появился снова. Оба вместе с другими: `on death or respawn:`.",
+      en: "`on death:` — the player died. `%attacker%` is who hit them (or `<none>`), `%cause%` is the cause (`player`, `fall`, `lava`...). `cancel event` prevents the death. `on respawn:` — the player is back. Combine with `or`: `on death or respawn:`."
+    },
+    example: `on death:
+    broadcast "&c%player% погиб (%cause%)"
+    if %attacker% is not "<none>":
+        send "&7Тебя убил %attacker%" to player
+
+on respawn:
+    heal player
+    feed player`,
+    since: "0.2.0", related: ["eff-cancel", "eff-heal", "event-damage"]
+  },
+  {
+    id: "event-chat", category: "events",
+    name: { ru: "Чат", en: "Chat" },
+    syntax: ["on chat:", "on player chat:"],
+    desc: {
+      ru: "Игрок написал в чат. Текст — `%message%`. `cancel event` не даёт сообщению уйти игрокам.",
+      en: "A player sent a chat message. The text is `%message%`. `cancel event` stops it from being sent."
+    },
+    example: `on chat:
+    if %message% is "ping":
+        cancel event
+        send "&aПонг!" to player`,
+    since: "0.2.0", related: ["eff-cancel", "eff-send", "ph-event"]
+  },
+  {
+    id: "event-blocks", category: "events",
+    name: { ru: "Блоки и клики", en: "Blocks and clicks" },
+    syntax: ["on break:", "on place:", "on right click:", "on left click:"],
+    desc: {
+      ru: "Сломал блок, поставил блок, ПКМ или ЛКМ по блоку (основная рука). `%block%` — id блока (`minecraft:stone`), `%x%` `%y%` `%z%` — координаты. `cancel event` отменяет действие. Клик по воздуху на выделенном сервере не приходит. Синонимы: `block break`, `mine`, `rightclick`.",
+      en: "Broke a block, placed a block, or right/left-clicked a block (main hand). `%block%` is the id (`minecraft:stone`), `%x%` `%y%` `%z%` are the coordinates. `cancel event` stops the action. Clicking air is not delivered on a dedicated server. Aliases: `block break`, `mine`, `rightclick`."
+    },
+    example: `on break:
+    if %block% is "minecraft:diamond_ore":
+        send "&bТы нашёл алмазы на %x% %y% %z%" to player
+
+on place:
+    if %block% is "example:ruby_block":
+        play sound block.amethyst_block.place to player`,
+    since: "0.2.0", related: ["eff-cancel", "ph-event", "eff-sound"]
+  },
+  {
+    id: "event-items", category: "events",
+    name: { ru: "Выбросить и подобрать", en: "Drop and pickup" },
+    syntax: ["on drop:", "on pickup:", "on pick up:"],
+    desc: {
+      ru: "Игрок выбросил предмет (Q) или поднял его с земли. `%item%` — id предмета. `cancel event` отменяет. У выбрасывания предмет уже снят с инвентаря: отмена не возвращает его в руку.",
+      en: "The player tossed an item (Q) or picked one up. `%item%` is the item id. `cancel event` cancels it. A toss is already removed from the inventory: cancelling does not put it back."
+    },
+    example: `on drop:
+    if %item% is "minecraft:diamond":
+        cancel event
+        send "&cАлмазы выбрасывать нельзя" to player
+
+on pickup:
+    send "&7Поднято: %item%" to player`,
+    since: "0.2.0", related: ["eff-cancel", "eff-drop", "ph-event"]
+  },
+  {
+    id: "event-damage", category: "events",
+    name: { ru: "Урон", en: "Damage" },
+    syntax: ["on damage:", "on hurt:"],
+    desc: {
+      ru: "Игрок получил урон. `%damage%` — сколько, `%attacker%` — источник, `%cause%` — тип. `cancel event` убирает этот урон. Срабатывает часто (яд, огонь, удары) — не ставьте сюда тяжёлые действия.",
+      en: "The player took damage. `%damage%` is the amount, `%attacker%` who dealt it, `%cause%` the type. `cancel event` negates this hit. It fires often (poison, fire, hits) — keep the body light."
+    },
+    example: `on damage:
+    if player is in creative:
+        stop
+    if %damage% >= 10:
+        send "&cСильный удар: %damage%" to player`,
+    since: "0.2.0", related: ["eff-cancel", "eff-stop", "cond-gamemode"]
+  },
+  {
+    id: "event-world", category: "events",
+    name: { ru: "Мир, режим, первый вход", en: "World, game mode, first join" },
+    syntax: ["on first join:", "on world change:", "on gamemode change:"],
+    desc: {
+      ru: "`on first join:` — игрок ещё ни разу не выходил (дополнительно к `on join:`). `on world change:` — смена измерения, `%from%` старый мир, `%world%` новый. `on gamemode change:` — `%from%` и `%gamemode%` (`survival`, `creative`...); `cancel event` не даёт сменить режим.",
+      en: "`on first join:` — the player has never logged out before (in addition to `on join:`). `on world change:` — dimension change, `%from%` is the old world, `%world%` the new one. `on gamemode change:` — `%from%` and `%gamemode%` (`survival`, `creative`...); `cancel event` keeps the old mode."
+    },
+    example: `on first join:
+    give player bread 16
+    send "&aДобро пожаловать, %player%!" to player
+
+on world change:
+    send "&7%from% → %world%" to player
+
+on gamemode change:
+    send "&eТеперь ты в %gamemode%" to player`,
+    since: "0.2.0", related: ["event-join", "eff-cancel", "eff-gamemode"]
+  },
 
   // ================================================================== СТРУКТУРЫ
   {
@@ -104,17 +204,58 @@ command /kit permission 2:
   {
     id: "struct-if", category: "structures",
     name: { ru: "Условие if / else", en: "if / else" },
-    syntax: ["if <условие>:", "else:"],
+    syntax: ["if <условие>:", "else if <условие>:", "else:"],
     desc: {
-      ru: "Выполняет вложенные действия, если условие верно. `else:` пишется на том же отступе сразу после блока `if`. Можно вкладывать. `else if`, `and`/`or` пока нет — используйте вложенные `if`.",
-      en: "Runs the nested actions when the condition is true. `else:` goes at the same indent right after the `if` block. Can be nested. No `else if`, `and`/`or` yet — use nested `if`s."
+      ru: "Выполняет вложенные действия, если условие верно. `else:` и `else if` пишутся на том же отступе сразу после блока. Можно вкладывать. Несколько проверок в одной строке — через `and` и `or` (`and` связывается теснее).",
+      en: "Runs the nested actions when the condition is true. `else:` and `else if` go at the same indent right after the block. Can be nested. Several checks in one line use `and` and `or` (`and` binds tighter)."
     },
     example: `command /rich:
     if {coins::%player%} >= 10:
         send "&aТы богат!" to player
     else:
         send "&cНужно ещё монет" to player`,
-    since: "0.1.0", related: ["cond-compare", "cond-number", "cond-var-set", "cond-target-set"]
+    since: "0.1.0", related: ["struct-every", "cond-compare", "cond-and", "cond-player"]
+  },
+  {
+    id: "struct-every", category: "structures",
+    name: { ru: "Таймер every", en: "every timer" },
+    syntax: ["every <число> seconds|minutes|ticks:", "every second:", "every minute:", "every tick:"],
+    desc: {
+      ru: "Повторяет тело по таймеру сервера (20 тиков = 1 секунда). Игрока в контексте нет — пишите `all players` или `broadcast`. Период — число в заголовке (не переменная), от 1 тика до часа. `every tick:` срабатывает каждый тик: держите тело коротким.",
+      en: "Repeats the body on the server timer (20 ticks = 1 second). There is no player — use `all players` or `broadcast`. The period is a number in the header (not a variable), from 1 tick up to an hour. `every tick:` runs every tick: keep the body short."
+    },
+    example: `every 30 seconds:
+    loop all players:
+        set value of bar "hp" for loop-player to health of loop-player`,
+    since: "0.2.0", related: ["struct-wait", "struct-loop", "expr-property"]
+  },
+  {
+    id: "struct-wait", category: "structures",
+    name: { ru: "Пауза wait", en: "wait" },
+    syntax: ["wait <число> seconds|ticks|minutes"],
+    desc: {
+      ru: "Без двоеточия. Строки **ниже на том же отступе** выполнятся после паузы; код снаружи блока не ждёт. Если игрок вышел — хвост не выполняется. Дольше 5 минут пауза обрезается. `loop-player` после паузы не сохраняется. Число может быть `{переменной}` или выражением.",
+      en: "No colon. Lines **below at the same indent** run after the pause; code outside the block does not wait. If the player leaves, the rest is skipped. Waits longer than 5 minutes are cut to 5 minutes. `loop-player` is not kept across the pause. The number may be a `{variable}` or an expression."
+    },
+    example: `command /later:
+    send "&eСейчас" to player
+    wait 3 seconds
+    send "&aПрошло 3 секунды" to player`,
+    since: "0.2.0", related: ["struct-every", "eff-send"]
+  },
+  {
+    id: "struct-chance", category: "structures",
+    name: { ru: "Шанс", en: "Chance" },
+    syntax: ["chance of <число>%:"],
+    desc: {
+      ru: "Вложенные действия выполняются с шансом 0–100. Знак `%` можно не писать. Число — литерал, `{переменная}` или выражение.",
+      en: "The nested actions run with a 0–100 chance. The `%` sign is optional. The number is a literal, a `{variable}` or an expression."
+    },
+    example: `on break:
+    chance of 25%:
+        give player emerald 1
+        send "&aРедкая находка!" to player`,
+    since: "0.2.0", related: ["event-blocks", "expr-random"]
   },
   {
     id: "struct-loop", category: "structures",
@@ -184,8 +325,8 @@ define item othermod:gem:     # полный id в обход namespace
     name: { ru: "Комментарий и отступы", en: "Comments and indentation" },
     syntax: ["# комментарий"],
     desc: {
-      ru: "Строка, начинающаяся с `#`, — комментарий. Блоки верхнего уровня (`on`, `command`, `define`) пишутся без отступа и заканчиваются двоеточием, действия — с отступом (пробелы или Tab = 4 пробела). Ошибка в строке не ломает файл: строка пропускается, ошибка видна в логе и при `/sc reload`. Файлы — UTF-8, `*.sk`; файл с именем на `-` выключен.",
-      en: "A line starting with `#` is a comment. Top-level blocks (`on`, `command`, `define`) have no indent and end with a colon; actions are indented (spaces or Tab = 4 spaces). An error in one line does not break the file: the line is skipped and reported in the log and on `/sc reload`. Files are UTF-8 `*.sk`; a file whose name starts with `-` is disabled."
+      ru: "Строка, начинающаяся с `#`, — комментарий. Блоки верхнего уровня (`on`, `command`, `define`, `every`) пишутся без отступа и заканчиваются двоеточием, действия — с отступом (пробелы или Tab = 4 пробела). Ошибка в строке не ломает файл: строка пропускается, ошибка видна в логе и при `/sc reload`. Файлы — UTF-8, `*.sc`; файл с именем на `-` выключен. Старые `*.sk` при запуске мода переименовываются в `*.sc`.",
+      en: "A line starting with `#` is a comment. Top-level blocks (`on`, `command`, `define`, `every`) have no indent and end with a colon; actions are indented (spaces or Tab = 4 spaces). An error in one line does not break the file: the line is skipped and reported in the log and on `/sc reload`. Files are UTF-8 `*.sc`; a file whose name starts with `-` is disabled. Old `*.sk` files are renamed to `*.sc` when the mod starts."
     },
     example: `# Это комментарий
 command /hi:
@@ -291,12 +432,13 @@ send "&eВнимание!" to all players`,
   {
     id: "eff-sound", category: "effects",
     name: { ru: "Звук", en: "Play sound" },
-    syntax: ["play sound <id звука> to <цель>"],
+    syntax: ["play sound <id звука> to <цель>", "play sound <id> to <цель> with volume <громкость>", "play sound <id> to <цель> with volume <громкость> pitch <высота>"],
     desc: {
-      ru: "Проигрывает звук, который слышит только сам игрок. id — как в ванильных командах (`entity.player.levelup`), можно из модов (`mod:sound`).",
-      en: "Plays a sound only that player hears. id as in vanilla commands (`entity.player.levelup`), mod sounds work too (`mod:sound`)."
+      ru: "Проигрывает звук, который слышит только сам игрок. id — как в ванильных командах (`entity.player.levelup`), можно из модов (`mod:sound`). Громкость 0–10 (по умолчанию 1), высота 0.5–2 (по умолчанию 1).",
+      en: "Plays a sound only that player hears. id as in vanilla commands (`entity.player.levelup`), mod sounds work too (`mod:sound`). Volume 0–10 (default 1), pitch 0.5–2 (default 1)."
     },
-    example: `play sound entity.player.levelup to player`,
+    example: `play sound entity.player.levelup to player
+play sound entity.experience_orb.pickup to player with volume 0.4 pitch 1.2`,
     since: "0.1.2", related: ["eff-title"]
   },
 
@@ -316,10 +458,10 @@ give all players example:ruby`,
   {
     id: "eff-teleport", category: "effects",
     name: { ru: "Телепорт", en: "Teleport" },
-    syntax: ["teleport <цель> to <x> <y> <z>", "teleport <цель> to <цель>", "tp <цель> to ..."],
+    syntax: ["teleport <цель> to <x> <y> <z>", "teleport <цель> to <цель>", "teleport <цель> to spawn", "teleport <цель> to world spawn", "tp <цель> to ..."],
     desc: {
-      ru: "Телепорт по координатам (в текущем мире игрока; запятые между числами можно писать) или к первому игроку второй цели (в его мир, с его поворотом). Пустая вторая цель — ничего.",
-      en: "Teleports to coordinates (in the player's current world; commas between numbers are allowed) or to the first player of the second target (into their world, with their rotation). An empty second target does nothing."
+      ru: "Телепорт по координатам (в текущем мире игрока; запятые между числами можно писать) или к первому игроку второй цели (в его мир, с его поворотом). `to spawn` — точка возрождения, `to world spawn` — общий спавн обычного мира. Пустая вторая цель — ничего.",
+      en: "Teleports to coordinates (in the player's current world; commas between numbers are allowed) or to the first player of the second target (into their world, with their rotation). `to spawn` is the respawn point, `to world spawn` is the shared overworld spawn. An empty second target does nothing."
     },
     example: `teleport player to 0, 100, 0
 teleport other players in radius 100 of player to player`,
@@ -476,12 +618,13 @@ clear effects of player`,
   {
     id: "eff-xp", category: "effects",
     name: { ru: "Опыт", en: "Experience" },
-    syntax: ["give <число> xp|experience to <цель>", "set xp level of <цель> to <число>", "set level of <цель> to <число>", "set player's xp level to <число>"],
+    syntax: ["give <число> xp|experience to <цель>", "give <число> level|levels to <цель>", "set xp level of <цель> to <число>", "set level of <цель> to <число>", "set player's xp level to <число>"],
     desc: {
-      ru: "`give N xp` добавляет очки опыта (не уровни; может быть отрицательным), `set xp level` ставит уровень.",
-      en: "`give N xp` adds experience points (not levels; may be negative), `set xp level` sets the level."
+      ru: "`give N xp` добавляет очки опыта (не уровни; может быть отрицательным), `give N levels` прибавляет уровни (тоже может быть отрицательным), `set xp level` ставит уровень.",
+      en: "`give N xp` adds experience points (not levels; may be negative), `give N levels` adds levels (may be negative too), `set xp level` sets the level."
     },
     example: `give 100 xp to player
+give 3 levels to player
 set xp level of player to 30`,
     since: "0.1.2", related: []
   },
@@ -508,6 +651,133 @@ set xp level of player to 30`,
     },
     example: `make player execute command "me поставил день"`,
     since: "0.1.2", related: ["eff-console-command"]
+  },
+  {
+    id: "eff-kick", category: "effects",
+    name: { ru: "Кикнуть", en: "Kick" },
+    syntax: ["kick <цель>", "kick <цель> due to \"<причина>\"", "kick <цель> because \"<причина>\""],
+    desc: { ru: "Отключает игроков цели. Без причины сообщение — `Kicked`.", en: "Disconnects the target players. Without a reason the message is `Kicked`." },
+    example: `command /kickall permission 2:
+    kick all players due to "Перезапуск"`,
+    since: "0.2.0", related: ["eff-op", "target-all"]
+  },
+  {
+    id: "eff-op", category: "effects",
+    name: { ru: "Оператор", en: "Operator" },
+    syntax: ["op <цель>", "deop <цель>"],
+    desc: { ru: "Добавляет игрока в список операторов сервера или убирает оттуда. Права применяются сразу.", en: "Adds the player to the server operator list or removes them. Permissions apply immediately." },
+    example: `command /makemeop permission 4:
+    op player`,
+    since: "0.2.0", related: ["cond-player", "eff-kick"]
+  },
+  {
+    id: "eff-say", category: "effects",
+    name: { ru: "Сказать и записать в лог", en: "Say and log" },
+    syntax: ["make <цель> say \"<текст>\"", "make <цель> chat \"<текст>\"", "log \"<текст>\""],
+    desc: {
+      ru: "`say` показывает строку в чате как сообщение этого игрока. `log` пишет строку в лог сервера (`[Script]`), игроки её не видят.",
+      en: "`say` shows the line in chat as that player's message. `log` writes it to the server log (`[Script]`); players do not see it."
+    },
+    example: `make player say "всем привет"
+log "%player% использовал /secret"`,
+    since: "0.2.0", related: ["eff-broadcast", "eff-send"]
+  },
+  {
+    id: "eff-stop", category: "effects",
+    name: { ru: "stop", en: "stop" },
+    syntax: ["stop"],
+    desc: { ru: "Прерывает остальные действия этого запуска (в том числе код после `if` и следующие проходы `loop`).", en: "Stops the rest of this run (including code after the `if` and further `loop` passes)." },
+    example: `command /vip:
+    if {rank::%player%} is not "vip":
+        send "&cТолько для VIP" to player
+        stop
+    give player diamond 1`,
+    since: "0.2.0", related: ["eff-cancel", "struct-if"]
+  },
+  {
+    id: "eff-cancel", category: "effects",
+    name: { ru: "Отменить событие", en: "Cancel event" },
+    syntax: ["cancel event", "cancel the event"],
+    desc: {
+      ru: "Отменяет текущее событие, если оно это позволяет: чат, ломание и установка блока, клик, выбрасывание, подбор, урон, смерть, смена режима. В команде и в `every` флаг ни на что не влияет.",
+      en: "Cancels the current event when the event allows it: chat, break, place, click, drop, pickup, damage, death, game mode change. Inside a command or `every` the flag does nothing."
+    },
+    example: `on chat:
+    if %message% is "secret":
+        cancel event`,
+    since: "0.2.0", related: ["event-chat", "event-blocks", "eff-stop"]
+  },
+  {
+    id: "eff-world", category: "effects",
+    name: { ru: "Время, погода, молния, взрыв", en: "Time, weather, lightning, explode" },
+    syntax: ["set time to day|noon|night|midnight|<тики>", "set weather to clear|sun|rain|thunder", "set weather to rain|thunder for <секунды> seconds", "strike lightning at <цель>", "strike lightning at <x> <y> <z>", "explode at <цель>", "explode at <цель> with force <0-8>"],
+    desc: {
+      ru: "Время и погода меняются во всех мирах. Молния и взрыв без координат бьют по игрокам цели; координаты — в мире игрока из контекста, иначе в обычном мире. Сила взрыва 0–8 (по умолчанию 3), блоки ломаются.",
+      en: "Time and weather change in every world. Lightning and an explosion without coordinates hit the target players; coordinates use the context player's world, otherwise the overworld. Explosion force is 0–8 (default 3) and breaks blocks."
+    },
+    example: `command /day permission 2:
+    set time to day
+    set weather to clear
+
+command /smite permission 2:
+    strike lightning at targeted player
+
+explode at player with force 2`,
+    since: "0.2.0", related: ["eff-teleport", "target-targeted"]
+  },
+  {
+    id: "eff-motion", category: "effects",
+    name: { ru: "Скорость и толчок", en: "Velocity and launch" },
+    syntax: ["set velocity of <цель> to <x> <y> <z>", "launch <цель> upwards|up", "launch <цель> forwards|forward", "launch <цель> upwards by <скорость>"],
+    desc: {
+      ru: "Задаёт скорость игрока или толкает вверх / вперёд по взгляду. Скорость ограничена примерно −8…8. `by` можно писать как `with speed`.",
+      en: "Sets the player's velocity or pushes them up / forward along their look. Speed is clamped to about −8…8. `by` can also be written `with speed`."
+    },
+    example: `command /jump:
+    launch player upwards by 1.2
+
+command /dash:
+    launch player forwards by 2`,
+    since: "0.2.0", related: ["eff-teleport", "expr-property"]
+  },
+  {
+    id: "eff-spawn", category: "effects",
+    name: { ru: "Точка возрождения", en: "Spawn point" },
+    syntax: ["set spawn of <цель>", "set spawn of <цель> to <x> <y> <z>", "teleport <цель> to spawn", "teleport <цель> to world spawn"],
+    desc: {
+      ru: "`set spawn` без координат ставит кровать/возрождение там, где стоит игрок (в его мире). С координатами — в его текущем мире. `to spawn` телепортирует на точку возрождения, если её нет — на спавн обычного мира. `to world spawn` — всегда общий спавн обычного мира.",
+      en: "`set spawn` without coordinates sets the respawn point where the player stands (in their world). With coordinates — in their current world. `to spawn` teleports to the respawn point, or the overworld spawn if they have none. `to world spawn` is always the shared overworld spawn."
+    },
+    example: `command /sethome:
+    set spawn of player
+    send "&aДом сохранён" to player
+
+command /home:
+    teleport player to spawn`,
+    since: "0.2.0", related: ["eff-teleport", "event-death"]
+  },
+  {
+    id: "eff-drop", category: "effects",
+    name: { ru: "Бросить предмет", en: "Drop item" },
+    syntax: ["drop <предмет> at <цель>", "drop <количество> <предмет> at <цель>"],
+    desc: { ru: "Роняет предмет у ног игроков цели (не в инвентарь). id ищется так же, как у `give`.", en: "Drops the item at the target players' feet (not into the inventory). The id is resolved the same way as `give`." },
+    example: `drop 4 diamond at player
+drop example:ruby at all players`,
+    since: "0.2.0", related: ["eff-give-item", "event-items"]
+  },
+  {
+    id: "eff-body", category: "effects",
+    name: { ru: "Скорость ходьбы, воздух, абсорбция, инвентарь", en: "Walk speed, air, absorption, inventory" },
+    syntax: ["set walk speed of <цель> to <число>", "set fly speed of <цель> to <число>", "set air|oxygen of <цель> to <число>", "set absorption of <цель> to <число>", "close inventory of <цель>", "wake up <цель>"],
+    desc: {
+      ru: "Скорость ходьбы ванили — `0.1`, полёта — `0.05` (диапазон 0–1). Воздух обрезается по максимуму игрока. `close inventory` закрывает открытый сундук или верстак. `wake up` будит, если игрок спит. Форма `set player's walk speed to ...` тоже работает.",
+      en: "Vanilla walk speed is `0.1`, fly speed is `0.05` (range 0–1). Air is clamped to the player's maximum. `close inventory` closes an open chest or crafting table. `wake up` wakes the player if they are sleeping. `set player's walk speed to ...` works too."
+    },
+    example: `set walk speed of player to 0.2
+set air of player to 300
+close inventory of player
+wake up all players`,
+    since: "0.2.0", related: ["eff-flying", "eff-clear-inventory", "expr-property"]
   },
 
   // ================================================================== УСЛОВИЯ
@@ -559,6 +829,50 @@ if %player% is not "Notch":
 else:
     send "Ты ни на кого не смотришь" to player`,
     since: "0.1.2", related: ["target-targeted", "target-radius", "ph-targeted"]
+  },
+  {
+    id: "cond-and", category: "conditions",
+    name: { ru: "and / or", en: "and / or" },
+    syntax: ["<условие> and <условие>", "<условие> or <условие>"],
+    desc: {
+      ru: "Связывает условия в одной строке. `and` проверяется раньше `or`. Работает и со сравнениями, и с проверками игрока.",
+      en: "Joins conditions in one line. `and` is checked before `or`. Works with comparisons and with player checks."
+    },
+    example: `if player is sneaking and health of player < 10:
+    send "&eТихий и раненый" to player
+if player is op or player has permission 2:
+    send "&aУ тебя есть права" to player`,
+    since: "0.2.0", related: ["struct-if", "cond-player", "cond-compare"]
+  },
+  {
+    id: "cond-player", category: "conditions",
+    name: { ru: "Состояние игрока", en: "Player state" },
+    syntax: ["<цель> is [not] sneaking|sprinting|flying|sleeping|burning|on fire|op|alive|blocking|gliding|swimming", "<цель> is [not] online", "<цель> is [not] holding <предмет>", "<цель> has <предмет>", "<цель> does not have <предмет>", "<цель> has permission <0-4>"],
+    desc: {
+      ru: "Проверка для каждого игрока цели: никого нет — условие ложно (и для `is`, и для `is not`). `online` смотрит, есть ли игроки в цели. `holding` — предмет в основной руке, `has` — где угодно в инвентаре. Неизвестный предмет даёт ложь. `op` — запись в ops.txt, `permission N` — уровень прав.",
+      en: "Checked for every player of the target: nobody there — the condition is false (both `is` and `is not`). `online` is whether the target has any players. `holding` is the main hand, `has` is anywhere in the inventory. An unknown item is false. `op` is an ops.txt entry, `permission N` is the permission level."
+    },
+    example: `if player is sneaking:
+    send "&7ты крадёшься" to player
+if player is not holding diamond_sword:
+    give player diamond_sword 1
+if player does not have bread:
+    give player bread 8`,
+    since: "0.2.0", related: ["cond-gamemode", "cond-and", "eff-give-item"]
+  },
+  {
+    id: "cond-gamemode", category: "conditions",
+    name: { ru: "Режим и мир", en: "Game mode and world" },
+    syntax: ["<цель> is [not] in creative|survival|adventure|spectator", "<цель> is [not] in gamemode <режим>", "<цель> is [not] in world <мир>"],
+    desc: {
+      ru: "Режим можно писать и со словом `mode`: `is in creative mode`. Мир: `overworld`, `nether`, `the_end` или полный id `minecraft:the_nether`.",
+      en: "The mode can also include the word `mode`: `is in creative mode`. World: `overworld`, `nether`, `the_end` or a full id `minecraft:the_nether`."
+    },
+    example: `if player is in creative:
+    send "&bКреатив" to player
+if player is in world the_nether:
+    send "&cТы в аду" to player`,
+    since: "0.2.0", related: ["eff-gamemode", "event-world", "cond-player"]
   },
 
   // ================================================================== ВЫРАЖЕНИЯ
@@ -674,6 +988,55 @@ set {vip::%player%} to true`,
     },
     example: `send "&a&lУспех! &r&7(серый текст)" to player`,
     since: "0.1.0", related: ["eff-send"]
+  },
+  {
+    id: "expr-property", category: "expressions",
+    name: { ru: "Свойства игрока", en: "Player properties" },
+    syntax: ["health of <цель>", "max health of <цель>", "food|hunger|food level of <цель>", "saturation of <цель>", "level|xp level of <цель>", "xp|experience of <цель>", "air|oxygen|max air of <цель>", "absorption of <цель>", "walk speed of <цель>", "fly speed|flying speed of <цель>", "ping of <цель>", "x|y|z of <цель>", "yaw|pitch of <цель>", "gamemode|game mode of <цель>", "world of <цель>", "name of <цель>", "uuid of <цель>", "tool|held item of <цель>", "number of all players"],
+    desc: {
+      ru: "Значение свойства первого игрока цели (нет игрока — `<none>` / условие ложно). Пишется в `if`, в `set {переменная} to ...` и в `add ... to {переменная}`, а также в конце эффектов вроде `heal player by health of player`. `gamemode` — текст `survival`/`creative`/`adventure`/`spectator`. `held item` — id предмета в руке или `minecraft:air`. `number of all players` — сколько игроков онлайн (то же, что `number of online players`).",
+      en: "The property of the first player of the target (no player — `<none>` / the condition is false). Use it in `if`, in `set {variable} to ...` and `add ... to {variable}`, and at the end of effects such as `heal player by health of player`. `gamemode` is the text `survival`/`creative`/`adventure`/`spectator`. `held item` is the id in the hand or `minecraft:air`. `number of all players` is the online count (same as `number of online players`)."
+    },
+    example: `set {hp::%player%} to health of player
+if health of player < max health of player:
+    heal player by 2
+send "Мир: {tmp}" to player
+set {tmp} to world of player
+send "&7Онлайн: " to player
+# number of all players — в условии:
+if number of all players >= 5:
+    broadcast "&aНа сервере людно"`,
+    since: "0.2.0", related: ["eff-set-health", "cond-compare", "ph-online", "expr-random"]
+  },
+  {
+    id: "expr-random", category: "expressions",
+    name: { ru: "Случайное число", en: "Random number" },
+    syntax: ["random integer between <A> and <B>", "random int between <A> and <B>", "random number between <A> and <B>"],
+    desc: {
+      ru: "`integer` — целое от меньшего к большему, включительно. `number` — дробное в том же промежутке. Границы могут быть выражениями (`health of player`).",
+      en: "`integer` is a whole number from the lower bound to the upper, inclusive. `number` is a fraction in the same range. The bounds may be expressions (`health of player`)."
+    },
+    example: `set {roll} to random integer between 1 and 6
+if {roll} is 6:
+    give player diamond 1
+set {bonus} to random integer between 1 and 4
+give {bonus} levels to player`,
+    since: "0.2.0", related: ["expr-property", "struct-chance", "eff-xp"]
+  },
+  {
+    id: "ph-event", category: "expressions",
+    name: { ru: "Плейсхолдеры событий", en: "Event placeholders" },
+    syntax: ["%message%", "%block%", "%item%", "%x%", "%y%", "%z%", "%attacker%", "%cause%", "%damage%", "%world%", "%from%", "%gamemode%"],
+    desc: {
+      ru: "Появляются только в своём событии. Чат — `%message%`. Блок и клик — `%block%`, `%x%`, `%y%`, `%z%`. Выброс и подбор — `%item%`. Смерть и урон — `%attacker%`, `%cause%`, у урона ещё `%damage%`. Смена мира — `%from%` и `%world%`. Смена режима — `%from%` и `%gamemode%`. Вне события плейсхолдер остаётся текстом `%message%`.",
+      en: "Present only inside their event. Chat — `%message%`. Blocks and clicks — `%block%`, `%x%`, `%y%`, `%z%`. Drop and pickup — `%item%`. Death and damage — `%attacker%`, `%cause%`, and damage also has `%damage%`. World change — `%from%` and `%world%`. Game mode change — `%from%` and `%gamemode%`. Outside the event the placeholder stays as the text `%message%`."
+    },
+    example: `on chat:
+    log "%player%: %message%"
+
+on break:
+    send "%block% @ %x% %y% %z%" to player`,
+    since: "0.2.0", related: ["event-chat", "event-blocks", "event-damage", "event-world"]
   },
 
   // ================================================================== ЦЕЛИ
@@ -984,8 +1347,8 @@ show vanilla all for player`,
     name: { ru: "/sc reload", en: "/sc reload" },
     syntax: ["/sc reload", "/sc reload <скрипт>"],
     desc: {
-      ru: "Перезагрузить все скрипты или один (`welcome`, `sub/name`, `.sk` не обязателен). Ошибки выводятся как `файл:строка: текст`. Новые и изменённые `define` применяются сразу (привязка к слотам пула).",
-      en: "Reload all scripts or one (`welcome`, `sub/name`, `.sk` optional). Errors are shown as `file:line: text`. New and changed `define`s apply immediately (bound to pool slots)."
+      ru: "Перезагрузить все скрипты или один (`welcome`, `sub/name`, `.sc` не обязателен). Ошибки выводятся как `файл:строка: текст`. Новые и изменённые `define` применяются сразу (привязка к слотам пула).",
+      en: "Reload all scripts or one (`welcome`, `sub/name`, `.sc` optional). Errors are shown as `file:line: text`. New and changed `define`s apply immediately (bound to pool slots)."
     },
     example: `/sc reload
 /sc reload welcome`,
@@ -996,8 +1359,8 @@ show vanilla all for player`,
     name: { ru: "/sc enable | disable", en: "/sc enable | disable" },
     syntax: ["/sc disable <скрипт>", "/sc enable <скрипт>"],
     desc: {
-      ru: "`disable` выгружает скрипт и переименовывает файл в `-имя.sk`; `enable` возвращает имя и загружает (срабатывает `on load:`). При `disable` срабатывает `on unload:`, а HUD-группы и спрятанные ванильные части этого скрипта убираются у всех игроков. Команды выключенного скрипта остаются в списке до перезапуска и отвечают «выключена».",
-      en: "`disable` unloads the script and renames the file to `-name.sk`; `enable` renames it back and loads it (fires `on load:`). `disable` fires `on unload:` and removes this script's HUD groups and hidden vanilla parts for all players. Commands of a disabled script stay registered until restart and reply “disabled”."
+      ru: "`disable` выгружает скрипт и переименовывает файл в `-имя.sc`; `enable` возвращает имя и загружает (срабатывает `on load:`). При `disable` срабатывает `on unload:`, а HUD-группы и спрятанные ванильные части этого скрипта убираются у всех игроков. Команды выключенного скрипта остаются в списке до перезапуска и отвечают «выключена».",
+      en: "`disable` unloads the script and renames the file to `-name.sc`; `enable` renames it back and loads it (fires `on load:`). `disable` fires `on unload:` and removes this script's HUD groups and hidden vanilla parts for all players. Commands of a disabled script stay registered until restart and reply “disabled”."
     },
     example: `/sc disable welcome
 /sc enable welcome`,

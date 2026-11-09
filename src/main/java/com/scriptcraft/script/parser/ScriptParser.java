@@ -11,6 +11,7 @@ import com.scriptcraft.script.runtime.Expression;
 import com.scriptcraft.script.runtime.HudActions;
 import com.scriptcraft.script.runtime.ScriptEvent;
 import com.scriptcraft.script.runtime.Target;
+import net.minecraft.world.level.GameType;
 import com.scriptcraft.screen.Anchor;
 import com.scriptcraft.screen.BarDirection;
 import com.scriptcraft.screen.BarElement;
@@ -79,6 +80,7 @@ public final class ScriptParser {
     private final Map<String, CommandDefinition> commands = new LinkedHashMap<>();
     private final Map<String, BlockDefinition> blocks = new LinkedHashMap<>();
     private final Map<String, ItemDefinition> items = new LinkedHashMap<>();
+    private final List<PeriodHandler> periods = new ArrayList<>();
     private final List<String> errors = new ArrayList<>();
     private String currentFile = "?";
     /** Текущее пространство имён для define (сбрасывается на scriptcraft в начале каждого файла). */
@@ -90,7 +92,8 @@ public final class ScriptParser {
             currentNamespace = ScriptCraft.MODID;
             parseFile(preprocess(source.lines()));
         }
-        return new ParseResult(events, commands, List.copyOf(blocks.values()), List.copyOf(items.values()), List.copyOf(errors));
+        return new ParseResult(events, commands, List.copyOf(blocks.values()), List.copyOf(items.values()),
+                List.copyOf(periods), List.copyOf(errors));
     }
 
     /**
@@ -186,13 +189,28 @@ public final class ScriptParser {
     private void parseTopLevel(Line headerLine, String header, List<Line> body) {
         String lower = header.toLowerCase(Locale.ROOT);
 
+        if (lower.startsWith("every ")) {
+            try {
+                int ticks = parsePeriod(header.substring(6).strip());
+                if (body.isEmpty()) {
+                    error(headerLine, "у 'every' нет вложенных действий");
+                } else {
+                    periods.add(new PeriodHandler(currentFile, ticks, parseActions(body)));
+                }
+            } catch (ParseException e) {
+                error(headerLine, e.getMessage());
+            }
+            return;
+        }
+
         if (lower.startsWith("on ")) {
             // "on join:", "on load:", несколько событий — "on join or load:" (одно тело на все).
             List<ScriptEvent> list = new ArrayList<>();
             for (String part : lower.substring(3).split("\\s+or\\s+")) {
                 ScriptEvent event = ScriptEvent.byName(part);
                 if (event == null) {
-                    error(headerLine, "неизвестное событие: " + part.strip() + " (join, quit, load, unload)");
+                    error(headerLine, "неизвестное событие: " + part.strip()
+                            + " (join, quit, death, respawn, chat, break, place, right click, left click, drop, pickup, damage, first join, world change, gamemode change, load, unload)");
                     return;
                 }
                 if (list.contains(event)) {
@@ -360,6 +378,25 @@ public final class ScriptParser {
                     error(line, e.getMessage());
                     openIf = -1;
                 }
+            } else if (lower.startsWith("chance of ") && lower.endsWith(":")) {
+                openIf = -1;
+                try {
+                    String inner = line.text().substring("chance of ".length(), line.text().length() - 1).strip();
+                    if (inner.endsWith("%")) {
+                        inner = inner.substring(0, inner.length() - 1).strip();
+                    }
+                    List<Token> ct = Tokenizer.tokenize(inner);
+                    if (ct.isEmpty()) {
+                        throw new ParseException("нужно: chance of 50%:");
+                    }
+                    ExprParser.Parsed ex = ExprParser.parse(ct, 0);
+                    if (ex.end() != ct.size()) {
+                        throw new ParseException("лишний текст в 'chance of'");
+                    }
+                    actions.add(new Actions.Chance(ex.expression(), parseActions(children)));
+                } catch (ParseException e) {
+                    error(line, e.getMessage());
+                }
             } else if (lower.startsWith("loop ") && lower.endsWith(":")) {
                 // loop <цель>:  + вложенные действия, внутри loop-player / %loop-player%
                 openIf = -1;
@@ -373,15 +410,53 @@ public final class ScriptParser {
                 } catch (ParseException e) {
                     error(line, e.getMessage());
                 }
+            } else if ((lower.startsWith("else if ") || lower.startsWith("elseif ")) && lower.endsWith(":")) {
+                if (openIf < 0) {
+                    error(line, "'else if' без 'if' прямо над ним");
+                } else {
+                    try {
+                        int prefix = lower.startsWith("elseif ") ? "elseif ".length() : "else if ".length();
+                        String condText = line.text().substring(prefix, line.text().length() - 1).strip();
+                        Actions.If root = (Actions.If) actions.get(openIf);
+                        if (!canAttachElse(root)) {
+                            error(line, "'else if' после 'else'");
+                            openIf = -1;
+                        } else {
+                            Actions.If next = new Actions.If(parseCondition(condText), parseActions(children), List.of());
+                            actions.set(openIf, attachElseIf(root, next));
+                        }
+                    } catch (ParseException e) {
+                        error(line, e.getMessage());
+                        openIf = -1;
+                    }
+                }
             } else if (lower.equals("else:")) {
-                // else:  — относится к if прямо над ним
+                // else:  — относится к if (или к последнему else if) прямо над ним
                 if (openIf < 0) {
                     error(line, "'else' без 'if' прямо над ним");
                 } else {
                     Actions.If prev = (Actions.If) actions.get(openIf);
-                    actions.set(openIf, new Actions.If(prev.condition(), prev.then(), parseActions(children)));
+                    if (!canAttachElse(prev)) {
+                        error(line, "у этого if уже есть else");
+                    } else {
+                        actions.set(openIf, attachElse(prev, parseActions(children)));
+                    }
                 }
                 openIf = -1;
+            } else if (lower.startsWith("wait ") && !lower.endsWith(":")) {
+                openIf = -1;
+                if (!children.isEmpty()) {
+                    error(children.get(0), "у 'wait' не бывает вложенных строк — следующие действия пишите на том же отступе");
+                }
+                try {
+                    actions.add(parseWait(line, body.subList(end, body.size())));
+                    break;
+                } catch (ParseException e) {
+                    error(line, e.getMessage());
+                }
+            } else if (lower.startsWith("wait ") && lower.endsWith(":")) {
+                openIf = -1;
+                error(line, "'wait' пишется без двоеточия: строки ниже на том же отступе выполнятся после паузы");
             } else {
                 openIf = -1;
                 try {
@@ -396,55 +471,272 @@ public final class ScriptParser {
     }
 
     /**
-     * Условие (текст между "if" и двоеточием):
-     * {a} is X | {a} is not X | {a} > X | {a} < X | {a} >= X | {a} <= X | {a} is set | {a} is not set
-     * <цель> is set | <цель> is not set (targeted player is set, players in radius 5 of player is not set...)
+     * Условие между "if" и двоеточием.
+     * Сравнения, is set, проверки игрока (is sneaking, is holding, has, gamemode, world)
+     * и связки and / or (and связывается теснее).
      */
     private Condition parseCondition(String text) throws ParseException {
         List<Token> t = Tokenizer.tokenize(text);
         if (t.size() < 2) {
             throw new ParseException("неполное условие, пример: if {coins::%player%} >= 10:");
         }
-        // <цель> is [not] set — "targeted player is set", "other players in radius 5 of player is set".
-        // Только для настоящих целей: {var}/"текст"/слово по-прежнему значения (как раньше).
-        if (!t.get(0).quoted() && !t.get(0).value().startsWith("{")) {
-            TargetParser.Parsed parsed = TargetParser.parse(t, 0);
-            if (parsed != null && !(parsed.target() instanceof Target.Named)) {
-                int k = parsed.end();
-                boolean negate = word(t, k + 1).equals("not");
-                int setAt = negate ? k + 2 : k + 1;
-                if (word(t, k).equals("is") && word(t, setAt).equals("set") && t.size() == setAt + 1) {
-                    return new Condition.TargetSet(parsed.target(), negate);
+        ParsedCond parsed = parseOr(t, 0);
+        if (parsed.end() != t.size()) {
+            throw new ParseException("лишний текст в условии: '" + t.get(parsed.end()).value() + "'");
+        }
+        return parsed.condition();
+    }
+
+    private record ParsedCond(Condition condition, int end) {
+    }
+
+    private ParsedCond parseOr(List<Token> t, int i) throws ParseException {
+        ParsedCond left = parseAnd(t, i);
+        while (word(t, left.end()).equals("or")) {
+            ParsedCond right = parseAnd(t, left.end() + 1);
+            left = new ParsedCond(new Condition.Or(left.condition(), right.condition()), right.end());
+        }
+        return left;
+    }
+
+    private ParsedCond parseAnd(List<Token> t, int i) throws ParseException {
+        ParsedCond left = parsePrimary(t, i);
+        while (word(t, left.end()).equals("and")) {
+            ParsedCond right = parsePrimary(t, left.end() + 1);
+            left = new ParsedCond(new Condition.And(left.condition(), right.condition()), right.end());
+        }
+        return left;
+    }
+
+    private ParsedCond parsePrimary(List<Token> t, int i) throws ParseException {
+        if (i < t.size() && !t.get(i).quoted()) {
+            TargetParser.Parsed target = TargetParser.parse(t, i);
+            if (target != null) {
+                ParsedCond state = tryTargetCondition(t, target);
+                if (state != null) {
+                    return state;
                 }
-                // иначе это обычное сравнение (например, if %player% is "Notch":) — разбираем как раньше
             }
         }
-        Expression left = expression(t.get(0));
-        String op = word(t, 1);
+        ExprParser.Parsed left = ExprParser.parse(t, i);
+        int opAt = left.end();
+        String op = word(t, opAt);
         if (op.equals("is")) {
-            boolean negate = word(t, 2).equals("not");
-            int next = negate ? 3 : 2;
-            if (word(t, next).equals("set") && t.size() == next + 1) {
-                return new Condition.IsSet(left, negate);
+            boolean negate = word(t, opAt + 1).equals("not");
+            int next = negate ? opAt + 2 : opAt + 1;
+            if (word(t, next).equals("set") && (next + 1 == t.size() || isJoin(word(t, next + 1)))) {
+                return new ParsedCond(new Condition.IsSet(left.expression(), negate), next + 1);
             }
-            if (t.size() != next + 1) {
-                throw new ParseException("после 'is' ожидается одно значение (текст бери в кавычки)");
-            }
-            return new Condition.Compare(left, negate ? "is not" : "is", expression(t.get(next)));
+            ExprParser.Parsed right = ExprParser.parse(t, next);
+            return new ParsedCond(new Condition.Compare(left.expression(), negate ? "is not" : "is", right.expression()), right.end());
         }
-        if (op.equals(">") || op.equals("<") || op.equals(">=") || op.equals("<=")) {
-            if (t.size() != 3) {
-                throw new ParseException("ожидается: if {a} " + op + " число:");
-            }
-            return new Condition.Compare(left, op, expression(t.get(2)));
+        if (op.equals(">") || op.equals("<") || op.equals(">=") || op.equals("<=") || op.equals("=") || op.equals("==") || op.equals("!=")) {
+            String cmp = op.equals("!=") ? "is not" : (op.equals("=") || op.equals("==") ? "is" : op);
+            ExprParser.Parsed right = ExprParser.parse(t, opAt + 1);
+            return new ParsedCond(new Condition.Compare(left.expression(), cmp, right.expression()), right.end());
         }
-        if (op.equals("=") || op.equals("==") || op.equals("!=")) {
-            if (t.size() != 3) {
-                throw new ParseException("ожидается: if {a} " + op + " значение:");
+        throw new ParseException("неизвестный оператор условия: " + (op.isEmpty() ? t.get(Math.min(opAt, t.size() - 1)).value() : op)
+                + " (is, is not, >, <, >=, <=, is set, and, or)");
+    }
+
+    /** player is sneaking / is holding / has item / is in creative / is in world ... или null, если это обычное сравнение. */
+    private ParsedCond tryTargetCondition(List<Token> t, TargetParser.Parsed target) throws ParseException {
+        int k = target.end();
+        String head = word(t, k);
+        if (head.equals("has") || (head.equals("does") && word(t, k + 1).equals("not") && word(t, k + 2).equals("have"))) {
+            boolean negate = head.equals("does");
+            int at = negate ? k + 3 : k + 1;
+            if (word(t, at).equals("permission")) {
+                if (at + 1 >= t.size()) {
+                    throw new ParseException("нужно: player has permission <0-4>");
+                }
+                int level;
+                try {
+                    level = Integer.parseInt(t.get(at + 1).value());
+                } catch (NumberFormatException e) {
+                    throw new ParseException("уровень прав — число от 0 до 4");
+                }
+                if (level < 0 || level > 4) {
+                    throw new ParseException("уровень прав — число от 0 до 4");
+                }
+                return new ParsedCond(new Condition.Permission(target.target(), level, negate), finish(t, at + 2));
             }
-            return new Condition.Compare(left, op.equals("!=") ? "is not" : "is", expression(t.get(2)));
+            if (at >= t.size()) {
+                throw new ParseException("нужно: player has <предмет>");
+            }
+            return new ParsedCond(new Condition.HasItem(target.target(), t.get(at).value(), negate), finish(t, at + 1));
         }
-        throw new ParseException("неизвестный оператор условия: " + op + " (is, is not, >, <, >=, <=, is set)");
+        if (!head.equals("is")) {
+            return null;
+        }
+        boolean negate = word(t, k + 1).equals("not");
+        int n = negate ? k + 2 : k + 1;
+        String s = word(t, n);
+        if (s.equals("set") && (n + 1 >= t.size() || isJoin(word(t, n + 1)))) {
+            // "Steve is set" остаётся сравнением текста, как раньше: только настоящие цели.
+            if (target.target() instanceof Target.Named) {
+                return null;
+            }
+            return new ParsedCond(new Condition.TargetSet(target.target(), negate), n + 1);
+        }
+        if (s.equals("online") || s.equals("offline")) {
+            boolean want = s.equals("online");
+            if (negate) {
+                want = !want;
+            }
+            return new ParsedCond(new Condition.Online(target.target(), want), finish(t, n + 1));
+        }
+        if (s.equals("holding")) {
+            if (n + 1 >= t.size()) {
+                throw new ParseException("нужно: player is holding <предмет>");
+            }
+            return new ParsedCond(new Condition.Holding(target.target(), t.get(n + 1).value(), negate), finish(t, n + 2));
+        }
+        if (s.equals("in")) {
+            String next = word(t, n + 1);
+            if (next.equals("world")) {
+                if (n + 2 >= t.size()) {
+                    throw new ParseException("нужно: player is in world overworld");
+                }
+                return new ParsedCond(new Condition.InWorld(target.target(), t.get(n + 2).value(), negate), finish(t, n + 3));
+            }
+            int modeAt = n + 1;
+            if (next.equals("gamemode") || (next.equals("game") && word(t, n + 2).equals("mode"))) {
+                modeAt = next.equals("gamemode") ? n + 2 : n + 3;
+            }
+            GameType mode = modeOf(word(t, modeAt));
+            if (mode == null) {
+                throw new ParseException("ожидается creative, survival, adventure, spectator или world <мир>");
+            }
+            int end = modeAt + 1;
+            if (word(t, end).equals("mode")) {
+                end++;
+            }
+            return new ParsedCond(new Condition.GameModeIs(target.target(), mode, negate), finish(t, end));
+        }
+        if (s.equals("on") && word(t, n + 1).equals("fire")) {
+            return new ParsedCond(new Condition.State(target.target(), Condition.Check.ON_FIRE, negate), finish(t, n + 2));
+        }
+        Condition.Check check = switch (s) {
+            case "sneaking", "crouching" -> Condition.Check.SNEAKING;
+            case "sprinting" -> Condition.Check.SPRINTING;
+            case "flying" -> Condition.Check.FLYING;
+            case "sleeping" -> Condition.Check.SLEEPING;
+            case "burning" -> Condition.Check.ON_FIRE;
+            case "op" -> Condition.Check.OP;
+            case "alive" -> Condition.Check.ALIVE;
+            case "blocking" -> Condition.Check.BLOCKING;
+            case "gliding", "elytra" -> Condition.Check.GLIDING;
+            case "swimming" -> Condition.Check.SWIMMING;
+            default -> null;
+        };
+        if (check == null) {
+            return null;
+        }
+        return new ParsedCond(new Condition.State(target.target(), check, negate), finish(t, n + 1));
+    }
+
+    /** Конец условия игрока: дальше только and/or или конец строки. */
+    private static int finish(List<Token> t, int end) throws ParseException {
+        if (end < t.size() && !isJoin(word(t, end))) {
+            throw new ParseException("лишний текст в условии: '" + t.get(end).value() + "'");
+        }
+        return end;
+    }
+
+    private static boolean isJoin(String w) {
+        return w.equals("and") || w.equals("or");
+    }
+
+    private static GameType modeOf(String w) {
+        return switch (w) {
+            case "survival" -> GameType.SURVIVAL;
+            case "creative" -> GameType.CREATIVE;
+            case "adventure" -> GameType.ADVENTURE;
+            case "spectator" -> GameType.SPECTATOR;
+            default -> null;
+        };
+    }
+
+    /** every 5 seconds / every minute / every tick / every 10 ticks → тики. */
+    private static int parsePeriod(String rest) throws ParseException {
+        List<Token> t = Tokenizer.tokenize(rest);
+        if (t.size() == 1) {
+            return switch (word(t, 0)) {
+                case "tick", "ticks" -> 1;
+                case "second", "seconds", "sec", "secs" -> 20;
+                case "minute", "minutes", "min", "mins" -> 1200;
+                default -> throw new ParseException("нужно: every <число> seconds|minutes|ticks  или  every second|minute|tick");
+            };
+        }
+        if (t.size() != 2) {
+            throw new ParseException("нужно: every 5 seconds");
+        }
+        ExprParser.Parsed amount = ExprParser.parse(t, 0);
+        if (amount.end() != 1) {
+            throw new ParseException("нужно: every <число> seconds|minutes|ticks");
+        }
+        if (!(amount.expression() instanceof Expression.Literal lit) || !(lit.value() instanceof Double)) {
+            throw new ParseException("период 'every' задаётся числом, например every 5 seconds");
+        }
+        int per = switch (word(t, 1)) {
+            case "tick", "ticks" -> 1;
+            case "second", "seconds", "sec", "secs" -> 20;
+            case "minute", "minutes", "min", "mins" -> 1200;
+            default -> throw new ParseException("единица времени: ticks, seconds или minutes");
+        };
+        int ticks = (int) Math.round(((Double) lit.value()) * per);
+        if (ticks < 1) {
+            throw new ParseException("период должен быть хотя бы 1 тик");
+        }
+        if (ticks > 20 * 3600) {
+            throw new ParseException("период 'every' не длиннее часа");
+        }
+        return ticks;
+    }
+
+    /** wait 2 seconds — хвост блока выполнится после паузы. */
+    private Action parseWait(Line line, List<Line> rest) throws ParseException {
+        List<Token> t = Tokenizer.tokenize(line.text());
+        if (t.size() < 2) {
+            throw new ParseException("нужно: wait <число> seconds|ticks|minutes");
+        }
+        String unit = word(t, t.size() - 1);
+        int per = switch (unit) {
+            case "tick", "ticks" -> 1;
+            case "second", "seconds", "sec", "secs" -> 20;
+            case "minute", "minutes", "min", "mins" -> 1200;
+            default -> throw new ParseException("единица времени: ticks, seconds или minutes");
+        };
+        ExprParser.Parsed amount = ExprParser.parse(t, 1);
+        if (amount.end() != t.size() - 1) {
+            throw new ParseException("нужно: wait <число> seconds|ticks|minutes");
+        }
+        return new Actions.Wait(amount.expression(), per, parseActions(rest));
+    }
+
+    private static boolean canAttachElse(Actions.If root) {
+        if (root.otherwise().isEmpty()) {
+            return true;
+        }
+        if (root.otherwise().size() == 1 && root.otherwise().get(0) instanceof Actions.If child) {
+            return canAttachElse(child);
+        }
+        return false;
+    }
+
+    private static Actions.If attachElseIf(Actions.If root, Actions.If next) {
+        if (root.otherwise().size() == 1 && root.otherwise().get(0) instanceof Actions.If child) {
+            return new Actions.If(root.condition(), root.then(), List.of(attachElseIf(child, next)));
+        }
+        return new Actions.If(root.condition(), root.then(), List.of(next));
+    }
+
+    private static Actions.If attachElse(Actions.If root, List<Action> elseBody) {
+        if (root.otherwise().size() == 1 && root.otherwise().get(0) instanceof Actions.If child) {
+            return new Actions.If(root.condition(), root.then(), List.of(attachElse(child, elseBody)));
+        }
+        return new Actions.If(root.condition(), root.then(), elseBody);
     }
 
     /** Токен -> значение: "текст", {переменная}, число, true/false, иначе слово как текст. */
@@ -503,22 +795,34 @@ public final class ScriptParser {
 
         switch (head) {
             case "set" -> {
-                // set {name} to <значение>
+                // set {name} to <значение>  (значение может быть выражением: health of player)
                 String name = variableName(t, 1);
                 expectWord(t, 2, "to");
-                if (t.size() != 4) {
+                ExprParser.Parsed value = ExprParser.parse(t, 3);
+                if (value.end() != t.size()) {
                     throw new ParseException("нужно: set {имя} to <значение> (текст с пробелами — в кавычках)");
                 }
-                return new Actions.SetVariable(name, expression(t.get(3)));
+                return new Actions.SetVariable(name, value.expression());
             }
             case "add", "remove" -> {
-                // add <n> to {name} / remove <n> from {name}
+                // add <выражение> to {name} / remove <выражение> from {name}
                 boolean remove = head.equals("remove");
-                if (t.size() != 4) {
+                String sep = remove ? "from" : "to";
+                int at = -1;
+                for (int i = 1; i < t.size(); i++) {
+                    if (word(t, i).equals(sep)) {
+                        at = i;
+                        break;
+                    }
+                }
+                if (at < 0) {
                     throw new ParseException(remove ? "нужно: remove <число> from {имя}" : "нужно: add <число> to {имя}");
                 }
-                expectWord(t, 2, remove ? "from" : "to");
-                return new Actions.AddToVariable(variableName(t, 3), expression(t.get(1)), remove);
+                ExprParser.Parsed amount = ExprParser.parse(t, 1);
+                if (amount.end() != at || at + 2 != t.size()) {
+                    throw new ParseException(remove ? "нужно: remove <число> from {имя}" : "нужно: add <число> to {имя}");
+                }
+                return new Actions.AddToVariable(variableName(t, at + 1), amount.expression(), remove);
             }
             case "delete", "clear" -> {
                 // delete {name}

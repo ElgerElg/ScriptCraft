@@ -11,6 +11,7 @@ import com.scriptcraft.script.engine.ScriptProgram;
 import com.scriptcraft.script.engine.SimpleScriptEngine;
 import com.scriptcraft.script.runtime.ExecutionContext;
 import com.scriptcraft.script.runtime.ScriptEvent;
+import com.scriptcraft.script.runtime.ScriptScheduler;
 import com.scriptcraft.script.variables.VariableStore;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.network.chat.Component;
@@ -105,6 +106,7 @@ public final class ScriptLoader {
     /** /sc reload — перезагрузить все скрипты с диска. */
     public static int reloadAll(CommandSourceStack source) {
         MinecraftServer server = source.getServer();
+        ScriptScheduler.clear(null);
         fireScriptEvent(ScriptEvent.UNLOAD, f -> true, server);
         loadAllFromDisk();
         afterChange(source);
@@ -135,6 +137,7 @@ public final class ScriptLoader {
             errors.forEach(e -> source.sendFailure(Component.literal(e)));
             return 0;
         }
+        ScriptScheduler.clear(name);
         fireScriptEvent(ScriptEvent.UNLOAD, name::equals, source.getServer());
         SOURCES.put(name, fresh);
         recompile();
@@ -145,7 +148,7 @@ public final class ScriptLoader {
         return 1;
     }
 
-    /** /sc disable <скрипт> — выгрузить и переименовать в "-имя.sk". */
+    /** /sc disable <скрипт> — выгрузить и переименовать в "-имя.sc". */
     public static int disable(CommandSourceStack source, String input) {
         String name = ScriptPaths.normalize(input);
         if (name == null) {
@@ -167,6 +170,7 @@ public final class ScriptLoader {
         }
         boolean hadDefines = hasDefines(SOURCES.get(name));
         // Сначала "on unload:" ещё загруженной версии, потом убираем всё, что скрипт оставил в HUD.
+        ScriptScheduler.clear(name);
         fireScriptEvent(ScriptEvent.UNLOAD, name::equals, source.getServer());
         HudManager.unloadScript(name, source.getServer());
         SOURCES.remove(name);
@@ -179,7 +183,7 @@ public final class ScriptLoader {
         return 1;
     }
 
-    /** /sc enable <скрипт> — переименовать "-имя.sk" обратно и загрузить. */
+    /** /sc enable <скрипт> — переименовать "-имя.sc" обратно и загрузить. */
     public static int enable(CommandSourceStack source, String input) {
         String name = ScriptPaths.normalize(input);
         if (name == null) {
@@ -261,18 +265,38 @@ public final class ScriptLoader {
 
     // ------------------------------------------------------------------ выполнение
 
-    /** Запуск обработчиков события ("on join:" и т.д.). Ошибки пишутся в лог и не роняют сервер. */
-    public static void fireEvent(ScriptEvent event, ServerPlayer player) {
+    /**
+     * Запуск обработчиков события ("on join:" и т.д.). Ошибки пишутся в лог и не роняют сервер.
+     * Плейсхолдеры (%message%, %block%...) кладутся в контекст до запуска.
+     * Если скрипт вызвал cancel event, у контекста поднят флаг cancelled.
+     */
+    public static ExecutionContext fireEvent(ScriptEvent event, ServerPlayer player) {
+        return fireEvent(event, player, Map.of());
+    }
+
+    public static ExecutionContext fireEvent(ScriptEvent event, ServerPlayer player, Map<String, String> placeholders) {
         MinecraftServer server = player.getServer();
         if (server == null) {
-            return;
+            return null;
         }
         ExecutionContext ctx = new ExecutionContext(server, player, null);
+        placeholders.forEach(ctx::setPlaceholder);
         try {
             program.fireEvent(event, ctx);
         } catch (RuntimeException e) {
             ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка в 'on {}': {}", event.scriptName(), e.getMessage());
         }
+        return ctx;
+    }
+
+    /** "every ..." и отложенные "wait". Конец серверного тика. */
+    public static void tick(MinecraftServer server) {
+        try {
+            program.tickEvery(server);
+        } catch (RuntimeException e) {
+            ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка периодических скриптов: {}", e.getMessage());
+        }
+        ScriptScheduler.tick(server);
     }
 
     /** "on load:"/"on unload:" для файлов, прошедших фильтр. Ошибки — в лог, сервер не падает. */

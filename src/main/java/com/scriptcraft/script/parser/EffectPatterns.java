@@ -2,6 +2,7 @@ package com.scriptcraft.script.parser;
 
 import com.scriptcraft.script.parser.Tokenizer.Token;
 import com.scriptcraft.script.runtime.Action;
+import com.scriptcraft.script.runtime.Actions;
 import com.scriptcraft.script.runtime.Effects;
 import com.scriptcraft.script.runtime.Expression;
 import com.scriptcraft.script.runtime.HudActions;
@@ -49,21 +50,27 @@ final class EffectPatterns {
         // --- режим игры и характеристики: "set X of <цель> to <значение>" и "set player's X to <значение>"
         setter("gamemode", (t, v) -> new Effects.SetGameMode(t, gameMode(v)));
         setter("game mode", (t, v) -> new Effects.SetGameMode(t, gameMode(v)));
-        setter("health", (t, v) -> new Effects.SetHealth(t, num(v)));
-        setter("food level", (t, v) -> new Effects.SetFood(t, num(v)));
-        setter("hunger", (t, v) -> new Effects.SetFood(t, num(v)));
-        setter("saturation", (t, v) -> new Effects.SetSaturation(t, num(v)));
-        setter("xp level", (t, v) -> new Effects.SetXpLevel(t, num(v)));
-        setter("level", (t, v) -> new Effects.SetXpLevel(t, num(v)));
-        setter("flying", (t, v) -> new Effects.SetFlying(t, ScriptParser.expression(v)));
-        setter("flight", (t, v) -> new Effects.SetFlying(t, ScriptParser.expression(v)));
+        setterExpr("health", Effects.SetHealth::new);
+        setterExpr("food level", Effects.SetFood::new);
+        setterExpr("hunger", Effects.SetFood::new);
+        setterExpr("saturation", Effects.SetSaturation::new);
+        setterExpr("xp level", Effects.SetXpLevel::new);
+        setterExpr("level", Effects.SetXpLevel::new);
+        setterExpr("flying", Effects.SetFlying::new);
+        setterExpr("flight", Effects.SetFlying::new);
+        setterExpr("walk speed", (t, v) -> new Effects.SetSpeed(t, false, v));
+        setterExpr("fly speed", (t, v) -> new Effects.SetSpeed(t, true, v));
+        setterExpr("flying speed", (t, v) -> new Effects.SetSpeed(t, true, v));
+        setterExpr("air", Effects.SetAir::new);
+        setterExpr("oxygen", Effects.SetAir::new);
+        setterExpr("absorption", Effects.SetAbsorption::new);
 
         // --- здоровье и голод
         rule("heal %target%", c -> new Effects.Heal(c.target(0), null));
-        rule("heal %target% by %num%", c -> new Effects.Heal(c.target(0), c.num(1)));
-        rule("damage %target% by %num%", c -> new Effects.Damage(c.target(0), c.num(1)));
+        rule("heal %target% by %expr%", c -> new Effects.Heal(c.target(0), c.expr(1)));
+        rule("damage %target% by %expr%", c -> new Effects.Damage(c.target(0), c.expr(1)));
         rule("feed %target%", c -> new Effects.Feed(c.target(0), null));
-        rule("feed %target% by %num%", c -> new Effects.Feed(c.target(0), c.num(1)));
+        rule("feed %target% by %expr%", c -> new Effects.Feed(c.target(0), c.expr(1)));
         rule("kill %target%", c -> new Effects.Kill(c.target(0)));
         rule("extinguish %target%", c -> new Effects.Extinguish(c.target(0)));
         rule("ignite %target% for %num% " + SECONDS, c -> new Effects.Ignite(c.target(0), c.num(1)));
@@ -81,14 +88,14 @@ final class EffectPatterns {
 
         // --- HUD (create hud "..." — блок с элементами, разбирается в ScriptParser)
         // Обновление полосы: значение — число, {переменная} или источник клиента (health, food...).
-        rule("set value|progress of bar %text% for|of %target% to %value%",
-                c -> new HudActions.SetBar(c.target(1), hudName(c.text(0)), barValue(c.raw(2)), null));
-        rule("set value|progress of bar %text% to %value%",
-                c -> new HudActions.SetBar(new Target.Self(), hudName(c.text(0)), barValue(c.raw(1)), null));
-        rule("set max of bar %text% for|of %target% to %value%",
-                c -> new HudActions.SetBar(c.target(1), hudName(c.text(0)), null, barValue(c.raw(2))));
-        rule("set max of bar %text% to %value%",
-                c -> new HudActions.SetBar(new Target.Self(), hudName(c.text(0)), null, barValue(c.raw(1))));
+        rule("set value|progress of bar %text% for|of %target% to %expr%",
+                c -> new HudActions.SetBar(c.target(1), hudName(c.text(0)), barValue(c.expr(2)), null));
+        rule("set value|progress of bar %text% to %expr%",
+                c -> new HudActions.SetBar(new Target.Self(), hudName(c.text(0)), barValue(c.expr(1)), null));
+        rule("set max of bar %text% for|of %target% to %expr%",
+                c -> new HudActions.SetBar(c.target(1), hudName(c.text(0)), null, barValue(c.expr(2))));
+        rule("set max of bar %text% to %expr%",
+                c -> new HudActions.SetBar(new Target.Self(), hudName(c.text(0)), null, barValue(c.expr(1))));
         rule("set text of hud %text% for|of %target% to %text%",
                 c -> new HudActions.SetText(c.target(1), hudName(c.text(0)), c.text(2)));
         rule("set text of hud %text% to %text%",
@@ -109,11 +116,16 @@ final class EffectPatterns {
         rule("show vanilla %part%", c -> new HudActions.Vanilla(new Target.Self(), vanillaPart(c.raw(0)), false));
 
         // --- звук, титры, опыт
-        rule("play sound %id% to %target%", c -> new Effects.PlaySound(c.target(1), c.id(0)));
+        rule("play sound %id% to %target% with volume %num% pitch %expr%",
+                c -> new Effects.PlaySound(c.target(1), c.id(0), c.num(2), c.expr(3)));
+        rule("play sound %id% to %target% with volume %expr%",
+                c -> new Effects.PlaySound(c.target(1), c.id(0), c.expr(2), null));
+        rule("play sound %id% to %target%", c -> new Effects.PlaySound(c.target(1), c.id(0), null, null));
         rule("send title %text% to %target%", c -> new Effects.Title(c.target(1), c.text(0), null));
         rule("send title %text% with subtitle %text% to %target%", c -> new Effects.Title(c.target(2), c.text(0), c.text(1)));
         rule("send action bar %text% to %target%", c -> new Effects.ActionBar(c.target(1), c.text(0)));
         rule("send actionbar %text% to %target%", c -> new Effects.ActionBar(c.target(1), c.text(0)));
+        rule("give %num% level|levels to %target%", c -> new Effects.GiveLevels(c.target(1), c.num(0)));
         rule("give %num% xp|experience to %target%", c -> new Effects.GiveXp(c.target(1), c.num(0)));
 
         // --- сообщения, предметы, телепорт (раньше были отдельными действиями только для "player")
@@ -123,9 +135,52 @@ final class EffectPatterns {
         // give <цель> <предмет> [кол-во] — после "give ... effect ..." и "give N xp ...", чтобы не перехватить их
         rule("give %target% %id%", c -> new Effects.GiveItem(c.target(0), c.id(1), null));
         rule("give %target% %id% %num%", c -> new Effects.GiveItem(c.target(0), c.id(1), c.num(2)));
+        rule("teleport|tp %target% to world spawn", c -> new Effects.TeleportSpawn(c.target(0), true));
+        rule("teleport|tp %target% to spawn", c -> new Effects.TeleportSpawn(c.target(0), false));
         rule("teleport|tp %target% to %num% %num% %num%",
                 c -> new Effects.TeleportToPos(c.target(0), c.num(1), c.num(2), c.num(3)));
         rule("teleport|tp %target% to %target%", c -> new Effects.TeleportToPlayer(c.target(0), c.target(1)));
+
+        // --- как в Skript: кик, права, мир, предметы, движение
+        rule("kick %target% due to %text%", c -> new Effects.Kick(c.target(0), c.text(1)));
+        rule("kick %target% because %text%", c -> new Effects.Kick(c.target(0), c.text(1)));
+        rule("kick %target%", c -> new Effects.Kick(c.target(0), null));
+        rule("op %target%", c -> new Effects.ChangeOp(c.target(0), true));
+        rule("deop %target%", c -> new Effects.ChangeOp(c.target(0), false));
+        rule("make %target% say|chat %text%", c -> new Effects.Say(c.target(0), c.text(1)));
+        rule("log %text%", c -> new Effects.Log(c.text(0)));
+        rule("close inventory of %target%", c -> new Effects.CloseInventory(c.target(0)));
+        rule("wake up %target%", c -> new Effects.Wake(c.target(0)));
+        rule("wake %target% up", c -> new Effects.Wake(c.target(0)));
+        rule("strike lightning at %num% %num% %num%", c -> new Effects.Lightning(null, c.num(0), c.num(1), c.num(2)));
+        rule("strike lightning at %target%", c -> new Effects.Lightning(c.target(0), null, null, null));
+        rule("set time to %expr%", c -> new Effects.SetTime(c.expr(0)));
+        rule("set weather to clear|sun", c -> new Effects.SetWeather("clear", null));
+        rule("set weather to thunder|storm for %expr% " + SECONDS, c -> new Effects.SetWeather("thunder", c.expr(0)));
+        rule("set weather to rain for %expr% " + SECONDS, c -> new Effects.SetWeather("rain", c.expr(0)));
+        rule("set weather to thunder|storm", c -> new Effects.SetWeather("thunder", null));
+        rule("set weather to rain", c -> new Effects.SetWeather("rain", null));
+        rule("drop %num% %id% at %target%", c -> new Effects.DropItem(c.target(2), c.id(1), c.num(0)));
+        rule("drop %id% at %target%", c -> new Effects.DropItem(c.target(1), c.id(0), null));
+        rule("set spawn of %target% to %num% %num% %num%",
+                c -> new Effects.SetSpawn(c.target(0), c.num(1), c.num(2), c.num(3)));
+        rule("set spawn of %target%", c -> new Effects.SetSpawn(c.target(0), null, null, null));
+        rule("set velocity of %target% to %num% %num% %num%",
+                c -> new Effects.SetVelocity(c.target(0), c.num(1), c.num(2), c.num(3)));
+        rule("launch %target% forwards|forward by|with speed|force %expr%", c -> new Effects.Launch(c.target(0), true, c.expr(1)));
+        rule("launch %target% forwards|forward by|with %expr%", c -> new Effects.Launch(c.target(0), true, c.expr(1)));
+        rule("launch %target% upwards|up by|with speed|force %expr%", c -> new Effects.Launch(c.target(0), false, c.expr(1)));
+        rule("launch %target% upwards|up by|with %expr%", c -> new Effects.Launch(c.target(0), false, c.expr(1)));
+        rule("launch %target% forwards|forward", c -> new Effects.Launch(c.target(0), true, null));
+        rule("launch %target% upwards|up", c -> new Effects.Launch(c.target(0), false, null));
+        rule("explode at %num% %num% %num% with force|power %expr%",
+                c -> new Effects.Explode(null, c.num(0), c.num(1), c.num(2), c.expr(3)));
+        rule("explode at %num% %num% %num%", c -> new Effects.Explode(null, c.num(0), c.num(1), c.num(2), null));
+        rule("explode at %target% with force|power %expr%", c -> new Effects.Explode(c.target(0), null, null, null, c.expr(1)));
+        rule("explode at %target%", c -> new Effects.Explode(c.target(0), null, null, null, null));
+        rule("stop", c -> new Actions.Stop());
+        rule("cancel event", c -> new Actions.CancelEvent());
+        rule("cancel the event", c -> new Actions.CancelEvent());
 
         // --- команды (выключаются allowCommandEffects = false)
         rule("execute console command %text%", c -> new Effects.ConsoleCommand(c.text(0)));
@@ -144,10 +199,21 @@ final class EffectPatterns {
         RULES.add(new Rule(parts, builder));
     }
 
-    /** Регистрирует обе формы: "set X of <цель> to <v>" и "set player's X to <v>". */
+    /** Регистрирует обе формы: "set X of <цель> to <v>" и "set player's X to <v>" (одно слово). */
     private static void setter(String property, ValueBuilder builder) {
         rule("set " + property + " of %target% to %value%", c -> builder.build(c.target(0), c.raw(1)));
         rule("set player's " + property + " to %value%", c -> builder.build(new Target.Self(), c.raw(0)));
+    }
+
+    /** То же, но значение — выражение до конца строки (число, {переменная} или health of player). */
+    private static void setterExpr(String property, ExprBuilder builder) {
+        rule("set " + property + " of %target% to %expr%", c -> builder.build(c.target(0), c.expr(1)));
+        rule("set player's " + property + " to %expr%", c -> builder.build(new Target.Self(), c.expr(0)));
+    }
+
+    @FunctionalInterface
+    private interface ExprBuilder {
+        Action build(Target target, Expression value) throws ParseException;
     }
 
     /**
@@ -205,6 +271,18 @@ final class EffectPatterns {
             return false;
         }
         Token tok = tokens.get(ti);
+        if (alts[0].equals("%expr%")) {
+            // Выражение только в конце шаблона: съедает все оставшиеся токены.
+            if (pi != parts.length - 1) {
+                return false;
+            }
+            ExprParser.Parsed parsed = ExprParser.parse(tokens, ti);
+            if (parsed.end() != tokens.size()) {
+                return false;
+            }
+            captures.add(parsed.expression());
+            return true;
+        }
         if (alts[0].startsWith("%")) {
             if (alts[0].equals("%text%") && !tok.quoted()) {
                 return false;
@@ -248,12 +326,11 @@ final class EffectPatterns {
         return v;
     }
 
-    /** Значение полосы: число, {переменная} или источник клиента (health, food...). */
-    private static Expression barValue(Token t) throws ParseException {
-        Expression e = ScriptParser.expression(t);
-        if (e instanceof Expression.Text && !t.quoted() && !BarElement.isSource(t.value())) {
-            throw new ParseException("ожидается число, {переменная} или источник (" + String.join(", ", BarElement.SOURCES)
-                    + "), а не '" + t.value() + "'");
+    /** Значение полосы: число, {переменная}, выражение или источник клиента (health, food...). */
+    private static Expression barValue(Expression e) throws ParseException {
+        if (e instanceof Expression.Text text && !BarElement.isSource(text.raw())) {
+            throw new ParseException("ожидается число, {переменная}, выражение или источник (" + String.join(", ", BarElement.SOURCES)
+                    + "), а не '" + text.raw() + "'");
         }
         return e;
     }
@@ -288,6 +365,10 @@ final class EffectPatterns {
 
         Expression num(int i) throws ParseException {
             return EffectPatterns.num(raw(i));
+        }
+
+        Expression expr(int i) {
+            return (Expression) values.get(i);
         }
 
         String text(int i) throws ParseException {

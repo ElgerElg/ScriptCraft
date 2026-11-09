@@ -44,6 +44,10 @@ public final class ExecutionContext {
     private String script;
     private int targetQueries;
     private int targetHits;
+    /** stop — прервать остальные действия этого запуска. */
+    private boolean stopped;
+    /** cancel event — отменить отменяемое событие Forge (чат, ломание блока, урон...). */
+    private boolean cancelled;
 
     public ExecutionContext(MinecraftServer server, @Nullable ServerPlayer player, @Nullable CommandSourceStack source) {
         this.server = server;
@@ -117,9 +121,40 @@ public final class ExecutionContext {
         return targetQueries > 0 && targetHits == 0;
     }
 
-    /** Задаёт плейсхолдер %name% (например, %args% для команд). */
+    /** Задаёт плейсхолдер %name% (например, %args% для команд, %message% в on chat). */
     public void setPlaceholder(String name, String value) {
-        variables.put(name, value);
+        variables.put(name.toLowerCase(Locale.ROOT), value);
+    }
+
+    /** Копия плейсхолдеров для "wait" (продолжение увидит %message% и остальные). */
+    public Map<String, String> snapshotPlaceholders() {
+        return new HashMap<>(variables);
+    }
+
+    /** Возвращает плейсхолдеры события после паузы и обновляет %online% и имя игрока. */
+    public void restorePlaceholders(Map<String, String> saved) {
+        variables.putAll(saved);
+        variables.put("online", Integer.toString(server.getPlayerCount()));
+        if (player != null) {
+            variables.put("player", player.getGameProfile().getName());
+            variables.put("uuid", player.getStringUUID());
+        }
+    }
+
+    public void stop() {
+        stopped = true;
+    }
+
+    public boolean isStopped() {
+        return stopped;
+    }
+
+    public void cancelEvent() {
+        cancelled = true;
+    }
+
+    public boolean isCancelled() {
+        return cancelled;
     }
 
     /** Имя переменной из скрипта -> настоящее имя: подставляются плейсхолдеры, {coins::%player%} -> coins::Steve. */

@@ -6,6 +6,7 @@ import com.scriptcraft.script.parser.CommandDefinition;
 import com.scriptcraft.script.parser.EventHandler;
 import com.scriptcraft.script.parser.ItemDefinition;
 import com.scriptcraft.script.parser.ParseResult;
+import com.scriptcraft.script.parser.PeriodHandler;
 import com.scriptcraft.script.runtime.Action;
 import com.scriptcraft.script.runtime.Actions;
 import com.scriptcraft.script.runtime.ExecutionContext;
@@ -96,6 +97,23 @@ final class SimpleProgram implements ScriptProgram {
         ctx.setScript(def.file());
         runActions(def.actions(), ctx);
         return true;
+    }
+
+    @Override
+    public void tickEvery(MinecraftServer server) {
+        int tick = server.getTickCount();
+        for (PeriodHandler handler : parsed.periods()) {
+            if (tick < 1 || handler.periodTicks() < 1 || tick % handler.periodTicks() != 0) {
+                continue;
+            }
+            ExecutionContext ctx = new ExecutionContext(server, null, null);
+            ctx.setScript(handler.file());
+            try {
+                runActions(handler.actions(), ctx);
+            } catch (RuntimeException e) {
+                ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка в 'every' ({}): {}", handler.file(), e.getMessage());
+            }
+        }
     }
 
     private static void runActions(List<Action> actions, ExecutionContext ctx) {

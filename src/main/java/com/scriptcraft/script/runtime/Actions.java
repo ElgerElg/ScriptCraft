@@ -21,6 +21,9 @@ public final class Actions {
     /** Выполняет действия по очереди; каждое действие расходует один шаг бюджета (защита от зависаний). */
     public static void runAll(List<Action> actions, ExecutionContext ctx) {
         for (Action action : actions) {
+            if (ctx.isStopped()) {
+                return;
+            }
             ctx.step();
             action.execute(ctx);
         }
@@ -68,11 +71,51 @@ public final class Actions {
         }
     }
 
-    /** if <условие>: ... [else: ...] */
+    /** if <условие>: ... [else if <условие>: ...] [else: ...] */
     public record If(Condition condition, List<Action> then, List<Action> otherwise) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
             runAll(condition.test(ctx) ? then : otherwise, ctx);
+        }
+    }
+
+    /**
+     * wait &lt;n&gt; seconds|ticks|minutes — хвост текущего блока (строки ниже на том же отступе)
+     * выполнится позже. Код снаружи блока не ждёт. Пауза не длиннее 5 минут.
+     * Игрок внутри цикла (loop-player) после паузы не сохраняется.
+     */
+    public record Wait(Expression amount, int ticksPerUnit, List<Action> after) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            int ticks = (int) Math.round(Effects.number(amount, ctx) * ticksPerUnit);
+            ScriptScheduler.schedule(ctx, ticks, after);
+        }
+    }
+
+    /** chance of 50%: — вложенные действия с указанным шансом (0–100). */
+    public record Chance(Expression percent, List<Action> body) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            double p = Effects.number(percent, ctx);
+            if (p > 0 && ctx.server().overworld().getRandom().nextDouble() * 100 < p) {
+                runAll(body, ctx);
+            }
+        }
+    }
+
+    /** stop — не выполнять оставшиеся действия этого запуска. */
+    public record Stop() implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            ctx.stop();
+        }
+    }
+
+    /** cancel event — отменить чат, ломание, установку, клик, выбрасывание, урон, смерть, смену режима. */
+    public record CancelEvent() implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            ctx.cancelEvent();
         }
     }
 
@@ -130,6 +173,9 @@ public final class Actions {
             ServerPlayer previous = ctx.loopPlayer();
             try {
                 for (ServerPlayer p : players) {
+                    if (ctx.isStopped()) {
+                        break;
+                    }
                     ctx.setLoopPlayer(p);
                     runAll(body, ctx);
                 }

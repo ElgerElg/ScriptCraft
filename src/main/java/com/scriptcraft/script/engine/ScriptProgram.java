@@ -37,4 +37,7 @@ public interface ScriptProgram {
 
     /** Выполняет команду. Возвращает false, если команды больше нет в скриптах. */
     boolean runCommand(String name, ExecutionContext ctx);
+
+    /** Периодические блоки "every N seconds:" — раз в период, без игрока в контексте. */
+    void tickEvery(MinecraftServer server);
 }
