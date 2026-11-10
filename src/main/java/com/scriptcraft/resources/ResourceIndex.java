@@ -21,7 +21,7 @@ import java.util.stream.Stream;
 
 /**
  * Серверный индекс ресурсов: каждый файл из scriptcraft/resources/assets/** — путь + SHA-1 + байты.
- * Строится при старте сервера и по /sc resources reload. Байты держим в памяти (размер ограничен
+ * Строится при старте сервера и по /sc reload resources. Байты держим в памяти (размер ограничен
  * maxResourceSizeMb), чтобы раздача кусков не трогала диск.
  */
 public final class ResourceIndex {

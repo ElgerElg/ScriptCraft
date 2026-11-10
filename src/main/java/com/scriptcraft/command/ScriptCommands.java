@@ -71,6 +71,13 @@ public final class ScriptCommands {
     /** Подсказки: включённые скрипты (для reload и disable). */
     private static final SuggestionProvider<CommandSourceStack> ENABLED_SCRIPTS = (ctx, builder) ->
             SharedSuggestionProvider.suggest(suggestions(name -> !ScriptPaths.isDisabled(name)), builder);
+    /**
+     * Имена скриптов для /sc reload. config и resources — не скрипты, а отдельные слова команды,
+     * поэтому файл с таким именем в подсказках не показывается и этой командой не перечитывается.
+     */
+    private static final SuggestionProvider<CommandSourceStack> RELOAD_SCRIPTS = (ctx, builder) ->
+            SharedSuggestionProvider.suggest(suggestions(name -> !ScriptPaths.isDisabled(name))
+                    .filter(name -> !name.equals("config") && !name.equals("resources")), builder);
     /** Подсказки: выключенные скрипты (для enable), показываются без минуса. */
     private static final SuggestionProvider<CommandSourceStack> DISABLED_SCRIPTS = (ctx, builder) ->
             SharedSuggestionProvider.suggest(suggestions(ScriptPaths::isDisabled), builder);
@@ -117,7 +124,7 @@ public final class ScriptCommands {
         registerScriptCommands(dispatcher);
     }
 
-    /** Дерево одной корневой команды: help, reload [скрипт], enable, disable, list, resources reload. */
+    /** Дерево одной корневой команды: help, reload [config|resources|скрипт], enable, disable, list. */
     private static LiteralArgumentBuilder<CommandSourceStack> buildRoot(String root) {
         return Commands.literal(root)
                 .requires(src -> src.hasPermission(2))
@@ -126,9 +133,14 @@ public final class ScriptCommands {
                 .then(Commands.literal("help").executes(ctx -> help(ctx.getSource(), root)))
                 .then(Commands.literal("reload")
                         .executes(ctx -> reloadAll(ctx.getSource()))
+                        // Слова раньше аргумента: Brigadier отдаёт им точное совпадение, скрипт не ищется.
+                        .then(Commands.literal("config")
+                                .executes(ctx -> reloadConfig(ctx.getSource())))
+                        .then(Commands.literal("resources")
+                                .executes(ctx -> reloadResources(ctx.getSource())))
                         // greedyString — чтобы работали подпапки "sub/name"
                         .then(Commands.argument("script", StringArgumentType.greedyString())
-                                .suggests(ENABLED_SCRIPTS)
+                                .suggests(RELOAD_SCRIPTS)
                                 .executes(ctx -> ScriptLoader.reloadOne(ctx.getSource(),
                                         StringArgumentType.getString(ctx, "script")))))
                 .then(Commands.literal("enable")
@@ -221,7 +233,7 @@ public final class ScriptCommands {
         return 1;
     }
 
-    /** /sc resources reload: перечитать scriptcraft/resources/assets и разослать изменения игрокам онлайн. */
+    /** /sc reload resources: перечитать scriptcraft/resources/assets и разослать изменения игрокам онлайн. */
     private static int reloadResources(CommandSourceStack source) {
         String error = ResourceSync.reloadAndPush(source.getServer());
         if (error != null) {

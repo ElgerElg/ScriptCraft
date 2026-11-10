@@ -103,6 +103,8 @@ scriptcraft/
 | `/sc help` | short help |
 | F3 + `` ` `` | studio: home, journal, and editing server scripts (operators only; the key is not in Controls) |
 | `/sc reload` | reread the config, resources and every script |
+| `/sc reload config` | reread `config.toml` only |
+| `/sc reload resources` | reread `scriptcraft/resources` only |
 | `/sc reload <script>` | reload one script |
 | `/sc enable <script>` | enable a disabled script |
 | `/sc disable <script>` | disable a script (the file is renamed to `-name.sc`) |

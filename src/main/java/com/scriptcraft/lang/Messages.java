@@ -24,6 +24,8 @@ public final class Messages {
         // --- справка (%1$s = имя корневой команды: scriptcraft / sc / script)
         add("help.header", "&6--- ScriptCraft help ---", "&6--- ScriptCraft: справка ---");
         add("help.reload", "&e/%1$s reload &7- reload config, resources and all scripts", "&e/%1$s reload &7- перечитать конфиг, ресурсы и все скрипты");
+        add("help.reload_config", "&e/%1$s reload config &7- reread config.toml only", "&e/%1$s reload config &7- перечитать только config.toml");
+        add("help.reload_resources", "&e/%1$s reload resources &7- reread scriptcraft/resources only", "&e/%1$s reload resources &7- перечитать только scriptcraft/resources");
         add("help.reload_one", "&e/%1$s reload <script> &7- reload one script", "&e/%1$s reload <скрипт> &7- перезагрузить один скрипт");
         add("help.enable", "&e/%1$s enable <script> &7- enable a disabled script", "&e/%1$s enable <скрипт> &7- включить выключенный скрипт");
         add("help.disable", "&e/%1$s disable <script> &7- disable a script (renames it to -name.sc)", "&e/%1$s disable <скрипт> &7- выключить скрипт (переименует в -имя.sc)");
@@ -269,7 +271,8 @@ public final class Messages {
 
     /** Строки справки для корневой команды {@code root}. */
     public static List<String> helpLines(String root) {
-        return List.of(get("help.header"), get("help.reload", root), get("help.reload_one", root),
+        return List.of(get("help.header"), get("help.reload", root),
+                get("help.reload_config", root), get("help.reload_resources", root), get("help.reload_one", root),
                 get("help.enable", root), get("help.disable", root), get("help.list", root),
                 get("help.ids", root), get("help.give", root), get("help.help", root),
                 get("help.aliases"));

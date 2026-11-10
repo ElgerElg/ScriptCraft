@@ -1498,12 +1498,14 @@ show vanilla all for player`,
   {
     id: "cmd-reload", category: "commands",
     name: { ru: "/sc reload", en: "/sc reload" },
-    syntax: ["/sc reload", "/sc reload <скрипт>"],
+    syntax: ["/sc reload", "/sc reload config", "/sc reload resources", "/sc reload <скрипт>"],
     desc: {
-      ru: "`/sc reload` перечитывает `config.toml`, `scriptcraft/resources` и все скрипты. `/sc reload <скрипт>` перезагружает один файл. Ошибки — в журнале (F3 + `).",
-      en: "`/sc reload` rereads `config.toml`, `scriptcraft/resources` and every script. `/sc reload <script>` reloads one file. Errors are in the journal (F3 + `)."
+      ru: "`/sc reload` перечитывает `config.toml`, `scriptcraft/resources` и все скрипты. `config` и `resources` — не имена скриптов: первое перечитывает только конфиг, второе — только ресурсы. `/sc reload <скрипт>` перезагружает один файл. Ошибки — в журнале (F3 + `).",
+      en: "`/sc reload` rereads `config.toml`, `scriptcraft/resources` and every script. `config` and `resources` are not script names: the first rereads only the config, the second only resources. `/sc reload <script>` reloads one file. Errors are in the journal (F3 + `)."
     },
     example: `/sc reload
+/sc reload config
+/sc reload resources
 /sc reload welcome`,
     since: "0.1.0", related: ["cmd-list", "cmd-disable"]
   },
@@ -1569,7 +1571,7 @@ show vanilla all for player`,
   // ================================================================== КОНФИГ
   { id: "cfg-language", category: "config", name: { ru: "general.language", en: "general.language" },
     syntax: ["language = \"en\"", "language = \"ru\""],
-    desc: { ru: "Язык сообщений мода, журнала и уведомлений. По умолчанию `\"en\"`. Меняется после `/sc reload`.", en: "Language of mod messages, the journal and notices. Default `\"en\"`. Applies after `/sc reload`." },
+    desc: { ru: "Язык сообщений мода, журнала и уведомлений. По умолчанию `\"en\"`. Меняется после `/sc reload config`.", en: "Language of mod messages, the journal and notices. Default `\"en\"`. Applies after `/sc reload config`." },
     example: `language = "ru"`, since: "0.1.0", related: [] },
   { id: "cfg-enableTemporaryVariables", category: "config", name: { ru: "general.enableTemporaryVariables", en: "general.enableTemporaryVariables" },
     syntax: ["enableTemporaryVariables = true"],

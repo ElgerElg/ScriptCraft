@@ -91,6 +91,8 @@ command /hello:
     <tr><td><code>/sc help</code></td><td><span class="l-ru">справка</span><span class="l-en">help</span></td></tr>
     <tr><td><code>F3 + `</code></td><td><span class="l-ru">студия (только оператор; клавиши нет в «Управлении»): главная, журнал и правка скриптов сервера. Ctrl+S сохраняет на сервер, Ctrl+R перезагружает. Шестерёнка меняет клавишу и уведомления</span><span class="l-en">studio (operators only; the key is not in Controls): home, journal and editing of the server's scripts. Ctrl+S saves to the server, Ctrl+R reloads. The gear rebinds the key and the notices</span></td></tr>
     <tr><td><code>/sc reload</code></td><td><span class="l-ru">перечитать конфиг, ресурсы и все скрипты</span><span class="l-en">reread the config, resources and every script</span></td></tr>
+    <tr><td><code>/sc reload config</code></td><td><span class="l-ru">только <code>config.toml</code>, скрипты не трогает</span><span class="l-en">only <code>config.toml</code>, scripts stay as they are</span></td></tr>
+    <tr><td><code>/sc reload resources</code></td><td><span class="l-ru">только <code>scriptcraft/resources</code></span><span class="l-en">only <code>scriptcraft/resources</code></span></td></tr>
     <tr><td><code>/sc reload &lt;скрипт&gt;</code></td><td><span class="l-ru">перезагрузить один файл (подпапки: <code>sub/name</code>)</span><span class="l-en">reload one file (subfolders: <code>sub/name</code>)</span></td></tr>
     <tr><td><code>/sc disable &lt;скрипт&gt;</code></td><td><span class="l-ru">выключить: выгрузить и переименовать в <code>-имя.sc</code></span><span class="l-en">disable: unload and rename to <code>-name.sc</code></span></td></tr>
     <tr><td><code>/sc enable &lt;скрипт&gt;</code></td><td><span class="l-ru">включить обратно и загрузить</span><span class="l-en">enable again and load</span></td></tr>
@@ -104,8 +106,8 @@ command /hello:
   </div>
 
   <h2 id="config"><span class="l-ru">5. Конфиг</span><span class="l-en">5. Config</span></h2>
-  <p class="l-ru">Файл <code>scriptcraft/config.toml</code> создаётся при первом запуске (ниже — значения по умолчанию; <code>language = "ru"</code> переключит сообщения мода на русский). После правки файла выполните <code>/sc reload</code> — перезапуск не нужен. Описание каждого параметра — в разделе <a href="index.html?cat=config">Конфиг</a>.</p>
-  <p class="l-en"><code>scriptcraft/config.toml</code> is created on first start (defaults below; <code>language = "ru"</code> switches mod messages to Russian). After editing the file run <code>/sc reload</code> — no restart needed. Every option is described in the <a href="index.html?cat=config">Config</a> section.</p>
+  <p class="l-ru">Файл <code>scriptcraft/config.toml</code> создаётся при первом запуске (ниже — значения по умолчанию; <code>language = "ru"</code> переключит сообщения мода на русский). После правки файла выполните <code>/sc reload config</code> — перезапуск не нужен, скрипты при этом не перечитываются. Описание каждого параметра — в разделе <a href="index.html?cat=config">Конфиг</a>.</p>
+  <p class="l-en"><code>scriptcraft/config.toml</code> is created on first start (defaults below; <code>language = "ru"</code> switches mod messages to Russian). After editing the file run <code>/sc reload config</code> — no restart needed, and scripts are not reread. Every option is described in the <a href="index.html?cat=config">Config</a> section.</p>
 <pre data-lang="toml" data-title="scriptcraft/config.toml">
 [general]
     language = "en"
