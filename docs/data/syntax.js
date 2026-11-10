@@ -15,7 +15,7 @@
  */
 window.SC_DOCS = window.SC_DOCS || {};
 window.SC_DOCS.syntax = {
-  version: "0.3.7",
+  version: "0.3.8",
   categories: [
     { id: "events",     ru: "События",            en: "Events" },
     { id: "structures", ru: "Структуры",          en: "Structures" },
@@ -33,10 +33,10 @@ window.SC_DOCS.syntax = {
   {
     id: "event-join", category: "events",
     name: { ru: "Вход игрока", en: "Player join" },
-    syntax: ["on join:", "on join or load:"],
+    syntax: ["on join:"],
     desc: {
-      ru: "Срабатывает, когда игрок заходит на сервер. Внутри `player` — зашедший игрок. `on join or load:` — то же тело выполняется ещё и при загрузке скрипта для каждого игрока онлайн: так HUD и прочая подготовка появляются сразу после `/sc enable`, без перезахода.",
-      en: "Fires when a player joins the server. Inside, `player` is the joining player. With `on join or load:` the same body also runs when the script is loaded, once for every online player — so a HUD and other setup appear right after `/sc enable`, without re-joining."
+      ru: "Срабатывает, когда игрок заходит на сервер. Внутри `player` — зашедший игрок.",
+      en: "Fires when a player joins the server. Inside, `player` is the joining player."
     },
     example: `on join:
 	send "&aПривет, %player%!" to player
@@ -58,10 +58,10 @@ window.SC_DOCS.syntax = {
   {
     id: "event-load", category: "events",
     name: { ru: "Загрузка скрипта", en: "Script load" },
-    syntax: ["on load:", "on script load:", "on join or load:"],
+    syntax: ["on load:", "on script load:"],
     desc: {
-      ru: "Срабатывает один раз для этого скрипта, когда он загружен: при старте сервера, `/sc reload`, `/sc reload <скрипт>` и `/sc enable <скрипт>` (только у затронутых файлов). Игрока нет — используйте `all players`/`broadcast`. В связке `on join or load:` тело выполняется для каждого игрока онлайн с ним в `player`; несколько событий можно перечислить через `or`.",
-      en: "Fires once for this script when it is loaded: on server start, `/sc reload`, `/sc reload <script>` and `/sc enable <script>` (only for the affected files). There is no player — use `all players`/`broadcast`. In `on join or load:` the body runs for every online player with them as `player`; several events can be joined with `or`."
+      ru: "Один раз, когда этот скрипт загружен: старт сервера, `/sc reload` и `/sc enable`. Игрока нет — `all players` или `broadcast`. Несколько событий в одной строке пишутся через `or`: `on join or load:` выполнится и при входе, и при загрузке для каждого, кто уже онлайн.",
+      en: "Once, when this script is loaded: server start, `/sc reload` and `/sc enable`. There is no player — use `all players` or `broadcast`. Several events on one line are joined with `or`: `on join or load:` runs on join and, on load, for everyone already online."
     },
     example: `on load:
 	broadcast "&7Скрипт событий загружен"
@@ -74,10 +74,10 @@ on join or load:
   {
     id: "event-unload", category: "events",
     name: { ru: "Выгрузка скрипта", en: "Script unload" },
-    syntax: ["on unload:", "on script unload:", "on quit or unload:"],
+    syntax: ["on unload:", "on script unload:"],
     desc: {
-      ru: "Срабатывает перед выгрузкой скрипта: `/sc disable <скрипт>`, перед `/sc reload` (старая версия) и при остановке сервера. Игрока нет; `on quit or unload:` выполняется для каждого игрока онлайн. HUD, созданный скриптом, при `/sc disable` убирается автоматически.",
-      en: "Fires before the script is unloaded: `/sc disable <script>`, before `/sc reload` (old version) and on server stop. There is no player; `on quit or unload:` runs for every online player. A HUD created by the script is removed automatically on `/sc disable`."
+      ru: "Перед выгрузкой: `/sc disable`, перед `/sc reload` и при остановке сервера. Игрока нет. HUD этого скрипта при `/sc disable` убирается сам. Через `or` можно добавить выход: `on quit or unload:`.",
+      en: "Before unload: `/sc disable`, before `/sc reload` and on server stop. There is no player. This script's HUD is removed on `/sc disable`. `or` can add quit: `on quit or unload:`."
     },
     example: `on unload:
 	broadcast "&7Скрипт событий выключен"`,
@@ -229,7 +229,7 @@ on gamemode change:
   {
     id: "struct-command", category: "structures",
     name: { ru: "Своя команда", en: "Custom command" },
-    syntax: ["command /<имя>:", "command /<имя> <тип> [тип]:", "permission: <0-4>", "aliases: <имя>, <имя>", "arguments: <тип>, [тип]", "executable by: players | console | players and console"],
+    syntax: ["command /<имя>:", "command /<имя> <тип> [тип]:", "permission: <0-4>", "aliases: <имя>, <имя>", "arguments: <тип>, [тип]", "executable by: players", "executable by: console", "executable by: players and console"],
     desc: {
       ru: "Объявляет команду. Имя: a-z 0-9 _ до 32 символов. Права, псевдонимы и кто вызывает команду пишутся под ней с отступом. permission: N — уровень оператора 0–4 (по умолчанию 0, все). aliases: — короткие имена той же команды. executable by: — players, console или players and console. Аргументы в заголовке: <тип> обязательный, [тип] можно не писать. Либо строка arguments: player, [integer]. Типы: text, player, offline player, integer, number, boolean, date, world, item. Без списка аргументов хвост строки — %args%. С аргументами: %arg-1%, arg-1, argument 1, player-argument (первый такого типа). script и %script% — имя файла без .sc. Старая запись command /kit permission 2: всё ещё работает. Имена scriptcraft, sc, script заняты модом. Форма аргументов у уже зарегистрированной команды применяется после перезапуска сервера.",
       en: "Declares a command. Name: a-z 0-9 _, up to 32 chars. Permission, aliases and who may run it are indented under the command. permission: N is operator level 0–4 (default 0, everyone). aliases: are short names of the same command. executable by: is players, console or players and console. Arguments in the header: <type> required, [type] optional. Or a line arguments: player, [integer]. Types: text, player, offline player, integer, number, boolean, date, world, item. With no argument list the rest of the line is %args%. With arguments: %arg-1%, arg-1, argument 1, player-argument (the first of that type). script and %script% are the file name without .sc. The old command /kit permission 2: still works. Names scriptcraft, sc, script are reserved. The argument shape of a command that is already registered applies after a server restart."
@@ -261,7 +261,7 @@ command /heal <player> [integer]:
   {
     id: "struct-every", category: "structures",
     name: { ru: "Таймер every", en: "every timer" },
-    syntax: ["every <число> seconds|minutes|ticks:", "every second:", "every minute:", "every tick:"],
+    syntax: ["every <число> seconds:", "every <число> minutes:", "every <число> ticks:", "every second:", "every minute:", "every tick:"],
     desc: {
       ru: "Повторяет тело по таймеру сервера (20 тиков = 1 секунда). Игрока в контексте нет — пишите `all players` или `broadcast`. Период — число в заголовке (не переменная), от 1 тика до часа. `every tick:` срабатывает каждый тик: держите тело коротким.",
       en: "Repeats the body on the server timer (20 ticks = 1 second). There is no player — use `all players` or `broadcast`. The period is a number in the header (not a variable), from 1 tick up to an hour. `every tick:` runs every tick: keep the body short."
@@ -274,7 +274,7 @@ command /heal <player> [integer]:
   {
     id: "struct-wait", category: "structures",
     name: { ru: "Пауза wait", en: "wait" },
-    syntax: ["wait <число> seconds|ticks|minutes"],
+    syntax: ["wait <число> seconds", "wait <число> ticks", "wait <число> minutes"],
     desc: {
       ru: "Без двоеточия. Строки **ниже на том же отступе** выполнятся после паузы; код снаружи блока не ждёт. Если игрок вышел — хвост не выполняется. Дольше 5 минут пауза обрезается. `loop-player` после паузы не сохраняется. Число может быть `{переменной}` или выражением.",
       en: "No colon. Lines **below at the same indent** run after the pause; code outside the block does not wait. If the player leaves, the rest is skipped. Waits longer than 5 minutes are cut to 5 minutes. `loop-player` is not kept across the pause. The number may be a `{variable}` or an expression."
@@ -301,16 +301,20 @@ command /heal <player> [integer]:
   },
   {
     id: "struct-loop", category: "structures",
-    name: { ru: "Цикл по игрокам", en: "Loop over players" },
-    syntax: ["loop <цель>:"],
+    name: { ru: "Цикл", en: "Loop" },
+    syntax: ["loop <цель>:", "loop {<имя>::*}:"],
     desc: {
-      ru: "Выполняет вложенные действия для каждого игрока цели. Внутри `loop-player` — текущий игрок, `%loop-player%` — его имя. `player` внутри цикла — по-прежнему тот, кто вызвал скрипт. Циклы можно вкладывать; каждое действие каждого прохода тратит шаг `maxScriptSteps`. В эффект-командах в чате недоступен.",
-      en: "Runs the nested actions for every player of the target. Inside, `loop-player` is the current player and `%loop-player%` its name. `player` still means whoever ran the script. Loops can be nested; every action of every pass costs one `maxScriptSteps` step. Not available in chat effect commands."
+      ru: "`loop <цель>:` — для каждого игрока. Внутри `loop-player` и `%loop-player%`. `loop {имя::*}:` — по прямым индексам списка: `%loop-index%` — ключ, `%loop-value%` — значение. `player` остаётся тем, кто вызвал скрипт. Каждый проход тратит шаги `maxScriptSteps`.",
+      en: "`loop <target>:` runs for every player. Inside: `loop-player` and `%loop-player%`. `loop {name::*}:` walks the direct indexes of a list: `%loop-index%` is the key, `%loop-value%` is the value. `player` stays whoever ran the script. Every pass costs `maxScriptSteps` steps."
     },
-    example: `command /gather permission 2:
+    example: `command /gather:
+	permission: 2
 	loop all players:
-		send "&e%loop-player%, сбор у %player%!" to loop-player`,
-    since: "0.1.2", related: ["target-loop-player", "ph-loop-player", "target-all"]
+		send "&e%loop-player%, сбор у %player%!" to loop-player
+
+loop {bag::%player%::*}:
+	send "%loop-index% x%loop-value%" to player`,
+    since: "0.1.2", related: ["target-loop-player", "ph-loop-player", "ph-loop-index", "expr-variable", "target-all"]
   },
   {
     id: "struct-define-block", category: "structures",
@@ -414,10 +418,10 @@ remove 1 from {coins::%player%}`,
   {
     id: "eff-delete-var", category: "effects",
     name: { ru: "Удалить переменную", en: "Delete variable" },
-    syntax: ["delete {<имя>}", "clear {<имя>}"],
+    syntax: ["delete {<имя>}", "clear {<имя>}", "delete {<имя>::*}"],
     desc: {
-      ru: "Удаляет переменную (после этого `is not set`).",
-      en: "Deletes a variable (it becomes `is not set`)."
+      ru: "Удаляет переменную (после этого `is not set`). `delete {list::*}` удаляет все прямые индексы, сам список отдельно не хранится.",
+      en: "Deletes a variable (it becomes `is not set`). `delete {list::*}` removes every direct index; the list is not stored on its own."
     },
     example: `delete {coins::%player%}`,
     since: "0.1.0", related: ["eff-set-var", "cond-var-set"]
@@ -500,8 +504,8 @@ play sound entity.experience_orb.pickup to player with volume 0.4 pitch 1.2`,
     name: { ru: "Выдать предмет", en: "Give item" },
     syntax: ["give <цель> <предмет>", "give <цель> <предмет> <количество>"],
     desc: {
-      ru: "Выдаёт предмет (если инвентарь полон — бросает рядом). Количество — число или `{переменная}` (до 2304). Короткий id ищется так: `minecraft:`, потом `scriptcraft:`, потом namespace из скриптов; надёжнее полный id `example:ruby`.",
-      en: "Gives an item (drops it nearby if the inventory is full). Count is a number or `{variable}` (up to 2304). A short id is looked up as `minecraft:`, then `scriptcraft:`, then script namespaces; a full id like `example:ruby` is safer."
+      ru: "Выдаёт предмет (если инвентарь полон — бросает рядом). Количество — число или `{переменная}` (до 2304). В id можно плейсхолдер: `give player %arg-1%`. Короткий id ищется как `minecraft:`, потом `scriptcraft:`, потом namespace скриптов.",
+      en: "Gives an item (drops it nearby if the inventory is full). Count is a number or `{variable}` (up to 2304). The id may contain a placeholder: `give player %arg-1%`. A short id is looked up as `minecraft:`, then `scriptcraft:`, then script namespaces."
     },
     example: `give player diamond 3
 give all players example:ruby`,
@@ -584,7 +588,7 @@ feed player by 6`,
   {
     id: "eff-set-food", category: "effects",
     name: { ru: "Голод и насыщение", en: "Food level & saturation" },
-    syntax: ["set food level of <цель> to <число>", "set hunger of <цель> to <число>", "set saturation of <цель> to <число>", "set player's food level|hunger|saturation to <число>"],
+    syntax: ["set food level of <цель> to <число>", "set hunger of <цель> to <число>", "set saturation of <цель> to <число>", "set player's food level to <число>", "set player's hunger to <число>", "set player's saturation to <число>"],
     desc: {
       ru: "Голод 0–20; насыщение не больше текущего голода (так работает ванилла).",
       en: "Food 0–20; saturation cannot exceed the current food level (vanilla rule)."
@@ -604,7 +608,7 @@ set saturation of player to 5`,
   {
     id: "eff-fire", category: "effects",
     name: { ru: "Поджечь / потушить", en: "Ignite / extinguish" },
-    syntax: ["ignite <цель> for <число> seconds|second|secs|sec", "extinguish <цель>"],
+    syntax: ["ignite <цель> for <число> seconds", "extinguish <цель>"],
     desc: {
       ru: "Поджигает на N секунд (1–3600) или тушит.",
       en: "Sets on fire for N seconds (1–3600) or puts out the fire."
@@ -636,7 +640,7 @@ set gamemode of all players to survival`,
   {
     id: "eff-flying", category: "effects",
     name: { ru: "Полёт", en: "Flying" },
-    syntax: ["set flying of <цель> to true|false", "set flight of <цель> to true|false", "set player's flying to true|false"],
+    syntax: ["set flying of <цель> to true", "set flying of <цель> to false", "set flight of <цель> to true", "set player's flying to false"],
     desc: {
       ru: "`true` даёт право летать и сразу взлетает, `false` забирает право и останавливает полёт (в креативе/наблюдателе право не трогается). Также понимает yes/on/1.",
       en: "`true` grants flight and starts flying, `false` revokes it and stops flying (creative/spectator keep their ability). Also accepts yes/on/1."
@@ -649,7 +653,7 @@ set gamemode of all players to survival`,
   {
     id: "eff-give-effect", category: "effects",
     name: { ru: "Эффект зелья", en: "Potion effect" },
-    syntax: ["give <цель> effect <id> for <число> seconds", "give <цель> effect <id> for <число> seconds level|lvl <число>"],
+    syntax: ["give <цель> effect <id> for <число> seconds", "give <цель> effect <id> for <число> seconds level <число>"],
     desc: {
       ru: "Накладывает эффект. `level 1` — без усиления (по умолчанию), `level 2` — II и т.д. Вместо `seconds` можно `second`, `secs`, `sec`. id: `speed`, `minecraft:night_vision`, `othermod:frost`.",
       en: "Applies an effect. `level 1` is the base level (default), `level 2` is II, etc. `second`, `secs`, `sec` also work. id: `speed`, `minecraft:night_vision`, `othermod:frost`."
@@ -670,7 +674,7 @@ clear effects of player`,
   {
     id: "eff-xp", category: "effects",
     name: { ru: "Опыт", en: "Experience" },
-    syntax: ["give <число> xp|experience to <цель>", "give <число> level|levels to <цель>", "set xp level of <цель> to <число>", "set level of <цель> to <число>", "set player's xp level to <число>"],
+    syntax: ["give <число> xp to <цель>", "give <число> experience to <цель>", "give <число> levels to <цель>", "set xp level of <цель> to <число>", "set level of <цель> to <число>", "set player's xp level to <число>"],
     desc: {
       ru: "`give N xp` добавляет очки опыта (не уровни; может быть отрицательным), `give N levels` прибавляет уровни (тоже может быть отрицательным), `set xp level` ставит уровень.",
       en: "`give N xp` adds experience points (not levels; may be negative), `give N levels` adds levels (may be negative too), `set xp level` sets the level."
@@ -762,7 +766,7 @@ log "%player% использовал /secret"`,
   {
     id: "eff-world", category: "effects",
     name: { ru: "Время, погода, молния, взрыв", en: "Time, weather, lightning, explode" },
-    syntax: ["set time to day|noon|night|midnight|<тики>", "set weather to clear|sun|rain|thunder", "set weather to rain|thunder for <секунды> seconds", "strike lightning at <цель>", "strike lightning at <x> <y> <z>", "explode at <цель>", "explode at <цель> with force <0-8>"],
+    syntax: ["set time to day", "set time to noon", "set time to night", "set time to midnight", "set time to <тики>", "set weather to clear", "set weather to rain", "set weather to thunder", "set weather to rain for <секунды> seconds", "strike lightning at <цель>", "strike lightning at <x> <y> <z>", "explode at <цель>", "explode at <цель> with force <0-8>"],
     desc: {
       ru: "Время и погода меняются во всех мирах. Молния и взрыв без координат бьют по игрокам цели; координаты — в мире игрока из контекста, иначе в обычном мире. Сила взрыва 0–8 (по умолчанию 3), блоки ломаются.",
       en: "Time and weather change in every world. Lightning and an explosion without coordinates hit the target players; coordinates use the context player's world, otherwise the overworld. Explosion force is 0–8 (default 3) and breaks blocks."
@@ -780,7 +784,7 @@ explode at player with force 2`,
   {
     id: "eff-motion", category: "effects",
     name: { ru: "Скорость и толчок", en: "Velocity and launch" },
-    syntax: ["set velocity of <цель> to <x> <y> <z>", "launch <цель> upwards|up", "launch <цель> forwards|forward", "launch <цель> upwards by <скорость>"],
+    syntax: ["set velocity of <цель> to <x> <y> <z>", "launch <цель> upwards", "launch <цель> forwards", "launch <цель> upwards by <скорость>"],
     desc: {
       ru: "Задаёт скорость игрока или толкает вверх / вперёд по взгляду. Скорость ограничена примерно −8…8. `by` можно писать как `with speed`.",
       en: "Sets the player's velocity or pushes them up / forward along their look. Speed is clamped to about −8…8. `by` can also be written `with speed`."
@@ -820,7 +824,7 @@ drop example:ruby at all players`,
   {
     id: "eff-body", category: "effects",
     name: { ru: "Скорость ходьбы, воздух, абсорбция, инвентарь", en: "Walk speed, air, absorption, inventory" },
-    syntax: ["set walk speed of <цель> to <число>", "set fly speed of <цель> to <число>", "set air|oxygen of <цель> to <число>", "set absorption of <цель> to <число>", "close inventory of <цель>", "wake up <цель>"],
+    syntax: ["set walk speed of <цель> to <число>", "set fly speed of <цель> to <число>", "set air of <цель> to <число>", "set oxygen of <цель> to <число>", "set absorption of <цель> to <число>", "close inventory of <цель>", "wake up <цель>"],
     desc: {
       ru: "Скорость ходьбы ванили — `0.1`, полёта — `0.05` (диапазон 0–1). Воздух обрезается по максимуму игрока. `close inventory` закрывает открытый сундук или верстак. `wake up` будит, если игрок спит. Форма `set player's walk speed to ...` тоже работает.",
       en: "Vanilla walk speed is `0.1`, fly speed is `0.05` (range 0–1). Air is clamped to the player's maximum. `close inventory` closes an open chest or crafting table. `wake up` wakes the player if they are sleeping. `set player's walk speed to ...` works too."
@@ -899,7 +903,7 @@ if player is op or player has permission 2:
   {
     id: "cond-player", category: "conditions",
     name: { ru: "Состояние игрока", en: "Player state" },
-    syntax: ["<цель> is [not] sneaking|sprinting|flying|sleeping|burning|on fire|op|alive|blocking|gliding|swimming", "<цель> is [not] online", "<цель> is [not] holding <предмет>", "<цель> has <предмет>", "<цель> does not have <предмет>", "<цель> has permission <0-4>"],
+    syntax: ["<цель> is sneaking", "<цель> is not sneaking", "<цель> is sprinting", "<цель> is flying", "<цель> is sleeping", "<цель> is burning", "<цель> is on fire", "<цель> is op", "<цель> is alive", "<цель> is blocking", "<цель> is gliding", "<цель> is swimming", "<цель> is online", "<цель> is not online", "<цель> is holding <предмет>", "<цель> has <предмет>", "<цель> does not have <предмет>", "<цель> has permission <0-4>"],
     desc: {
       ru: "Проверка для каждого игрока цели: никого нет — условие ложно (и для `is`, и для `is not`). `online` смотрит, есть ли игроки в цели. `holding` — предмет в основной руке, `has` — где угодно в инвентаре. Неизвестный предмет даёт ложь. `op` — запись в ops.txt, `permission N` — уровень прав.",
       en: "Checked for every player of the target: nobody there — the condition is false (both `is` and `is not`). `online` is whether the target has any players. `holding` is the main hand, `has` is anywhere in the inventory. An unknown item is false. `op` is an ops.txt entry, `permission N` is the permission level."
@@ -915,7 +919,7 @@ if player does not have bread:
   {
     id: "cond-gamemode", category: "conditions",
     name: { ru: "Режим и мир", en: "Game mode and world" },
-    syntax: ["<цель> is [not] in creative|survival|adventure|spectator", "<цель> is [not] in gamemode <режим>", "<цель> is [not] in world <мир>"],
+    syntax: ["<цель> is in creative", "<цель> is in survival", "<цель> is in adventure", "<цель> is in spectator", "<цель> is not in creative", "<цель> is in gamemode <режим>", "<цель> is in world <мир>", "<цель> is not in world <мир>"],
     desc: {
       ru: "Режим можно писать и со словом `mode`: `is in creative mode`. Мир: `overworld`, `nether`, `the_end` или полный id `minecraft:the_nether`.",
       en: "The mode can also include the word `mode`: `is in creative mode`. World: `overworld`, `nether`, `the_end` or a full id `minecraft:the_nether`."
@@ -992,15 +996,27 @@ if player is in world the_nether:
     },
     example: `loop all players:
 	send "Привет, %loop-player%!" to loop-player`,
-    since: "0.1.2", related: ["struct-loop", "target-loop-player"]
+    since: "0.1.2", related: ["struct-loop", "target-loop-player", "ph-loop-index"]
+  },
+  {
+    id: "ph-loop-index", category: "expressions",
+    name: { ru: "%loop-index% и %loop-value%", en: "%loop-index% and %loop-value%" },
+    syntax: ["%loop-index%", "%loop-value%"],
+    desc: {
+      ru: "Внутри `loop {имя::*}:` и строки `list from`. `%loop-index%` — ключ (`minecraft:diamond`), `%loop-value%` — значение. Вне цикла — пусто.",
+      en: "Inside `loop {name::*}:` and a `list from` row. `%loop-index%` is the key (`minecraft:diamond`), `%loop-value%` is the value. Empty outside the loop."
+    },
+    example: `loop {bag::%player%::*}:
+	send "&f%loop-index% &8x%loop-value%" to player`,
+    since: "0.3.8", related: ["struct-loop", "expr-variable", "screen-list"]
   },
   {
     id: "expr-variable", category: "expressions",
     name: { ru: "Переменные {имя}", en: "Variables {name}" },
-    syntax: ["{<имя>}", "{<имя>::%player%}"],
+    syntax: ["{<имя>}", "{<имя>::%player%}", "{<имя>::*}"],
     desc: {
-      ru: "Постоянные переменные, сохраняются в `scriptcraft/variables/variables.json` (общий файл). Плейсхолдеры внутри имени подставляются — `{coins::%player%}` своя у каждого. В тексте `{имя}` заменяется значением (незаданная — `<none>`).",
-      en: "Persistent variables saved to `scriptcraft/variables/variables.json` (one shared file). Placeholders inside the name are expanded — `{coins::%player%}` is per player. In text `{name}` is replaced by its value (`<none>` if unset)."
+      ru: "Постоянные переменные в `scriptcraft/variables/variables.json`. `{coins::%player%}` своя у каждого. `{list::*}` — сколько прямых индексов (`list::ключ`), не одно значение. `set` и `add` в `{list::*}` нельзя: пишите `{list::ключ}`. `delete {list::*}` стирает все прямые индексы.",
+      en: "Persistent variables in `scriptcraft/variables/variables.json`. `{coins::%player%}` is per player. `{list::*}` is how many direct indexes (`list::key`) there are, not one value. `set` and `add` cannot target `{list::*}`: write `{list::key}`. `delete {list::*}` removes every direct index."
     },
     example: `add 1 to {coins::%player%}
 send "&eМонет: {coins::%player%}" to player`,
@@ -1044,7 +1060,7 @@ set {vip::%player%} to true`,
   {
     id: "expr-property", category: "expressions",
     name: { ru: "Свойства игрока", en: "Player properties" },
-    syntax: ["health of <цель>", "max health of <цель>", "food|hunger|food level of <цель>", "saturation of <цель>", "level|xp level of <цель>", "xp|experience of <цель>", "air|oxygen|max air of <цель>", "absorption of <цель>", "walk speed of <цель>", "fly speed|flying speed of <цель>", "ping of <цель>", "x|y|z of <цель>", "yaw|pitch of <цель>", "gamemode|game mode of <цель>", "world of <цель>", "name of <цель>", "uuid of <цель>", "tool|held item of <цель>", "number of all players"],
+    syntax: ["health of <цель>", "max health of <цель>", "food level of <цель>", "hunger of <цель>", "saturation of <цель>", "level of <цель>", "xp level of <цель>", "experience of <цель>", "air of <цель>", "oxygen of <цель>", "max air of <цель>", "absorption of <цель>", "walk speed of <цель>", "fly speed of <цель>", "flying speed of <цель>", "ping of <цель>", "x of <цель>", "y of <цель>", "z of <цель>", "yaw of <цель>", "pitch of <цель>", "gamemode of <цель>", "game mode of <цель>", "world of <цель>", "name of <цель>", "uuid of <цель>", "tool of <цель>", "held item of <цель>", "number of all players"],
     desc: {
       ru: "Значение свойства первого игрока цели (нет игрока — `<none>` / условие ложно). Пишется в `if`, в `set {переменная} to ...` и в `add ... to {переменная}`, а также в конце эффектов вроде `heal player by health of player`. `gamemode` — текст `survival`/`creative`/`adventure`/`spectator`. `held item` — id предмета в руке или `minecraft:air`. `number of all players` — сколько игроков онлайн (то же, что `number of online players`).",
       en: "The property of the first player of the target (no player — `<none>` / the condition is false). Use it in `if`, in `set {variable} to ...` and `add ... to {variable}`, and at the end of effects such as `heal player by health of player`. `gamemode` is the text `survival`/`creative`/`adventure`/`spectator`. `held item` is the id in the hand or `minecraft:air`. `number of all players` is the online count (same as `number of online players`)."
@@ -1203,7 +1219,7 @@ give 50 xp to @r`,
   {
     id: "screen-text", category: "screen",
     name: { ru: "Текст на экране", en: "Screen text" },
-    syntax: ["text \"<текст>\" [at <X> <Y>] [anchor <точка>] [color #RRGGBB] [shadow] [run \"/<команда>\" | close]"],
+    syntax: ["text \"<текст>\" [at <X> <Y>] [anchor <точка>] [color #RRGGBB] [shadow]", "text \"<текст>\" run \"/<команда>\"", "text \"<текст>\" close"],
     desc: {
       ru: "Надпись. `color` — `#RRGGBB` или `#AARRGGBB`, `shadow` — с тенью. Плейсхолдеры и `{переменные}` подставляются при открытии. `run` или `close` делают хитбокс: ЛКМ по тексту (или по `size`, если задан) выполняет команду и закрывает экран. На HUD клика нет.",
       en: "A label. `color` is `#RRGGBB` or `#AARRGGBB`, `shadow` adds a shadow. Placeholders and `{variables}` are filled in when opening. `run` or `close` adds a hitbox: left click on the text (or on `size`, if set) runs the command and closes the screen. HUD elements are not clickable."
@@ -1226,7 +1242,7 @@ button "Закрыть" at 0, 40 size 120x20 close`,
   {
     id: "screen-slot", category: "screen",
     name: { ru: "Слот с предметом", en: "Item slot" },
-    syntax: ["slot <предмет> [<количество>] [at <X> <Y>] [anchor <точка>]", "slot hotbar <1-9> | slot image \"<картинка>\" | slot text \"<текст>\""],
+    syntax: ["slot <предмет> [<количество>] [at <X> <Y>] [anchor <точка>]", "slot hotbar <1-9>", "slot image \"<картинка>\"", "slot text \"<текст>\""],
     desc: {
       ru: "Показывает предмет с подсказкой при наведении. Сам по себе слот ничего не берёт. `run \"/команда\"` или `close` — хитбокс ЛКМ по прямоугольнику слота на `open screen` (на HUD клика нет). С 0.1.33 слот может показывать предмет из хотбара игрока, картинку или текст (см. «Слоты HUD»).",
       en: "Shows an item with a tooltip on hover. By itself the slot takes nothing. `run \"/command\"` or `close` is a left-click hitbox on the slot rectangle in `open screen` (HUD elements are not clickable). Since 0.1.33 a slot can also show an item from the player's hotbar, an image or a text (see “HUD slots”)."
@@ -1249,7 +1265,7 @@ slot example:ruby 4 at 60, -15`,
   {
     id: "screen-layout", category: "screen",
     name: { ru: "Позиция и привязка", en: "Position and anchor" },
-    syntax: ["at <X> <Y>", "anchor top_left|top|top_right|left|center|right|bottom_left|bottom|bottom_right"],
+    syntax: ["at <X> <Y>", "anchor center", "anchor top_left", "anchor top", "anchor top_right", "anchor left", "anchor right", "anchor bottom_left", "anchor bottom", "anchor bottom_right"],
     desc: {
       ru: "Элемент выравнивается по точке привязки экрана (по умолчанию `center`) и сдвигается на X Y пикселей (минус — влево/вверх).",
       en: "The element is aligned to an anchor point of the screen (`center` by default) and shifted by X Y pixels (negative = left/up)."
@@ -1272,15 +1288,21 @@ text "Взять алмаз" at -40, 16 run "/hand diamond"`,
   {
     id: "screen-list", category: "screen",
     name: { ru: "Список", en: "List" },
-    syntax: ["list [vertical|horizontal] [at <X> <Y>] [size <W>x<H>] [anchor <точка>] [header \"<текст>\"] [select]:", "row \"<текст>\" [run \"/<команда>\" | close]"],
+    syntax: [
+      "list vertical [at <X> <Y>] [size <W>x<H>] [header \"<текст>\"] [select]:",
+      "list horizontal [at <X> <Y>] [size <W>x<H>] [header \"<текст>\"] [select]:",
+      "list from {<имя>::*} vertical [at <X> <Y>] [size <W>x<H>] [header \"<текст>\"] [select]:",
+      "row \"<текст>\" run \"/<команда>\"",
+      "row \"<текст>\" close",
+      "row \"<текст>\""
+    ],
     desc: {
-      ru: "Панель строк. `vertical` — столбец (по умолчанию), `horizontal` — ряд. `header` — строка над списком. `select` подсвечивает строку под курсором, это не выбор навсегда. `row` без `run` и `close` только рисуется. Клик по строке с действием выполняет команду и закрывает экран, как кнопка. Если строк больше, чем влезает в `size` (по умолчанию 120x140), список листается колёсиком. Цвета `&` в тексте строки и заголовка работают. В HUD список только рисуется.",
-      en: "A panel of rows. `vertical` is a column (the default), `horizontal` is a row. `header` is a line above the rows. `select` highlights the row under the cursor; it is not a stored choice. A `row` without `run` or `close` is only drawn. Clicking a row that has an action runs the command and closes the screen, like a button. If the rows do not fit in `size` (120x140 by default), the wheel scrolls the list. `&` color codes work in the row text and the header. On a HUD the list is display only."
+      ru: "Панель строк. `vertical` — столбец, `horizontal` — ряд. `header` — строка над списком. `select` подсвечивает строку под курсором. Клик по строке с `run` выполняет команду и закрывает экран. `list from {имя::*}` в момент открытия строит строку на каждый прямой индекс: одна `row` — шаблон с `%loop-index%` и `%loop-value%`. Пустой список рисует только заголовок. Колёсико листает, если строк больше, чем влезает в `size`. На HUD список только рисуется и тоже снимок.",
+      en: "A panel of rows. `vertical` is a column, `horizontal` is a row. `header` is a line above the list. `select` highlights the row under the cursor. A click on a row with `run` runs the command and closes the screen. `list from {name::*}` builds one row per direct index when the screen opens: the single `row` is a template with `%loop-index%` and `%loop-value%`. An empty list draws only the header. The wheel scrolls when the rows do not fit in `size`. On a HUD the list is display only, and it is a snapshot too."
     },
-    example: `list vertical at -8, 0 size 140x160 anchor right header "&6Сумка" select:
-	row "&bАлмаз" run "/hand diamond"
-	row "&7Закрыть" close`,
-    since: "0.3.7", related: ["screen-click", "eff-open-screen", "event-open"]
+    example: `list from {bag::%player%::*} vertical at 0, 0 size 180x160 header "&7Предмет" select:
+	row "&f%loop-index% &8x%loop-value%" run "/bag take %loop-index%"`,
+    since: "0.3.7", related: ["screen-click", "eff-open-screen", "event-open", "expr-variable", "ph-loop-index"]
   },
 
   // ================================================================== UI / HUD
@@ -1377,7 +1399,7 @@ text "HP" anchor bottom at 0, -38 layer 3 id hp_label`,
   {
     id: "hud-set-bar", category: "hud",
     name: { ru: "Значение и максимум полосы", en: "Bar value and max" },
-    syntax: ["set value|progress of bar \"<имя>\" [for <цель>] to <значение>", "set max of bar \"<имя>\" [for <цель>] to <значение>"],
+    syntax: ["set value of bar \"<имя>\" [for <цель>] to <значение>", "set progress of bar \"<имя>\" [for <цель>] to <значение>", "set max of bar \"<имя>\" [for <цель>] to <значение>"],
     desc: {
       ru: "Меняет значение или максимум полосы: число, `{переменная}` или источник (`health`, `food`…). Без `for` — игроку из контекста. Клиенту уходит только изменение, и только если значение действительно поменялось.",
       en: "Changes a bar's value or max: a number, a `{variable}` or a source (`health`, `food`…). Without `for` it targets the context player. Only the change is sent, and only if the value actually changed."
@@ -1553,7 +1575,7 @@ show vanilla all for player`,
 
   // ================================================================== КОНФИГ
   { id: "cfg-language", category: "config", name: { ru: "general.language", en: "general.language" },
-    syntax: ["language = \"en\" | \"ru\""],
+    syntax: ["language = \"en\"", "language = \"ru\""],
     desc: { ru: "Язык сообщений мода. По умолчанию `\"en\"`. Меняется сразу после `/sc config reload`.", en: "Language of mod messages. Default `\"en\"`. Applies right after `/sc config reload`." },
     example: `language = "ru"`, since: "0.1.0", related: [] },
   { id: "cfg-enableTemporaryVariables", category: "config", name: { ru: "general.enableTemporaryVariables", en: "general.enableTemporaryVariables" },

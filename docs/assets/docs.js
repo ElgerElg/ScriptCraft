@@ -240,7 +240,18 @@
     (params.get("cat") || "").split(",").forEach(function (c) { if (catById[c]) state.cats[c] = true; });
 
     els.input.addEventListener("input", function () { state.q = els.input.value; searchClosed = {}; render(); window.scrollTo(0, 0); });
+    var navBtn = document.getElementById("nav-toggle");
+    var shade = document.getElementById("nav-shade");
+    function setNav(open) {
+      document.documentElement.classList.toggle("nav-open", open);
+      if (navBtn) navBtn.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+    if (navBtn) navBtn.addEventListener("click", function () { setNav(!document.documentElement.classList.contains("nav-open")); });
+    if (shade) shade.addEventListener("click", function () { setNav(false); });
+    window.addEventListener("resize", function () { if (window.innerWidth > 900) setNav(false); });
+
     els.side.addEventListener("click", function (ev) {
+      if (ev.target.closest("a")) setNav(false);
       var head = ev.target.closest(".side-cat");
       if (head) {
         var cat = head.parentNode.getAttribute("data-cat");
@@ -262,6 +273,7 @@
       window.scrollTo(0, 0);
     });
     document.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape" && document.documentElement.classList.contains("nav-open")) { setNav(false); return; }
       if (ev.key === "/" && document.activeElement !== els.input) { ev.preventDefault(); els.input.focus(); els.input.select(); }
       else if (ev.key === "Escape" && document.activeElement === els.input) { els.input.value = ""; state.q = ""; render(); }
     });

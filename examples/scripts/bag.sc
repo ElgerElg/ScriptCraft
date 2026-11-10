@@ -1,41 +1,28 @@
-# ==========================================================
-#  bag.sc — получение предмета, клавиша, отмена меню, список и хитбокс
-#  Файл копируется ВЫКЛЮЧЕННЫМ (-bag.sc): он отменяет ванильный инвентарь на E.
-#  Включить: /sc enable bag     Выключить: /sc disable bag
-#  Отступ — Tab.
-# ==========================================================
+# bag.sc копируется выключенным. Включить: /sc enable bag
+# E открывает сумку. Хотбар остаётся ванильным.
 
-# Любой рост числа предмета в инвентаре: give, сундук, крафт, подбор, креатив.
-# %item% — id, %amount% — на сколько стало больше. Перекладывание слотов событие не поднимает.
-# cancel event забирает эту добавку обратно. on pickup при этом тоже может сработать (ещё до инвентаря).
 on receive:
-	send "&7Получено: &f%item% &7x%amount%" to player
+	if {-handing::%player%} is %item%:
+		delete {-handing::%player%}
+		stop
+	cancel event
+	add %amount% to {bag::%player%::%item%}
 
-# Клавиша только наблюдается. Она не проглатывается: E так не отменить, для этого on open.
-# Имена — латиница, физическая клавиша (на русской раскладке G всё ещё g).
-on key g:
-	send "&eНажата G" to player
-
-# survival и creative — оба меню называются inventory.
-# cancel event в этом теле блокирует экран всегда, даже если он стоит внутри if:
-# клиент не ждёт ответ сервера и закрывает меню сразу.
 on open inventory:
 	cancel event
 	open screen "Сумка" to player:
-		list vertical at -8, 0 size 140x160 anchor right header "&6Сумка" select:
-			row "&bАлмаз" run "/hand diamond"
-			row "&cРубин" run "/hand ruby"
-			row "&7Закрыть" close
-		image "minecraft:textures/item/diamond.png" at -170, -24 size 32x32 texture 16x16 anchor right run "/hand diamond"
-		text "Взять алмаз" at -170, 16 anchor right color #FFFFFF run "/hand diamond"
-		button "Закрыть" at 0, 80 size 80x20 close
+		text "&6Сумка" at 0, -90
+		list from {bag::%player%::*} vertical at 0, 0 size 180x160 header "&7Предмет" select:
+			row "&f%loop-index% &8x%loop-value%" run "/bag take %loop-index%"
+		button "Закрыть" at 0, 100 size 80x20 close
 
-# give player arg-1 не подставит текст аргумента: give забирает токен как id.
-command /hand <text>:
+command /bag take <text>:
 	permission: 0
-	if arg-1 is "diamond":
-		give player diamond 1
-	else if arg-1 is "ruby":
-		give player example:ruby 1
+	if {bag::%player%::%arg-1%} >= 1:
+		set {-handing::%player%} to arg-1
+		remove 1 from {bag::%player%::%arg-1%}
+		if {bag::%player%::%arg-1%} < 1:
+			delete {bag::%player%::%arg-1%}
+		give player %arg-1% 1
 	else:
-		send "&cНет такого предмета: &f%arg-1%" to player
+		send "&cПусто" to player

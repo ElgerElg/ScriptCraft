@@ -22,6 +22,7 @@ import com.scriptcraft.screen.ButtonElement;
 import com.scriptcraft.screen.ImageElement;
 import com.scriptcraft.screen.Layout;
 import com.scriptcraft.screen.ListElement;
+import com.scriptcraft.screen.VariableListElement;
 import com.scriptcraft.screen.ScreenElement;
 import com.scriptcraft.screen.SlotElement;
 import com.scriptcraft.screen.TextElement;
@@ -597,10 +598,19 @@ public final class ScriptParser {
                     error(line, e.getMessage());
                 }
             } else if (lower.startsWith("loop ") && lower.endsWith(":")) {
-                // loop <цель>:  + вложенные действия, внутри loop-player / %loop-player%
+                // loop <цель>: или loop {имя::*}:
                 openIf = -1;
                 try {
-                    List<Token> t = Tokenizer.tokenize(line.text().substring(5, line.text().length() - 1));
+                    String inner = line.text().substring(5, line.text().length() - 1).strip();
+                    if (inner.startsWith("{") && inner.endsWith("::*}")) {
+                        if (children.isEmpty()) {
+                            throw new ParseException("у 'loop' нет вложенных действий");
+                        }
+                        actions.add(new Actions.LoopIndices(inner.substring(1, inner.length() - 1), parseActions(children)));
+                        i = end;
+                        continue;
+                    }
+                    List<Token> t = Tokenizer.tokenize(inner);
                     Target target = TargetParser.parseWhole(t, 0, "loop all players:");
                     if (children.isEmpty()) {
                         throw new ParseException("у 'loop' нет вложенных действий");
@@ -1203,6 +1213,7 @@ public final class ScriptParser {
         boolean horizontal = false;
         boolean select = false;
         String header = "";
+        String from = "";
         String id = "";
         int x = 0, y = 0, w = 120, h = 140, layer = 0;
         int color = 0xFFFFFFFF;
@@ -1221,6 +1232,14 @@ public final class ScriptParser {
                 case "select" -> {
                     select = true;
                     idx++;
+                }
+                case "from" -> {
+                    if (idx + 1 >= t.size() || !t.get(idx + 1).value().endsWith("::*}")) {
+                        throw new ParseException("нужно: from {имя::*}");
+                    }
+                    String token = t.get(idx + 1).value();
+                    from = token.substring(1, token.length() - 1);
+                    idx += 2;
                 }
                 case "header" -> {
                     header = quoted(t, idx + 1);
@@ -1269,8 +1288,22 @@ public final class ScriptParser {
                     id = EffectPatterns.hudName(t.get(idx + 1).value());
                     idx += 2;
                 }
-                default -> throw new ParseException("у list нет параметра '" + opt + "' (vertical, horizontal, select, header, at, size, anchor, layer, color, id)");
+                default -> throw new ParseException("у list нет параметра '" + opt + "' (from, vertical, horizontal, select, header, at, size, anchor, layer, color, id)");
             }
+        }
+        Layout layout = new Layout(x, y, w, h, anchor, color, layer);
+        if (!from.isEmpty()) {
+            if (nested.size() > 1) {
+                throw new ParseException("у list from одна строка-шаблон: row \"%loop-index%\"");
+            }
+            String rowText = "%loop-index% x%loop-value%";
+            String rowAction = "";
+            if (!nested.isEmpty()) {
+                ListElement.Row template = parseRow(nested.get(0));
+                rowText = template.text();
+                rowAction = template.action();
+            }
+            return new ParsedElement(id, new VariableListElement(layout, header, horizontal, select, from, rowText, rowAction));
         }
         if (nested.isEmpty()) {
             throw new ParseException("у list нет строк: row \"текст\" run \"/команда\"");
@@ -1293,7 +1326,6 @@ public final class ScriptParser {
         if (rows.isEmpty()) {
             throw new ParseException("у list нет строк row");
         }
-        Layout layout = new Layout(x, y, w, h, anchor, color, layer);
         return new ParsedElement(id, new ListElement(layout, header, horizontal, select, List.copyOf(rows)));
     }
 

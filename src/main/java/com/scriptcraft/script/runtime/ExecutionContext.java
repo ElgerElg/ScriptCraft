@@ -253,7 +253,21 @@ public final class ExecutionContext {
     }
 
     public Object getVariable(String name) {
+        // {list::*} — сколько прямых индексов, а не одно значение.
+        if (name.endsWith("::*")) {
+            return (double) VariableStore.children(name.substring(0, name.length() - 3)).size();
+        }
         return VariableStore.get(name);
+    }
+
+    /** Плейсхолдер, если он задан в этом запуске, иначе null. */
+    @Nullable
+    public String placeholderOrNull(String name) {
+        return variables.get(name.toLowerCase(Locale.ROOT));
+    }
+
+    public void clearPlaceholder(String name) {
+        variables.remove(name.toLowerCase(Locale.ROOT));
     }
 
     public void setVariable(String name, Object value) {

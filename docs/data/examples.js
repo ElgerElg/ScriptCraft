@@ -2,7 +2,6 @@
  * ScriptCraft — большие примеры для вкладки «Примеры».
  * Каждый пример: id, title {ru,en}, intro {ru,en}, blocks[] (lang: sc | json | toml | text), notes {ru[], en[]}, related[] (id из syntax.js).
  * Скрипты взяты из examples/scripts (welcome.sc, menu.sc, hud.sc, ruby.sc, bag.sc) — держите их в согласии.
- * pouch — только эта страница: мод его в папку scripts не копирует.
  * Отступ в скриптах — Tab.
  */
 window.SC_DOCS = window.SC_DOCS || {};
@@ -10,12 +9,12 @@ window.SC_DOCS.examples = [
   {
     id: "welcome",
     title: { ru: "Вход, эффекты и команды с аргументами", en: "Join, effects and commands with arguments" },
-    intro: { ru: "welcome.sc включается сам и собран так, чтобы с него можно было копировать: события, переменные, шанс, дом по координатам и современный вид команды (permission, aliases и аргументы под заголовком, а не в одной строке).", en: "welcome.sc is enabled by default and is meant to be copied from: events, variables, chance, a home stored as coordinates, and the current command shape (permission, aliases and arguments under the header, not on the same line)." },
+    intro: { ru: "Вход, переменные, шанс и команда с аргументами. Копируется выключенным: /sc enable welcome.", en: "Join, variables, chance and a command with arguments. Copied disabled: /sc enable welcome." },
     blocks: [
       { lang: "sc", title: { ru: "scriptcraft/scripts/welcome.sc", en: "scriptcraft/scripts/welcome.sc" }, code: `# ==========================================================
 #  welcome.sc — вход, эффекты, переменные и команды с аргументами
-#  Этот файл включается сам. Перезагрузка: /sc reload welcome
-#  Выключить: /sc disable welcome  (файл станет -welcome.sc)
+#  Копируется выключенным. Включить: /sc enable welcome
+#  Перезагрузка: /sc reload welcome. Выключить: /sc disable welcome
 #  Отступ — Tab. Один Tab равен четырём пробелам, пробелы тоже понимаются.
 # ==========================================================
 
@@ -180,10 +179,10 @@ command /resetcoins:
   {
     id: "menu",
     title: { ru: "Лавка: экран, слои, слоты и кнопки", en: "Shop: a screen, layers, slots and buttons" },
-    intro: { ru: "menu.sc открывает лавку /menu (ещё /shop и /lavka). Кнопки вызывают /order <text> и тратят {coins::%player%} из welcome.sc. Ниже — полный список того, что можно поставить на экран.", en: "menu.sc opens a shop with /menu (also /shop and /lavka). Buttons run /order <text> and spend {coins::%player%} from welcome.sc. Below is the full list of what a screen can hold." },
+    intro: { ru: "Лавка /menu. Кнопки тратят монеты из welcome.sc.", en: "A shop on /menu. Buttons spend coins from welcome.sc." },
     blocks: [
       { lang: "sc", title: { ru: "scriptcraft/scripts/menu.sc", en: "scriptcraft/scripts/menu.sc" }, code: `# ==========================================================
-#  menu.sc — экран-лавка. Открыть: /menu  (псевдоним /shop)
+#  menu.sc — экран-лавка. Копируется выключенным: /sc enable menu. Открыть: /menu
 #  Элементы экрана, все необязательные хвосты можно комбинировать:
 #    text "..."   at X Y   anchor ...   color #RRGGBB   shadow   layer N
 #    button "..." at X Y   size WxH     anchor ...      run "/команда"  или  close   layer N
@@ -284,7 +283,7 @@ command /announce:
   {
     id: "hud",
     title: { ru: "HUD: полосы, хотбар и ванильные части", en: "HUD: bars, a hotbar and vanilla parts" },
-    intro: { ru: "hud.sc при первой установке копируется выключенным (-hud.sc), потому что прячет ванильный хотбар, здоровье и голод. Включить: /sc enable hud. Элементы те же, что у экрана, кроме кнопок: HUD не принимает клики.", en: "On a first install hud.sc is copied disabled (-hud.sc), because it hides the vanilla hotbar, health and food. Enable it with /sc enable hud. The elements are the same as a screen, except buttons: a HUD does not take clicks." },
+    intro: { ru: "Интерфейс поверх игры. Копируется выключенным: /sc enable hud.", en: "An overlay on the game. Copied disabled: /sc enable hud." },
     blocks: [
       { lang: "sc", title: { ru: "scriptcraft/scripts/hud.sc", en: "scriptcraft/scripts/hud.sc" }, code: `# ==========================================================
 #  hud.sc — свой интерфейс поверх игры
@@ -378,10 +377,10 @@ command /hudreset:
   {
     id: "custom-block",
     title: { ru: "Свой блок и предмет: все свойства", en: "A custom block and item: every property" },
-    intro: { ru: "ruby.sc объявляет example:ruby_block и example:ruby. Модели и текстуры лежат в scriptcraft/resources. Блок, который есть в скриптах при запуске сервера, получает настоящий id; новый define после /sc reload появляется сразу во временном слоте scriptcraft:dyn_block_N. Технический id смотрите в /sc ids.", en: "ruby.sc declares example:ruby_block and example:ruby. Models and textures live in scriptcraft/resources. A block that is in the scripts when the server starts gets its real id; a new define after /sc reload appears at once in a temporary slot scriptcraft:dyn_block_N. The technical id is in /sc ids." },
+    intro: { ru: "Блок и предмет example:ruby. Ресурсы лежат в scriptcraft/resources.", en: "The block and item example:ruby. Resources live in scriptcraft/resources." },
     blocks: [
       { lang: "sc", title: { ru: "scriptcraft/scripts/ruby.sc", en: "scriptcraft/scripts/ruby.sc" }, code: `# ==========================================================
-#  ruby.sc — свои блоки и предметы
+#  ruby.sc — свои блоки и предметы. Копируется выключенным: /sc enable ruby
 #  id только латиницей. Русское название — через name: или lang.
 #  Ресурсы: scriptcraft/resources/assets/example/  (модели, текстуры, lang)
 #  Дроп и теги: scriptcraft/resources/data/
@@ -497,7 +496,7 @@ command /ruby:
   {
     id: "economy",
     title: { ru: "Экономика: переменные, шанс и перевод", en: "Economy: variables, chance and a transfer" },
-    intro: { ru: "Тот же баланс, что в welcome.sc. {coins::%player%} сохраняется, {-worked::%player%} живёт до перезапуска. /pay <player> <integer> переводит монеты другому игроку.", en: "The same balance as in welcome.sc. {coins::%player%} is saved, {-worked::%player%} lives until the server restarts. /pay <player> <integer> transfers coins to another player." },
+    intro: { ru: "Баланс {coins::%player%} и перевод /pay.", en: "A {coins::%player%} balance and /pay." },
     blocks: [
       { lang: "sc", title: { ru: "фрагмент welcome.sc", en: "excerpt of welcome.sc" }, code: `# Эти команды уже есть в welcome.sc. Здесь — только баланс.
 command /coins:
@@ -541,7 +540,7 @@ command /resetcoins:
   {
     id: "heal-radius",
     title: { ru: "Цели, взгляд и цикл", en: "Targets, looking and a loop" },
-    intro: { ru: "Цель — набор игроков. Пустой набор ничего не делает. loop нужен, когда каждому игроку надо написать его собственное имя. Эти команды есть в welcome.sc.", en: "A target is a set of players. An empty set does nothing. Use loop when each player needs their own name in a message. These commands are in welcome.sc." },
+    intro: { ru: "Цель — набор игроков. Пустой набор ничего не делает.", en: "A target is a set of players. An empty set does nothing." },
     blocks: [
       { lang: "sc", title: { ru: "фрагмент welcome.sc", en: "excerpt of welcome.sc" }, code: `# Эти команды уже есть в welcome.sc.
 command /look:
@@ -569,7 +568,7 @@ command /nearbuff:
   {
     id: "effect-commands",
     title: { ru: "Эффект-команды в чате", en: "Chat effect commands" },
-    intro: { ru: "Сообщение в чате с токеном ? выполняется как одна строка скрипта от имени написавшего. По умолчанию выключено.", en: "A chat message starting with ? runs as one script line on behalf of the sender. Off by default." },
+    intro: { ru: "Строка чата с ? выполняется как скрипт. По умолчанию выключено.", en: "A chat line starting with ? runs as a script. Off by default." },
     blocks: [
       { lang: "toml", title: { ru: "scriptcraft/config.toml", en: "scriptcraft/config.toml" }, code: `[effectCommands]
     enableEffectCommands = true
@@ -590,7 +589,7 @@ command /nearbuff:
   {
     id: "features-02",
     title: { ru: "Чат, кубик, пауза и таймер", en: "Chat, a die, a pause and a timer" },
-    intro: { ru: "Короткий учебный файл, его нет среди включаемых примеров. Положите в scriptcraft/scripts/features.sc, если нужен. every без игрока в player: внутри используйте loop.", en: "A short teaching file; it is not one of the scripts the mod copies in. Put it in scriptcraft/scripts/features.sc if you want it. every has no player: use loop inside." },
+    intro: { ru: "every без игрока: внутри используйте loop.", en: "every has no player: use loop inside." },
     blocks: [
       { lang: "sc", title: { ru: "scriptcraft/scripts/features.sc", en: "scriptcraft/scripts/features.sc" }, code: `on first join:
 	give player bread 16
@@ -625,152 +624,39 @@ every 10 seconds:
   },
   {
     id: "bag",
-    title: { ru: "Сумка вместо инвентаря", en: "A bag instead of the inventory" },
-    intro: { ru: "bag.sc копируется выключенным (-bag.sc): он отменяет ванильный инвентарь на E. Включить: /sc enable bag. Это не сундук и не хотбар — список и картинка запускают команду, а команда делает give.", en: "bag.sc is copied disabled (-bag.sc): it cancels the vanilla inventory on E. Enable it with /sc enable bag. It is not a chest and not the hotbar — a list row and an image run a command, and the command gives the item." },
+    title: { ru: "Сумка", en: "Bag" },
+    intro: { ru: "Любой полученный предмет уходит в сумку. E открывает её. Включить: /sc enable bag.", en: "Every item you receive goes into the bag. E opens it. Enable: /sc enable bag." },
     blocks: [
       { lang: "sc", title: { ru: "scriptcraft/scripts/-bag.sc", en: "scriptcraft/scripts/-bag.sc" }, code: `# bag.sc копируется выключенным. Включить: /sc enable bag
+# E открывает сумку. Хотбар остаётся ванильным.
 
-on receive:
-	send "&7Получено: &f%item% &7x%amount%" to player
-
-on key g:
-	send "&eНажата G" to player
-
-on open inventory:
-	cancel event
-	open screen "Сумка" to player:
-		list vertical at -8, 0 size 140x160 anchor right header "&6Сумка" select:
-			row "&bАлмаз" run "/hand diamond"
-			row "&cРубин" run "/hand ruby"
-			row "&7Закрыть" close
-		image "minecraft:textures/item/diamond.png" at -170, -24 size 32x32 texture 16x16 anchor right run "/hand diamond"
-		text "Взять алмаз" at -170, 16 anchor right color #FFFFFF run "/hand diamond"
-		button "Закрыть" at 0, 80 size 80x20 close
-
-command /hand <text>:
-	permission: 0
-	if arg-1 is "diamond":
-		give player diamond 1
-	else if arg-1 is "ruby":
-		give player example:ruby 1
-	else:
-		send "&cНет такого предмета: &f%arg-1%" to player` }
-    ],
-    notes: { ru: ["on receive видит рост суммы предмета: give, сундук, крафт, подбор, креатив. Перекладывание слотов не считается. cancel event забирает добавку.","on key только наблюдает. E отменяется через on open inventory, и cancel event внутри if всё равно закрывает меню всегда.","Клик по строке, тексту и картинке есть только у open screen. Хотбар остаётся ванильным."], en: ["on receive sees the inventory total grow: give, a chest, crafting, a pickup, creative. Moving stacks does not count. cancel event removes the added amount.","on key only observes. E is stopped with on open inventory, and a cancel event inside if still always blocks the menu.","A click on a row, a text or an image exists only on open screen. The hotbar stays vanilla."] },
-    related: ["event-receive", "event-key", "event-open", "screen-list", "screen-click", "eff-open-screen", "eff-give-item"]
-  },
-  {
-    id: "pouch",
-    title: { ru: "Сумка: свои предметы вместо инвентаря", en: "A pouch instead of the inventory" },
-    intro: { ru: "Учебный инвентарь только для этой страницы: мод не кладёт его в scripts. E закрывает ванильное меню. Алмаз, железо, золото и хлеб при получении уходят в переменные и снимаются с ванильного инвентаря. ЛКМ по слоту или строке кладёт одну штуку в руку. Это не сундук: строки заданы в скрипте, хотбар остаётся ванильным.", en: "A teaching inventory that lives only on this page: the mod does not copy it into scripts. E closes the vanilla menu. Diamonds, iron, gold and bread are stored in variables and removed from the vanilla inventory when received. Left click on a slot or a row puts one into the hand. It is not a chest: the rows are written in the script, and the hotbar stays vanilla." },
-    blocks: [
-      { lang: "sc", title: { ru: "scriptcraft/scripts/pouch.sc", en: "scriptcraft/scripts/pouch.sc" }, code: `# Сумка вместо инвентаря. Скопируйте в scriptcraft/scripts/pouch.sc и выполните /sc reload.
-# E больше не откроет ванильный инвентарь. Хотбар остаётся.
-# Слот и строка только запускают команду. Новые виды предметов сами в список не добавляются.
-
-on join:
-	if {pouch::%player%::diamond} is not set:
-		set {pouch::%player%::diamond} to 0
-	if {pouch::%player%::iron} is not set:
-		set {pouch::%player%::iron} to 0
-	if {pouch::%player%::gold} is not set:
-		set {pouch::%player%::gold} to 0
-	if {pouch::%player%::bread} is not set:
-		set {pouch::%player%::bread} to 0
-
-# give из /pouch take тоже попадает в on receive. Флаг говорит: эту штуку оставить в руке.
 on receive:
 	if {-handing::%player%} is %item%:
 		delete {-handing::%player%}
 		stop
-	if %item% is "minecraft:diamond":
-		cancel event
-		add %amount% to {pouch::%player%::diamond}
-		stop
-	if %item% is "minecraft:iron_ingot":
-		cancel event
-		add %amount% to {pouch::%player%::iron}
-		stop
-	if %item% is "minecraft:gold_ingot":
-		cancel event
-		add %amount% to {pouch::%player%::gold}
-		stop
-	if %item% is "minecraft:bread":
-		cancel event
-		add %amount% to {pouch::%player%::bread}
+	cancel event
+	add %amount% to {bag::%player%::%item%}
 
 on open inventory:
 	cancel event
 	open screen "Сумка" to player:
-		text "&6Сумка" at 0, -78
-		text "&7Клик — взять одну штуку в руку" at 0, -62 color #AAAAAA
-		slot diamond at -72, -24 run "/pouch take diamond"
-		text "&b{pouch::%player%::diamond}" at -72, 2
-		slot iron_ingot at -24, -24 run "/pouch take iron"
-		text "&f{pouch::%player%::iron}" at -24, 2
-		slot gold_ingot at 24, -24 run "/pouch take gold"
-		text "&e{pouch::%player%::gold}" at 24, 2
-		slot bread at 72, -24 run "/pouch take bread"
-		text "&6{pouch::%player%::bread}" at 72, 2
-		list vertical at -8, 8 size 160x100 anchor right header "&6Взять" select:
-			row "&bАлмаз &8x{pouch::%player%::diamond}" run "/pouch take diamond"
-			row "&fЖелезо &8x{pouch::%player%::iron}" run "/pouch take iron"
-			row "&eЗолото &8x{pouch::%player%::gold}" run "/pouch take gold"
-			row "&6Хлеб &8x{pouch::%player%::bread}" run "/pouch take bread"
-		button "Закрыть" at 0, 78 size 80x20 close
+		text "&6Сумка" at 0, -90
+		list from {bag::%player%::*} vertical at 0, 0 size 180x160 header "&7Предмет" select:
+			row "&f%loop-index% &8x%loop-value%" run "/bag take %loop-index%"
+		button "Закрыть" at 0, 100 size 80x20 close
 
-command /pouch take <text>:
+command /bag take <text>:
 	permission: 0
-	if arg-1 is "diamond":
-		if {pouch::%player%::diamond} >= 1:
-			set {-handing::%player%} to "minecraft:diamond"
-			remove 1 from {pouch::%player%::diamond}
-			give player diamond 1
-		else:
-			send "&cАлмазов нет" to player
-		stop
-	if arg-1 is "iron":
-		if {pouch::%player%::iron} >= 1:
-			set {-handing::%player%} to "minecraft:iron_ingot"
-			remove 1 from {pouch::%player%::iron}
-			give player iron_ingot 1
-		else:
-			send "&cЖелеза нет" to player
-		stop
-	if arg-1 is "gold":
-		if {pouch::%player%::gold} >= 1:
-			set {-handing::%player%} to "minecraft:gold_ingot"
-			remove 1 from {pouch::%player%::gold}
-			give player gold_ingot 1
-		else:
-			send "&cЗолота нет" to player
-		stop
-	if arg-1 is "bread":
-		if {pouch::%player%::bread} >= 1:
-			set {-handing::%player%} to "minecraft:bread"
-			remove 1 from {pouch::%player%::bread}
-			give player bread 1
-		else:
-			send "&cХлеба нет" to player
-		stop
-	send "&cНет такого кармана" to player` }
+	if {bag::%player%::%arg-1%} >= 1:
+		set {-handing::%player%} to arg-1
+		remove 1 from {bag::%player%::%arg-1%}
+		if {bag::%player%::%arg-1%} < 1:
+			delete {bag::%player%::%arg-1%}
+		give player %arg-1% 1
+	else:
+		send "&cПусто" to player` }
     ],
-    notes: {
-      ru: [
-        "Файл в игру сам не копируется. Вставьте текст в scriptcraft/scripts/pouch.sc.",
-        "cancel event в on open inventory закрывает E всегда, даже если поставить его внутрь if. Выживание и креатив — оба.",
-        "В сумку попадают только четыре id. Остальное остаётся в ванильном инвентаре, который этот экран прячет.",
-        "{-handing::%player%} нужен, чтобы give из команды не забрала строка on receive. Флаг живёт до перезапуска сервера.",
-        "Числа на экране — снимок на момент открытия. Хотбар ванильный."
-      ],
-      en: [
-        "The mod does not copy this file. Paste it into scriptcraft/scripts/pouch.sc.",
-        "cancel event in on open inventory always blocks E, even inside if. Survival and creative both use this menu.",
-        "Only these four ids go into the pouch. Everything else stays in the vanilla inventory, which this screen hides.",
-        "{-handing::%player%} stops on receive from taking back the item the command just gave. The flag lasts until the server restarts.",
-        "The numbers are a snapshot from when the screen opened. The hotbar stays vanilla."
-      ]
-    },
-    related: ["event-receive", "event-open", "screen-list", "screen-click", "screen-slot", "eff-give-item", "eff-add-var", "eff-stop", "expr-temp-variable"]
+    notes: { ru: ["E закрывается всегда, даже если cancel event стоит внутри if. Хотбар остаётся.", "Числа на экране — снимок на момент открытия.", "{-handing} живёт до следующего получения, чтобы give не вернулся в сумку."], en: ["E is always blocked, even if cancel event sits inside if. The hotbar stays.", "The numbers are a snapshot from when the screen opened.", "{-handing} lasts until the next receive, so the give is not put back into the bag."] },
+    related: ["event-receive", "event-open", "screen-list", "expr-variable", "ph-loop-index", "eff-give-item", "struct-loop"]
   }
 ];

@@ -51,10 +51,11 @@ public final class ModPaths {
             "resources/data/minecraft/tags/blocks/mineable/pickaxe.json");
 
     /**
-     * Примеры, которые копируются ВЫКЛЮЧЕННЫМИ ("-имя.sc"): hud.sc прячет ванильный HUD всем игрокам при входе,
-     * bag.sc отменяет ванильный инвентарь на E. Включать их по умолчанию нельзя — только /sc enable.
+     * Все примеры копируются выключенными ("-имя.sc"). Уже лежащий файл не переименовывается.
+     * Включить: /sc enable welcome (и ruby, menu, hud, bag).
      */
-    private static final java.util.Set<String> DISABLED_DEFAULTS = java.util.Set.of("scripts/hud.sc", "scripts/bag.sc");
+    private static final java.util.Set<String> DISABLED_DEFAULTS = java.util.Set.of(
+            "scripts/welcome.sc", "scripts/ruby.sc", "scripts/menu.sc", "scripts/hud.sc", "scripts/bag.sc");
 
     private ModPaths() {
     }

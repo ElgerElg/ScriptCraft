@@ -1,5 +1,5 @@
 # ==========================================================
-#  menu.sc — экран-лавка. Открыть: /menu  (псевдоним /shop)
+#  menu.sc — экран-лавка. Копируется выключенным: /sc enable menu. Открыть: /menu
 #  Элементы экрана, все необязательные хвосты можно комбинировать:
 #    text "..."   at X Y   anchor ...   color #RRGGBB   shadow   layer N
 #    button "..." at X Y   size WxH     anchor ...      run "/команда"  или  close   layer N

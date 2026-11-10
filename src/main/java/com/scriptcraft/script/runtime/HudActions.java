@@ -60,7 +60,7 @@ public final class HudActions {
             List<com.scriptcraft.hud.HudBinding> bindings = new ArrayList<>(entries.size());
             for (HudEntry e : entries) {
                 bindings.add(com.scriptcraft.hud.HudBinding.capture(e, ctx));
-                formatted.add(e.withElement(e.element().format(ctx::format)));
+                formatted.add(e.withElement(VariableLists.expand(e.element(), ctx).format(ctx::format)));
             }
             for (ServerPlayer p : players) {
                 HudManager.create(p, group, formatted, bindings, ctx.script());

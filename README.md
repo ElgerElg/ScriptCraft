@@ -53,7 +53,7 @@ The full syntax, with an example on every entry, is on the [documentation site](
 
 1. Install **Minecraft 1.20.1** and **Forge 47.x**.
 2. Put the same `scriptcraft-<version>.jar` in `mods/` on the server **and** on every client.
-3. Start the game. The mod creates `scriptcraft/` and copies example scripts. `hud.sc` and `bag.sc` are copied disabled (`-hud.sc`, `-bag.sc`) because they change the vanilla HUD and the E inventory. Enable one with `/sc enable hud`.
+3. Start the game. The mod creates `scriptcraft/` and copies example scripts disabled (`-welcome.sc`, `-ruby.sc`, `-menu.sc`, `-hud.sc`, `-bag.sc`). A file that is already there is left as it is. Enable one with `/sc enable welcome`. `hud.sc` changes the vanilla HUD, and `bag.sc` replaces the E inventory.
 
 **Build from source (Windows)**
 

@@ -42,7 +42,7 @@ final class EffectPatterns {
     }
 
     private static final List<Rule> RULES = new ArrayList<>();
-    private static final Pattern ID = Pattern.compile("[a-z0-9_.-]+(:[a-z0-9_./-]+)?");
+    private static final Pattern ID = Pattern.compile("(?:%[a-z0-9_-]+%|[a-z0-9_.-])+(?::(?:%[a-z0-9_-]+%|[a-z0-9_./-])+)?");
     private static final Pattern HUD_NAME = Pattern.compile("[A-Za-z0-9_.-]{1,64}");
     private static final String SECONDS = "seconds|second|secs|sec";
 

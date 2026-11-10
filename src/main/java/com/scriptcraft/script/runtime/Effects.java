@@ -354,12 +354,18 @@ public final class Effects {
         }
     }
 
+    /** %arg-1% и прочие плейсхолдеры в id предмета раскрываются здесь, не при разборе строки. */
+    private static String resolvedItemId(String raw, ExecutionContext ctx) {
+        return ctx.expandPlaceholders(raw).toLowerCase(java.util.Locale.ROOT);
+    }
+
     /** give <цель> <предмет> [количество] — выдать предмет; если инвентарь полон, предмет падает рядом. */
     public record GiveItem(Target target, String itemId, @Nullable Expression count) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            Item item = ItemResolver.resolve(itemId)
-                    .orElseThrow(() -> new ScriptRuntimeException("Неизвестный предмет: " + itemId));
+            String id = resolvedItemId(itemId, ctx);
+            Item item = ItemResolver.resolve(id)
+                    .orElseThrow(() -> new ScriptRuntimeException("Неизвестный предмет: " + id));
             int total = count == null ? 1 : (int) Math.max(1, Math.min(64 * 36, number(count, ctx)));
             int maxStack = new ItemStack(item).getMaxStackSize();
             for (ServerPlayer p : target.resolve(ctx)) {
@@ -619,8 +625,9 @@ public final class Effects {
     public record DropItem(Target target, String itemId, @Nullable Expression count) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            Item item = ItemResolver.resolve(itemId)
-                    .orElseThrow(() -> new ScriptRuntimeException("Неизвестный предмет: " + itemId));
+            String id = resolvedItemId(itemId, ctx);
+            Item item = ItemResolver.resolve(id)
+                    .orElseThrow(() -> new ScriptRuntimeException("Неизвестный предмет: " + id));
             int total = count == null ? 1 : (int) Math.max(1, Math.min(64 * 36, number(count, ctx)));
             for (ServerPlayer p : target.resolve(ctx)) {
                 int left = total;

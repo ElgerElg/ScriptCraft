@@ -6,6 +6,7 @@ import com.scriptcraft.screen.ScreenDescription;
 import com.scriptcraft.screen.ScreenElement;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -37,6 +38,9 @@ public final class Actions {
         public void execute(ExecutionContext ctx) {
             Object v = value.evaluate(ctx);
             String name = ctx.variableName(rawName);
+            if (name.endsWith("::*")) {
+                throw new ScriptRuntimeException("нельзя записать {" + name + "}: укажите индекс, например {list::ключ}");
+            }
             if (v == null) {
                 ctx.deleteVariable(name); // set {a} to {не_заданная} == delete {a}
             } else {
@@ -50,6 +54,9 @@ public final class Actions {
         @Override
         public void execute(ExecutionContext ctx) {
             String name = ctx.variableName(rawName);
+            if (name.endsWith("::*")) {
+                throw new ScriptRuntimeException("нельзя прибавить к {" + name + "}: укажите индекс, например {list::ключ}");
+            }
             Object current = ctx.getVariable(name);
             Double base = current == null ? Double.valueOf(0) : Expression.toNumber(current);
             Double delta = Expression.toNumber(amount.evaluate(ctx));
@@ -67,7 +74,12 @@ public final class Actions {
     public record DeleteVariable(String rawName) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            ctx.deleteVariable(ctx.variableName(rawName));
+            String name = ctx.variableName(rawName);
+            if (name.endsWith("::*")) {
+                com.scriptcraft.script.variables.VariableStore.deleteChildren(name.substring(0, name.length() - 3));
+                return;
+            }
+            ctx.deleteVariable(name);
         }
     }
 
@@ -151,7 +163,7 @@ public final class Actions {
             }
             List<ScreenElement> formatted = new ArrayList<>(elements.size());
             for (ScreenElement element : elements) {
-                formatted.add(element.format(ctx::format));
+                formatted.add(VariableLists.expand(element, ctx).format(ctx::format));
             }
             ScreenDescription screen = new ScreenDescription(ctx.format(title), formatted);
             for (ServerPlayer player : players) {
@@ -166,6 +178,43 @@ public final class Actions {
      * {@code player} внутри цикла по-прежнему игрок из контекста (как в Skript).
      * Каждое действие каждого прохода тратит шаг бюджета (maxScriptSteps).
      */
+    /**
+     * loop {имя::*}: — по каждому прямому индексу. %loop-index% — хвост ключа, %loop-value% — значение.
+     */
+    public record LoopIndices(String rawPattern, List<Action> body) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            String name = ctx.variableName(rawPattern);
+            if (!name.endsWith("::*")) {
+                throw new ScriptRuntimeException("нужно loop {имя::*}");
+            }
+            String previousIndex = ctx.placeholderOrNull("loop-index");
+            String previousValue = ctx.placeholderOrNull("loop-value");
+            try {
+                for (java.util.Map.Entry<String, Object> entry : com.scriptcraft.script.variables.VariableStore.children(
+                        name.substring(0, name.length() - 3))) {
+                    if (ctx.isStopped()) {
+                        break;
+                    }
+                    ctx.setPlaceholder("loop-index", entry.getKey());
+                    ctx.setPlaceholder("loop-value", Expression.toText(entry.getValue()));
+                    runAll(body, ctx);
+                }
+            } finally {
+                restorePlaceholder(ctx, "loop-index", previousIndex);
+                restorePlaceholder(ctx, "loop-value", previousValue);
+            }
+        }
+
+        private static void restorePlaceholder(ExecutionContext ctx, String key, @Nullable String previous) {
+            if (previous == null) {
+                ctx.clearPlaceholder(key);
+            } else {
+                ctx.setPlaceholder(key, previous);
+            }
+        }
+    }
+
     public record Loop(Target target, List<Action> body) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {

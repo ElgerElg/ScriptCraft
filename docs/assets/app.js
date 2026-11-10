@@ -10,7 +10,7 @@
   // ------------------------------------------------------------ строки интерфейса
   SC.strings = {
     ru: {
-      "nav.docs": "Документация", "nav.examples": "Примеры", "nav.start": "Начало",
+      "nav.docs": "Документация", "nav.examples": "Примеры", "nav.start": "Начало", "nav.menu": "Разделы",
       "lang.btn": "EN", "lang.title": "Switch to English",
       "theme.title": "Светлая / тёмная тема", "github": "GitHub",
       "docs.title": "Синтаксис ScriptCraft",
@@ -28,7 +28,7 @@
       "foot": "ScriptCraft — скриптовый мод для Minecraft Forge 1.20.1. Документация к версии {v}."
     },
     en: {
-      "nav.docs": "Docs", "nav.examples": "Examples", "nav.start": "Getting started",
+      "nav.docs": "Docs", "nav.examples": "Examples", "nav.start": "Getting started", "nav.menu": "Contents",
       "lang.btn": "RU", "lang.title": "Переключить на русский",
       "theme.title": "Light / dark theme", "github": "GitHub",
       "docs.title": "ScriptCraft syntax",

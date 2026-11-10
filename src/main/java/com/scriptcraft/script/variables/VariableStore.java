@@ -21,6 +21,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -83,6 +85,54 @@ public final class VariableStore {
         }
         // HUD с {этой переменной} обновляется здесь же. Нет подписчиков — один поиск в таблице и выход.
         HudManager.onVariable(name);
+    }
+
+    /**
+     * Прямые индексы {prefix::*}. Ключ prefix::minecraft:diamond даёт индекс minecraft:diamond.
+     * Глубже (ещё один ::) не входит. prefix без хвостовых ::.
+     */
+    public static List<Map.Entry<String, Object>> children(String prefix) {
+        String head = prefix.endsWith("::") ? prefix : prefix + "::";
+        List<Map.Entry<String, Object>> out = new ArrayList<>();
+        collectChildren(PERSISTENT, head, out);
+        collectChildren(TEMPORARY, head, out);
+        out.sort(Comparator.comparing(Map.Entry::getKey));
+        return out;
+    }
+
+    /** Удаляет прямые индексы {prefix::*}. */
+    public static void deleteChildren(String prefix) {
+        String head = prefix.endsWith("::") ? prefix : prefix + "::";
+        List<String> keys = new ArrayList<>();
+        for (String key : PERSISTENT.keySet()) {
+            if (isChild(key, head)) {
+                keys.add(key);
+            }
+        }
+        for (String key : TEMPORARY.keySet()) {
+            if (isChild(key, head)) {
+                keys.add(key);
+            }
+        }
+        for (String key : keys) {
+            delete(key);
+        }
+    }
+
+    private static void collectChildren(Map<String, Object> map, String head, List<Map.Entry<String, Object>> out) {
+        for (Map.Entry<String, Object> entry : map.entrySet()) {
+            if (isChild(entry.getKey(), head)) {
+                out.add(Map.entry(entry.getKey().substring(head.length()), entry.getValue()));
+            }
+        }
+    }
+
+    private static boolean isChild(String key, String head) {
+        if (!key.startsWith(head)) {
+            return false;
+        }
+        String rest = key.substring(head.length());
+        return !rest.isEmpty() && !rest.contains("::");
     }
 
     public static void delete(String name) {

@@ -2,7 +2,7 @@
 <html lang="en" data-lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>ScriptCraft Docs — syntax</title>
 <meta name="description" content="ScriptCraft scripting language for Minecraft Forge 1.20.1: events, effects, conditions, expressions, targets, screens, and examples.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%235fb36b'/%3E%3Ctext x='16' y='22' font-size='16' font-family='sans-serif' font-weight='900' text-anchor='middle' fill='white'%3ESC%3C/text%3E%3C/svg%3E">
@@ -28,6 +28,7 @@
     <p data-i18n="docs.sub"></p>
   </div>
   <div class="searchbar">
+    <button class="nav-toggle" id="nav-toggle" type="button" aria-expanded="false" aria-controls="side" data-i18n="nav.menu">Contents</button>
     <label class="search">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="opacity:.6"><path d="M10 2a8 8 0 0 1 6.32 12.9l5.39 5.4-1.41 1.4-5.4-5.39A8 8 0 1 1 10 2zm0 2a6 6 0 1 0 0 12 6 6 0 0 0 0-12z"/></svg>
       <input id="q" type="search" autocomplete="off" spellcheck="false" data-i18n-ph="search.ph" aria-label="Search">
@@ -37,6 +38,7 @@
     <div class="status" id="status"></div>
   </div>
   <div class="layout">
+    <button class="nav-shade" id="nav-shade" type="button" tabindex="-1" aria-label="Close"></button>
     <aside class="side" id="side"></aside>
     <div id="list"><noscript>JavaScript is required for search and the syntax list.</noscript></div>
   </div>
