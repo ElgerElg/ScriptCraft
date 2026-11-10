@@ -1,9 +1,11 @@
 package com.scriptcraft.script.runtime;
 
+import com.scriptcraft.lang.Messages;
 import com.scriptcraft.network.ModNetwork;
 import com.scriptcraft.network.OpenScreenPacket;
 import com.scriptcraft.screen.ScreenDescription;
 import com.scriptcraft.screen.ScreenElement;
+import com.scriptcraft.script.variables.VariableStore;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import org.jetbrains.annotations.Nullable;
@@ -49,24 +51,79 @@ public final class Actions {
         }
     }
 
-    /** add <n> to {name} / remove <n> from {name}. Незаданная переменная считается равной 0. */
+    /**
+     * add &lt;значение&gt; to {имя} / remove &lt;значение&gt; from {имя}.
+     * Число к числу — арифметика. Текст дописывается или вырезается.
+     * {список::*} — добавить элемент следующим номером или убрать одно равное значение.
+     */
     public record AddToVariable(String rawName, Expression amount, boolean subtract) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
             String name = ctx.variableName(rawName);
+            Object value = amount.evaluate(ctx);
+            if (value == null) {
+                throw new ScriptRuntimeException(Messages.get("var.need_value"));
+            }
             if (name.endsWith("::*")) {
-                throw new ScriptRuntimeException("нельзя прибавить к {" + name + "}: укажите индекс, например {list::ключ}");
+                String prefix = name.substring(0, name.length() - 3);
+                if (subtract) {
+                    removeOne(prefix, value);
+                } else {
+                    append(prefix, value);
+                }
+                return;
             }
             Object current = ctx.getVariable(name);
-            Double base = current == null ? Double.valueOf(0) : Expression.toNumber(current);
-            Double delta = Expression.toNumber(amount.evaluate(ctx));
-            if (base == null) {
-                throw new ScriptRuntimeException("{" + name + "} не число: " + Expression.toText(current));
+            Double delta = Expression.toNumber(value);
+            boolean currentIsNumber = current == null || current instanceof Number
+                    || (current instanceof String text && Expression.toNumber(text) != null);
+            if (delta != null && currentIsNumber) {
+                double base = current == null ? 0d : Expression.toNumber(current);
+                ctx.setVariable(name, subtract ? base - delta : base + delta);
+                return;
             }
-            if (delta == null) {
-                throw new ScriptRuntimeException("ожидается число в add/remove");
+            if (current == null) {
+                if (!subtract) {
+                    ctx.setVariable(name, value);
+                }
+                return;
             }
-            ctx.setVariable(name, subtract ? base - delta : base + delta);
+            if (current instanceof Number) {
+                throw new ScriptRuntimeException(Messages.get("var.text_to_number", name));
+            }
+            String text = current == null ? "" : Expression.toText(current);
+            String piece = Expression.toText(value);
+            if (subtract) {
+                int at = text.indexOf(piece);
+                if (at >= 0) {
+                    text = text.substring(0, at) + text.substring(at + piece.length());
+                }
+            } else {
+                text = text + piece;
+            }
+            ctx.setVariable(name, text);
+        }
+
+        private static void append(String prefix, Object value) {
+            int next = 1;
+            for (java.util.Map.Entry<String, Object> entry : VariableStore.children(prefix)) {
+                try {
+                    next = Math.max(next, Integer.parseInt(entry.getKey()) + 1);
+                } catch (NumberFormatException ignored) {
+                    // Ключ вроде minecraft:diamond — это не номер элемента.
+                }
+            }
+            VariableStore.set(prefix + "::" + next, value);
+        }
+
+        private static void removeOne(String prefix, Object value) {
+            String want = Expression.toText(value);
+            for (java.util.Map.Entry<String, Object> entry : VariableStore.children(prefix)) {
+                if (want.equals(Expression.toText(entry.getValue()))) {
+                    VariableStore.delete(prefix + "::" + entry.getKey());
+                    return;
+                }
+            }
         }
     }
 

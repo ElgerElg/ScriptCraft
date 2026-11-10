@@ -100,6 +100,10 @@ public final class Messages {
         add("effect.unknown_effect", "unknown potion effect %s", "неизвестный эффект %s");
         add("effect.unknown_sound", "unknown sound %s", "неизвестный звук %s");
         add("effect.unknown_item", "unknown item: %s", "неизвестный предмет: %s");
+        add("var.need_value", "nothing to add", "нечего добавить");
+        add("var.text_to_number", "cannot add text to the number {%s}", "нельзя прибавить текст к числу {%s}");
+        add("var.not_location", "'%s' is not a location", "'%s' — не локация");
+        add("var.unknown_world", "unknown world: %s", "неизвестный мир: %s");
         add("nbt.bad_path", "bad nbt path %s", "плохой путь nbt %s");
         add("nbt.need_path", "nbt path is missing", "не указан путь nbt");
         add("nbt.no_player", "no targeted player", "нет targeted player");
@@ -151,7 +155,7 @@ public final class Messages {
         add("studio.home", "Home", "Главная");
         add("studio.journal", "Journal", "Журнал");
         add("studio.patches", "Patches and versions", "Патчи и версии");
-        add("studio.p1", "0.3.9 — command words, nbt, targeted block and entity", "0.3.9 — слова в командах, nbt, targeted block и entity");
+        add("studio.p1", "0.3.10 — text and elements in variables, locations, player's tool", "0.3.10 — текст и элементы в переменных, локации, player's tool");
         add("studio.links", "Links", "Ссылки");
         add("studio.link.github", "GitHub", "GitHub");
         add("studio.link.docs", "Documentation", "Документация");
@@ -171,10 +175,10 @@ public final class Messages {
         add("studio.ask.no", "No", "Нет");
         add("studio.deleted", "Deleted %s", "Удалено %s");
         add("studio.delete_failed", "&cCould not delete: %s", "&cНе удалось удалить: %s");
-        add("studio.p2", "0.3.8 — list variables, a bag for any item", "0.3.8 — списки {имя::*}, сумка для любого предмета");
-        add("studio.p3", "0.3.7 — item receive, keys, menu cancel, list", "0.3.7 — получение предмета, клавиши, отмена меню, список");
-        add("studio.p4", "0.3.6 — HUD updates when a variable changes", "0.3.6 — HUD обновляется вместе с переменной");
-        add("studio.p5", "0.3.5 — example scripts to learn from, Tab indent", "0.3.5 — примеры, на которых можно учиться, отступ Tab");
+        add("studio.p2", "0.3.9 — command words, nbt, targeted block and entity", "0.3.9 — слова в командах, nbt, targeted block и entity");
+        add("studio.p3", "0.3.8 — list variables, a bag for any item", "0.3.8 — списки {имя::*}, сумка для любого предмета");
+        add("studio.p4", "0.3.7 — item receive, keys, menu cancel, list", "0.3.7 — получение предмета, клавиши, отмена меню, список");
+        add("studio.p5", "0.3.6 — HUD updates when a variable changes", "0.3.6 — HUD обновляется вместе с переменной");
         add("studio.dev", "Developer", "Разработчик");
         add("studio.role", "author of the mod", "автор мода");
         add("studio.hint", "Open a script with + or File. On a server these are the server's scripts; in singleplayer, the local ones.", "Откройте скрипт кнопкой + или меню «Файл». На сервере это его скрипты, в одиночной игре — локальные.");

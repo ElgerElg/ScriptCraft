@@ -21,7 +21,7 @@ public interface Expression {
     /** Свойство игрока в духе Skript: health of player, gamemode of player, x of player... */
     enum Prop {
         HEALTH, MAX_HEALTH, FOOD, SATURATION, LEVEL, XP, AIR, MAX_AIR, ABSORPTION,
-        WALK_SPEED, FLY_SPEED, PING, X, Y, Z, YAW, PITCH, GAMEMODE, WORLD, NAME, UUID, HELD, ONLINE
+        WALK_SPEED, FLY_SPEED, PING, X, Y, Z, YAW, PITCH, GAMEMODE, WORLD, NAME, UUID, HELD, LOCATION, ONLINE
     }
 
     /** Число/логическое значение как есть. */
@@ -82,6 +82,7 @@ public interface Expression {
                 case NAME -> p.getGameProfile().getName();
                 case UUID -> p.getStringUUID();
                 case HELD -> itemId(p.getMainHandItem());
+                case LOCATION -> Places.ofPlayer(p);
                 case ONLINE -> (double) ctx.server().getPlayerCount();
             };
         }
@@ -128,6 +129,62 @@ public interface Expression {
         @Override
         public Object evaluate(ExecutionContext ctx) {
             return type != null ? ctx.commandArgOfType(type) : ctx.commandArg(index);
+        }
+    }
+
+    /**
+     * targeted block / entity / player / location и location of targeted block|entity|player.
+     * Нет цели — null.
+     */
+    record Look(String kind) implements Expression {
+        @Override
+        public Object evaluate(ExecutionContext ctx) {
+            ServerPlayer viewer = ctx.player();
+            if (viewer == null) {
+                return null;
+            }
+            return switch (kind) {
+                case "block" -> Places.blockId(viewer);
+                case "entity" -> Places.entityId(viewer);
+                case "player" -> Places.playerName(viewer);
+                case "location" -> Places.targetedLocation(viewer);
+                case "loc-block" -> Places.blockLocation(viewer);
+                case "loc-entity" -> Places.entityLocation(viewer);
+                case "loc-player" -> {
+                    ServerPlayer looked = Target.Targeted.lookedAt(viewer);
+                    yield looked == null ? null : Places.ofPlayer(looked);
+                }
+                default -> null;
+            };
+        }
+    }
+
+    /** location at x, y, z — в мире игрока из контекста, иначе в обычном мире. */
+    record LocationAt(Expression x, Expression y, Expression z) implements Expression {
+        @Override
+        public Object evaluate(ExecutionContext ctx) {
+            Double tx = toNumber(x.evaluate(ctx));
+            Double ty = toNumber(y.evaluate(ctx));
+            Double tz = toNumber(z.evaluate(ctx));
+            if (tx == null || ty == null || tz == null) {
+                return null;
+            }
+            ServerPlayer player = ctx.player();
+            String world = player == null
+                    ? "minecraft:overworld"
+                    : player.level().dimension().location().toString();
+            float yaw = player == null ? 0f : player.getYRot();
+            float pitch = player == null ? 0f : player.getXRot();
+            return new ScriptLocation(world, tx, ty, tz, yaw, pitch).encode();
+        }
+    }
+
+    /** spawn of <цель> или world spawn. */
+    record Spawn(@Nullable Target target, boolean worldSpawn) implements Expression {
+        @Override
+        public Object evaluate(ExecutionContext ctx) {
+            ServerPlayer player = target == null ? ctx.player() : target.first(ctx);
+            return Places.spawn(ctx.server(), player, worldSpawn);
         }
     }
 
@@ -194,6 +251,10 @@ public interface Expression {
     static String toText(@Nullable Object value) {
         if (value == null) {
             return "<none>";
+        }
+        ScriptLocation location = ScriptLocation.decode(value);
+        if (location != null) {
+            return location.display();
         }
         if (value instanceof Double d) {
             if (d == Math.rint(d) && !Double.isInfinite(d) && Math.abs(d) < 1e15) {

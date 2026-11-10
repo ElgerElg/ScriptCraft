@@ -369,6 +369,8 @@ public final class ExecutionContext {
     private String dynamicPlaceholder(String key, String fallback) {
         return switch (key) {
             case "targeted" -> lookText("player");
+            case "location" -> player == null ? "<none>" : Expression.toText(Places.ofPlayer(player));
+            case "tool" -> player == null ? "<none>" : Places.tool(player);
             case "loop-player" -> loopPlayer == null ? "<none>" : loopPlayer.getGameProfile().getName();
             case "script" -> scriptName();
             default -> fallback;

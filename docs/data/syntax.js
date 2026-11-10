@@ -15,7 +15,7 @@
  */
 window.SC_DOCS = window.SC_DOCS || {};
 window.SC_DOCS.syntax = {
-  version: "0.3.9",
+  version: "0.3.10",
   categories: [
     { id: "events",     ru: "События",            en: "Events" },
     { id: "structures", ru: "Структуры",          en: "Structures" },
@@ -406,13 +406,15 @@ set {motd} to "Добро пожаловать"`,
   {
     id: "eff-add-var", category: "effects",
     name: { ru: "Прибавить / отнять", en: "Add / remove" },
-    syntax: ["add <число> to {<имя>}", "remove <число> from {<имя>}"],
+    syntax: ["add <значение> to {<имя>}", "add <значение> {<имя>}", "remove <значение> from {<имя>}", "add <значение> to {<имя>::*}", "remove <значение> from {<имя>::*}"],
     desc: {
-      ru: "Меняет числовую переменную. Незаданная считается 0; если в переменной текст — ошибка выполнения.",
-      en: "Changes a numeric variable. An unset one counts as 0; text in the variable is a runtime error."
+      ru: "Число к числу считается как раньше: незаданная переменная — 0. Текст дописывается в конец, `remove` вырезает первое вхождение. `{список::*}` — это список, не число: `add` кладёт элемент под следующим номером (1, 2, 3…), `remove` убирает одно равное значение. Слово `to`/`from` можно не писать, если сразу после значения стоит переменная. В значение годится текст, `player` (имя), `loop-player`, `targeted block`, `player's tool` и локация.",
+      en: "A number added to a number works as before: an unset variable is 0. Text is appended, and `remove` cuts out the first occurrence. `{list::*}` is a list, not a number: `add` stores the element at the next index (1, 2, 3…), `remove` deletes one equal value. `to`/`from` can be left out when the variable comes right after the value. The value may be text, `player` (the name), `loop-player`, `targeted block`, `player's tool` or a location."
     },
     example: `add 5 to {coins::%player%}
-remove 1 from {coins::%player%}`,
+remove 1 from {coins::%player%}
+add player's tool to {tools::%player%::*}
+add targeted block {seen::%player%::*}`,
     since: "0.1.0", related: ["eff-set-var", "expr-variable"]
   },
   {
@@ -515,25 +517,27 @@ play sound entity.experience_orb.pickup to player with volume 0.4 pitch 1.2`,
   {
     id: "eff-give-item", category: "effects",
     name: { ru: "Выдать предмет", en: "Give item" },
-    syntax: ["give <цель> <предмет>", "give <цель> <предмет> <количество>"],
+    syntax: ["give <цель> <предмет>", "give <цель> <предмет> <количество>", "give <цель> player's tool", "give <цель> {<переменная>}"],
     desc: {
-      ru: "Выдаёт предмет (если инвентарь полон — бросает рядом). Количество — число или `{переменная}` (до 2304). В id можно плейсхолдер: `give player %arg-1%`. Короткий id ищется как `minecraft:`, потом `scriptcraft:`, потом namespace скриптов.",
-      en: "Gives an item (drops it nearby if the inventory is full). Count is a number or `{variable}` (up to 2304). The id may contain a placeholder: `give player %arg-1%`. A short id is looked up as `minecraft:`, then `scriptcraft:`, then script namespaces."
+      ru: "Выдаёт предмет (если инвентарь полон — бросает рядом). Количество — число или `{переменная}` (до 2304). В id можно плейсхолдер: `give player %arg-1%`. Предмет может быть выражением: `player's tool`, `{слот}`. Короткий id ищется как `minecraft:`, потом `scriptcraft:`, потом namespace скриптов.",
+      en: "Gives an item (drops it nearby if the inventory is full). Count is a number or `{variable}` (up to 2304). The id may contain a placeholder: `give player %arg-1%`. The item may be an expression: `player's tool`, `{slot}`. A short id is looked up as `minecraft:`, then `scriptcraft:`, then script namespaces."
     },
     example: `give player diamond 3
-give all players example:ruby`,
+give all players example:ruby
+give player player's tool`,
     since: "0.1.0", related: ["struct-define-item", "eff-give-effect"]
   },
   {
     id: "eff-teleport", category: "effects",
     name: { ru: "Телепорт", en: "Teleport" },
-    syntax: ["teleport <цель> to <x> <y> <z>", "teleport <цель> to <цель>", "teleport <цель> to spawn", "teleport <цель> to world spawn", "tp <цель> to ..."],
+    syntax: ["teleport <цель> to <x> <y> <z>", "teleport <цель> to <цель>", "teleport <цель> to <локация>", "teleport <цель> to spawn", "teleport <цель> to world spawn", "tp <цель> to ..."],
     desc: {
-      ru: "Телепорт по координатам (в текущем мире игрока; запятые между числами можно писать) или к первому игроку второй цели (в его мир, с его поворотом). `to spawn` — точка возрождения, `to world spawn` — общий спавн обычного мира. Пустая вторая цель — ничего.",
-      en: "Teleports to coordinates (in the player's current world; commas between numbers are allowed) or to the first player of the second target (into their world, with their rotation). `to spawn` is the respawn point, `to world spawn` is the shared overworld spawn. An empty second target does nothing."
+      ru: "Телепорт по координатам (в текущем мире игрока; запятые между числами можно писать), к первому игроку второй цели (в его мир, с его поворотом) или в локацию: `player's location`, `location of targeted block`, `{дом}`. `to spawn` — точка возрождения, `to world spawn` — общий спавн обычного мира. Пустая вторая цель — ничего.",
+      en: "Teleports to coordinates (in the player's current world; commas between numbers are allowed), to the first player of the second target (into their world, with their rotation), or to a location: `player's location`, `location of targeted block`, `{home}`. `to spawn` is the respawn point, `to world spawn` is the shared overworld spawn. An empty second target does nothing."
     },
     example: `teleport player to 0, 100, 0
-teleport other players in radius 100 of player to player`,
+teleport other players in radius 100 of player to player
+teleport player to {home::%player%}`,
     since: "0.1.0", related: ["target-radius"]
   },
   {
@@ -779,10 +783,10 @@ log "%player% использовал /secret"`,
   {
     id: "eff-world", category: "effects",
     name: { ru: "Время, погода, молния, взрыв", en: "Time, weather, lightning, explode" },
-    syntax: ["set time to day", "set time to noon", "set time to night", "set time to midnight", "set time to <тики>", "set weather to clear", "set weather to rain", "set weather to thunder", "set weather to rain for <секунды> seconds", "strike lightning at <цель>", "strike lightning at <x> <y> <z>", "explode at <цель>", "explode at <цель> with force <0-8>"],
+    syntax: ["set time to day", "set time to noon", "set time to night", "set time to midnight", "set time to <тики>", "set weather to clear", "set weather to rain", "set weather to thunder", "set weather to rain for <секунды> seconds", "strike lightning at <цель>", "strike lightning at <x> <y> <z>", "strike lightning at <локация>", "explode at <цель>", "explode at <локация>", "explode at <цель> with force <0-8>"],
     desc: {
-      ru: "Время и погода меняются во всех мирах. Молния и взрыв без координат бьют по игрокам цели; координаты — в мире игрока из контекста, иначе в обычном мире. Сила взрыва 0–8 (по умолчанию 3), блоки ломаются.",
-      en: "Time and weather change in every world. Lightning and an explosion without coordinates hit the target players; coordinates use the context player's world, otherwise the overworld. Explosion force is 0–8 (default 3) and breaks blocks."
+      ru: "Время и погода меняются во всех мирах. Молния и взрыв без координат бьют по игрокам цели; координаты — в мире игрока из контекста, иначе в обычном мире. Вместо цели или координат можно дать локацию (`location of targeted block`, `{дом}`). Сила взрыва 0–8 (по умолчанию 3), блоки ломаются.",
+      en: "Time and weather change in every world. Lightning and an explosion without coordinates hit the target players; coordinates use the context player's world, otherwise the overworld. A location can stand in for the target or the coordinates (`location of targeted block`, `{home}`). Explosion force is 0–8 (default 3) and breaks blocks."
     },
     example: `command /day permission 2:
 	set time to day
@@ -812,10 +816,10 @@ command /dash:
   {
     id: "eff-spawn", category: "effects",
     name: { ru: "Точка возрождения", en: "Spawn point" },
-    syntax: ["set spawn of <цель>", "set spawn of <цель> to <x> <y> <z>", "teleport <цель> to spawn", "teleport <цель> to world spawn"],
+    syntax: ["set spawn of <цель>", "set spawn of <цель> to <x> <y> <z>", "set spawn of <цель> to <локация>", "teleport <цель> to spawn", "teleport <цель> to world spawn"],
     desc: {
-      ru: "`set spawn` без координат ставит кровать/возрождение там, где стоит игрок (в его мире). С координатами — в его текущем мире. `to spawn` телепортирует на точку возрождения, если её нет — на спавн обычного мира. `to world spawn` — всегда общий спавн обычного мира.",
-      en: "`set spawn` without coordinates sets the respawn point where the player stands (in their world). With coordinates — in their current world. `to spawn` teleports to the respawn point, or the overworld spawn if they have none. `to world spawn` is always the shared overworld spawn."
+      ru: "`set spawn` без координат ставит кровать/возрождение там, где стоит игрок (в его мире). С координатами — в его текущем мире. С локацией — в мире и точке этой локации. `to spawn` телепортирует на точку возрождения, если её нет — на спавн обычного мира. `to world spawn` — всегда общий спавн обычного мира.",
+      en: "`set spawn` without coordinates sets the respawn point where the player stands (in their world). With coordinates — in their current world. With a location — in that location's world and point. `to spawn` teleports to the respawn point, or the overworld spawn if they have none. `to world spawn` is always the shared overworld spawn."
     },
     example: `command /sethome:
 	set spawn of player
@@ -828,9 +832,10 @@ command /home:
   {
     id: "eff-drop", category: "effects",
     name: { ru: "Бросить предмет", en: "Drop item" },
-    syntax: ["drop <предмет> at <цель>", "drop <количество> <предмет> at <цель>"],
-    desc: { ru: "Роняет предмет у ног игроков цели (не в инвентарь). id ищется так же, как у `give`.", en: "Drops the item at the target players' feet (not into the inventory). The id is resolved the same way as `give`." },
+    syntax: ["drop <предмет> at <цель>", "drop <количество> <предмет> at <цель>", "drop <предмет> at <локация>"],
+    desc: { ru: "Роняет предмет у ног игроков цели или в точке локации (не в инвентарь). Предмет может быть `player's tool` или `{слот}`. id ищется так же, как у `give`.", en: "Drops the item at the target players' feet or at a location (not into the inventory). The item may be `player's tool` or `{slot}`. The id is resolved the same way as `give`." },
     example: `drop 4 diamond at player
+drop player's tool at location of targeted block
 drop example:ruby at all players`,
     since: "0.2.0", related: ["eff-give-item", "event-items"]
   },
@@ -1030,8 +1035,8 @@ send "Блок: %targeted block%" to player`,
     name: { ru: "Переменные {имя}", en: "Variables {name}" },
     syntax: ["{<имя>}", "{<имя>::%player%}", "{<имя>::*}", "\"%{<имя>}%\""],
     desc: {
-      ru: "Постоянные переменные в `scriptcraft/variables/variables.json`. В условиях и эффектах пишется `{coins::%player%}`. В тексте в кавычках фигурные скобки остаются как есть: значение подставляется только из `%{coins::%player%}%`. `{list::*}` — сколько прямых индексов. `set` и `add` в `{list::*}` нельзя.",
-      en: "Persistent variables in `scriptcraft/variables/variables.json`. Conditions and effects use `{coins::%player%}`. Inside quoted text the braces stay as written: the value is inserted only from `%{coins::%player%}%.` `{list::*}` is how many direct indexes there are. `set` and `add` cannot target `{list::*}`."
+      ru: "Постоянные переменные в `scriptcraft/variables/variables.json`. В условиях и эффектах пишется `{coins::%player%}`. В тексте в кавычках фигурные скобки остаются как есть: значение подставляется только из `%{coins::%player%}%`. `{list::*}` — сколько прямых индексов. `set {list::*}` нельзя. `add ... to {list::*}` добавляет элемент, `remove ... from {list::*}` убирает одно равное значение.",
+      en: "Persistent variables in `scriptcraft/variables/variables.json`. Conditions and effects use `{coins::%player%}`. Inside quoted text the braces stay as written: the value is inserted only from `%{coins::%player%}%.` `{list::*}` is how many direct indexes there are. `set {list::*}` is not allowed. `add ... to {list::*}` appends an element, `remove ... from {list::*}` deletes one equal value."
     },
     example: `add 1 to {coins::%player%}
 send "&eМонет: %{coins::%player%}%" to player`,
@@ -1089,7 +1094,22 @@ send "&7Онлайн: " to player
 # number of all players — в условии:
 if number of all players >= 5:
 	broadcast "&aНа сервере людно"`,
-    since: "0.2.0", related: ["eff-set-health", "cond-compare", "ph-online", "expr-random"]
+    since: "0.2.0", related: ["eff-set-health", "cond-compare", "ph-online", "expr-random", "expr-location"]
+  },
+  {
+    id: "expr-location", category: "expressions",
+    name: { ru: "Локация, предмет в руке, блок в прицеле", en: "Location, held item, targeted block" },
+    syntax: ["player's location", "location of <цель>", "location of targeted block", "location of targeted entity", "location of targeted player", "targeted location", "location at <x> <y> <z>", "spawn of <цель>", "world spawn", "player's tool", "tool of <цель>", "targeted block", "targeted entity", "targeted player", "%location%", "%tool%"],
+    desc: {
+      ru: "Локация — мир, координаты и поворот. Её можно записать в переменную и подставить в `teleport`, `set spawn`, `drop`, `strike lightning` и `explode`. `player` и `loop-player` в значении — имя игрока. `player's tool` — id предмета в руке (`minecraft:air`, если пусто). То же самое: `tool of player` и `held item of player`. `targeted block` — id блока в прицеле, `targeted entity` — id типа моба, `targeted player` — имя. `player's <свойство>` работает и для остальных свойств (`player's health`). В тексте: `%location%` и `%tool%` от игрока из контекста. В переменной локация хранится целиком, в чат выводится мир и три координаты.",
+      en: "A location is a world, coordinates and rotation. Store it in a variable and pass it to `teleport`, `set spawn`, `drop`, `strike lightning` and `explode`. As a value, `player` and `loop-player` are the player's name. `player's tool` is the id of the held item (`minecraft:air` if empty). The same value: `tool of player` and `held item of player`. `targeted block` is the block id in the crosshair, `targeted entity` is the mob's type id, `targeted player` is the name. `player's <property>` also works for the other properties (`player's health`). In text, `%location%` and `%tool%` use the context player. A variable keeps the whole location; chat shows the world and the three coordinates."
+    },
+    example: `set {home::%player%} to player's location
+add player's tool to {tools::%player%::*}
+add targeted block {seen::%player%::*}
+teleport player to {home::%player%}
+send "&7%location% &8%tool%" to player`,
+    since: "0.3.10", related: ["eff-add-var", "eff-teleport", "eff-give-item", "ph-targeted", "expr-property"]
   },
   {
     id: "expr-random", category: "expressions",

@@ -354,30 +354,75 @@ public final class Effects {
         }
     }
 
-    /** %arg-1% и прочие плейсхолдеры в id предмета раскрываются здесь, не при разборе строки. */
+    /** %arg-1% и {переменная} в id предмета раскрываются здесь, не при разборе строки. */
     private static String resolvedItemId(String raw, ExecutionContext ctx) {
-        return ctx.expandPlaceholders(raw).toLowerCase(java.util.Locale.ROOT);
+        String expanded = ctx.expandPlaceholders(raw).strip();
+        if (expanded.length() > 2 && expanded.startsWith("{") && expanded.endsWith("}")) {
+            expanded = Expression.toText(ctx.getVariable(expanded.substring(1, expanded.length() - 1)));
+        }
+        return expanded.toLowerCase(java.util.Locale.ROOT);
+    }
+
+    private static String itemText(Expression item, ExecutionContext ctx) {
+        String text = Expression.toText(item.evaluate(ctx));
+        if (text.equals("<none>")) {
+            throw new ScriptRuntimeException(Messages.get("effect.unknown_item", text));
+        }
+        return text.toLowerCase(java.util.Locale.ROOT);
+    }
+
+    private static Item itemOf(String id) {
+        return ItemResolver.resolve(id)
+                .orElseThrow(() -> new ScriptRuntimeException(Messages.get("effect.unknown_item", id)));
+    }
+
+    private static void giveStacks(ServerPlayer player, Item item, int total) {
+        int maxStack = new ItemStack(item).getMaxStackSize();
+        int left = total;
+        while (left > 0) {
+            int size = Math.min(left, maxStack);
+            ItemStack stack = new ItemStack(item, size);
+            if (!player.getInventory().add(stack)) {
+                player.drop(stack, false);
+            }
+            left -= size;
+        }
+    }
+
+    private static void dropStacks(ExecutionContext ctx, ScriptLocation loc, Item item, int total) {
+        int maxStack = new ItemStack(item).getMaxStackSize();
+        int left = total;
+        while (left > 0) {
+            int size = Math.min(left, maxStack);
+            Places.drop(ctx.server(), loc, new ItemStack(item, size));
+            left -= size;
+        }
+    }
+
+    private static int itemCount(@Nullable Expression count, ExecutionContext ctx) {
+        return count == null ? 1 : (int) Math.max(1, Math.min(64 * 36, number(count, ctx)));
     }
 
     /** give <цель> <предмет> [количество] — выдать предмет; если инвентарь полон, предмет падает рядом. */
     public record GiveItem(Target target, String itemId, @Nullable Expression count) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            String id = resolvedItemId(itemId, ctx);
-            Item item = ItemResolver.resolve(id)
-                    .orElseThrow(() -> new ScriptRuntimeException(com.scriptcraft.lang.Messages.get("effect.unknown_item", id)));
-            int total = count == null ? 1 : (int) Math.max(1, Math.min(64 * 36, number(count, ctx)));
-            int maxStack = new ItemStack(item).getMaxStackSize();
+            Item item = itemOf(resolvedItemId(itemId, ctx));
+            int total = itemCount(count, ctx);
             for (ServerPlayer p : target.resolve(ctx)) {
-                int left = total;
-                while (left > 0) {
-                    int size = Math.min(left, maxStack);
-                    ItemStack stack = new ItemStack(item, size);
-                    if (!p.getInventory().add(stack)) {
-                        p.drop(stack, false);
-                    }
-                    left -= size;
-                }
+                giveStacks(p, item, total);
+            }
+        }
+    }
+
+    /** give player player's tool / give player {слот} — предмет из выражения. */
+    public record GiveExpr(Target target, Expression item, @Nullable Expression count) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            Item resolved = itemOf(itemText(item, ctx));
+            int total = itemCount(count, ctx);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                giveStacks(p, resolved, total);
             }
         }
     }
@@ -400,6 +445,15 @@ public final class Effects {
     public record TeleportToPlayer(Target target, Target destination) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
+            if (destination instanceof Target.Named named) {
+                ScriptLocation loc = ScriptLocation.decode(named.name().evaluate(ctx));
+                if (loc != null) {
+                    for (ServerPlayer p : target.resolve(ctx)) {
+                        Places.teleport(p, loc, ctx.server());
+                    }
+                    return;
+                }
+            }
             List<ServerPlayer> dest = destination.resolve(ctx);
             if (dest.isEmpty()) {
                 return;
@@ -409,6 +463,17 @@ public final class Effects {
                 if (p != to) {
                     p.teleportTo(to.serverLevel(), to.getX(), to.getY(), to.getZ(), to.getYRot(), to.getXRot());
                 }
+            }
+        }
+    }
+
+    /** teleport <цель> to player's location / location of targeted block / {переменная}. */
+    public record TeleportToLocation(Target target, Expression place) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            ScriptLocation loc = Places.require(place.evaluate(ctx));
+            for (ServerPlayer p : target.resolve(ctx)) {
+                Places.teleport(p, loc, ctx.server());
             }
         }
     }
@@ -564,9 +629,23 @@ public final class Effects {
                 bolt(levelOf(ctx), number(x, ctx), number(y, ctx), number(z, ctx));
                 return;
             }
+            ScriptLocation loc = Places.fromNamed(target, ctx);
+            if (loc != null) {
+                bolt(Places.level(ctx.server(), loc), loc.x(), loc.y(), loc.z());
+                return;
+            }
             for (ServerPlayer p : target.resolve(ctx)) {
                 bolt(p.serverLevel(), p.getX(), p.getY(), p.getZ());
             }
+        }
+    }
+
+    /** strike lightning at location of player / at {переменная}. */
+    public record LightningAt(Expression place) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            ScriptLocation loc = Places.require(place.evaluate(ctx));
+            bolt(Places.level(ctx.server(), loc), loc.x(), loc.y(), loc.z());
         }
     }
 
@@ -626,16 +705,47 @@ public final class Effects {
     public record DropItem(Target target, String itemId, @Nullable Expression count) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            String id = resolvedItemId(itemId, ctx);
-            Item item = ItemResolver.resolve(id)
-                    .orElseThrow(() -> new ScriptRuntimeException(com.scriptcraft.lang.Messages.get("effect.unknown_item", id)));
-            int total = count == null ? 1 : (int) Math.max(1, Math.min(64 * 36, number(count, ctx)));
+            Item item = itemOf(resolvedItemId(itemId, ctx));
+            int total = itemCount(count, ctx);
+            ScriptLocation loc = Places.fromNamed(target, ctx);
+            if (loc != null) {
+                dropStacks(ctx, loc, item, total);
+                return;
+            }
             for (ServerPlayer p : target.resolve(ctx)) {
                 int left = total;
                 int maxStack = new ItemStack(item).getMaxStackSize();
                 while (left > 0) {
                     int size = Math.min(left, maxStack);
                     p.drop(new ItemStack(item, size), false);
+                    left -= size;
+                }
+            }
+        }
+    }
+
+    /** drop player's tool at player / drop diamond at location of targeted block. */
+    public record DropExpr(Expression item, @Nullable Expression count, @Nullable Target atPlayer,
+                           @Nullable Expression atPlace) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            Item resolved = itemOf(itemText(item, ctx));
+            int total = itemCount(count, ctx);
+            if (atPlace != null) {
+                dropStacks(ctx, Places.require(atPlace.evaluate(ctx)), resolved, total);
+                return;
+            }
+            ScriptLocation loc = Places.fromNamed(atPlayer, ctx);
+            if (loc != null) {
+                dropStacks(ctx, loc, resolved, total);
+                return;
+            }
+            for (ServerPlayer p : atPlayer.resolve(ctx)) {
+                int left = total;
+                int maxStack = new ItemStack(resolved).getMaxStackSize();
+                while (left > 0) {
+                    int size = Math.min(left, maxStack);
+                    p.drop(new ItemStack(resolved, size), false);
                     left -= size;
                 }
             }
@@ -690,6 +800,19 @@ public final class Effects {
         }
     }
 
+    /** set spawn of player to {дом} / to location of targeted block. */
+    public record SetSpawnAt(Target target, Expression place) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            ScriptLocation loc = Places.require(place.evaluate(ctx));
+            ServerLevel level = Places.level(ctx.server(), loc);
+            BlockPos pos = BlockPos.containing(loc.x(), loc.y(), loc.z());
+            for (ServerPlayer p : target.resolve(ctx)) {
+                p.setRespawnPosition(level.dimension(), pos, loc.yaw(), true, false);
+            }
+        }
+    }
+
     /** set velocity of player to x y z */
     public record SetVelocity(Target target, Expression x, Expression y, Expression z) implements Action {
         @Override
@@ -727,9 +850,24 @@ public final class Effects {
                 levelOf(ctx).explode(null, number(x, ctx), number(y, ctx), number(z, ctx), power, Level.ExplosionInteraction.BLOCK);
                 return;
             }
+            ScriptLocation loc = Places.fromNamed(target, ctx);
+            if (loc != null) {
+                Places.level(ctx.server(), loc).explode(null, loc.x(), loc.y(), loc.z(), power, Level.ExplosionInteraction.BLOCK);
+                return;
+            }
             for (ServerPlayer p : target.resolve(ctx)) {
                 p.serverLevel().explode(null, p.getX(), p.getY(), p.getZ(), power, Level.ExplosionInteraction.BLOCK);
             }
+        }
+    }
+
+    /** explode at location of player [with force N]. */
+    public record ExplodeAt(Expression place, @Nullable Expression force) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            float power = force == null ? 3f : (float) Math.max(0, Math.min(8, number(force, ctx)));
+            ScriptLocation loc = Places.require(place.evaluate(ctx));
+            Places.level(ctx.server(), loc).explode(null, loc.x(), loc.y(), loc.z(), power, Level.ExplosionInteraction.BLOCK);
         }
     }
 

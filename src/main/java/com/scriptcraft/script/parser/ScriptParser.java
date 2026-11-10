@@ -984,6 +984,20 @@ public final class ScriptParser {
         throw new ParseException("ожидается переменная в фигурных скобках, например {coins::%player%}");
     }
 
+    private static boolean isVariableToken(Token token) {
+        if (token.quoted()) {
+            return false;
+        }
+        String value = token.value();
+        return value.length() > 2 && value.startsWith("{") && value.endsWith("}");
+    }
+
+    private static ParseException addSyntax(boolean remove) {
+        return remove
+                ? new ParseException("need: remove <value> from {name}", "нужно: remove <значение> from {имя}")
+                : new ParseException("need: add <value> to {name}", "нужно: add <значение> to {имя}");
+    }
+
     private Action parseAction(Line line, List<Line> children) throws ParseException {
         String text = line.text();
         boolean hasBlock = text.endsWith(":");
@@ -1024,7 +1038,8 @@ public final class ScriptParser {
                 return new Actions.SetVariable(name, value.expression());
             }
             case "add", "remove" -> {
-                // add <выражение> to {name} / remove <выражение> from {name}
+                // add <значение> to {имя} / remove <значение> from {имя}
+                // Слово to/from можно не писать, если последнее — переменная: add targeted block {list::*}
                 boolean remove = head.equals("remove");
                 String sep = remove ? "from" : "to";
                 int at = -1;
@@ -1034,14 +1049,20 @@ public final class ScriptParser {
                         break;
                     }
                 }
+                boolean bare = false;
+                if (at < 0 && t.size() >= 3 && isVariableToken(t.get(t.size() - 1))) {
+                    at = t.size() - 1;
+                    bare = true;
+                }
                 if (at < 0) {
-                    throw new ParseException(remove ? "нужно: remove <число> from {имя}" : "нужно: add <число> to {имя}");
+                    throw addSyntax(remove);
                 }
                 ExprParser.Parsed amount = ExprParser.parse(t, 1);
-                if (amount.end() != at || at + 2 != t.size()) {
-                    throw new ParseException(remove ? "нужно: remove <число> from {имя}" : "нужно: add <число> to {имя}");
+                int valueEnd = bare ? at : at;
+                if (amount.end() != valueEnd || (!bare && at + 2 != t.size()) || (bare && at + 1 != t.size())) {
+                    throw addSyntax(remove);
                 }
-                return new Actions.AddToVariable(variableName(t, at + 1), amount.expression(), remove);
+                return new Actions.AddToVariable(variableName(t, bare ? at : at + 1), amount.expression(), remove);
             }
             case "delete", "clear" -> {
                 // delete {name}

@@ -45,6 +45,7 @@ final class ExprParser {
             {words("oxygen"), Expression.Prop.AIR},
             {words("level"), Expression.Prop.LEVEL},
             {words("tool"), Expression.Prop.HELD},
+            {words("location"), Expression.Prop.LOCATION},
             {words("world"), Expression.Prop.WORLD},
             {words("name"), Expression.Prop.NAME},
             {words("uuid"), Expression.Prop.UUID},
@@ -80,9 +81,17 @@ final class ExprParser {
                 && word(t, i + 3).equals("players")) {
             return new Parsed(new Expression.Property(Expression.Prop.ONLINE, null), i + 4);
         }
+        Parsed element = tryElement(t, i);
+        if (element != null) {
+            return element;
+        }
         Parsed prop = tryProperty(t, i);
         if (prop != null) {
             return prop;
+        }
+        Parsed own = tryPossessive(t, i);
+        if (own != null) {
+            return own;
         }
         Parsed arg = tryArgument(t, i);
         if (arg != null) {
@@ -113,6 +122,78 @@ final class ExprParser {
                 ? new Expression.RandomInt(a.expression(), b.expression())
                 : new Expression.RandomNum(a.expression(), b.expression());
         return new Parsed(value, b.end());
+    }
+
+    /**
+     * targeted block|entity|player|location, location of targeted ..., location at x y z,
+     * spawn of &lt;цель&gt;, world spawn.
+     */
+    private static Parsed tryElement(List<Token> t, int i) throws ParseException {
+        String w = word(t, i);
+        if (w.equals("player") || w.equals("%player%")) {
+            return new Parsed(new Expression.Property(Expression.Prop.NAME, new Target.Self()), i + 1);
+        }
+        if (w.equals("loop-player")) {
+            return new Parsed(new Expression.Property(Expression.Prop.NAME, new Target.LoopPlayer()), i + 1);
+        }
+        if (w.equals("targeted")) {
+            String kind = word(t, i + 1);
+            if (kind.equals("player") && word(t, i + 2).equals("of")) {
+                return null;
+            }
+            if (kind.equals("block") || kind.equals("entity") || kind.equals("player") || kind.equals("location")) {
+                return new Parsed(new Expression.Look(kind), i + 2);
+            }
+        }
+        if (w.equals("location") && word(t, i + 1).equals("of") && word(t, i + 2).equals("targeted")) {
+            String kind = word(t, i + 3);
+            if (kind.equals("block") || kind.equals("entity") || kind.equals("player")) {
+                return new Parsed(new Expression.Look("loc-" + kind), i + 4);
+            }
+        }
+        if (w.equals("location") && word(t, i + 1).equals("at")) {
+            Parsed x = parse(t, i + 2);
+            Parsed y = parse(t, x.end());
+            Parsed z = parse(t, y.end());
+            return new Parsed(new Expression.LocationAt(x.expression(), y.expression(), z.expression()), z.end());
+        }
+        if (w.equals("world") && word(t, i + 1).equals("spawn")) {
+            return new Parsed(new Expression.Spawn(null, true), i + 2);
+        }
+        if (w.equals("spawn") && word(t, i + 1).equals("of")) {
+            TargetParser.Parsed target = TargetParser.parse(t, i + 2);
+            if (target == null) {
+                throw new ParseException("нужно: spawn of <цель>");
+            }
+            return new Parsed(new Expression.Spawn(target.target(), false), target.end());
+        }
+        return null;
+    }
+
+    /** player's tool, loop-player's location, targeted player's health. */
+    private static Parsed tryPossessive(List<Token> t, int i) throws ParseException {
+        String w = word(t, i);
+        Target target = null;
+        int from = i + 1;
+        if (w.equals("player's")) {
+            target = new Target.Self();
+        } else if (w.equals("loop-player's")) {
+            target = new Target.LoopPlayer();
+        } else if (w.equals("targeted") && word(t, i + 1).equals("player's")) {
+            target = new Target.Targeted(new Target.Self());
+            from = i + 2;
+        }
+        if (target == null) {
+            return null;
+        }
+        for (Object[] row : PROPS) {
+            String[] name = (String[]) row[0];
+            if (!matches(t, from, name)) {
+                continue;
+            }
+            return new Parsed(new Expression.Property((Expression.Prop) row[1], target), from + name.length);
+        }
+        return null;
     }
 
     /** arg 1, argument 2, offline player-argument. Одно слово (arg-1, script) разбирает ScriptParser.expression. */

@@ -133,13 +133,16 @@ final class EffectPatterns {
         rule("send %text% to %target%", c -> new Effects.SendMessage(c.target(1), c.text(0)));
         rule("message %text% to %target%", c -> new Effects.SendMessage(c.target(1), c.text(0)));
         // give <цель> <предмет> [кол-во] — после "give ... effect ..." и "give N xp ...", чтобы не перехватить их
-        rule("give %target% %id%", c -> new Effects.GiveItem(c.target(0), c.id(1), null));
         rule("give %target% %id% %num%", c -> new Effects.GiveItem(c.target(0), c.id(1), c.num(2)));
+        rule("give %target% %id%", c -> new Effects.GiveItem(c.target(0), c.id(1), null));
+        rule("give %target% %value% %num%", c -> new Effects.GiveExpr(c.target(0), c.exprValue(1), c.num(2)));
+        rule("give %target% %value%", c -> new Effects.GiveExpr(c.target(0), c.exprValue(1), null));
         rule("teleport|tp %target% to world spawn", c -> new Effects.TeleportSpawn(c.target(0), true));
         rule("teleport|tp %target% to spawn", c -> new Effects.TeleportSpawn(c.target(0), false));
         rule("teleport|tp %target% to %num% %num% %num%",
                 c -> new Effects.TeleportToPos(c.target(0), c.num(1), c.num(2), c.num(3)));
         rule("teleport|tp %target% to %target%", c -> new Effects.TeleportToPlayer(c.target(0), c.target(1)));
+        rule("teleport|tp %target% to %expr%", c -> new Effects.TeleportToLocation(c.target(0), c.expr(1)));
 
         // --- как в Skript: кик, права, мир, предметы, движение
         rule("kick %target% due to %text%", c -> new Effects.Kick(c.target(0), c.text(1)));
@@ -154,6 +157,7 @@ final class EffectPatterns {
         rule("wake %target% up", c -> new Effects.Wake(c.target(0)));
         rule("strike lightning at %num% %num% %num%", c -> new Effects.Lightning(null, c.num(0), c.num(1), c.num(2)));
         rule("strike lightning at %target%", c -> new Effects.Lightning(c.target(0), null, null, null));
+        rule("strike lightning at %expr%", c -> new Effects.LightningAt(c.expr(0)));
         rule("set time to %expr%", c -> new Effects.SetTime(c.expr(0)));
         rule("set weather to clear|sun", c -> new Effects.SetWeather("clear", null));
         rule("set weather to thunder|storm for %expr% " + SECONDS, c -> new Effects.SetWeather("thunder", c.expr(0)));
@@ -162,8 +166,13 @@ final class EffectPatterns {
         rule("set weather to rain", c -> new Effects.SetWeather("rain", null));
         rule("drop %num% %id% at %target%", c -> new Effects.DropItem(c.target(2), c.id(1), c.num(0)));
         rule("drop %id% at %target%", c -> new Effects.DropItem(c.target(1), c.id(0), null));
+        rule("drop %num% %value% at %target%", c -> new Effects.DropExpr(c.exprValue(1), c.num(0), c.target(2), null));
+        rule("drop %value% at %target%", c -> new Effects.DropExpr(c.exprValue(0), null, c.target(1), null));
+        rule("drop %num% %value% at %expr%", c -> new Effects.DropExpr(c.exprValue(1), c.num(0), null, c.expr(2)));
+        rule("drop %value% at %expr%", c -> new Effects.DropExpr(c.exprValue(0), null, null, c.expr(1)));
         rule("set spawn of %target% to %num% %num% %num%",
                 c -> new Effects.SetSpawn(c.target(0), c.num(1), c.num(2), c.num(3)));
+        rule("set spawn of %target% to %expr%", c -> new Effects.SetSpawnAt(c.target(0), c.expr(1)));
         rule("set spawn of %target%", c -> new Effects.SetSpawn(c.target(0), null, null, null));
         rule("set velocity of %target% to %num% %num% %num%",
                 c -> new Effects.SetVelocity(c.target(0), c.num(1), c.num(2), c.num(3)));
@@ -178,6 +187,8 @@ final class EffectPatterns {
         rule("explode at %num% %num% %num%", c -> new Effects.Explode(null, c.num(0), c.num(1), c.num(2), null));
         rule("explode at %target% with force|power %expr%", c -> new Effects.Explode(c.target(0), null, null, null, c.expr(1)));
         rule("explode at %target%", c -> new Effects.Explode(c.target(0), null, null, null, null));
+        rule("explode at %value% with force|power %expr%", c -> new Effects.ExplodeAt(c.exprValue(0), c.expr(1)));
+        rule("explode at %expr%", c -> new Effects.ExplodeAt(c.expr(0), null));
         rule("stop", c -> new Actions.Stop());
         rule("cancel event", c -> new Actions.CancelEvent());
         rule("cancel the event", c -> new Actions.CancelEvent());
@@ -283,6 +294,16 @@ final class EffectPatterns {
             captures.add(parsed.expression());
             return true;
         }
+        if (alts[0].equals("%value%")) {
+            // Одно выражение, после него шаблон продолжается (drop player's tool at player).
+            ExprParser.Parsed parsed = ExprParser.parse(tokens, ti);
+            captures.add(parsed.expression());
+            if (match(parts, pi + 1, tokens, parsed.end(), captures)) {
+                return true;
+            }
+            captures.remove(captures.size() - 1);
+            return false;
+        }
         if (alts[0].startsWith("%")) {
             if (alts[0].equals("%text%") && !tok.quoted()) {
                 return false;
@@ -380,11 +401,20 @@ final class EffectPatterns {
         }
 
         String id(int i) throws ParseException {
-            String v = raw(i).value().toLowerCase(Locale.ROOT);
+            String raw = raw(i).value();
+            if (raw.length() > 2 && raw.startsWith("{") && raw.endsWith("}")) {
+                return raw;
+            }
+            String v = raw.toLowerCase(Locale.ROOT);
             if (!ID.matcher(v).matches()) {
                 throw new ParseException("некорректный id: '" + v + "' (пример: speed, minecraft:speed, entity.player.levelup)");
             }
             return v;
+        }
+
+        /** Выражение, пойманное %value% (не в конце строки). */
+        Expression exprValue(int i) {
+            return (Expression) values.get(i);
         }
     }
 }
