@@ -21,7 +21,7 @@ command /menu:
 	open screen "Лавка" to player:
 		image "example:textures/gui/menu_banner.png" at 0, -92 size 160x32 texture 128x32 layer 0
 		text "&e%player%" at 0, -68 color #FFD700 shadow layer 2
-		text "Монеты: {coins::%player%}" at 0, -54 color #FFFFFF shadow layer 2 id coins_label
+		text "Монеты: %{coins::%player%}%" at 0, -54 color #FFFFFF shadow layer 2 id coins_label
 		bar "purse" value {coins::%player%} max 100 at 0, -40 size 120x6 color #FFD700 background #40000000 layer 1
 		slot example:ruby 1 at -60, -12 layer 1
 		text "8" at -60, 6 color #FFD700 layer 2
@@ -46,11 +46,11 @@ command /order <text>:
 		set {coins::%player%} to 0
 	if arg-1 is "ruby":
 		if {coins::%player%} < 8:
-			send "&cНужно 8 монет, у тебя {coins::%player%}" to player
+			send "&cНужно 8 монет, у тебя %{coins::%player%}%" to player
 		else:
 			remove 8 from {coins::%player%}
 			give player example:ruby 1
-			send "&aКуплен рубин. Осталось: {coins::%player%}" to player
+			send "&aКуплен рубин. Осталось: %{coins::%player%}%" to player
 	else:
 		if arg-1 is "diamond":
 			if {coins::%player%} < 15:
@@ -58,7 +58,7 @@ command /order <text>:
 			else:
 				remove 15 from {coins::%player%}
 				give player diamond 1
-				send "&bКуплен алмаз. Осталось: {coins::%player%}" to player
+				send "&bКуплен алмаз. Осталось: %{coins::%player%}%" to player
 		else:
 			if arg-1 is "bread":
 				if {coins::%player%} < 3:
@@ -66,7 +66,7 @@ command /order <text>:
 				else:
 					remove 3 from {coins::%player%}
 					give player bread 8
-					send "&6Хлеб выдан. Осталось: {coins::%player%}" to player
+					send "&6Хлеб выдан. Осталось: %{coins::%player%}%" to player
 			else:
 				if arg-1 is "block":
 					if {coins::%player%} < 20:
@@ -74,7 +74,7 @@ command /order <text>:
 					else:
 						remove 20 from {coins::%player%}
 						give player example:ruby_block 1
-						send "&cБлок выдан. Осталось: {coins::%player%}" to player
+						send "&cБлок выдан. Осталось: %{coins::%player%}%" to player
 				else:
 					if arg-1 is "heal":
 						if {coins::%player%} < 10:
@@ -83,7 +83,7 @@ command /order <text>:
 							remove 10 from {coins::%player%}
 							heal player
 							feed player
-							send "&aТы в порядке. Осталось: {coins::%player%}" to player
+							send "&aТы в порядке. Осталось: %{coins::%player%}%" to player
 					else:
 						send "&7Неизвестный товар: %arg-1%. Лавка: /menu" to player
 

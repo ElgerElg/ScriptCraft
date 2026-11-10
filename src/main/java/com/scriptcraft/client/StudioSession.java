@@ -31,7 +31,26 @@ public final class StudioSession {
     public static List<ScriptLog.Issue> issues = List.of();
     public static List<ScriptLog.Slice> slices = List.of();
     /** Строки под активными ошибками: перезагрузки, старые ошибки, уведомления. */
-    public static final List<String> history = new ArrayList<>();
+    public static final List<Note> history = new ArrayList<>();
+
+    /** Одна строка истории. Код хранится, чтобы старую ошибку можно было открыть справа. */
+    public static final class Note {
+        public final String title;
+        public final String body;
+        public final String file;
+        public final int line;
+        public final int firstLine;
+        public final List<String> lines;
+
+        public Note(String title, String body, String file, int line, int firstLine, List<String> lines) {
+            this.title = title;
+            this.body = body;
+            this.file = file == null ? "" : file;
+            this.line = line;
+            this.firstLine = firstLine;
+            this.lines = lines == null ? List.of() : lines;
+        }
+    }
     public static final Map<String, ScriptDocument> docs = new LinkedHashMap<>();
 
     private StudioSession() {
@@ -60,8 +79,20 @@ public final class StudioSession {
                 }
             }
             if (!still) {
-                String where = old.file().isEmpty() ? "" : old.file() + ":" + old.line() + " ";
-                remember(where + old.reason());
+                ScriptLog.Slice slice = null;
+                for (ScriptLog.Slice candidate : slices) {
+                    if (candidate.name().equals(old.file())) {
+                        slice = candidate;
+                        break;
+                    }
+                }
+                String title = old.file().isEmpty() ? old.reason() : old.file() + ":" + old.line();
+                history.add(new Note(title, old.reason(), old.file(), old.line(),
+                        slice == null ? 1 : slice.firstLine(),
+                        slice == null ? List.of() : List.copyOf(slice.lines())));
+                while (history.size() > 40) {
+                    history.remove(0);
+                }
             }
         }
         issues = List.copyOf(nextIssues);
@@ -105,10 +136,10 @@ public final class StudioSession {
         if (plain.isEmpty()) {
             return;
         }
-        if (!history.isEmpty() && history.get(history.size() - 1).equals(plain)) {
+        if (!history.isEmpty() && history.get(history.size() - 1).body.equals(plain)) {
             return;
         }
-        history.add(plain);
+        history.add(new Note(plain, plain, "", 0, 1, List.of()));
         while (history.size() > 40) {
             history.remove(0);
         }

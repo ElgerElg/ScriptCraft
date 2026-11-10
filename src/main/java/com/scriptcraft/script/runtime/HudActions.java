@@ -98,7 +98,7 @@ public final class HudActions {
             }
             String formatted = ctx.format(text);
             String template = ctx.expandPlaceholders(text);
-            String live = template.indexOf('{') >= 0 ? template : null;
+            String live = template.contains("%{") ? template : null;
             for (ServerPlayer p : players) {
                 HudManager.setText(p, id, formatted);
                 HudManager.rebindText(p, id, live);

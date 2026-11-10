@@ -399,28 +399,14 @@ public final class ScriptParser {
             rest = (rest.substring(0, legacy.start()) + " " + rest.substring(legacy.end())).strip();
         }
         List<ArgSpec> arguments = new ArrayList<>();
-        StringBuilder unknown = new StringBuilder();
         Matcher args = COMMAND_ARG.matcher(rest);
         int cursor = 0;
         while (args.find()) {
-            unknown.append(rest, cursor, args.start());
-            boolean optional = args.group(2) != null;
-            String typeName = optional ? args.group(2) : args.group(1);
-            com.scriptcraft.script.runtime.ArgType type = com.scriptcraft.script.runtime.ArgType.parse(typeName);
-            if (type == null) {
-                error(headerLine, "неизвестный тип аргумента '" + typeName.strip()
-                        + "' (text, player, offline player, integer, number, boolean, date, world, item)");
-            } else if (!arguments.isEmpty() && arguments.get(arguments.size() - 1).optional() && !optional) {
-                error(headerLine, "обязательный аргумент не может стоять после необязательного");
-            } else {
-                arguments.add(new ArgSpec(type, optional));
-            }
+            addCommandWords(headerLine, rest.substring(cursor, args.start()), arguments);
+            addTypedArgument(headerLine, arguments, args.group(2) != null, args.group(2) != null ? args.group(2) : args.group(1));
             cursor = args.end();
         }
-        unknown.append(rest.substring(cursor));
-        if (!unknown.toString().strip().isEmpty()) {
-            error(headerLine, "после имени команды ожидаются аргументы <тип> или [тип], а не '" + unknown.toString().strip() + "'");
-        }
+        addCommandWords(headerLine, rest.substring(cursor), arguments);
         List<String> aliases = new ArrayList<>();
         boolean players = true;
         boolean console = true;
@@ -515,14 +501,12 @@ public final class ScriptParser {
             } else if (optional) {
                 piece = piece.substring(1, piece.length() - 1).strip();
             }
-            com.scriptcraft.script.runtime.ArgType type = com.scriptcraft.script.runtime.ArgType.parse(piece);
-            if (type == null) {
-                error(line, "неизвестный тип аргумента '" + piece + "'");
-            } else if (!arguments.isEmpty() && arguments.get(arguments.size() - 1).optional() && !optional) {
-                error(line, "обязательный аргумент не может стоять после необязательного");
-            } else {
-                arguments.add(new ArgSpec(type, optional));
+            if (!optional && !piece.startsWith("<") && piece.matches("[a-zA-Z0-9_]+")
+                    && com.scriptcraft.script.runtime.ArgType.parse(piece) == null) {
+                addCommandWords(line, piece, arguments);
+                continue;
             }
+            addTypedArgument(line, arguments, optional, piece);
         }
     }
 
@@ -1023,6 +1007,9 @@ public final class ScriptParser {
         Action effect = EffectPatterns.tryParse(t);
         if (effect != null) {
             return effect;
+        }
+        if (word(t, 1).equals("nbt") && (head.equals("set") || head.equals("remove") || head.equals("delete") || head.equals("clear"))) {
+            return parseNbt(t, head.equals("set"));
         }
 
         switch (head) {
@@ -1677,7 +1664,90 @@ public final class ScriptParser {
         return (int) v;
     }
 
+    /** Слова между &lt;типами&gt; — часть пути команды: command /bag take &lt;text&gt;. В %arg-N% они не входят. */
+    private void addCommandWords(Line line, String chunk, List<ArgSpec> arguments) {
+        String stripped = chunk.strip();
+        if (stripped.isEmpty()) {
+            return;
+        }
+        for (String word : stripped.split("\\s+")) {
+            if (!word.matches("[a-zA-Z0-9_]+")) {
+                error(line, "after the command name write <type>, [type] or a word like take, not '" + word + "'",
+                        "после имени команды пишите <тип>, [тип] или слово вроде take, а не '" + word + "'");
+                continue;
+            }
+            if (!arguments.isEmpty() && !arguments.get(arguments.size() - 1).isLiteral()
+                    && arguments.get(arguments.size() - 1).optional()) {
+                error(line, "a word cannot follow an optional argument",
+                        "слово не может стоять после необязательного аргумента");
+                continue;
+            }
+            arguments.add(ArgSpec.literal(word.toLowerCase(Locale.ROOT)));
+        }
+    }
+
+    private void addTypedArgument(Line line, List<ArgSpec> arguments, boolean optional, String typeName) {
+        com.scriptcraft.script.runtime.ArgType type = com.scriptcraft.script.runtime.ArgType.parse(typeName);
+        if (type == null) {
+            error(line, "unknown argument type '" + typeName.strip()
+                            + "' (text, player, offline player, integer, number, boolean, date, world, item)",
+                    "неизвестный тип аргумента '" + typeName.strip()
+                            + "' (text, player, offline player, integer, number, boolean, date, world, item)");
+        } else if (!arguments.isEmpty() && !arguments.get(arguments.size() - 1).isLiteral()
+                && arguments.get(arguments.size() - 1).optional() && !optional) {
+            error(line, "a required argument cannot follow an optional one",
+                    "обязательный аргумент не может стоять после необязательного");
+        } else {
+            arguments.add(new ArgSpec(type, optional));
+        }
+    }
+
+    /** set/remove nbt "путь" of targeted entity|block|player|player */
+    private Action parseNbt(List<Token> t, boolean set) throws ParseException {
+        int idx = 2;
+        if (idx >= t.size()) {
+            throw new ParseException("nbt path is missing", "не указан путь nbt");
+        }
+        String path = t.get(idx).quoted() ? t.get(idx).value() : t.get(idx).value();
+        idx++;
+        if (!word(t, idx).equals("of")) {
+            throw new ParseException("need: nbt \"path\" of targeted entity", "нужно: nbt \"путь\" of targeted entity");
+        }
+        idx++;
+        String kind;
+        if (word(t, idx).equals("targeted") && (word(t, idx + 1).equals("entity") || word(t, idx + 1).equals("block")
+                || word(t, idx + 1).equals("player"))) {
+            kind = word(t, idx + 1);
+            idx += 2;
+        } else if (word(t, idx).equals("player")) {
+            kind = "self";
+            idx++;
+        } else {
+            throw new ParseException("nbt target: targeted entity, targeted block, targeted player or player",
+                    "цель nbt: targeted entity, targeted block, targeted player или player");
+        }
+        if (!set) {
+            if (idx != t.size()) {
+                throw new ParseException("extra text after remove nbt", "лишний текст после remove nbt");
+            }
+            return new Actions.RemoveNbt(path, kind);
+        }
+        if (!word(t, idx).equals("to")) {
+            throw new ParseException("need: set nbt \"path\" of targeted entity to <value>",
+                    "нужно: set nbt \"путь\" of targeted entity to <значение>");
+        }
+        ExprParser.Parsed value = ExprParser.parse(t, idx + 1);
+        if (value.end() != t.size()) {
+            throw new ParseException("extra text after the nbt value", "лишний текст после значения nbt");
+        }
+        return new Actions.SetNbt(path, kind, value.expression());
+    }
+
+    private void error(Line line, String en, String ru) {
+        errors.add(currentFile + ":" + line.number() + ": " + com.scriptcraft.lang.Phrase.pick(en, ru));
+    }
+
     private void error(Line line, String message) {
-        errors.add(currentFile + ":" + line.number() + ": " + message);
+        errors.add(currentFile + ":" + line.number() + ": " + com.scriptcraft.lang.Phrase.localize(message));
     }
 }

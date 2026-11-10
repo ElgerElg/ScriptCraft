@@ -25,7 +25,7 @@ on join:
 		set {coins::%player%} to 20
 		send "&7Стартовые &e20 монет&7. Магазин: &f/menu" to player
 	else:
-		send "&aС возвращением, &e%player%&a! Вход номер {joins::%player%}." to player
+		send "&aС возвращением, &e%player%&a! Вход номер %{joins::%player%}%." to player
 	set {-online_since::%player%} to "сегодня"
 	broadcast "&7%player% зашёл (онлайн: %online%)"
 
@@ -107,7 +107,7 @@ command /sethome:
 	set {home_y::%player%} to y of player
 	set {home_z::%player%} to z of player
 	set {home_world::%player%} to world of player
-	send "&aДом сохранён: &f{home_x::%player%} {home_y::%player%} {home_z::%player%}" to player
+	send "&aДом сохранён: &f%{home_x::%player%}% %{home_y::%player%}% %{home_z::%player%}%" to player
 
 command /home:
 	aliases: base
@@ -140,7 +140,7 @@ command /coins:
 	aliases: bal, balance
 	if {coins::%player%} is not set:
 		set {coins::%player%} to 0
-	send "&eМонет: &6{coins::%player%}" to player
+	send "&eМонет: &6%{coins::%player%}%" to player
 
 # chance of — случайная ветка. {-worked} живёт до перезапуска сервера.
 command /work:
@@ -153,12 +153,12 @@ command /work:
 		chance of 25%:
 			add 5 to {coins::%player%}
 			send "&dПремия! Ещё +5." to player
-		send "&a+5 монет. Сейчас: &6{coins::%player%}" to player
+		send "&a+5 монет. Сейчас: &6%{coins::%player%}%" to player
 
 command /pay <player> <integer>:
 	aliases: transfer
 	if {coins::%player%} < arg-2:
-		send "&cНе хватает монет. Баланс: {coins::%player%}" to player
+		send "&cНе хватает монет. Баланс: %{coins::%player%}%" to player
 	else:
 		if arg-2 < 1:
 			send "&cСумма должна быть больше нуля." to player
@@ -204,7 +204,7 @@ command /menu:
 	open screen "Лавка" to player:
 		image "example:textures/gui/menu_banner.png" at 0, -92 size 160x32 texture 128x32 layer 0
 		text "&e%player%" at 0, -68 color #FFD700 shadow layer 2
-		text "Монеты: {coins::%player%}" at 0, -54 color #FFFFFF shadow layer 2 id coins_label
+		text "Монеты: %{coins::%player%}%" at 0, -54 color #FFFFFF shadow layer 2 id coins_label
 		bar "purse" value {coins::%player%} max 100 at 0, -40 size 120x6 color #FFD700 background #40000000 layer 1
 		slot example:ruby 1 at -60, -12 layer 1
 		text "8" at -60, 6 color #FFD700 layer 2
@@ -229,11 +229,11 @@ command /order <text>:
 		set {coins::%player%} to 0
 	if arg-1 is "ruby":
 		if {coins::%player%} < 8:
-			send "&cНужно 8 монет, у тебя {coins::%player%}" to player
+			send "&cНужно 8 монет, у тебя %{coins::%player%}%" to player
 		else:
 			remove 8 from {coins::%player%}
 			give player example:ruby 1
-			send "&aКуплен рубин. Осталось: {coins::%player%}" to player
+			send "&aКуплен рубин. Осталось: %{coins::%player%}%" to player
 	else:
 		if arg-1 is "diamond":
 			if {coins::%player%} < 15:
@@ -241,7 +241,7 @@ command /order <text>:
 			else:
 				remove 15 from {coins::%player%}
 				give player diamond 1
-				send "&bКуплен алмаз. Осталось: {coins::%player%}" to player
+				send "&bКуплен алмаз. Осталось: %{coins::%player%}%" to player
 		else:
 			if arg-1 is "bread":
 				if {coins::%player%} < 3:
@@ -249,7 +249,7 @@ command /order <text>:
 				else:
 					remove 3 from {coins::%player%}
 					give player bread 8
-					send "&6Хлеб выдан. Осталось: {coins::%player%}" to player
+					send "&6Хлеб выдан. Осталось: %{coins::%player%}%" to player
 			else:
 				if arg-1 is "block":
 					if {coins::%player%} < 20:
@@ -257,7 +257,7 @@ command /order <text>:
 					else:
 						remove 20 from {coins::%player%}
 						give player example:ruby_block 1
-						send "&cБлок выдан. Осталось: {coins::%player%}" to player
+						send "&cБлок выдан. Осталось: %{coins::%player%}%" to player
 				else:
 					if arg-1 is "heal":
 						if {coins::%player%} < 10:
@@ -266,7 +266,7 @@ command /order <text>:
 							remove 10 from {coins::%player%}
 							heal player
 							feed player
-							send "&aТы в порядке. Осталось: {coins::%player%}" to player
+							send "&aТы в порядке. Осталось: %{coins::%player%}%" to player
 					else:
 						send "&7Неизвестный товар: %arg-1%. Лавка: /menu" to player
 
@@ -333,13 +333,13 @@ on join or load:
 		bar "air" value air direction bottom_to_top at -8, -70 size 6x36 anchor right color #55AAFF text "%percent%%" layer 1
 	create hud "coins" for player:
 		slot image "example:textures/gui/coin.png" at 4, 4 anchor top_left id coin_icon layer 0
-		text "{coins::%player%}" at 26, 8 anchor top_left color #FFD700 shadow id coins_text layer 1
+		text "%{coins::%player%}%" at 26, 8 anchor top_left color #FFD700 shadow id coins_text layer 1
 		bar "coins_goal" value {coins::%player%} max 100 at 4, 24 size 70x4 anchor top_left color #FFD700 layer 0
 		text "%script%" at -4, 4 anchor top_right color #666666 layer 1
 
 command /coinhud:
 	aliases: coinsui
-	set text of hud "coins_text" for player to "{coins::%player%}"
+	set text of hud "coins_text" for player to "%{coins::%player%}%"
 	set value of bar "coins_goal" for player to {coins::%player%}
 
 command /hudoff:
@@ -490,8 +490,8 @@ command /ruby:
   ]
 }` }
     ],
-    notes: { ru: ["define block: name, hardness (1.5), resistance (6), sound stone|wood|metal|glass|grass|sand|wool|gravel, light 0–15, requires_tool true|false.","facing: none | horizontal (4 стороны, как печь) | all (ещё вверх и вниз, как раздатчик). Модель смотрит на север, поворот дописывает мод.","render: solid | cutout (дырки в png, синоним transparent) | translucent (стекло). full: false — модель не на весь куб, пол под блоком остаётся виден.","define item: name, stack_size 1–64, rarity common|uncommon|rare|epic, fire_resistant true|false.","id и имена файлов — только a-z 0-9 _ . -. Русское название — name: или lang.","В модели путь текстуры — namespace:block/имя, без textures/ и без .png. После правки assets: /sc resources reload, после data: /reload."], en: ["define block: name, hardness (1.5), resistance (6), sound stone|wood|metal|glass|grass|sand|wool|gravel, light 0–15, requires_tool true|false.","facing: none | horizontal (4 sides, like a furnace) | all (also up and down, like a dispenser). The model faces north; the mod writes the rotation.","render: solid | cutout (holes in the png, alias transparent) | translucent (glass). full: false — the model is not a full cube, so the floor under the block stays visible.","define item: name, stack_size 1–64, rarity common|uncommon|rare|epic, fire_resistant true|false.","ids and file names: only a-z 0-9 _ . -. A translated name goes in name: or lang.","A model texture path is namespace:block/name, with no textures/ and no .png. After editing assets: /sc resources reload; after data: /reload."] },
-    related: ["struct-namespace", "struct-define-block", "struct-define-item", "cmd-resources-reload", "eff-give-item", "event-blocks"]
+    notes: { ru: ["define block: name, hardness (1.5), resistance (6), sound stone|wood|metal|glass|grass|sand|wool|gravel, light 0–15, requires_tool true|false.","facing: none | horizontal (4 стороны, как печь) | all (ещё вверх и вниз, как раздатчик). Модель смотрит на север, поворот дописывает мод.","render: solid | cutout (дырки в png, синоним transparent) | translucent (стекло). full: false — модель не на весь куб, пол под блоком остаётся виден.","define item: name, stack_size 1–64, rarity common|uncommon|rare|epic, fire_resistant true|false.","id и имена файлов — только a-z 0-9 _ . -. Русское название — name: или lang.","В модели путь текстуры — namespace:block/имя, без textures/ и без .png. После правки assets: /sc reload, после data: /reload."], en: ["define block: name, hardness (1.5), resistance (6), sound stone|wood|metal|glass|grass|sand|wool|gravel, light 0–15, requires_tool true|false.","facing: none | horizontal (4 sides, like a furnace) | all (also up and down, like a dispenser). The model faces north; the mod writes the rotation.","render: solid | cutout (holes in the png, alias transparent) | translucent (glass). full: false — the model is not a full cube, so the floor under the block stays visible.","define item: name, stack_size 1–64, rarity common|uncommon|rare|epic, fire_resistant true|false.","ids and file names: only a-z 0-9 _ . -. A translated name goes in name: or lang.","A model texture path is namespace:block/name, with no textures/ and no .png. After editing assets: /sc resources reload; after data: /reload."] },
+    related: ["struct-namespace", "struct-define-block", "struct-define-item", "cmd-reload", "eff-give-item", "event-blocks"]
   },
   {
     id: "economy",
@@ -503,7 +503,7 @@ command /coins:
 	aliases: bal, balance
 	if {coins::%player%} is not set:
 		set {coins::%player%} to 0
-	send "&eМонет: &6{coins::%player%}" to player
+	send "&eМонет: &6%{coins::%player%}%" to player
 
 command /work:
 	aliases: job
@@ -515,12 +515,12 @@ command /work:
 		chance of 25%:
 			add 5 to {coins::%player%}
 			send "&dПремия! Ещё +5." to player
-		send "&a+5 монет. Сейчас: &6{coins::%player%}" to player
+		send "&a+5 монет. Сейчас: &6%{coins::%player%}%" to player
 
 command /pay <player> <integer>:
 	aliases: transfer
 	if {coins::%player%} < arg-2:
-		send "&cНе хватает монет. Баланс: {coins::%player%}" to player
+		send "&cНе хватает монет. Баланс: %{coins::%player%}%" to player
 	else:
 		if arg-2 < 1:
 			send "&cСумма должна быть больше нуля." to player
@@ -600,7 +600,7 @@ on chat:
 		cancel event
 		set {hp} to health of player
 		set {max} to max health of player
-		send "&cЗдоровье: {hp} / {max}" to player
+		send "&cЗдоровье: %{hp}% / %{max}%" to player
 
 command /roll:
 	set {roll} to random integer between 1 and 6
@@ -608,9 +608,9 @@ command /roll:
 		send "&aШестёрка!" to player
 		give 2 levels to player
 	else if {roll} >= 4:
-		send "&eВыпало {roll}" to player
+		send "&eВыпало %{roll}%" to player
 	else:
-		send "&7Выпало {roll}" to player
+		send "&7Выпало %{roll}%" to player
 	wait 1 second
 	send "&7Бросок учтён" to player
 

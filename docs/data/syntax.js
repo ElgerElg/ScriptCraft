@@ -15,7 +15,7 @@
  */
 window.SC_DOCS = window.SC_DOCS || {};
 window.SC_DOCS.syntax = {
-  version: "0.3.8",
+  version: "0.3.9",
   categories: [
     { id: "events",     ru: "События",            en: "Events" },
     { id: "structures", ru: "Структуры",          en: "Structures" },
@@ -68,7 +68,7 @@ window.SC_DOCS.syntax = {
 
 on join or load:
 	create hud "coins" for player:
-		text "{coins::%player%}" at 4, 4 anchor top_left`,
+		text "%{coins::%player%}%" at 4, 4 anchor top_left`,
     since: "0.1.5", related: ["event-unload", "event-join", "hud-create", "cmd-disable"]
   },
   {
@@ -229,10 +229,10 @@ on gamemode change:
   {
     id: "struct-command", category: "structures",
     name: { ru: "Своя команда", en: "Custom command" },
-    syntax: ["command /<имя>:", "command /<имя> <тип> [тип]:", "permission: <0-4>", "aliases: <имя>, <имя>", "arguments: <тип>, [тип]", "executable by: players", "executable by: console", "executable by: players and console"],
+    syntax: ["command /<имя>:", "command /<имя> <слово> <тип>:", "command /<имя> <тип> [тип]:", "permission: <0-4>", "aliases: <имя>, <имя>", "arguments: <тип>, [тип]", "executable by: players", "executable by: console", "executable by: players and console"],
     desc: {
-      ru: "Объявляет команду. Имя: a-z 0-9 _ до 32 символов. Права, псевдонимы и кто вызывает команду пишутся под ней с отступом. permission: N — уровень оператора 0–4 (по умолчанию 0, все). aliases: — короткие имена той же команды. executable by: — players, console или players and console. Аргументы в заголовке: <тип> обязательный, [тип] можно не писать. Либо строка arguments: player, [integer]. Типы: text, player, offline player, integer, number, boolean, date, world, item. Без списка аргументов хвост строки — %args%. С аргументами: %arg-1%, arg-1, argument 1, player-argument (первый такого типа). script и %script% — имя файла без .sc. Старая запись command /kit permission 2: всё ещё работает. Имена scriptcraft, sc, script заняты модом. Форма аргументов у уже зарегистрированной команды применяется после перезапуска сервера.",
-      en: "Declares a command. Name: a-z 0-9 _, up to 32 chars. Permission, aliases and who may run it are indented under the command. permission: N is operator level 0–4 (default 0, everyone). aliases: are short names of the same command. executable by: is players, console or players and console. Arguments in the header: <type> required, [type] optional. Or a line arguments: player, [integer]. Types: text, player, offline player, integer, number, boolean, date, world, item. With no argument list the rest of the line is %args%. With arguments: %arg-1%, arg-1, argument 1, player-argument (the first of that type). script and %script% are the file name without .sc. The old command /kit permission 2: still works. Names scriptcraft, sc, script are reserved. The argument shape of a command that is already registered applies after a server restart."
+      ru: "Объявляет команду. Слово без скобок — часть пути и не считается аргументом: `command /bag take <text>:` это `/bag take <текст>`, а `%arg-1%` — текст. <тип> обязательный, [тип] можно не писать. Типы: text, player, offline player, integer, number, boolean, date, world, item. Без списка аргументов хвост строки — %args%.",
+      en: "Declares a command. A bare word is part of the path and is not an argument: `command /bag take <text>:` is `/bag take <text>`, and `%arg-1%` is the text. <type> is required, [type] may be omitted. Types: text, player, offline player, integer, number, boolean, date, world, item. With no argument list the rest of the line is %args%."
     },
     example: `command /hello:
 	send "&bПривет из %script%, %player%! Ты написал: %args%" to player
@@ -425,6 +425,19 @@ remove 1 from {coins::%player%}`,
     },
     example: `delete {coins::%player%}`,
     since: "0.1.0", related: ["eff-set-var", "cond-var-set"]
+  },
+  {
+    id: "eff-nbt", category: "effects",
+    name: { ru: "NBT", en: "NBT" },
+    syntax: ["set nbt \"<путь>\" of targeted entity to <значение>", "set nbt \"<путь>\" of targeted block to <значение>", "set nbt \"<путь>\" of targeted player to <значение>", "set nbt \"<путь>\" of player to <значение>", "remove nbt \"<путь>\" of targeted entity", "remove nbt \"<путь>\" of targeted block"],
+    desc: {
+      ru: "Пишет или стирает NBT-тег сущности, игрока или блока в прицеле. Путь как в `/data`: `CustomName`, `Items[0].id`. Число пишется числом, `true`/`false` — байтом, текст — строкой, `{...}` и `[...]` — как SNBT. У блока без данных будет ошибка. Весь тег целиком: `%nbt of targeted entity%`, один путь: `%nbt CustomName of targeted entity%`.",
+      en: "Writes or removes an NBT tag on the entity, player or block in the crosshair. The path is the same as `/data`: `CustomName`, `Items[0].id`. A number is stored as a number, `true`/`false` as a byte, text as a string, `{...}` and `[...]` as SNBT. A block with no data is an error. The whole tag: `%nbt of targeted entity%`. One path: `%nbt CustomName of targeted entity%`."
+    },
+    example: `send "%nbt of targeted entity%" to player
+set nbt "CustomName" of targeted entity to "\"Гриб\""
+remove nbt "CustomName" of targeted entity`,
+    since: "0.3.9", related: ["ph-targeted", "target-targeted"]
   },
 
   // ================================================================== ЭФФЕКТЫ: чат
@@ -977,13 +990,15 @@ if player is in world the_nether:
   },
   {
     id: "ph-targeted", category: "expressions",
-    name: { ru: "%targeted% — на кого смотрит игрок", en: "%targeted% — looked-at player" },
-    syntax: ["%targeted%"],
+    name: { ru: "%targeted% — куда смотрит игрок", en: "%targeted% — what the player looks at" },
+    syntax: ["%targeted%", "%targeted player%", "%targeted entity%", "%targeted block%"],
     desc: {
-      ru: "Имя игрока, на которого смотрит `player` (луч до `targetedPlayerRange` блоков), или `<none>`.",
-      en: "Name of the player `player` is looking at (ray up to `targetedPlayerRange` blocks), or `<none>`."
+      ru: "`%targeted%` и `%targeted player%` — имя игрока в прицеле. `%targeted entity%` — моб или другая сущность (id, или имя). `%targeted block%` — id блока и координаты. Никого и ничего — `<none>`. Луч до `targetedPlayerRange` блоков, сквозь блоки не идёт. Ближе побеждает: сущность или блок.",
+      en: "`%targeted%` and `%targeted player%` are the name of the player in the crosshair. `%targeted entity%` is a mob or any other entity (its id, or its name). `%targeted block%` is the block id and coordinates. Nothing — `<none>`. The ray is `targetedPlayerRange` blocks and stops at blocks. The closer one wins: the entity or the block."
     },
-    example: `send "Ты смотришь на %targeted%" to player`,
+    example: `send "Игрок: %targeted player%" to player
+send "Сущность: %targeted entity%" to player
+send "Блок: %targeted block%" to player`,
     since: "0.1.2", related: ["target-targeted", "cfg-targetedPlayerRange"]
   },
   {
@@ -1013,13 +1028,13 @@ if player is in world the_nether:
   {
     id: "expr-variable", category: "expressions",
     name: { ru: "Переменные {имя}", en: "Variables {name}" },
-    syntax: ["{<имя>}", "{<имя>::%player%}", "{<имя>::*}"],
+    syntax: ["{<имя>}", "{<имя>::%player%}", "{<имя>::*}", "\"%{<имя>}%\""],
     desc: {
-      ru: "Постоянные переменные в `scriptcraft/variables/variables.json`. `{coins::%player%}` своя у каждого. `{list::*}` — сколько прямых индексов (`list::ключ`), не одно значение. `set` и `add` в `{list::*}` нельзя: пишите `{list::ключ}`. `delete {list::*}` стирает все прямые индексы.",
-      en: "Persistent variables in `scriptcraft/variables/variables.json`. `{coins::%player%}` is per player. `{list::*}` is how many direct indexes (`list::key`) there are, not one value. `set` and `add` cannot target `{list::*}`: write `{list::key}`. `delete {list::*}` removes every direct index."
+      ru: "Постоянные переменные в `scriptcraft/variables/variables.json`. В условиях и эффектах пишется `{coins::%player%}`. В тексте в кавычках фигурные скобки остаются как есть: значение подставляется только из `%{coins::%player%}%`. `{list::*}` — сколько прямых индексов. `set` и `add` в `{list::*}` нельзя.",
+      en: "Persistent variables in `scriptcraft/variables/variables.json`. Conditions and effects use `{coins::%player%}`. Inside quoted text the braces stay as written: the value is inserted only from `%{coins::%player%}%.` `{list::*}` is how many direct indexes there are. `set` and `add` cannot target `{list::*}`."
     },
     example: `add 1 to {coins::%player%}
-send "&eМонет: {coins::%player%}" to player`,
+send "&eМонет: %{coins::%player%}%" to player`,
     since: "0.1.0", related: ["expr-temp-variable", "eff-set-var", "cfg-variablesSaveIntervalSeconds"]
   },
   {
@@ -1068,7 +1083,7 @@ set {vip::%player%} to true`,
     example: `set {hp::%player%} to health of player
 if health of player < max health of player:
 	heal player by 2
-send "Мир: {tmp}" to player
+send "Мир: %{tmp}%" to player
 set {tmp} to world of player
 send "&7Онлайн: " to player
 # number of all players — в условии:
@@ -1260,7 +1275,7 @@ slot example:ruby 4 at 60, -15`,
       en: "Draws a texture. `texture` is the real file size, `color` tints it. `run` or `close` is a left-click hitbox on `size` (16x16 when size is omitted) in `open screen`. Images from `scriptcraft/resources/assets/<ns>/textures/gui/` are sent to players by the server and show up immediately."
     },
     example: `image "example:textures/gui/menu_banner.png" at 0, -85 size 128x32 texture 128x32`,
-    since: "0.1.0", related: ["eff-open-screen", "cmd-resources-reload"]
+    since: "0.1.0", related: ["eff-open-screen", "cmd-reload"]
   },
   {
     id: "screen-layout", category: "screen",
@@ -1417,7 +1432,7 @@ set value of bar "coins_goal" for player to {coins::%player%}`,
       ru: "Меняет текст у `text`, `slot text` или надпись на полосе `bar`. `%player%` подставляется для игрока из контекста. Если в тексте есть `{переменная}`, элемент и дальше следит за ней. Текст без переменных эту связь снимает.",
       en: "Changes the text of a `text`, a `slot text` or the label on a `bar`. `%player%` is filled in for the context player. If the text contains a `{variable}`, the element keeps following it. Text without a variable drops that link."
     },
-    example: `set text of hud "coins_text" for player to "{coins::%player%}"`,
+    example: `set text of hud "coins_text" for player to "%{coins::%player%}%"`,
     since: "0.1.33", related: ["hud-set-bar", "hud-layer"]
   },
   {
@@ -1478,15 +1493,15 @@ show vanilla all for player`,
       en: "Operator-only mod window. The key is not listed in Controls: default is F3 and ` (Ё on a Russian layout). Tabs and the window size stay until the player leaves the server; logout clears them. Home centers a large ScriptCraft title, rotating phrases, and ElgerElg's skin model. The journal splits into active errors and a history of reloads, old errors, and notices. A script is deleted from the File menu or the toolbar after a confirmation. Closing a tab with unsaved text also asks; closing the whole window does not ask and keeps the tabs on the client. A pencil sits left of a tab name when the text differs from the last saved copy. Tab inserts a tab drawn as a thin bar. Ctrl+Backspace deletes a word up to a space or indent. Alt and the left button select a rectangle: typing and deleting apply to every line. Notices grow with the text and show a gray bar of the time left. Client and server must be the same version: the network protocol is 10."
 	},
 	example: "F3 + `",
-    since: "0.2.2", related: ["cmd-reload", "cmd-config-reload"]
+    since: "0.2.2", related: ["cmd-reload"]
   },
   {
     id: "cmd-reload", category: "commands",
     name: { ru: "/sc reload", en: "/sc reload" },
     syntax: ["/sc reload", "/sc reload <скрипт>"],
     desc: {
-      ru: "Перезагрузить все скрипты или один (`welcome`, `sub/name`, `.sc` не обязателен). Короткий итог всплывает уведомлением, а текст ошибки и строка — в журнале (F3 + `). Новые и изменённые `define` применяются сразу (привязка к слотам пула).",
-	  en: "Reload all scripts or one (`welcome`, `sub/name`, `.sc` optional). A short result pops up as a notice; the error text and line are in the journal (F3 + `). New and changed `define`s apply immediately (bound to pool slots)."
+      ru: "`/sc reload` перечитывает `config.toml`, `scriptcraft/resources` и все скрипты. `/sc reload <скрипт>` перезагружает один файл. Ошибки — в журнале (F3 + `).",
+      en: "`/sc reload` rereads `config.toml`, `scriptcraft/resources` and every script. `/sc reload <script>` reloads one file. Errors are in the journal (F3 + `)."
     },
     example: `/sc reload
 /sc reload welcome`,
@@ -1514,28 +1529,6 @@ show vanilla all for player`,
     },
     example: `/sc list`,
     since: "0.1.0", related: ["cmd-reload"]
-  },
-  {
-    id: "cmd-resources-reload", category: "commands",
-    name: { ru: "/sc resources reload", en: "/sc resources reload" },
-    syntax: ["/sc resources reload"],
-    desc: {
-      ru: "Перечитать `scriptcraft/resources/assets` и разослать изменения игрокам онлайн (качаются только изменённые файлы). `data/` перечитывает ванильная `/reload`.",
-      en: "Rescan `scriptcraft/resources/assets` and send changes to online players (only changed files are downloaded). `data/` is reloaded by vanilla `/reload`."
-    },
-    example: `/sc resources reload`,
-    since: "0.1.2", related: ["cfg-syncResourcesToClients", "screen-image"]
-  },
-  {
-    id: "cmd-config-reload", category: "commands",
-    name: { ru: "/sc config reload", en: "/sc config reload" },
-    syntax: ["/sc config reload"],
-    desc: {
-      ru: "Перечитать `scriptcraft/config.toml` с диска, не перезагружая скрипты. Язык сообщений, лимиты скриптов, дальность `targeted player`, ресурсы и эффект-команды применяются сразу. Резервные копии `variables.json` по-прежнему делаются только при старте сервера. На выделенном сервере команда читает серверный файл; клиентские сообщения (перезагрузка текстур) берут язык из клиентского `config.toml`.",
-      en: "Reread `scriptcraft/config.toml` from disk without reloading scripts. Message language, script limits, `targeted player` range, resources and effect commands apply at once. `variables.json` backups are still made only at server start. On a dedicated server the command reads the server file; client messages (texture reload) use the language from the client's `config.toml`."
-    },
-    example: `/sc config reload`,
-    since: "0.2.1", related: ["cfg-language", "cmd-reload"]
   },
   {
     id: "cmd-ids", category: "commands",
@@ -1576,7 +1569,7 @@ show vanilla all for player`,
   // ================================================================== КОНФИГ
   { id: "cfg-language", category: "config", name: { ru: "general.language", en: "general.language" },
     syntax: ["language = \"en\"", "language = \"ru\""],
-    desc: { ru: "Язык сообщений мода. По умолчанию `\"en\"`. Меняется сразу после `/sc config reload`.", en: "Language of mod messages. Default `\"en\"`. Applies right after `/sc config reload`." },
+    desc: { ru: "Язык сообщений мода, журнала и уведомлений. По умолчанию `\"en\"`. Меняется после `/sc reload`.", en: "Language of mod messages, the journal and notices. Default `\"en\"`. Applies after `/sc reload`." },
     example: `language = "ru"`, since: "0.1.0", related: [] },
   { id: "cfg-enableTemporaryVariables", category: "config", name: { ru: "general.enableTemporaryVariables", en: "general.enableTemporaryVariables" },
     syntax: ["enableTemporaryVariables = true"],
@@ -1613,7 +1606,7 @@ show vanilla all for player`,
   { id: "cfg-syncResourcesToClients", category: "config", name: { ru: "resources.syncResourcesToClients", en: "resources.syncResourcesToClients" },
     syntax: ["syncResourcesToClients = true"],
     desc: { ru: "Отправлять `scriptcraft/resources/assets` игрокам через сетевой канал мода (без ресурспака).", en: "Send `scriptcraft/resources/assets` to players through the mod's network channel (no resource pack prompt)." },
-    example: `syncResourcesToClients = true`, since: "0.1.2", related: ["cmd-resources-reload"] },
+    example: `syncResourcesToClients = true`, since: "0.1.2", related: ["cmd-reload"] },
   { id: "cfg-maxResourceSizeMb", category: "config", name: { ru: "resources.maxResourceSizeMb", en: "resources.maxResourceSizeMb" },
     syntax: ["maxResourceSizeMb = 32"],
     desc: { ru: "Максимальный общий размер ресурсов, 1–512 МБ. Проверяют и сервер, и клиент.", en: "Max total resource size, 1–512 MB. Checked by both server and client." },

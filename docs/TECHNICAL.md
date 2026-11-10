@@ -84,8 +84,7 @@ scriptcraft/
 | `/sc disable welcome` | выключить скрипт: выгружает его события и команды и переименовывает файл в `-welcome.sc` |
 | `/sc enable welcome` | включить: переименовывает `-welcome.sc` обратно в `welcome.sc` и загружает его |
 | `/sc list` | загруженные и выключенные скрипты, команды, число переменных и ошибок |
-| `/sc config reload` | перечитать `scriptcraft/config.toml` (язык, лимиты, эффект-команды) без перезагрузки скриптов. Копии `variables.json` по-прежнему только при старте сервера |
-| `/sc resources reload` | перечитать `scriptcraft/resources/assets` и разослать изменения всем игрокам онлайн (они скачают только изменённые файлы). `data/` перечитывает ванильная `/reload` |
+| `/sc reload` | перечитать `config.toml`, `scriptcraft/resources` и все скрипты. `data/` по-прежнему перечитывает ванильная `/reload` |
 | `/sc ids` | какие технические id (`scriptcraft:dyn_block_N` / `dyn_item_N`) получили блоки и предметы из скриптов |
 | `/sc give <игроки> <id> [кол-во]` | выдать блок/предмет по id скрипта (`/sc give @s example:ruby_block 4`); ванильная `/give` id скриптов не знает |
 
@@ -98,7 +97,7 @@ scriptcraft/
 
 ### Конфиг
 
-Файл **`scriptcraft/config.toml`** создаётся при первом запуске. После правки его перечитывает **`/sc config reload`**
+Файл **`scriptcraft/config.toml`** создаётся при первом запуске. После правки его перечитывает **`/sc reload`**
 (скрипты при этом не перезагружаются). Сообщения мода в чате начинаются с `[ScriptCraft]`: серые скобки, золотое имя.
 
 > Как это сделано: Forge 1.20.1 разрешает имя файла конфига относительно папки `config/`, поэтому мод регистрирует
@@ -732,7 +731,7 @@ com.scriptcraft.script.runtime.HudActions   действия create hud / set va
 Игрокам **не нужно ставить ресурспак** и не будет никакого окна «Сервер предлагает ресурспак»:
 всё идёт через сетевой канал самого мода.
 
-1. Сервер при старте (и по `/sc resources reload`) индексирует каждый файл `scriptcraft/resources/assets/**`:
+1. Сервер при старте (и по `/sc reload`) индексирует каждый файл `scriptcraft/resources/assets/**`:
    путь + SHA-1.
 2. При входе игрока сервер отправляет ему этот список (манифест).
 3. Клиент сравнивает его со своим кэшем `scriptcraft/cache/assets/...` и просит **только недостающие или изменённые** файлы.
@@ -790,7 +789,7 @@ src/main/java/com/scriptcraft/
                                ExecutionContext, ExecutionBudget
   config/ScriptCraftConfig     ForgeConfigSpec -> scriptcraft/config.toml
   lang/Messages                сообщения мода на EN/RU (язык выбирается в конфиге)
-  command/ScriptCommands       /scriptcraft|/sc|/script help|reload|enable|disable|list|resources reload|ids|give + команды скриптов
+  command/ScriptCommands       /scriptcraft|/sc|/script help|reload|enable|disable|list|ids|give + команды скриптов
   command/EffectCommands       эффект-команды в чате (?heal player), право scriptcraft.effectcommands
   resources/                   ResourceIndex (индекс + SHA-1), ResourceSync (манифест, очередь кусков),
                                ResourcePacks (скрытый клиентский пак кэша, серверный датапак), GeneratedAssetsPack

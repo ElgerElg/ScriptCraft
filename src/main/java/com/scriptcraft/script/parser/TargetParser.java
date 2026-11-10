@@ -76,6 +76,11 @@ final class TargetParser {
         if (w.equals("all") && word(t, i + 1).equals("players")) {
             return new Parsed(new Target.All(), i + 2);
         }
+        if (w.equals("targeted") && (word(t, i + 1).equals("entity") || word(t, i + 1).equals("block"))) {
+            throw new ParseException(
+                    "targeted entity and targeted block are for %targeted entity%, %targeted block% and nbt",
+                    "targeted entity и targeted block — для %targeted entity%, %targeted block% и nbt");
+        }
         if (w.equals("targeted") && word(t, i + 1).equals("player")) {
             if (word(t, i + 2).equals("of")) {
                 Parsed base = required(t, i + 3, "targeted player of <цель>");

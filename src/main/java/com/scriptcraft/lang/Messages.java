@@ -23,16 +23,12 @@ public final class Messages {
     static {
         // --- справка (%1$s = имя корневой команды: scriptcraft / sc / script)
         add("help.header", "&6--- ScriptCraft help ---", "&6--- ScriptCraft: справка ---");
-        add("help.reload", "&e/%1$s reload &7- reload all scripts", "&e/%1$s reload &7- перезагрузить все скрипты");
+        add("help.reload", "&e/%1$s reload &7- reload config, resources and all scripts", "&e/%1$s reload &7- перечитать конфиг, ресурсы и все скрипты");
         add("help.reload_one", "&e/%1$s reload <script> &7- reload one script", "&e/%1$s reload <скрипт> &7- перезагрузить один скрипт");
         add("help.enable", "&e/%1$s enable <script> &7- enable a disabled script", "&e/%1$s enable <скрипт> &7- включить выключенный скрипт");
         add("help.disable", "&e/%1$s disable <script> &7- disable a script (renames it to -name.sc)", "&e/%1$s disable <скрипт> &7- выключить скрипт (переименует в -имя.sc)");
         add("help.list", "&e/%1$s list &7- show loaded scripts, commands and errors", "&e/%1$s list &7- загруженные скрипты, команды и ошибки");
         add("help.help", "&e/%1$s help &7- this help", "&e/%1$s help &7- эта справка");
-        add("help.resources", "&e/%1$s resources reload &7- rescan scriptcraft/resources and send changes to online players",
-                "&e/%1$s resources reload &7- перечитать scriptcraft/resources и отправить изменения игрокам онлайн");
-        add("help.config", "&e/%1$s config reload &7- reread scriptcraft/config.toml",
-                "&e/%1$s config reload &7- перечитать scriptcraft/config.toml");
         add("help.ids", "&e/%1$s ids &7- show which registry id each script block/item got", "&e/%1$s ids &7- какой id в реестре получил каждый блок/предмет скриптов");
         add("help.give", "&e/%1$s give <players> <id> [count] &7- give a script item (example:ruby_block)", "&e/%1$s give <игроки> <id> [кол-во] &7- выдать предмет скрипта (example:ruby_block)");
         add("help.aliases", "&7Aliases: /scriptcraft, /sc, /script", "&7Синонимы: /scriptcraft, /sc, /script");
@@ -101,6 +97,14 @@ public final class Messages {
         add("effect.bad_id", "invalid id '%s'", "некорректный id '%s'");
         add("effect.unknown_effect", "unknown potion effect %s", "неизвестный эффект %s");
         add("effect.unknown_sound", "unknown sound %s", "неизвестный звук %s");
+        add("effect.unknown_item", "unknown item: %s", "неизвестный предмет: %s");
+        add("nbt.bad_path", "bad nbt path %s", "плохой путь nbt %s");
+        add("nbt.need_path", "nbt path is missing", "не указан путь nbt");
+        add("nbt.no_player", "no targeted player", "нет targeted player");
+        add("nbt.no_entity", "no targeted entity", "нет targeted entity");
+        add("nbt.no_block", "no targeted block", "нет targeted block");
+        add("nbt.no_data", "this block has no nbt: %s", "у этого блока нет nbt: %s");
+        add("nbt.bad_target", "bad nbt target %s", "плохая цель nbt %s");
         add("effect.commands_disabled", "command effects are disabled (allowCommandEffects = false)",
                 "эффекты-команды выключены (allowCommandEffects = false)");
         add("effect.commands_need_op", "running commands from chat effect commands requires operator level 2",
@@ -145,7 +149,7 @@ public final class Messages {
         add("studio.home", "Home", "Главная");
         add("studio.journal", "Journal", "Журнал");
         add("studio.patches", "Patches and versions", "Патчи и версии");
-        add("studio.p1", "0.3.8 — list variables, a bag for any item", "0.3.8 — списки {имя::*}, сумка для любого предмета");
+        add("studio.p1", "0.3.9 — command words, nbt, targeted block and entity", "0.3.9 — слова в командах, nbt, targeted block и entity");
         add("studio.links", "Links", "Ссылки");
         add("studio.link.github", "GitHub", "GitHub");
         add("studio.link.docs", "Documentation", "Документация");
@@ -165,10 +169,10 @@ public final class Messages {
         add("studio.ask.no", "No", "Нет");
         add("studio.deleted", "Deleted %s", "Удалено %s");
         add("studio.delete_failed", "&cCould not delete: %s", "&cНе удалось удалить: %s");
-        add("studio.p2", "0.3.7 — item receive, keys, menu cancel, list", "0.3.7 — получение предмета, клавиши, отмена меню, список");
-        add("studio.p3", "0.3.6 — HUD updates when a variable changes", "0.3.6 — HUD обновляется вместе с переменной");
-        add("studio.p4", "0.3.5 — example scripts to learn from, Tab indent", "0.3.5 — примеры, на которых можно учиться, отступ Tab");
-        add("studio.p5", "0.3.4 — command arguments, aliases, script", "0.3.4 — аргументы команд, псевдонимы, script");
+        add("studio.p2", "0.3.8 — list variables, a bag for any item", "0.3.8 — списки {имя::*}, сумка для любого предмета");
+        add("studio.p3", "0.3.7 — item receive, keys, menu cancel, list", "0.3.7 — получение предмета, клавиши, отмена меню, список");
+        add("studio.p4", "0.3.6 — HUD updates when a variable changes", "0.3.6 — HUD обновляется вместе с переменной");
+        add("studio.p5", "0.3.5 — example scripts to learn from, Tab indent", "0.3.5 — примеры, на которых можно учиться, отступ Tab");
         add("studio.dev", "Developer", "Разработчик");
         add("studio.role", "author of the mod", "автор мода");
         add("studio.hint", "Open a script with + or File. On a server these are the server's scripts; in singleplayer, the local ones.", "Откройте скрипт кнопкой + или меню «Файл». На сервере это его скрипты, в одиночной игре — локальные.");
@@ -266,9 +270,8 @@ public final class Messages {
     /** Строки справки для корневой команды {@code root}. */
     public static List<String> helpLines(String root) {
         return List.of(get("help.header"), get("help.reload", root), get("help.reload_one", root),
-                get("help.config", root),
                 get("help.enable", root), get("help.disable", root), get("help.list", root),
-                get("help.resources", root), get("help.ids", root), get("help.give", root), get("help.help", root),
+                get("help.ids", root), get("help.give", root), get("help.help", root),
                 get("help.aliases"));
     }
 }

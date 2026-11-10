@@ -70,6 +70,23 @@ public final class Actions {
         }
     }
 
+    /** set nbt "путь" of targeted entity|block|player to <значение> */
+    public record SetNbt(String path, String kind, Expression value) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            ServerPlayer viewer = ctx.requirePlayer();
+            NbtAccess.write(viewer, kind, ctx.format(path), value.evaluate(ctx));
+        }
+    }
+
+    /** remove nbt "путь" of targeted entity|block|player */
+    public record RemoveNbt(String path, String kind) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            NbtAccess.remove(ctx.requirePlayer(), kind, ctx.format(path));
+        }
+    }
+
     /** delete {name} */
     public record DeleteVariable(String rawName) implements Action {
         @Override

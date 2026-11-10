@@ -436,16 +436,17 @@ public class StudioScreen extends Screen {
     private void renderJournal(GuiGraphics g, int mx, int my) {
         int y = contentY();
         int h = contentH();
-        int listW = Math.min(220, pw / 3);
+        int listW = Math.max(180, (pw - 16) / 2);
         g.fill(px + 8, y, px + 8 + listW, y + h, 0xF0181E28);
         g.fill(px + 12 + listW, y, px + pw - 8, y + h, 0xF0181E28);
         int content = 4 + 16 + (StudioSession.issues.isEmpty() ? 16 : StudioSession.issues.size() * 24)
-                + 6 + 14 + Math.max(1, StudioSession.history.size()) * 14 + 8;
+                + 6 + 14 + Math.max(1, StudioSession.history.size()) * 22 + 8;
         listMax = Math.max(0, content - h);
         listScroll = Math.max(0, Math.min(listScroll, listMax));
         if (!StudioSession.issues.isEmpty()) {
             journal = Math.max(0, Math.min(StudioSession.issues.size() - 1, journal));
         }
+        journalHits.clear();
         g.enableScissor(px + 8, y, px + 8 + listW, y + h);
         int row = y + 4 - listScroll;
         g.drawString(this.font, Messages.get("studio.active"), px + 16, row, GOLD, false);
@@ -457,12 +458,14 @@ public class StudioScreen extends Screen {
         for (int i = 0; i < StudioSession.issues.size(); i++) {
             ScriptLog.Issue issue = StudioSession.issues.get(i);
             if (row + 24 >= y && row <= y + h) {
-                g.fill(px + 12, row, px + 4 + listW, row + 22, i == journal ? 0xFF2E3A4E : ROW);
+                journalHits.add(new JournalHit(row, 22, 0, i));
+                boolean on = historySel < 0 && i == journal;
+                g.fill(px + 12, row, px + 4 + listW, row + 22, on ? 0xFF2E3A4E : ROW);
                 String where = issue.file().isEmpty() ? "—" : issue.file();
                 if (issue.line() > 0) {
                     where = where + ":" + issue.line();
                 }
-                g.drawString(this.font, trim(where, listW - 20), px + 16, row + 2, i == journal ? GOLD : TEXT, false);
+                g.drawString(this.font, trim(where, listW - 20), px + 16, row + 2, on ? GOLD : TEXT, false);
                 g.drawString(this.font, trim(issue.reason(), listW - 20), px + 16, row + 12, MUTED, false);
             }
             row += 24;
@@ -474,18 +477,27 @@ public class StudioScreen extends Screen {
             g.drawString(this.font, "—", px + 16, row, MUTED, false);
         }
         for (int i = StudioSession.history.size() - 1; i >= 0; i--) {
-            if (row + 14 >= y && row <= y + h) {
-                g.drawString(this.font, trim(StudioSession.history.get(i), listW - 20), px + 16, row, MUTED, false);
+            if (row + 22 >= y && row <= y + h) {
+                journalHits.add(new JournalHit(row, 22, 1, i));
+                boolean on = i == historySel;
+                if (on) {
+                    g.fill(px + 12, row, px + 4 + listW, row + 20, 0xFF2E3A4E);
+                }
+                g.drawString(this.font, trim(StudioSession.history.get(i).title, listW - 20), px + 16, row + 4, on ? GOLD : MUTED, false);
             }
-            row += 14;
+            row += 22;
         }
         g.disableScissor();
+        journalListW = listW;
+        journalY = y;
+        journalH = h;
+        if (historySel >= 0 && historySel < StudioSession.history.size()) {
+            drawJournalNote(g, StudioSession.history.get(historySel), y, h, listW);
+            return;
+        }
         if (StudioSession.issues.isEmpty()) {
             g.drawString(this.font, Messages.get("log.empty"), px + 16 + listW, y + 8, MUTED, false);
             codeMax = 0;
-            journalListW = listW;
-            journalY = y;
-            journalH = h;
             return;
         }
         ScriptLog.Issue current = StudioSession.issues.get(journal);
@@ -515,9 +527,40 @@ public class StudioScreen extends Screen {
         }
         g.disableScissor();
         g.drawString(this.font, trim(Messages.get("log.reason") + ": " + current.reason(), codeW), codeX, y + h - 14, 0xFFF0C2C2, false);
-        journalListW = listW;
-        journalY = y;
-        journalH = h;
+    }
+
+    private void drawJournalNote(GuiGraphics g, StudioSession.Note note, int y, int h, int listW) {
+        int codeX = px + 16 + listW;
+        int codeW = pw - listW - 28;
+        if (note.lines.isEmpty()) {
+            drawWrapped(g, note.body, codeX + 6, y + 8, codeW - 12, TEXT, y + h - 8);
+            codeMax = 0;
+            return;
+        }
+        g.enableScissor(codeX, y, codeX + codeW, y + h - 22);
+        codeMax = Math.max(0, note.lines.size() * LINE_H - (h - 22));
+        codeScroll = Math.max(0, Math.min(codeScroll, codeMax));
+        int ly = y + 4 - codeScroll;
+        for (int i = 0; i < note.lines.size(); i++) {
+            int number = note.firstLine + i;
+            if (ly > y - LINE_H && ly < y + h) {
+                if (number == note.line) {
+                    g.fill(codeX, ly - 1, codeX + codeW, ly + LINE_H - 1, 0xAAD25A5A);
+                }
+                String num = Integer.toString(number);
+                g.drawString(this.font, num, codeX + 28 - this.font.width(num), ly, MUTED, false);
+                drawCode(g, note.lines.get(i), codeX + 34, ly, TEXT, codeW - 40);
+            }
+            ly += LINE_H;
+        }
+        g.disableScissor();
+        g.drawString(this.font, trim(Messages.get("log.reason") + ": " + note.body, codeW), codeX, y + h - 14, 0xFFF0C2C2, false);
+    }
+
+    private int historySel = -1;
+    private final java.util.ArrayList<JournalHit> journalHits = new java.util.ArrayList<>();
+
+    private record JournalHit(int y, int h, int kind, int index) {
     }
 
     private int journalListW, journalY, journalH, listMax, codeMax;
@@ -1457,16 +1500,31 @@ public class StudioScreen extends Screen {
     }
 
     private void journalClick(int mx, int my) {
-        if (mx < px + 8 + journalListW) {
-            int index = (my - journalY - 4 + listScroll - 16) / 24;
-            if (index >= 0 && index < StudioSession.issues.size()) {
-                journal = index;
-                ScriptLog.Issue issue = StudioSession.issues.get(index);
+        if (mx < px + 8 || mx >= px + 8 + journalListW || my < journalY || my >= journalY + journalH) {
+            return;
+        }
+        for (JournalHit hit : journalHits) {
+            if (my < hit.y || my >= hit.y + hit.h) {
+                continue;
+            }
+            if (hit.kind == 0) {
+                historySel = -1;
+                journal = hit.index;
+                ScriptLog.Issue issue = StudioSession.issues.get(hit.index);
                 ScriptLog.Slice slice = slice(issue.file());
                 if (slice != null && issue.line() > 0) {
                     codeScroll = Math.max(0, (issue.line() - slice.firstLine()) * LINE_H - 20);
                 }
+            } else {
+                historySel = hit.index;
+                StudioSession.Note note = StudioSession.history.get(hit.index);
+                if (note.line > 0) {
+                    codeScroll = Math.max(0, (note.line - note.firstLine) * LINE_H - 20);
+                } else {
+                    codeScroll = 0;
+                }
             }
+            return;
         }
     }
 

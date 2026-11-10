@@ -125,7 +125,7 @@ public final class ScriptCommands {
                 .executes(ctx -> help(ctx.getSource(), root))
                 .then(Commands.literal("help").executes(ctx -> help(ctx.getSource(), root)))
                 .then(Commands.literal("reload")
-                        .executes(ctx -> ScriptLoader.reloadAll(ctx.getSource()))
+                        .executes(ctx -> reloadAll(ctx.getSource()))
                         // greedyString — чтобы работали подпапки "sub/name"
                         .then(Commands.argument("script", StringArgumentType.greedyString())
                                 .suggests(ENABLED_SCRIPTS)
@@ -142,10 +142,6 @@ public final class ScriptCommands {
                                 .executes(ctx -> ScriptLoader.disable(ctx.getSource(),
                                         StringArgumentType.getString(ctx, "script")))))
                 .then(Commands.literal("list").executes(ctx -> ScriptLoader.list(ctx.getSource())))
-                .then(Commands.literal("config")
-                        .then(Commands.literal("reload").executes(ctx -> reloadConfig(ctx.getSource()))))
-                .then(Commands.literal("resources")
-                        .then(Commands.literal("reload").executes(ctx -> reloadResources(ctx.getSource()))))
                 .then(Commands.literal("ids").executes(ctx -> ids(ctx.getSource())))
                 // Ванильная /give не знает id скриптов (в реестре только scriptcraft:dyn_*), поэтому своя.
                 .then(Commands.literal("give")
@@ -207,7 +203,14 @@ public final class ScriptCommands {
         return targets.size();
     }
 
-    /** /sc config reload: перечитать scriptcraft/config.toml, не трогая скрипты. */
+    /** /sc reload: конфиг, ресурсы и все скрипты. */
+    private static int reloadAll(CommandSourceStack source) {
+        reloadConfig(source);
+        reloadResources(source);
+        return ScriptLoader.reloadAll(source);
+    }
+
+    /** Перечитать scriptcraft/config.toml. */
     private static int reloadConfig(CommandSourceStack source) {
         String error = ScriptCraftConfig.reloadFromDisk();
         if (error != null) {
@@ -271,18 +274,31 @@ public final class ScriptCommands {
         }
     }
 
-    /** Обязательный аргумент только в цепочке. Необязательный можно пропустить: команда выполняется и до него. */
+    /** Слово (take) — узел literal. Тип — аргумент. Необязательный тип можно пропустить. */
     private static void attachArguments(ArgumentBuilder<CommandSourceStack, ?> parent, String name,
                                         List<ArgSpec> specs, int index) {
         if (index >= specs.size()) {
             parent.executes(ctx -> invoke(name, ctx, specs));
             return;
         }
-        if (specs.get(index).optional()) {
+        ArgSpec spec = specs.get(index);
+        if (spec.isLiteral()) {
+            var next = Commands.literal(spec.literal());
+            attachArguments(next, name, specs, index + 1);
+            parent.then(next);
+            return;
+        }
+        if (spec.optional()) {
             parent.executes(ctx -> invoke(name, ctx, specs));
         }
-        boolean last = index == specs.size() - 1;
-        var next = Commands.argument("a" + index, argumentType(specs.get(index).type(), last));
+        boolean lastTyped = true;
+        for (int i = index + 1; i < specs.size(); i++) {
+            if (!specs.get(i).isLiteral()) {
+                lastTyped = false;
+                break;
+            }
+        }
+        var next = Commands.argument("a" + index, argumentType(spec.type(), lastTyped));
         attachArguments(next, name, specs, index + 1);
         parent.then(next);
     }
@@ -291,6 +307,9 @@ public final class ScriptCommands {
         List<ArgType> types = new ArrayList<>();
         List<Object> values = new ArrayList<>();
         for (int i = 0; i < specs.size(); i++) {
+            if (specs.get(i).isLiteral()) {
+                continue;
+            }
             types.add(specs.get(i).type());
             values.add(readArgument(ctx, specs.get(i).type(), "a" + i));
         }

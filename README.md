@@ -102,13 +102,11 @@ scriptcraft/
 |---|---|
 | `/sc help` | short help |
 | F3 + `` ` `` | studio: home, journal, and editing server scripts (operators only; the key is not in Controls) |
-| `/sc reload` | reload every script |
+| `/sc reload` | reread the config, resources and every script |
 | `/sc reload <script>` | reload one script |
 | `/sc enable <script>` | enable a disabled script |
 | `/sc disable <script>` | disable a script (the file is renamed to `-name.sc`) |
 | `/sc list` | scripts, commands, variables, and errors |
-| `/sc config reload` | reread `scriptcraft/config.toml` without reloading scripts |
-| `/sc resources reload` | reread `resources/assets` and send changes to online players |
 | `/sc ids` | which blocks and items have a real id, and which are still in a temporary slot |
 | `/sc give <players> <id> [count]` | give a script block or item by its id |
 

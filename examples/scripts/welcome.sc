@@ -12,7 +12,7 @@ on join:
 		set {coins::%player%} to 20
 		send "&7Стартовые &e20 монет&7. Магазин: &f/menu" to player
 	else:
-		send "&aС возвращением, &e%player%&a! Вход номер {joins::%player%}." to player
+		send "&aС возвращением, &e%player%&a! Вход номер %{joins::%player%}%." to player
 	set {-online_since::%player%} to "сегодня"
 	broadcast "&7%player% зашёл (онлайн: %online%)"
 
@@ -94,7 +94,7 @@ command /sethome:
 	set {home_y::%player%} to y of player
 	set {home_z::%player%} to z of player
 	set {home_world::%player%} to world of player
-	send "&aДом сохранён: &f{home_x::%player%} {home_y::%player%} {home_z::%player%}" to player
+	send "&aДом сохранён: &f%{home_x::%player%}% %{home_y::%player%}% %{home_z::%player%}%" to player
 
 command /home:
 	aliases: base
@@ -127,7 +127,7 @@ command /coins:
 	aliases: bal, balance
 	if {coins::%player%} is not set:
 		set {coins::%player%} to 0
-	send "&eМонет: &6{coins::%player%}" to player
+	send "&eМонет: &6%{coins::%player%}%" to player
 
 # chance of — случайная ветка. {-worked} живёт до перезапуска сервера.
 command /work:
@@ -140,12 +140,12 @@ command /work:
 		chance of 25%:
 			add 5 to {coins::%player%}
 			send "&dПремия! Ещё +5." to player
-		send "&a+5 монет. Сейчас: &6{coins::%player%}" to player
+		send "&a+5 монет. Сейчас: &6%{coins::%player%}%" to player
 
 command /pay <player> <integer>:
 	aliases: transfer
 	if {coins::%player%} < arg-2:
-		send "&cНе хватает монет. Баланс: {coins::%player%}" to player
+		send "&cНе хватает монет. Баланс: %{coins::%player%}%" to player
 	else:
 		if arg-2 < 1:
 			send "&cСумма должна быть больше нуля." to player

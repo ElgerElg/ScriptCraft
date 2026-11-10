@@ -365,7 +365,7 @@ public final class Effects {
         public void execute(ExecutionContext ctx) {
             String id = resolvedItemId(itemId, ctx);
             Item item = ItemResolver.resolve(id)
-                    .orElseThrow(() -> new ScriptRuntimeException("Неизвестный предмет: " + id));
+                    .orElseThrow(() -> new ScriptRuntimeException(com.scriptcraft.lang.Messages.get("effect.unknown_item", id)));
             int total = count == null ? 1 : (int) Math.max(1, Math.min(64 * 36, number(count, ctx)));
             int maxStack = new ItemStack(item).getMaxStackSize();
             for (ServerPlayer p : target.resolve(ctx)) {
@@ -597,8 +597,9 @@ public final class Effects {
             }
             Double n = Expression.toNumber(v);
             if (n == null) {
-                throw new ScriptRuntimeException("неизвестное время: " + Expression.toText(v)
-                        + " (day, noon, night, midnight или число тиков)");
+                throw new ScriptRuntimeException(com.scriptcraft.lang.Phrase.pick(
+                        "unknown time: " + Expression.toText(v) + " (day, noon, night, midnight or a tick number)",
+                        "неизвестное время: " + Expression.toText(v) + " (day, noon, night, midnight или число тиков)"));
             }
             return Math.floorMod(n.longValue(), 24000L);
         }
@@ -627,7 +628,7 @@ public final class Effects {
         public void execute(ExecutionContext ctx) {
             String id = resolvedItemId(itemId, ctx);
             Item item = ItemResolver.resolve(id)
-                    .orElseThrow(() -> new ScriptRuntimeException("Неизвестный предмет: " + id));
+                    .orElseThrow(() -> new ScriptRuntimeException(com.scriptcraft.lang.Messages.get("effect.unknown_item", id)));
             int total = count == null ? 1 : (int) Math.max(1, Math.min(64 * 36, number(count, ctx)));
             for (ServerPlayer p : target.resolve(ctx)) {
                 int left = total;

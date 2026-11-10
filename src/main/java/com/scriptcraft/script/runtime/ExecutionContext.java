@@ -20,9 +20,15 @@ import java.util.regex.Pattern;
  * плейсхолдеры (%player%, %args%...), доступ к переменным {name} и лимит выполнения.
  */
 public final class ExecutionContext {
-    /** Плейсхолдеры вида %name%. */
-    private static final Pattern PLACEHOLDER = Pattern.compile("%([a-zA-Z0-9_-]+)%");
-    /** Переменные в тексте: {name}, {coins::%player%}. */
+    /** Плейсхолдеры, nbt и targeted. Более длинные формы стоят первыми. */
+    private static final Pattern PLACEHOLDER = Pattern.compile(
+            "%nbt ([^%]+?) of targeted (entity|block|player)%"
+                    + "|%nbt of targeted (entity|block|player)%"
+                    + "|%targeted (player|entity|block)%"
+                    + "|%([a-zA-Z0-9_-]+)%");
+    /** В кавычках значение переменной только так: %{имя}%. Голые {имя} в тексте остаются как есть. */
+    private static final Pattern TEXT_VARIABLE = Pattern.compile("%\\{([^{}]+)}%");
+    /** Шаблоны полосы HUD по-прежнему хранят {имя} целиком. */
     private static final Pattern VARIABLE = Pattern.compile("\\{([^{}]+)}");
     /** Цветовые коды в стиле Bukkit: &a, &l ... -> §a, §l. */
     private static final Pattern COLOR = Pattern.compile("&([0-9a-fk-orA-FK-OR])");
@@ -242,14 +248,11 @@ public final class ExecutionContext {
      * Плейсхолдеры вроде %health% не трогает — их считает клиент.
      */
     public static String fillVariables(String template) {
-        Matcher m = VARIABLE.matcher(template);
-        StringBuilder sb = new StringBuilder();
-        while (m.find()) {
-            String value = Expression.toText(VariableStore.get(m.group(1).strip()));
-            m.appendReplacement(sb, Matcher.quoteReplacement(value));
+        String text = replaceTextVariables(template, name -> Expression.toText(VariableStore.get(name)));
+        if (text.matches("\\{[^{}]+}")) {
+            text = Expression.toText(VariableStore.get(text.substring(1, text.length() - 1).strip()));
         }
-        m.appendTail(sb);
-        return COLOR.matcher(sb.toString()).replaceAll("\u00a7$1");
+        return COLOR.matcher(text).replaceAll("\u00a7$1");
     }
 
     public Object getVariable(String name) {
@@ -290,29 +293,72 @@ public final class ExecutionContext {
      */
     public String format(String raw) {
         String text = expandPlaceholders0(raw);
-        Matcher m = VARIABLE.matcher(text);
+        text = replaceTextVariables(text, name -> Expression.toText(getVariable(name)));
+        return COLOR.matcher(text).replaceAll("\u00a7$1");
+    }
+
+    private static String replaceTextVariables(String raw, java.util.function.Function<String, String> values) {
+        Matcher m = TEXT_VARIABLE.matcher(raw);
         StringBuilder sb = new StringBuilder();
         while (m.find()) {
-            String value = Expression.toText(getVariable(m.group(1).strip()));
-            m.appendReplacement(sb, Matcher.quoteReplacement(value));
+            m.appendReplacement(sb, Matcher.quoteReplacement(values.apply(m.group(1).strip())));
         }
         m.appendTail(sb);
-        return COLOR.matcher(sb.toString()).replaceAll("\u00a7$1");
+        return sb.toString();
     }
 
     private String expandPlaceholders0(String raw) {
         Matcher m = PLACEHOLDER.matcher(raw);
         StringBuilder sb = new StringBuilder();
         while (m.find()) {
-            String key = m.group(1).toLowerCase(Locale.ROOT);
-            String value = variables.get(key);
-            if (value == null) {
-                value = dynamicPlaceholder(key, m.group(0));
-            }
+            String value = placeholderHit(m);
             m.appendReplacement(sb, Matcher.quoteReplacement(value));
         }
         m.appendTail(sb);
         return sb.toString();
+    }
+
+    private String placeholderHit(Matcher m) {
+        if (m.group(2) != null) {
+            return nbtText(m.group(1).strip(), m.group(2));
+        }
+        if (m.group(3) != null) {
+            return nbtText("", m.group(3));
+        }
+        if (m.group(4) != null) {
+            return lookText(m.group(4));
+        }
+        String key = m.group(5).toLowerCase(Locale.ROOT);
+        String value = variables.get(key);
+        if (value == null) {
+            value = dynamicPlaceholder(key, m.group(0));
+        }
+        return value;
+    }
+
+    private String nbtText(String path, String kind) {
+        if (player == null) {
+            return "<none>";
+        }
+        try {
+            return NbtAccess.read(player, kind, path);
+        } catch (RuntimeException e) {
+            return "<none>";
+        }
+    }
+
+    private String lookText(String kind) {
+        if (player == null) {
+            return "<none>";
+        }
+        return switch (kind) {
+            case "player" -> {
+                ServerPlayer p = Target.Targeted.lookedAt(player);
+                yield p == null ? "<none>" : p.getGameProfile().getName();
+            }
+            case "entity", "block" -> NbtAccess.describe(player, kind);
+            default -> "<none>";
+        };
     }
 
     /**
@@ -321,21 +367,12 @@ public final class ExecutionContext {
      * %loop-player% — имя текущего игрока цикла (или &lt;none&gt;).
      */
     private String dynamicPlaceholder(String key, String fallback) {
-        switch (key) {
-            case "targeted" -> {
-                ServerPlayer p = player == null ? null : Target.Targeted.lookedAt(player);
-                return p == null ? "<none>" : p.getGameProfile().getName();
-            }
-            case "loop-player" -> {
-                return loopPlayer == null ? "<none>" : loopPlayer.getGameProfile().getName();
-            }
-            case "script" -> {
-                return scriptName();
-            }
-            default -> {
-                return fallback;
-            }
-        }
+        return switch (key) {
+            case "targeted" -> lookText("player");
+            case "loop-player" -> loopPlayer == null ? "<none>" : loopPlayer.getGameProfile().getName();
+            case "script" -> scriptName();
+            default -> fallback;
+        };
     }
 
     /** Ответ тому, кто запустил скрипт (игроку или консоли). */

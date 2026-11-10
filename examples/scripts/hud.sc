@@ -46,13 +46,13 @@ on join or load:
 		bar "air" value air direction bottom_to_top at -8, -70 size 6x36 anchor right color #55AAFF text "%percent%%" layer 1
 	create hud "coins" for player:
 		slot image "example:textures/gui/coin.png" at 4, 4 anchor top_left id coin_icon layer 0
-		text "{coins::%player%}" at 26, 8 anchor top_left color #FFD700 shadow id coins_text layer 1
+		text "%{coins::%player%}%" at 26, 8 anchor top_left color #FFD700 shadow id coins_text layer 1
 		bar "coins_goal" value {coins::%player%} max 100 at 4, 24 size 70x4 anchor top_left color #FFD700 layer 0
 		text "%script%" at -4, 4 anchor top_right color #666666 layer 1
 
 command /coinhud:
 	aliases: coinsui
-	set text of hud "coins_text" for player to "{coins::%player%}"
+	set text of hud "coins_text" for player to "%{coins::%player%}%"
 	set value of bar "coins_goal" for player to {coins::%player%}
 
 command /hudoff:
