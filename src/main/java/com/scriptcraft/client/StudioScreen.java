@@ -581,7 +581,14 @@ public class StudioScreen extends Screen {
         } else {
             g.enableScissor(editorX, editorY, editorX + editorW, editorY + editorH);
             int view = Math.max(1, editorH / LINE_H);
-            doc.ensureVisible(view, LINE_H);
+            if (doc.followCaret) {
+                doc.ensureVisible(view, LINE_H);
+                doc.followCaret = false;
+            }
+            int maxScroll = Math.max(0, doc.lines.size() - view);
+            if (doc.scroll > maxScroll) {
+                doc.scroll = maxScroll;
+            }
             for (int i = doc.scroll; i < doc.lines.size(); i++) {
                 int ly = editorY + (i - doc.scroll) * LINE_H + 2;
                 if (ly > editorY + editorH) {
@@ -936,7 +943,9 @@ public class StudioScreen extends Screen {
         int step = (int) Math.signum(delta) * -3;
         ScriptDocument doc = script();
         if (doc != null && !settings) {
-            doc.scroll = Math.max(0, doc.scroll + step);
+            int view = Math.max(1, editorH / LINE_H);
+            int maxScroll = Math.max(0, doc.lines.size() - view);
+            doc.scroll = Math.max(0, Math.min(maxScroll, doc.scroll + step));
         } else if (StudioSession.JOURNAL.equals(StudioSession.active)) {
             if (mouseX < px + 8 + journalListW) {
                 listScroll = Math.max(0, Math.min(listMax, listScroll + step * 8));
@@ -1055,7 +1064,11 @@ public class StudioScreen extends Screen {
             return true;
         }
         if (key == GLFW.GLFW_KEY_DELETE) {
-            doc.deleteForward();
+            if (ctrl) {
+                doc.deleteWordForward();
+            } else {
+                doc.deleteForward();
+            }
             return true;
         }
         if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
@@ -1067,6 +1080,10 @@ public class StudioScreen extends Screen {
             return true;
         }
         if (key == GLFW.GLFW_KEY_LEFT) {
+            if (ctrl) {
+                doc.moveWord(false, shift);
+                return true;
+            }
             int col = doc.col - 1;
             int line = doc.line;
             if (col < 0 && line > 0) {
@@ -1077,6 +1094,10 @@ public class StudioScreen extends Screen {
             return true;
         }
         if (key == GLFW.GLFW_KEY_RIGHT) {
+            if (ctrl) {
+                doc.moveWord(true, shift);
+                return true;
+            }
             int col = doc.col + 1;
             int line = doc.line;
             if (col > doc.lines.get(line).length() && line + 1 < doc.lines.size()) {
@@ -1087,11 +1108,19 @@ public class StudioScreen extends Screen {
             return true;
         }
         if (key == GLFW.GLFW_KEY_UP) {
-            doc.move(doc.line - 1, doc.col, shift);
+            if (ctrl) {
+                doc.moveWord(false, shift);
+            } else {
+                doc.move(doc.line - 1, doc.col, shift);
+            }
             return true;
         }
         if (key == GLFW.GLFW_KEY_DOWN) {
-            doc.move(doc.line + 1, doc.col, shift);
+            if (ctrl) {
+                doc.moveWord(true, shift);
+            } else {
+                doc.move(doc.line + 1, doc.col, shift);
+            }
             return true;
         }
         if (key == GLFW.GLFW_KEY_HOME) {

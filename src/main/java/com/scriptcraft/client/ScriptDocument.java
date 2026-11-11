@@ -22,6 +22,8 @@ public final class ScriptDocument {
     public boolean box;
     public int scroll;
     public int horiz;
+    /** Курсор сдвинулся правкой или стрелками: следующий кадр покажет его строку. Колесо этот флаг не ставит. */
+    public boolean followCaret;
     private final ArrayDeque<Snap> undo = new ArrayDeque<>();
     private final ArrayDeque<Snap> redo = new ArrayDeque<>();
 
@@ -67,6 +69,7 @@ public final class ScriptDocument {
         if (!loaded || value.isEmpty()) {
             return;
         }
+        followCaret = true;
         if (box && anchorLine >= 0) {
             snapshot();
             if (!value.contains("\n") && !value.contains("\r")) {
@@ -106,6 +109,7 @@ public final class ScriptDocument {
         if (!loaded) {
             return;
         }
+        followCaret = true;
         if (box && anchorLine >= 0) {
             snapshot();
             int[] span = boxSpan();
@@ -142,6 +146,7 @@ public final class ScriptDocument {
         if (!loaded) {
             return;
         }
+        followCaret = true;
         if (box || anchorLine >= 0) {
             backspace();
             return;
@@ -172,10 +177,43 @@ public final class ScriptDocument {
         col = i;
     }
 
+    /** Стирает вперёд до пробела или отступа. В конце строки убирает перевод, как обычный Delete. */
+    public void deleteWordForward() {
+        if (!loaded) {
+            return;
+        }
+        followCaret = true;
+        if (box || anchorLine >= 0) {
+            deleteForward();
+            return;
+        }
+        String current = lines.get(line);
+        if (col >= current.length()) {
+            deleteForward();
+            return;
+        }
+        int i = col;
+        if (isGap(current.charAt(i))) {
+            while (i < current.length() && isGap(current.charAt(i))) {
+                i++;
+            }
+        } else {
+            while (i < current.length() && !isGap(current.charAt(i))) {
+                i++;
+            }
+        }
+        if (i == col) {
+            return;
+        }
+        snapshot();
+        lines.set(line, current.substring(0, col) + current.substring(i));
+    }
+
     public void deleteForward() {
         if (!loaded) {
             return;
         }
+        followCaret = true;
         if (box && anchorLine >= 0) {
             backspace();
             return;
@@ -200,6 +238,7 @@ public final class ScriptDocument {
     }
 
     public void selectAll() {
+        followCaret = true;
         anchorLine = 0;
         anchorCol = 0;
         line = lines.size() - 1;
@@ -257,7 +296,19 @@ public final class ScriptDocument {
         return out.toString();
     }
 
+    /** Ctrl+стрелки: предыдущее или следующее слово. Пробел и таб — граница, через строки тоже. */
+    public void moveWord(boolean forward, boolean keep) {
+        if (!loaded || lines.isEmpty()) {
+            return;
+        }
+        int row = Math.max(0, Math.min(lines.size() - 1, line));
+        int at = Math.max(0, Math.min(lines.get(row).length(), col));
+        int[] next = forward ? nextWord(row, at) : prevWord(row, at);
+        move(next[0], next[1], keep);
+    }
+
     public void move(int newLine, int newCol, boolean keep) {
+        followCaret = true;
         newLine = Math.max(0, Math.min(lines.size() - 1, newLine));
         newCol = Math.max(0, Math.min(lines.get(newLine).length(), newCol));
         if (keep) {
@@ -275,6 +326,7 @@ public final class ScriptDocument {
 
     /** Начать или растянуть прямоугольник. Столбец может выходить за конец короткой строки. */
     public void moveBox(int newLine, int newCol) {
+        followCaret = true;
         newLine = Math.max(0, Math.min(lines.size() - 1, newLine));
         newCol = Math.max(0, newCol);
         if (anchorLine < 0 || !box) {
@@ -290,6 +342,7 @@ public final class ScriptDocument {
         if (undo.isEmpty()) {
             return;
         }
+        followCaret = true;
         redo.addLast(capture());
         restore(undo.removeLast());
     }
@@ -298,6 +351,7 @@ public final class ScriptDocument {
         if (redo.isEmpty()) {
             return;
         }
+        followCaret = true;
         undo.addLast(capture());
         restore(redo.removeLast());
     }
@@ -313,6 +367,56 @@ public final class ScriptDocument {
         if (scroll < 0) {
             scroll = 0;
         }
+    }
+
+    private int[] nextWord(int row, int at) {
+        String text = lines.get(row);
+        if (at < text.length()) {
+            if (!isGap(text.charAt(at))) {
+                while (at < text.length() && !isGap(text.charAt(at))) {
+                    at++;
+                }
+            }
+            while (at < text.length() && isGap(text.charAt(at))) {
+                at++;
+            }
+            if (at < text.length()) {
+                return new int[]{row, at};
+            }
+        }
+        while (row + 1 < lines.size()) {
+            row++;
+            text = lines.get(row);
+            int i = 0;
+            while (i < text.length() && isGap(text.charAt(i))) {
+                i++;
+            }
+            if (i < text.length() || row + 1 >= lines.size()) {
+                return new int[]{row, i};
+            }
+        }
+        return new int[]{row, lines.get(row).length()};
+    }
+
+    private int[] prevWord(int row, int at) {
+        String text = lines.get(row);
+        while (at == 0) {
+            if (row == 0) {
+                return new int[]{0, 0};
+            }
+            row--;
+            text = lines.get(row);
+            at = text.length();
+        }
+        if (at > 0 && isGap(text.charAt(at - 1))) {
+            while (at > 0 && isGap(text.charAt(at - 1))) {
+                at--;
+            }
+        }
+        while (at > 0 && !isGap(text.charAt(at - 1))) {
+            at--;
+        }
+        return new int[]{row, at};
     }
 
     private static boolean isGap(char ch) {
