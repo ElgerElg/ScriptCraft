@@ -155,7 +155,7 @@ public final class Messages {
         add("studio.home", "Home", "Главная");
         add("studio.journal", "Journal", "Журнал");
         add("studio.patches", "Patches and versions", "Патчи и версии");
-        add("studio.p1", "0.3.11 — script reload rebuilds the HUD, command errors go to the journal", "0.3.11 — перезагрузка скрипта обновляет HUD, ошибки команд в журнале");
+        add("studio.p1", "0.4.1 — script reload rebuilds the HUD, command errors go to the journal", "0.4.1 — перезагрузка скрипта обновляет HUD, ошибки команд в журнале");
         add("studio.links", "Links", "Ссылки");
         add("studio.link.github", "GitHub", "GitHub");
         add("studio.link.docs", "Documentation", "Документация");

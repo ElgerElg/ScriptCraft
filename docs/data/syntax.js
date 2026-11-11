@@ -15,7 +15,7 @@
  */
 window.SC_DOCS = window.SC_DOCS || {};
 window.SC_DOCS.syntax = {
-  version: "0.3.11",
+  version: "0.4.1",
   categories: [
     { id: "events",     ru: "События",            en: "Events" },
     { id: "structures", ru: "Структуры",          en: "Structures" },
