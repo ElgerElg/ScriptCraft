@@ -11,11 +11,13 @@ import com.scriptcraft.script.parser.PeriodHandler;
 import com.scriptcraft.script.runtime.Action;
 import com.scriptcraft.script.runtime.Actions;
 import com.scriptcraft.script.runtime.ExecutionContext;
+import com.scriptcraft.script.runtime.HudActions;
 import com.scriptcraft.script.runtime.ScriptEvent;
 
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -95,6 +97,50 @@ final class SimpleProgram implements ScriptProgram {
                 runSafely(event, handler, new ExecutionContext(server, null, null));
             }
         }
+    }
+
+    @Override
+    public void replayHud(Predicate<String> files, MinecraftServer server) {
+        List<ServerPlayer> players = List.copyOf(server.getPlayerList().getPlayers());
+        if (players.isEmpty()) {
+            return;
+        }
+        for (ScriptEvent event : List.of(ScriptEvent.LOAD, ScriptEvent.JOIN)) {
+            for (EventHandler handler : parsed.events().getOrDefault(event, List.of())) {
+                if (!files.test(handler.file())) {
+                    continue;
+                }
+                List<Action> hud = hudActions(handler.actions());
+                if (hud.isEmpty()) {
+                    continue;
+                }
+                for (ServerPlayer player : players) {
+                    ExecutionContext ctx = new ExecutionContext(server, player, null);
+                    ctx.setScript(handler.file());
+                    try {
+                        Actions.runAll(hud, ctx);
+                    } catch (RuntimeException e) {
+                        String message = e.getMessage() == null ? e.toString() : e.getMessage();
+                        ScriptCraft.LOGGER.warn("[ScriptCraft] HUD {} не обновился: {}", handler.file(), message);
+                        ScriptLoader.noteRuntime(handler.file(), message, player, server);
+                    }
+                }
+            }
+        }
+    }
+
+    /** create hud, полосы, текст и hide/show vanilla. Вложенные if не повторяются. */
+    private static List<Action> hudActions(List<Action> actions) {
+        List<Action> hud = new ArrayList<>();
+        for (Action action : actions) {
+            if (action instanceof HudActions.CreateHud || action instanceof HudActions.Vanilla
+                    || action instanceof HudActions.SetBar || action instanceof HudActions.SetText
+                    || action instanceof HudActions.Visibility || action instanceof HudActions.Remove
+                    || action instanceof HudActions.Clear) {
+                hud.add(action);
+            }
+        }
+        return hud;
     }
 
     /** Каждый запуск — свой контекст и лимит; ошибка не прерывает остальные обработчики и игроков. */

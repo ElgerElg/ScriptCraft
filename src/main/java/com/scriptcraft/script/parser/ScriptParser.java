@@ -97,7 +97,11 @@ public final class ScriptParser {
         for (ScriptSource source : sources) {
             currentFile = source.fileName();
             currentNamespace = ScriptCraft.MODID;
-            parseFile(preprocess(source.lines()));
+            try {
+                parseFile(preprocess(source.lines()));
+            } catch (RuntimeException e) {
+                errors.add(currentFile + ":1: " + (e.getMessage() == null ? e.toString() : e.getMessage()));
+            }
         }
         return new ParseResult(events, commands, List.copyOf(blocks.values()), List.copyOf(items.values()),
                 List.copyOf(periods), List.copyOf(errors));
@@ -656,6 +660,8 @@ public final class ScriptParser {
                     actions.add(parseAction(line, children));
                 } catch (ParseException e) {
                     error(line, e.getMessage());
+                } catch (RuntimeException e) {
+                    error(line, e.getMessage() == null ? e.toString() : e.getMessage());
                 }
             }
             i = end;

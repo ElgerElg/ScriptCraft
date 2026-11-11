@@ -38,7 +38,7 @@ import java.util.function.Predicate;
  *
  * Жизненный цикл скрипта: "on unload:" старой версии -> пересборка -> "on load:" новой версии.
  * load срабатывает при старте сервера, /sc reload, /sc reload &lt;скрипт&gt; и /sc enable — только у затронутых
- * файлов. Поэтому HUD из "on join or load:" появляется у игроков онлайн сразу, без перезахода.
+ * файлов. После этого HUD из on load и on join заново применяется игрокам, которые уже онлайн.
  */
 public final class ScriptLoader {
     /** Текущий движок. Сюда можно подставить другой (например, на Rhino) — см. TODO в README. */
@@ -105,8 +105,14 @@ public final class ScriptLoader {
     private static void recompile() {
         long start = System.nanoTime();
         List<String> errors = new ArrayList<>(READ_ERRORS);
-        ScriptProgram compiled = ENGINE.compile(new ArrayList<>(SOURCES.values()), errors);
-        program = compiled;
+        try {
+            ScriptProgram compiled = ENGINE.compile(new ArrayList<>(SOURCES.values()), errors);
+            program = compiled;
+        } catch (RuntimeException e) {
+            String msg = e.getMessage() == null ? e.toString() : e.getMessage();
+            ScriptCraft.LOGGER.error("[ScriptCraft] Скрипты не собрались", e);
+            errors.add("compile: " + msg);
+        }
         lastErrors = List.copyOf(errors);
         if (ScriptCraftConfig.logScriptLoadTimes()) {
             ScriptCraft.LOGGER.info("[ScriptCraft] {}", Messages.get("reload.time", (System.nanoTime() - start) / 1_000_000L));
@@ -123,6 +129,7 @@ public final class ScriptLoader {
         loadAllFromDisk();
         afterChange(source);
         fireScriptEvent(ScriptEvent.LOAD, f -> true, server);
+        program.replayHud(f -> true, server);
         InputSync.sync(server);
         int errors = lastErrors.size();
         Feedback.ok(source, "reload.all", SOURCES.size(), program.commandNames().size(), errors);
@@ -157,6 +164,7 @@ public final class ScriptLoader {
         recompile();
         afterChange(source);
         fireScriptEvent(ScriptEvent.LOAD, name::equals, source.getServer());
+        program.replayHud(name::equals, source.getServer());
         InputSync.sync(source.getServer());
         Feedback.ok(source, "reload.one", name, lastErrors.size());
         sendErrors(source);
@@ -254,6 +262,7 @@ public final class ScriptLoader {
         afterChange(source);
         // "on load:" / "on join or load:" — HUD и прочая подготовка сразу для игроков онлайн.
         fireScriptEvent(ScriptEvent.LOAD, name::equals, source.getServer());
+        program.replayHud(name::equals, source.getServer());
         InputSync.sync(source.getServer());
         Feedback.ok(source, "script.enabled", name);
         errors.forEach(e -> Feedback.failText(source, e));
@@ -401,7 +410,10 @@ public final class ScriptLoader {
             }
             return 1;
         } catch (RuntimeException e) {
-            Feedback.fail(source, "command.error", name, e.getMessage());
+            String message = e.getMessage() == null ? e.toString() : e.getMessage();
+            CommandDefinition def = program.command(name);
+            noteRuntime(def == null ? "" : def.file(), message, source.getPlayer(), source.getServer());
+            Feedback.fail(source, "command.error", name, message);
             return 0;
         }
     }

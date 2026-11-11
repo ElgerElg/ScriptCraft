@@ -15,7 +15,7 @@
  */
 window.SC_DOCS = window.SC_DOCS || {};
 window.SC_DOCS.syntax = {
-  version: "0.3.10",
+  version: "0.3.11",
   categories: [
     { id: "events",     ru: "События",            en: "Events" },
     { id: "structures", ru: "Структуры",          en: "Structures" },
@@ -1346,8 +1346,8 @@ text "Взять алмаз" at -40, 16 run "/hand diamond"`,
     name: { ru: "Создать HUD", en: "Create HUD" },
     syntax: ["create hud \"<группа>\":", "create hud \"<группа>\" for <цель>:"],
     desc: {
-      ru: "Рисует поверх экрана игры группу элементов, перечисленных с отступом ниже: `text`, `image`, `slot`, `bar`, `hotbar` (кнопок нет — HUD не принимает клики). Имя группы — латиница. Повторный `create hud` с тем же именем заменяет группу целиком (если ничего не изменилось — пакет не отправляется). Если в тексте, `value` или `max` есть `{переменная}`, HUD обновляет её сам в момент записи: пакет уходит только этому игроку и только если строка изменилась. HUD хранится на сервере: после перезахода игрок получает его снова; `/sc reload` его не трогает, при остановке сервера он очищается. Группа запоминает создавший её скрипт: `/sc disable` этого скрипта убирает её у всех. Чтобы HUD появлялся сразу после `/sc enable`, создавайте его в `on join or load:`. До 128 элементов на игрока.",
-      en: "Draws a group of elements over the game screen, listed indented below: `text`, `image`, `slot`, `bar`, `hotbar` (no buttons — the HUD takes no clicks). The group name is Latin. Running `create hud` again with the same name replaces the whole group (nothing is sent if nothing changed). If a text, `value` or `max` contains a `{variable}`, the HUD updates it when that variable is written: a packet goes only to that player, and only if the text changed. The HUD is kept on the server: players get it back after re-joining; `/sc reload` does not touch it, it is cleared when the server stops. A group remembers the script that created it: `/sc disable` of that script removes it for everyone. To show the HUD right after `/sc enable`, create it in `on join or load:`. Up to 128 elements per player."
+      ru: "Рисует поверх экрана игры группу элементов, перечисленных с отступом ниже: `text`, `image`, `slot`, `bar`, `hotbar` (кнопок нет — HUD не принимает клики). Имя группы — латиница. Повторный `create hud` с тем же именем заменяет группу целиком (если ничего не изменилось — пакет не отправляется). Если в тексте, `value` или `max` есть `{переменная}`, HUD обновляет её сам в момент записи: пакет уходит только этому игроку и только если строка изменилась. HUD хранится на сервере: после перезахода игрок получает его снова, при остановке сервера он очищается. `/sc reload` и `/sc reload <скрипт>` заново применяют HUD из `on load` и `on join` этого скрипта игрокам, которые уже онлайн: `create hud for player` без игрока в контексте идёт всем онлайн. Группа запоминает создавший её скрипт: `/sc disable` этого скрипта убирает её у всех. До 128 элементов на игрока.",
+      en: "Draws a group of elements over the game screen, listed indented below: `text`, `image`, `slot`, `bar`, `hotbar` (no buttons — the HUD takes no clicks). The group name is Latin. Running `create hud` again with the same name replaces the whole group (nothing is sent if nothing changed). If a text, `value` or `max` contains a `{variable}`, the HUD updates it when that variable is written: a packet goes only to that player, and only if the text changed. The HUD is kept on the server: players get it back after re-joining, and it is cleared when the server stops. `/sc reload` and `/sc reload <script>` reapply that script's HUD from `on load` and `on join` for players already online: `create hud for player` with no player in context goes to everyone online. A group remembers the script that created it: `/sc disable` of that script removes it for everyone. Up to 128 elements per player."
     },
     example: `on join or load:
 	create hud "stats" for player:

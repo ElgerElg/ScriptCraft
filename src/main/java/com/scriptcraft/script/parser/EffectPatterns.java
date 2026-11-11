@@ -135,8 +135,8 @@ final class EffectPatterns {
         // give <цель> <предмет> [кол-во] — после "give ... effect ..." и "give N xp ...", чтобы не перехватить их
         rule("give %target% %id% %num%", c -> new Effects.GiveItem(c.target(0), c.id(1), c.num(2)));
         rule("give %target% %id%", c -> new Effects.GiveItem(c.target(0), c.id(1), null));
-        rule("give %target% %value% %num%", c -> new Effects.GiveExpr(c.target(0), c.exprValue(1), c.num(2)));
-        rule("give %target% %value%", c -> new Effects.GiveExpr(c.target(0), c.exprValue(1), null));
+        rule("give %target% %piece% %num%", c -> new Effects.GiveExpr(c.target(0), c.exprValue(1), c.num(2)));
+        rule("give %target% %piece%", c -> new Effects.GiveExpr(c.target(0), c.exprValue(1), null));
         rule("teleport|tp %target% to world spawn", c -> new Effects.TeleportSpawn(c.target(0), true));
         rule("teleport|tp %target% to spawn", c -> new Effects.TeleportSpawn(c.target(0), false));
         rule("teleport|tp %target% to %num% %num% %num%",
@@ -166,10 +166,10 @@ final class EffectPatterns {
         rule("set weather to rain", c -> new Effects.SetWeather("rain", null));
         rule("drop %num% %id% at %target%", c -> new Effects.DropItem(c.target(2), c.id(1), c.num(0)));
         rule("drop %id% at %target%", c -> new Effects.DropItem(c.target(1), c.id(0), null));
-        rule("drop %num% %value% at %target%", c -> new Effects.DropExpr(c.exprValue(1), c.num(0), c.target(2), null));
-        rule("drop %value% at %target%", c -> new Effects.DropExpr(c.exprValue(0), null, c.target(1), null));
-        rule("drop %num% %value% at %expr%", c -> new Effects.DropExpr(c.exprValue(1), c.num(0), null, c.expr(2)));
-        rule("drop %value% at %expr%", c -> new Effects.DropExpr(c.exprValue(0), null, null, c.expr(1)));
+        rule("drop %num% %piece% at %target%", c -> new Effects.DropExpr(c.exprValue(1), c.num(0), c.target(2), null));
+        rule("drop %piece% at %target%", c -> new Effects.DropExpr(c.exprValue(0), null, c.target(1), null));
+        rule("drop %num% %piece% at %expr%", c -> new Effects.DropExpr(c.exprValue(1), c.num(0), null, c.expr(2)));
+        rule("drop %piece% at %expr%", c -> new Effects.DropExpr(c.exprValue(0), null, null, c.expr(1)));
         rule("set spawn of %target% to %num% %num% %num%",
                 c -> new Effects.SetSpawn(c.target(0), c.num(1), c.num(2), c.num(3)));
         rule("set spawn of %target% to %expr%", c -> new Effects.SetSpawnAt(c.target(0), c.expr(1)));
@@ -187,7 +187,7 @@ final class EffectPatterns {
         rule("explode at %num% %num% %num%", c -> new Effects.Explode(null, c.num(0), c.num(1), c.num(2), null));
         rule("explode at %target% with force|power %expr%", c -> new Effects.Explode(c.target(0), null, null, null, c.expr(1)));
         rule("explode at %target%", c -> new Effects.Explode(c.target(0), null, null, null, null));
-        rule("explode at %value% with force|power %expr%", c -> new Effects.ExplodeAt(c.exprValue(0), c.expr(1)));
+        rule("explode at %piece% with force|power %expr%", c -> new Effects.ExplodeAt(c.exprValue(0), c.expr(1)));
         rule("explode at %expr%", c -> new Effects.ExplodeAt(c.expr(0), null));
         rule("stop", c -> new Actions.Stop());
         rule("cancel event", c -> new Actions.CancelEvent());
@@ -248,7 +248,13 @@ final class EffectPatterns {
                 }
                 continue;
             }
-            return rule.builder().build(new Captures(captures));
+            try {
+                return rule.builder().build(new Captures(captures));
+            } catch (ParseException e) {
+                throw e;
+            } catch (RuntimeException e) {
+                throw new ParseException(e.getMessage() == null ? e.toString() : e.getMessage());
+            }
         }
         if (targetError != null) {
             throw targetError;
@@ -294,8 +300,9 @@ final class EffectPatterns {
             captures.add(parsed.expression());
             return true;
         }
-        if (alts[0].equals("%value%")) {
-            // Одно выражение, после него шаблон продолжается (drop player's tool at player).
+        if (alts[0].equals("%piece%")) {
+            // Одно выражение не в конце строки (drop player's tool at player).
+            // %value% так не называется: его занимает set gamemode ... to <слово> и ждёт один токен.
             ExprParser.Parsed parsed = ExprParser.parse(tokens, ti);
             captures.add(parsed.expression());
             if (match(parts, pi + 1, tokens, parsed.end(), captures)) {
@@ -412,7 +419,7 @@ final class EffectPatterns {
             return v;
         }
 
-        /** Выражение, пойманное %value% (не в конце строки). */
+        /** Выражение, пойманное %piece% (не в конце строки). */
         Expression exprValue(int i) {
             return (Expression) values.get(i);
         }

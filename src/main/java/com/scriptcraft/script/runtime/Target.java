@@ -45,6 +45,19 @@ public sealed interface Target permits Target.Self, Target.Named, Target.LoopPla
         return players;
     }
 
+    /**
+     * Как {@link #resolve}, но цель {@code player} без игрока в контексте (on load при перезагрузке)
+     * означает всех, кто сейчас онлайн. Так HUD из {@code on load} обновляется без перезахода.
+     */
+    default List<ServerPlayer> resolveHud(ExecutionContext ctx) {
+        if (this instanceof Self && ctx.player() == null) {
+            List<ServerPlayer> players = new ArrayList<>(ctx.server().getPlayerList().getPlayers());
+            ctx.noteTargets(players.size());
+            return players;
+        }
+        return resolve(ctx);
+    }
+
     /** Первый игрок набора или null (для "teleport X to <цель>"). */
     @Nullable
     default ServerPlayer first(ExecutionContext ctx) {

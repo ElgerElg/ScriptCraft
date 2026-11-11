@@ -52,7 +52,18 @@ public final class HudActions {
     public record CreateHud(Target target, String group, List<HudEntry> entries) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            List<ServerPlayer> players = target.resolve(ctx);
+            if (target instanceof Target.Self && ctx.player() == null) {
+                List<ServerPlayer> players = new ArrayList<>(ctx.server().getPlayerList().getPlayers());
+                ctx.noteTargets(players.size());
+                for (ServerPlayer player : players) {
+                    send(playerContext(ctx, player), List.of(player));
+                }
+                return;
+            }
+            send(ctx, target.resolve(ctx));
+        }
+
+        private void send(ExecutionContext ctx, List<ServerPlayer> players) {
             if (players.isEmpty()) {
                 return;
             }
@@ -72,7 +83,18 @@ public final class HudActions {
     public record SetBar(Target target, String id, @Nullable Expression value, @Nullable Expression max) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            List<ServerPlayer> players = target.resolve(ctx);
+            if (target instanceof Target.Self && ctx.player() == null) {
+                List<ServerPlayer> players = new ArrayList<>(ctx.server().getPlayerList().getPlayers());
+                ctx.noteTargets(players.size());
+                for (ServerPlayer player : players) {
+                    send(playerContext(ctx, player), List.of(player));
+                }
+                return;
+            }
+            send(ctx, target.resolve(ctx));
+        }
+
+        private void send(ExecutionContext ctx, List<ServerPlayer> players) {
             if (players.isEmpty()) {
                 return;
             }
@@ -92,7 +114,18 @@ public final class HudActions {
     public record SetText(Target target, String id, String text) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            List<ServerPlayer> players = target.resolve(ctx);
+            if (target instanceof Target.Self && ctx.player() == null) {
+                List<ServerPlayer> players = new ArrayList<>(ctx.server().getPlayerList().getPlayers());
+                ctx.noteTargets(players.size());
+                for (ServerPlayer player : players) {
+                    send(playerContext(ctx, player), List.of(player));
+                }
+                return;
+            }
+            send(ctx, target.resolve(ctx));
+        }
+
+        private void send(ExecutionContext ctx, List<ServerPlayer> players) {
             if (players.isEmpty()) {
                 return;
             }
@@ -110,7 +143,7 @@ public final class HudActions {
     public record Visibility(Target target, String name, boolean visible) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            for (ServerPlayer p : target.resolve(ctx)) {
+            for (ServerPlayer p : target.resolveHud(ctx)) {
                 HudManager.setVisible(p, name, visible);
             }
         }
@@ -120,7 +153,7 @@ public final class HudActions {
     public record Remove(Target target, String name) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            for (ServerPlayer p : target.resolve(ctx)) {
+            for (ServerPlayer p : target.resolveHud(ctx)) {
                 HudManager.remove(p, name);
             }
         }
@@ -130,17 +163,24 @@ public final class HudActions {
     public record Clear(Target target) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            for (ServerPlayer p : target.resolve(ctx)) {
+            for (ServerPlayer p : target.resolveHud(ctx)) {
                 HudManager.clear(p);
             }
         }
+    }
+
+    /** Контекст одного игрока, когда on load шлёт HUD без игрока в событии. */
+    private static ExecutionContext playerContext(ExecutionContext ctx, ServerPlayer player) {
+        ExecutionContext one = new ExecutionContext(ctx.server(), player, null);
+        one.setScript(ctx.script());
+        return one;
     }
 
     /** hide vanilla hotbar for <цель>  /  show vanilla hotbar for <цель>. */
     public record Vanilla(Target target, int mask, boolean hide) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            for (ServerPlayer p : target.resolve(ctx)) {
+            for (ServerPlayer p : target.resolveHud(ctx)) {
                 HudManager.setVanilla(p, mask, hide, ctx.script());
             }
         }

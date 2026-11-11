@@ -44,6 +44,12 @@ public interface ScriptProgram {
      */
     void fireScriptEvent(ScriptEvent event, Predicate<String> files, MinecraftServer server);
 
+    /**
+     * После перезагрузки скрипта заново выполняет его HUD из {@code on load} и {@code on join}
+     * для каждого игрока онлайн: группы, полосы и спрятанные ванильные части.
+     */
+    void replayHud(Predicate<String> files, MinecraftServer server);
+
     /** Выполняет команду. Возвращает false, если команды больше нет в скриптах. */
     boolean runCommand(String name, ExecutionContext ctx);
 

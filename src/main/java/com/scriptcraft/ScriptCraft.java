@@ -59,7 +59,11 @@ public class ScriptCraft {
 
         // 2. Первая загрузка скриптов: события/команды готовы сразу. Define отсюда закрепляют "подсказки" слотов
         //    (scriptcraft/bindings.json) — нужны data-паку и переназначению блоков старых миров до загрузки мира.
-        ScriptLoader.initialLoad();
+        try {
+            ScriptLoader.initialLoad();
+        } catch (RuntimeException e) {
+            LOGGER.error("[ScriptCraft] Скрипты не загрузились, мод продолжит работу", e);
+        }
         // 2a. Гибрид: define, известные уже сейчас, регистрируются настоящими id (example:ruby_block).
         //     Сервер — из своих скриптов; клиент — ещё и из кэша define серверов (scriptcraft/cache/defines.json).
         //     Define, добавленные позже (/sc reload), живут во временных слотах пула до перезапуска.
