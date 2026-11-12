@@ -155,7 +155,7 @@ public final class Messages {
         add("studio.home", "Home", "Главная");
         add("studio.journal", "Journal", "Журнал");
         add("studio.patches", "Patches and versions", "Патчи и версии");
-        add("studio.p1", "0.4.2 — food and tools, block physics, colours stay inside quotes", "0.4.2 — еда и инструменты, физика блоков, цвет только в кавычках");
+        add("studio.p1", "0.4.3 — author's skin, normal head with the overlay — food, tools, rod and shears — block physics — colour only inside quotes", "0.4.3 — скин автора, нормальная голова с оверлеем — еда, инструменты, удочка и ножницы — физика блоков — цвет только внутри кавычек");
         add("studio.links", "Links", "Ссылки");
         add("studio.link.github", "GitHub", "GitHub");
         add("studio.link.docs", "Documentation", "Документация");
@@ -175,10 +175,6 @@ public final class Messages {
         add("studio.ask.no", "No", "Нет");
         add("studio.deleted", "Deleted %s", "Удалено %s");
         add("studio.delete_failed", "&cCould not delete: %s", "&cНе удалось удалить: %s");
-        add("studio.p2", "0.4.1 — options, item nbt, LuckPerms, editor colors and a scrollbar", "0.4.1 — заготовки, nbt предметов, LuckPerms, цвета и ползунок редактора");
-        add("studio.p3", "0.3.10 — text and elements in variables, locations, player's tool", "0.3.10 — текст и элементы в переменных, локации, player's tool");
-        add("studio.p4", "0.3.9 — command words, nbt, targeted block and entity", "0.3.9 — слова в командах, nbt, targeted block и entity");
-        add("studio.p5", "0.3.8 — list variables, a bag for any item", "0.3.8 — списки {имя::*}, сумка для любого предмета");
         add("studio.dev", "Developer", "Разработчик");
         add("studio.role", "author of the mod", "автор мода");
         add("studio.hint", "Open a script with + or File. On a server these are the server's scripts; in singleplayer, the local ones.", "Откройте скрипт кнопкой + или меню «Файл». На сервере это его скрипты, в одиночной игре — локальные.");

@@ -354,15 +354,16 @@ public class StudioScreen extends Screen {
         String tag = Messages.get(tags[(int) ((System.currentTimeMillis() / 4200L) % tags.length)]);
         int tagY = titleY + Math.round(11 * titleScale) + 8;
         g.drawString(this.font, tag, center - this.font.width(tag) / 2, tagY, TEXT, false);
-        int caption = 28;
-        int modelTop = tagY + 14;
-        int room = y + h - modelTop - caption - 4;
-        // Рост модели — два блока, поэтому делитель 2. Центр теперь на всю высоту окна
-        // (патчи ушли в колонку), и фигура выходит примерно вдвое крупнее прежней.
-        float scale = Math.max(36f, Math.min(room / 2.05f, (centerW - 12) / 1.05f));
+        int nameBlock = 28;
+        int crown = tagY + 12;
+        int sole = y + h - nameBlock;
+        int span = Math.max(80, sole - crown);
+        // Два блока роста на всё место между фразой и именем. Ширина не зажимает фигуру в маленькую.
+        float scale = Math.max(52f, Math.min(span / 2.02f, Math.max(52f, (centerW - 4) / 0.62f)));
+        int modelTop = crown + Math.round(scale * 0.5f);
         SkinPortrait.render(g, center, modelTop, scale);
         String dev = "ElgerElg";
-        int foot = modelTop + Math.round(scale * 2.0f) + 4;
+        int foot = Math.min(sole, modelTop + Math.round(scale * 1.52f) + 2);
         g.drawString(this.font, dev, center - this.font.width(dev) / 2, foot, GOLD, false);
         String role = Messages.get("studio.role");
         g.drawString(this.font, role, center - this.font.width(role) / 2, foot + 12, MUTED, false);
@@ -371,13 +372,7 @@ public class StudioScreen extends Screen {
     /** Патчи сверху вниз на всю высоту левой колонки, а не одной кучкой. */
     private void drawPatchColumn(GuiGraphics g, int x, int y, int w, int h) {
         g.drawString(this.font, Messages.get("studio.patches"), x, y, GOLD, false);
-        String[] keys = {"studio.p1", "studio.p2", "studio.p3", "studio.p4", "studio.p5"};
-        int top = y + 16;
-        int slot = Math.max(LINE_H, (h - 16) / keys.length);
-        for (int i = 0; i < keys.length; i++) {
-            int row = top + i * slot;
-            drawWrapped(g, Messages.get(keys[i]), x, row, w, TEXT, row + slot - 2);
-        }
+        drawWrapped(g, Messages.get("studio.p1"), x, y + 16, w, TEXT, y + h);
     }
 
     private void drawLinkColumn(GuiGraphics g, int mx, int my, int x, int y, int w, int h) {
