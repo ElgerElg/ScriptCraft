@@ -952,7 +952,24 @@ if player is not holding diamond_sword:
 	give player diamond_sword 1
 if player does not have bread:
 	give player bread 8`,
-    since: "0.2.0", related: ["cond-gamemode", "cond-and", "eff-give-item"]
+    since: "0.2.0", related: ["cond-gamemode", "cond-and", "eff-give-item", "cond-permission"]
+  },
+  {
+    id: "cond-permission", category: "conditions",
+    name: { ru: "Есть право", en: "Has permission" },
+    syntax: ["<цель> has permission <0-4>", "<цель> has permission \"<узел>\"", "<цель> does not have permission <0-4>", "<цель> does not have permission \"<узел>\""],
+    desc: {
+      ru: "Число 0–4 — ванильный уровень (2 — оператор). Строка в кавычках — узел LuckPerms, например `scriptcraft.shop`. Если мода LuckPerms нет, такой узел есть только у оператора. Никого в цели нет — условие ложно.",
+      en: "A number 0–4 is the vanilla level (2 is operator). A quoted string is a LuckPerms node, for example `scriptcraft.shop`. Without LuckPerms that node is held only by operators. Nobody in the target — the condition is false."
+    },
+    example: `if player has permission "scriptcraft.shop":
+	send "&aМожно" to player
+else:
+	send "&cНет права" to player
+
+if player does not have permission 2:
+	send "&7Ты не оператор" to player`,
+    since: "0.4.1", related: ["struct-command", "cond-player"]
   },
   {
     id: "cond-gamemode", category: "conditions",
