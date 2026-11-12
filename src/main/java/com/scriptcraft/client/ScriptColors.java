@@ -10,9 +10,9 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 
 /**
- * Цвета текста редактора: {@code &7} красит сам код и текст после него, пока цвет не сменят.
- * {@code &7&l} — серый и жирный. Цветовой код сбрасывает жирность, как в игре.
- * Ширина считается тем же стилем, которым строка рисуется, чтобы курсор попадал в букву.
+ * Цвета текста редактора действуют только внутри кавычек: {@code &7} красит код и текст
+ * до закрывающей кавычки или до другого цвета. {@code &7&l} — серый и жирный.
+ * За кавычками цвет снова обычный. Ширина совпадает с тем, как строка рисуется.
  */
 @OnlyIn(Dist.CLIENT)
 public final class ScriptColors {
@@ -22,71 +22,89 @@ public final class ScriptColors {
     public static int width(Font font, String line, int count) {
         int end = Math.max(0, Math.min(count, line.length()));
         int width = 0;
-        int i = 0;
-        Run run = Run.base();
         int tab = font.width("    ");
-        while (i < end) {
-            if (line.charAt(i) == '\t') {
-                width += tab;
-                i++;
-                continue;
-            }
-            int j = i;
-            while (j < end && line.charAt(j) != '\t' && codeAt(line, j) < 0) {
-                j++;
-            }
-            if (j > i) {
-                width += font.width(styled(line.substring(i, j), run));
-            }
-            int code = j < end ? codeAt(line, j) : -1;
-            if (code >= 0 && j + 1 < end) {
-                run = run.apply((char) code);
-                width += font.width(styled(line.substring(j, j + 2), run));
-                i = j + 2;
-            } else if (code >= 0) {
-                width += font.width(styled(line.substring(j, j + 1), run));
-                i = j + 1;
-            } else {
-                i = j;
-            }
+        for (Piece piece : pieces(line, end, 0xE7E9EF)) {
+            width += piece.tab ? tab : font.width(styled(piece.text, piece.run));
         }
         return width;
     }
 
     public static void draw(GuiGraphics g, Font font, String line, int x, int y, int baseRgb, int max) {
         int drawn = 0;
-        int i = 0;
-        Run run = Run.base(baseRgb);
         int tab = font.width("    ");
-        while (i < line.length() && drawn < max) {
-            if (line.charAt(i) == '\t') {
+        for (Piece piece : pieces(line, line.length(), baseRgb)) {
+            if (drawn >= max) {
+                return;
+            }
+            if (piece.tab) {
                 if (drawn + 2 < max) {
                     g.fill(x + drawn + 1, y, x + drawn + 2, y + 9, 0xFF5C6A80);
                 }
                 drawn += tab;
+                continue;
+            }
+            drawn = paint(g, font, piece.text, piece.run, x, y, drawn, max);
+        }
+    }
+
+    /** Куски строки с одним стилем. Цветовые коды читаются только внутри кавычек. */
+    private static java.util.List<Piece> pieces(String line, int end, int baseRgb) {
+        java.util.List<Piece> out = new java.util.ArrayList<>();
+        boolean inside = false;
+        Run run = Run.base(baseRgb);
+        StringBuilder cur = new StringBuilder();
+        int i = 0;
+        while (i < end) {
+            char c = line.charAt(i);
+            if (c == '\t') {
+                flush(out, cur, run);
+                out.add(new Piece("", run, true));
                 i++;
                 continue;
             }
-            int j = i;
-            while (j < line.length() && line.charAt(j) != '\t' && codeAt(line, j) < 0) {
-                j++;
+            if (c == '\\' && inside && i + 1 < end) {
+                cur.append(c).append(line.charAt(i + 1));
+                i += 2;
+                continue;
             }
-            if (j > i) {
-                drawn = paint(g, font, line.substring(i, j), run, x, y, drawn, max);
-                if (drawn >= max) {
-                    return;
+            if (c == '"') {
+                if (inside && i + 1 < line.length() && line.charAt(i + 1) == '"' && i + 1 < end) {
+                    cur.append('"');
+                    i += 2;
+                    continue;
                 }
+                cur.append(c);
+                flush(out, cur, run);
+                inside = !inside;
+                if (!inside) {
+                    run = Run.base(baseRgb);
+                }
+                i++;
+                continue;
             }
-            int code = j < line.length() ? codeAt(line, j) : -1;
-            if (code >= 0) {
-                run = run.apply((char) code);
-                int to = Math.min(line.length(), j + 2);
-                drawn = paint(g, font, line.substring(j, to), run, x, y, drawn, max);
-                i = to;
-            } else {
-                i = j;
+            int code = inside ? codeAt(line, i) : -1;
+            if (code >= 0 && i + 1 < end) {
+                flush(out, cur, run);
+                run = run.apply((char) code, baseRgb);
+                cur.append(line, i, i + 2);
+                i += 2;
+                continue;
             }
+            cur.append(c);
+            i++;
         }
+        flush(out, cur, run);
+        return out;
+    }
+
+    private static void flush(java.util.List<Piece> out, StringBuilder cur, Run run) {
+        if (!cur.isEmpty()) {
+            out.add(new Piece(cur.toString(), run, false));
+            cur.setLength(0);
+        }
+    }
+
+    private record Piece(String text, Run run, boolean tab) {
     }
 
     private static int paint(GuiGraphics g, Font font, String text, Run run, int x, int y, int drawn, int max) {
@@ -133,7 +151,7 @@ public final class ScriptColors {
             return new Run(rgb, false, false, false, false);
         }
 
-        Run apply(char code) {
+        Run apply(char code, int baseRgb) {
             return switch (code) {
                 case '0' -> color(0x000000);
                 case '1' -> color(0x0000AA);
@@ -155,7 +173,7 @@ public final class ScriptColors {
                 case 'm' -> new Run(rgb, bold, italic, under, true);
                 case 'n' -> new Run(rgb, bold, italic, true, strike);
                 case 'o' -> new Run(rgb, bold, true, under, strike);
-                case 'r' -> base();
+                case 'r' -> base(baseRgb);
                 default -> this;
             };
         }

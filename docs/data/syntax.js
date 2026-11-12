@@ -15,7 +15,7 @@
  */
 window.SC_DOCS = window.SC_DOCS || {};
 window.SC_DOCS.syntax = {
-  version: "0.4.1",
+  version: "0.4.2",
   categories: [
     { id: "events",     ru: "События",            en: "Events" },
     { id: "structures", ru: "Структуры",          en: "Structures" },
@@ -340,8 +340,8 @@ loop {bag::%player%::*}:
     name: { ru: "Свой блок", en: "Custom block" },
     syntax: ["define block <id>:", "define block <namespace>:<id>:"],
     desc: {
-      ru: "Регистрирует блок (вместе с предметом-блоком) во вкладке творческого режима ScriptCraft. Свойства (все необязательные): `name:` название, `hardness:` прочность (1.5), `resistance:` взрывоустойчивость (6), `sound:` stone/wood/metal/glass/grass/sand/wool/gravel, `light:` свечение 0–15, `requires_tool:` true — дроп только подходящим инструментом, `facing:` none/horizontal/all — блок поворачивается лицом к игроку при установке (horizontal — 4 стороны, как печь; all — 6, как раздатчик; с 0.1.9). id — только `a-z 0-9 _ . -`. С 0.1.9 блок, который есть в скриптах при запуске сервера, регистрируется под **настоящим id** (`example:ruby_block`): работают ванильные `/give`, `/setblock example:ruby_block[facing=east]`, F3 и автодополнение (у клиента — после первого входа и перезапуска клиента). Новый `define` после `/sc reload` появляется сразу, без перезапуска, во временном слоте `scriptcraft:dyn_block_N` (ванильные команды всё равно принимают id скрипта); после перезапуска сервера и клиента он получает настоящий id, а поставленные блоки и предметы переводятся на него автоматически. Свет записывается в блок при установке (и через `/setblock`). `render:` solid (обычный куб) / cutout (дырки в текстуре, как листва или решётка; можно писать transparent) / translucent (полупрозрачность, как стекло; можно писать glass). У cutout и translucent пол и стены рядом остаются видимыми. `full: false` — то же для непрозрачной 3D-модели: блок не занимает весь куб, грань пола под ним не пропадает (`full: true` возвращает поведение куба). Модель для поворота должна смотреть на север: мод сам повернёт blockstate, если в нём ещё нет ключей `facing=`. Смена `render`/`full` у уже стоящих блоков видна после перезапуска клиента.",
-      en: "Registers a block (plus its block item) in the ScriptCraft creative tab. Properties (all optional): `name:` display name, `hardness:` (1.5), `resistance:` (6), `sound:` stone/wood/metal/glass/grass/sand/wool/gravel, `light:` 0–15, `requires_tool:` true — drops only with the right tool, `facing:` none/horizontal/all — the block turns to face the player when placed (horizontal — 4 sides like a furnace; all — 6 like a dispenser; since 0.1.9). id: only `a-z 0-9 _ . -`. Since 0.1.9 a block that is in the scripts when the server starts is registered under its **real id** (`example:ruby_block`): vanilla `/give`, `/setblock example:ruby_block[facing=east]`, F3 and tab completion work (on a client — after the first join and a client restart). A new `define` after `/sc reload` appears at once, without a restart, in a temporary slot `scriptcraft:dyn_block_N` (vanilla commands still accept the script id); after a server and client restart it gets its real id and placed blocks and items are converted automatically. Light is stored in the block when placed (also via `/setblock`). `render:` solid (a normal cube) / cutout (holes in the texture, like leaves or a grate; `transparent` is the same) / translucent (partial alpha, like glass; `glass` is the same). cutout and translucent keep neighbouring faces, so the floor under the block stays visible. `full: false` does the same for an opaque 3D model that does not fill the cube (`full: true` hides neighbours again). A model that should rotate must face north: the mod turns the blockstate itself when it has no `facing=` keys yet. Changing `render`/`full` on blocks already in the world shows up after a client restart.",
+      ru: "Регистрирует блок (вместе с предметом-блоком) во вкладке творческого режима ScriptCraft. Свойства (все необязательные): `name:` название, `hardness:` прочность (1.5), `resistance:` взрывоустойчивость (6), `sound:` stone/wood/metal/glass/grass/sand/wool/gravel/honey/slime/snow, `light:` свечение 0–15, `requires_tool:` true — дроп только подходящим инструментом, `facing:` none/horizontal/all. Физика: `friction:` скольжение 0–1 (камень 0.6, лёд 0.98), `speed:` скорость ходьбы (1 обычно, песок душ 0.4), `jump:` высота прыжка (мёд 0.5), `gravity: true` — падает как песок, `collision: false` — сквозь блок можно пройти, `flammable: true` или `burn:` и `spread:` — горит (доски: burn 5, spread 20). id — только `a-z 0-9 _ . -`. С 0.1.9 блок, который есть в скриптах при запуске сервера, регистрируется под **настоящим id** (`example:ruby_block`): работают ванильные `/give`, `/setblock`, F3. Новый `define` после `/sc reload` появляется сразу во временном слоте `scriptcraft:dyn_block_N`. `render:` solid / cutout / translucent. `full: false` — блок не прячет пол под собой. Модель для поворота смотрит на север. Смена `render`/`full` у уже стоящих блоков видна после перезапуска клиента.",
+      en: "Registers a block (plus its block item) in the ScriptCraft creative tab. Properties (all optional): `name:`, `hardness:` (1.5), `resistance:` (6), `sound:` stone/wood/metal/glass/grass/sand/wool/gravel/honey/slime/snow, `light:` 0–15, `requires_tool:` true, `facing:` none/horizontal/all. Physics: `friction:` 0–1 (stone 0.6, ice 0.98), `speed:` walk speed (soul sand 0.4), `jump:` (honey 0.5), `gravity: true` falls like sand, `collision: false` can be walked through, `flammable: true` or `burn:` and `spread:` (planks: burn 5, spread 20). id: only `a-z 0-9 _ . -`. Since 0.1.9 a block present at server start is registered under its **real id** (`example:ruby_block`). A new `define` after `/sc reload` appears at once in `scriptcraft:dyn_block_N`. `render:` solid / cutout / translucent. `full: false` keeps the floor under the block visible. A rotating model must face north. Changing `render`/`full` on placed blocks shows up after a client restart.",
     },
     example: `define block ruby_block:
 	name: "Рубиновый блок"
@@ -360,7 +360,24 @@ define block ruby_lantern:
 	light: 12
 	facing: all
 	render: cutout
-	full: false`,
+	full: false
+
+define block ice_block:
+	name: "Лёд"
+	sound: glass
+	friction: 0.98
+
+define block soft_sand:
+	name: "Сыпучий песок"
+	sound: sand
+	gravity: true
+	flammable: false
+
+define block wool_block:
+	name: "Шерсть"
+	sound: wool
+	burn: 30
+	spread: 60`,
     since: "0.1.0", related: ["struct-define-item", "struct-namespace"]
   },
   {
@@ -368,14 +385,28 @@ define block ruby_lantern:
     name: { ru: "Свой предмет", en: "Custom item" },
     syntax: ["define item <id>:", "define item <namespace>:<id>:"],
     desc: {
-      ru: "Регистрирует предмет. Свойства: `name:` название, `stack_size:` 1–64 (64), `rarity:` common/uncommon/rare/epic (цвет названия), `fire_resistant:` true — не горит в лаве. Как и блоки: известный при запуске — под настоящим id `example:ruby` (с 0.1.9), новый после `/sc reload` — сразу, во временном слоте `scriptcraft:dyn_item_N` до перезапуска; ванильная `/give @s example:ruby` работает в обоих случаях.",
-      en: "Registers an item. Properties: `name:`, `stack_size:` 1–64 (64), `rarity:` common/uncommon/rare/epic (name colour), `fire_resistant:` true — survives lava. Like blocks: known at startup — real id `example:ruby` (since 0.1.9); new after `/sc reload` — live at once in a temporary slot `scriptcraft:dyn_item_N` until a restart; vanilla `/give @s example:ruby` works either way."
+      ru: "Регистрирует предмет. Общие свойства: `name:`, `stack_size:` 1–64, `rarity:` common/uncommon/rare/epic, `fire_resistant:` true. `type:` задаёт поведение. `food` — еда: `nutrition:` голод (хлеб 5), `saturation:` насыщение (хлеб 0.6), `always_eat: true` — есть и сытым. `sword`, `pickaxe`, `axe`, `shovel`, `hoe` — инструмент: `tier:` wood/stone/iron/gold/diamond/netherite, `durability:` прочность (если не писать — как у ванили этого уровня). Инструмент копает свои блоки и бьёт с уроном этого уровня. `fishing_rod` — удочка, `shears` — ножницы (шерсть, листва, паутина). У инструментов стак по умолчанию 1. Известный при запуске предмет получает настоящий id; новый после `/sc reload` живёт во временном слоте до перезапуска.",
+      en: "Registers an item. Shared properties: `name:`, `stack_size:` 1–64, `rarity:` common/uncommon/rare/epic, `fire_resistant:` true. `type:` picks the behaviour. `food`: `nutrition:` hunger (bread 5), `saturation:` (bread 0.6), `always_eat: true` can be eaten when full. `sword`, `pickaxe`, `axe`, `shovel`, `hoe`: `tier:` wood/stone/iron/gold/diamond/netherite, `durability:` (omit it for the vanilla durability of that tier). The tool mines its own blocks and hits with that tier's damage. `fishing_rod` casts a line, `shears` cut wool, leaves and cobwebs. Tools stack to 1 unless you set `stack_size`. An item known at startup gets its real id; a new one after `/sc reload` stays in a temporary slot until a restart."
     },
     example: `define item ruby:
 	name: "Рубин"
 	stack_size: 64
 	rarity: rare
-	fire_resistant: false`,
+
+define item meat:
+	name: "Жаркое"
+	type: food
+	nutrition: 8
+	saturation: 0.8
+
+define item ruby_pickaxe:
+	name: "Рубиновая кирка"
+	type: pickaxe
+	tier: diamond
+
+define item rod:
+	name: "Удочка"
+	type: fishing_rod`,
     since: "0.1.0", related: ["struct-define-block", "struct-namespace", "eff-give-item"]
   },
   {

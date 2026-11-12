@@ -276,6 +276,13 @@ public final class Bindings {
             buf.writeUtf(d.facing());
             buf.writeUtf(d.render());
             buf.writeByte(d.full() == null ? 0 : d.full() ? 2 : 1);
+            buf.writeFloat(d.friction());
+            buf.writeFloat(d.speed());
+            buf.writeFloat(d.jump());
+            buf.writeBoolean(d.gravity());
+            buf.writeBoolean(d.collision());
+            buf.writeVarInt(d.burn());
+            buf.writeVarInt(d.spread());
         }
 
         private static BlockDefinition readBlock(FriendlyByteBuf buf) {
@@ -292,7 +299,9 @@ public final class Bindings {
             Boolean full = fullByte == 2 ? Boolean.TRUE : fullByte == 1 ? Boolean.FALSE : null;
             return new BlockDefinition(id, name, hardness, resistance, sound, light, requiresTool,
                     facing == null ? BlockDefinition.FACING_NONE : facing,
-                    render == null ? BlockDefinition.RENDER_SOLID : render, full);
+                    render == null ? BlockDefinition.RENDER_SOLID : render, full,
+                    buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readBoolean(), buf.readBoolean(),
+                    buf.readVarInt(), buf.readVarInt());
         }
 
         private static void writeItem(FriendlyByteBuf buf, ItemDefinition d) {
@@ -301,6 +310,12 @@ public final class Bindings {
             buf.writeVarInt(d.stackSize());
             buf.writeBoolean(d.fireResistant());
             buf.writeUtf(d.rarity());
+            buf.writeUtf(d.type());
+            buf.writeVarInt(d.nutrition());
+            buf.writeFloat(d.saturation());
+            buf.writeBoolean(d.alwaysEat());
+            buf.writeUtf(d.tier());
+            buf.writeVarInt(d.durability());
         }
 
         private static ItemDefinition readItem(FriendlyByteBuf buf) {
@@ -308,7 +323,9 @@ public final class Bindings {
             String name = readName(buf);
             int stack = buf.readVarInt();
             boolean fire = buf.readBoolean();
-            return new ItemDefinition(id, name, stack, fire, buf.readUtf(MAX_TEXT));
+            String rarity = buf.readUtf(MAX_TEXT);
+            return new ItemDefinition(id, name, stack, fire, rarity, buf.readUtf(MAX_TEXT), buf.readVarInt(),
+                    buf.readFloat(), buf.readBoolean(), buf.readUtf(MAX_TEXT), buf.readVarInt());
         }
 
         private static int checkCount(int n, int max) {

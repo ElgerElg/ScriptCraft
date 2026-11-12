@@ -19,7 +19,8 @@ public final class ModNetwork {
     // 8: у блока в таблице привязок появились render и full.
     // 9: удаление скрипта из студии.
     // 10: клик по тексту/картинке/слоту, элемент list, пакеты клавиш и меню.
-    private static final String PROTOCOL_VERSION = "10";
+    // 11: у предмета в таблице привязок тип, еда и инструмент; у блока — трение, скорость, прыжок, падение, горение.
+    private static final String PROTOCOL_VERSION = "11";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(ScriptCraft.MODID, "main"),

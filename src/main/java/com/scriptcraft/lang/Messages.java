@@ -155,7 +155,7 @@ public final class Messages {
         add("studio.home", "Home", "Главная");
         add("studio.journal", "Journal", "Журнал");
         add("studio.patches", "Patches and versions", "Патчи и версии");
-        add("studio.p1", "0.4.1 — options, item nbt, LuckPerms, editor colors and a scrollbar", "0.4.1 — заготовки, nbt предметов, LuckPerms, цвета и ползунок редактора");
+        add("studio.p1", "0.4.2 — food and tools, block physics, colours stay inside quotes", "0.4.2 — еда и инструменты, физика блоков, цвет только в кавычках");
         add("studio.links", "Links", "Ссылки");
         add("studio.link.github", "GitHub", "GitHub");
         add("studio.link.docs", "Documentation", "Документация");
@@ -175,14 +175,14 @@ public final class Messages {
         add("studio.ask.no", "No", "Нет");
         add("studio.deleted", "Deleted %s", "Удалено %s");
         add("studio.delete_failed", "&cCould not delete: %s", "&cНе удалось удалить: %s");
-        add("studio.p2", "0.3.10 — text and elements in variables, locations, player's tool", "0.3.10 — текст и элементы в переменных, локации, player's tool");
-        add("studio.p3", "0.3.9 — command words, nbt, targeted block and entity", "0.3.9 — слова в командах, nbt, targeted block и entity");
-        add("studio.p4", "0.3.8 — list variables, a bag for any item", "0.3.8 — списки {имя::*}, сумка для любого предмета");
-        add("studio.p5", "0.3.7 — item receive, keys, menu cancel, list", "0.3.7 — получение предмета, клавиши, отмена меню, список");
+        add("studio.p2", "0.4.1 — options, item nbt, LuckPerms, editor colors and a scrollbar", "0.4.1 — заготовки, nbt предметов, LuckPerms, цвета и ползунок редактора");
+        add("studio.p3", "0.3.10 — text and elements in variables, locations, player's tool", "0.3.10 — текст и элементы в переменных, локации, player's tool");
+        add("studio.p4", "0.3.9 — command words, nbt, targeted block and entity", "0.3.9 — слова в командах, nbt, targeted block и entity");
+        add("studio.p5", "0.3.8 — list variables, a bag for any item", "0.3.8 — списки {имя::*}, сумка для любого предмета");
         add("studio.dev", "Developer", "Разработчик");
         add("studio.role", "author of the mod", "автор мода");
         add("studio.hint", "Open a script with + or File. On a server these are the server's scripts; in singleplayer, the local ones.", "Откройте скрипт кнопкой + или меню «Файл». На сервере это его скрипты, в одиночной игре — локальные.");
-        add("studio.parser", "Parser: events — yellow, if and else — blue, textures — blue, quote marks — faint green. &7 colours the text until the next colour. Hover a texture marker for the image.", "Парсер: события — жёлтый, if и else — синий, текстуры — синий, кавычки — едва зелёные. &7 красит текст, пока цвет не сменят. Наведите на текстуру, чтобы увидеть картинку.");
+        add("studio.parser", "Parser: events — yellow, the words if and else — blue, a whole quoted text — green. & colours work only inside quotes. Hover a texture marker for the image.", "Парсер: события — жёлтый, слова if и else — синие, весь текст в кавычках — зелёный. Цвета & только внутри кавычек. Наведите на текстуру, чтобы увидеть картинку.");
         add("studio.loading", "Loading...", "Загрузка...");
         add("studio.empty", "No scripts on this server yet", "На этом сервере пока нет скриптов");
         add("studio.find", "Find", "Найти");

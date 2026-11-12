@@ -40,7 +40,7 @@ public class StudioScreen extends Screen {
     private static final int ROW = 0xFF222A38;
     private static final int YELLOW = 0x66C4A24A;
     private static final int BLUE = 0x663A6EA5;
-    private static final int QUOTE = 0x3348C878;
+    private static final int QUOTE = 0x4438B070;
     private static final int BAR_W = 8;
     private static final int LINE_H = 11;
     private static final int TITLE = 22;

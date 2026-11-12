@@ -13,7 +13,10 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.FallingBlock;
+import net.minecraft.world.entity.item.FallingBlockEntity;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.SoundType;
@@ -26,6 +29,7 @@ import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.level.storage.loot.LootTable;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParamSets;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
+import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.Nullable;
@@ -120,6 +124,69 @@ public abstract class ScriptBlock extends Block {
         if (!level.isClientSide && def != null && state.getValue(LIGHT) != def.light()) {
             level.setBlock(pos, state.setValue(LIGHT, def.light()), Block.UPDATE_ALL);
         }
+        scheduleFall(level, pos);
+    }
+
+    @Override
+    @SuppressWarnings("deprecation")
+    public void neighborChanged(BlockState state, Level level, BlockPos pos, Block block, BlockPos from, boolean moving) {
+        scheduleFall(level, pos);
+    }
+
+    private void scheduleFall(Level level, BlockPos pos) {
+        BlockDefinition def = definition();
+        if (def != null && def.gravity() && !level.isClientSide) {
+            level.scheduleTick(pos, this, 2);
+        }
+    }
+
+    @Override
+    @SuppressWarnings("deprecation")
+    public void tick(BlockState state, ServerLevel level, BlockPos pos, RandomSource random) {
+        BlockDefinition def = definition();
+        if (def != null && def.gravity() && FallingBlock.isFree(level.getBlockState(pos.below()))) {
+            FallingBlockEntity.fall(level, pos, state);
+        }
+    }
+
+    @Override
+    public float getFriction() {
+        BlockDefinition def = definition();
+        return def == null ? super.getFriction() : def.friction();
+    }
+
+    @Override
+    public float getSpeedFactor() {
+        BlockDefinition def = definition();
+        return def == null ? super.getSpeedFactor() : def.speed();
+    }
+
+    @Override
+    public float getJumpFactor() {
+        BlockDefinition def = definition();
+        return def == null ? super.getJumpFactor() : def.jump();
+    }
+
+    @Override
+    @SuppressWarnings("deprecation")
+    public VoxelShape getCollisionShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
+        BlockDefinition def = definition();
+        if (def != null && !def.collision()) {
+            return Shapes.empty();
+        }
+        return super.getCollisionShape(state, level, pos, context);
+    }
+
+    @Override
+    public int getFlammability(BlockState state, BlockGetter level, BlockPos pos, Direction face) {
+        BlockDefinition def = definition();
+        return def == null ? 0 : def.burn();
+    }
+
+    @Override
+    public int getFireSpreadSpeed(BlockState state, BlockGetter level, BlockPos pos, Direction face) {
+        BlockDefinition def = definition();
+        return def == null ? 0 : def.spread();
     }
 
     /** Поворот структурой / командой: только у поворотных блоков (horizontal не уходит вверх/вниз сам по себе). */

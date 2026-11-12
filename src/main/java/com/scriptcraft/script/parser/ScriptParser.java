@@ -317,14 +317,48 @@ public final class ScriptParser {
                         error(headerLine, "full: ожидается true или false, а не '" + props.get("full") + "'");
                         return;
                     }
+                    float friction = floatProp(props, "friction", 0.6f);
+                    float speed = floatProp(props, "speed", 1f);
+                    float jump = floatProp(props, "jump", 1f);
+                    if (friction < 0 || friction > 1 || speed < 0 || speed > 8 || jump < 0 || jump > 2) {
+                        error(headerLine, "friction is 0..1, speed is 0..8, jump is 0..2",
+                                "friction 0..1, speed 0..8, jump 0..2");
+                        return;
+                    }
+                    int burn = (int) floatProp(props, "burn", boolProp(props, "flammable") ? 5 : 0);
+                    int spread = (int) floatProp(props, "spread", boolProp(props, "flammable") ? 20 : 0);
+                    boolean collision = !props.containsKey("collision") || boolProp(props, "collision");
                     blocks.put(id, new BlockDefinition(id, props.get("name"),
                             floatProp(props, "hardness", 1.5f), floatProp(props, "resistance", 6f),
                             props.getOrDefault("sound", "stone").toLowerCase(Locale.ROOT),
-                            (int) floatProp(props, "light", 0), boolProp(props, "requires_tool"), facing, render, full));
+                            (int) floatProp(props, "light", 0), boolProp(props, "requires_tool"), facing, render, full,
+                            friction, speed, jump, boolProp(props, "gravity"), collision, Math.max(0, burn), Math.max(0, spread)));
                 } else {
-                    items.put(id, new ItemDefinition(id, props.get("name"),
-                            (int) floatProp(props, "stack_size", 64), boolProp(props, "fire_resistant"),
-                            props.getOrDefault("rarity", "common").toLowerCase(Locale.ROOT)));
+                    String type = ItemDefinition.normalizeType(props.getOrDefault("type", "item"));
+                    if (type == null) {
+                        error(headerLine, "type: item, food, sword, pickaxe, axe, shovel, hoe, fishing_rod or shears",
+                                "type: item, food, sword, pickaxe, axe, shovel, hoe, fishing_rod или shears");
+                        return;
+                    }
+                    String tier = ItemDefinition.normalizeTier(props.getOrDefault("tier", "iron"));
+                    if (tier == null) {
+                        error(headerLine, "tier: wood, stone, iron, gold, diamond or netherite",
+                                "tier: wood, stone, iron, gold, diamond или netherite");
+                        return;
+                    }
+                    boolean tool = switch (type) {
+                        case "sword", "pickaxe", "axe", "shovel", "hoe", "fishing_rod", "shears" -> true;
+                        default -> false;
+                    };
+                    int stack = (int) floatProp(props, "stack_size", tool ? 1 : 64);
+                    int durability = props.containsKey("durability")
+                            ? Math.max(0, (int) floatProp(props, "durability", 0))
+                            : ItemDefinition.defaultDurability(type, tier);
+                    items.put(id, new ItemDefinition(id, props.get("name"), stack, boolProp(props, "fire_resistant"),
+                            props.getOrDefault("rarity", "common").toLowerCase(Locale.ROOT),
+                            type, Math.max(0, Math.min(20, (int) floatProp(props, "nutrition", 4))),
+                            Math.max(0f, Math.min(2f, floatProp(props, "saturation", 0.6f))),
+                            boolProp(props, "always_eat"), tier, durability));
                 }
             } catch (NumberFormatException e) {
                 error(headerLine, "неверное число в свойствах: " + e.getMessage());
