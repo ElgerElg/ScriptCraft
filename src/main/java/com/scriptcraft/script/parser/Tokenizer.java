@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Простейший токенизатор: слова через пробел, строки в двойных кавычках ("..." с \" внутри),
+ * Простейший токенизатор: слова через пробел, строки в двойных кавычках ("..." с \" и "" внутри),
  * запятые вне кавычек считаются пробелами (поэтому "at 0, -20" == "at 0 -20"),
  * переменная в фигурных скобках — один токен целиком, даже с пробелами и запятыми: {my var::%player%},
  * ванильный селектор с аргументами — тоже один токен как есть: @a[distance=..10,name="Steve"].
@@ -35,6 +35,12 @@ final class Tokenizer {
                         continue;
                     }
                     if (d == '"') {
+                        // "" внутри текста — одна кавычка, строка не кончается.
+                        if (i + 1 < line.length() && line.charAt(i + 1) == '"') {
+                            str.append('"');
+                            i += 2;
+                            continue;
+                        }
                         closed = true;
                         i++;
                         break;
@@ -46,6 +52,16 @@ final class Tokenizer {
                     throw new ParseException("незакрытая кавычка");
                 }
                 tokens.add(new Token(str.toString(), true));
+                continue;
+            }
+            if (c == '{' && !cur.isEmpty()) {
+                // id{nbt} — один токен, кавычки и запятые внутри не режут строку.
+                int end = scanCompound(line, i);
+                if (end < 0) {
+                    throw new ParseException("незакрытая фигурная скобка '{'");
+                }
+                cur.append(line, i, end);
+                i = end;
                 continue;
             }
             if (c == '{' && cur.isEmpty()) {
@@ -66,6 +82,8 @@ final class Tokenizer {
                     char d = line.charAt(j);
                     if (inQuote) {
                         if (d == '\\') {
+                            j++;
+                        } else if (d == '"' && j + 1 < line.length() && line.charAt(j + 1) == '"') {
                             j++;
                         } else if (d == '"') {
                             inQuote = false;
@@ -94,6 +112,35 @@ final class Tokenizer {
         }
         flush(tokens, cur);
         return tokens;
+    }
+
+    /** Индекс сразу за парной '}' или -1. Кавычки внутри nbt не закрывают скобку. */
+    private static int scanCompound(String line, int open) {
+        int depth = 0;
+        boolean inQuote = false;
+        for (int j = open; j < line.length(); j++) {
+            char d = line.charAt(j);
+            if (inQuote) {
+                if (d == '\\') {
+                    j++;
+                } else if (d == '"' && j + 1 < line.length() && line.charAt(j + 1) == '"') {
+                    j++;
+                } else if (d == '"') {
+                    inQuote = false;
+                }
+                continue;
+            }
+            if (d == '"') {
+                inQuote = true;
+            } else if (d == '{') {
+                depth++;
+            } else if (d == '}') {
+                if (--depth == 0) {
+                    return j + 1;
+                }
+            }
+        }
+        return -1;
     }
 
     private static void flush(List<Token> tokens, StringBuilder cur) {

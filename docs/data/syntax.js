@@ -229,10 +229,10 @@ on gamemode change:
   {
     id: "struct-command", category: "structures",
     name: { ru: "Своя команда", en: "Custom command" },
-    syntax: ["command /<имя>:", "command /<имя> <слово> <тип>:", "command /<имя> <тип> [тип]:", "permission: <0-4>", "aliases: <имя>, <имя>", "arguments: <тип>, [тип]", "executable by: players", "executable by: console", "executable by: players and console"],
+    syntax: ["command /<имя>:", "command /<имя> <слово> <тип>:", "command /<имя> <тип> [тип]:", "permission: <0-4>", "permission: <узел>", "aliases: <имя>, <имя>", "arguments: <тип>, [тип]", "executable by: players", "executable by: console", "executable by: players and console"],
     desc: {
-      ru: "Объявляет команду. Слово без скобок — часть пути и не считается аргументом: `command /bag take <text>:` это `/bag take <текст>`, а `%arg-1%` — текст. <тип> обязательный, [тип] можно не писать. Типы: text, player, offline player, integer, number, boolean, date, world, item. Без списка аргументов хвост строки — %args%.",
-      en: "Declares a command. A bare word is part of the path and is not an argument: `command /bag take <text>:` is `/bag take <text>`, and `%arg-1%` is the text. <type> is required, [type] may be omitted. Types: text, player, offline player, integer, number, boolean, date, world, item. With no argument list the rest of the line is %args%."
+      ru: "Объявляет команду. Слово без скобок — часть пути и не считается аргументом: `command /bag take <text>:` это `/bag take <текст>`, а `%arg-1%` — текст. <тип> обязательный, [тип] можно не писать. Типы: text, player, offline player, integer, number, boolean, date, world, item. Без списка аргументов хвост строки — %args%. `permission: 2` — уровень оператора. `permission: scriptcraft.bag` — узел LuckPerms; без этого мода узел есть только у оператора. Консоль узлом не ограничивается.",
+      en: "Declares a command. A bare word is part of the path and is not an argument: `command /bag take <text>:` is `/bag take <text>`, and `%arg-1%` is the text. <type> is required, [type] may be omitted. Types: text, player, offline player, integer, number, boolean, date, world, item. With no argument list the rest of the line is %args%. `permission: 2` is the operator level. `permission: scriptcraft.bag` is a LuckPerms node; without that mod only operators have the node. The console is not limited by a node."
     },
     example: `command /hello:
 	send "&bПривет из %script%, %player%! Ты написал: %args%" to player
@@ -241,7 +241,26 @@ command /heal <player> [integer]:
 	permission: 2
 	aliases: h, healme
 	heal arg-1 by arg-2`,
-    since: "0.1.0", related: ["ph-args", "cmd-reload"]
+    since: "0.1.0", related: ["ph-args", "cmd-reload", "struct-options"]
+  },
+  {
+    id: "struct-options", category: "structures",
+    name: { ru: "Заготовки options", en: "Options" },
+    syntax: ["options:", "<имя>: <значение>", "{@<имя>}"],
+    desc: {
+      ru: "Заготовки файла, как в Skript. Имя — буквы, цифры, _ и -. Значение подставляется вместо `{@имя}` до разбора строки, в том числе внутри кавычек и в других заготовках. Неизвестное `{@имя}` — ошибка в журнале.",
+      en: "Per-file templates, as in Skript. A name is letters, digits, _ and -. The value replaces `{@name}` before the line is parsed, including inside quotes and inside other options. An unknown `{@name}` is a journal error."
+    },
+    example: `options:
+	prefix: &7[&6Сервер&7]
+	price: 10
+
+on join:
+	send "{@prefix} &fПривет" to player
+
+command /shop:
+	give player diamond {@price}`,
+    since: "0.4.1", related: ["eff-send", "struct-command"]
   },
   {
     id: "struct-if", category: "structures",
@@ -448,8 +467,8 @@ remove nbt "CustomName" of targeted entity`,
     name: { ru: "Сообщение игрокам", en: "Send message" },
     syntax: ["send \"<текст>\"", "send \"<текст>\" to <цель>", "message \"<текст>\" to <цель>"],
     desc: {
-      ru: "Личное сообщение игрокам цели (без `to` — игроку из контекста). Поддерживает плейсхолдеры, `{переменные}` и цвета `&`. Плейсхолдеры считаются от вызвавшего, а не от получателя.",
-      en: "Private message to the target players (without `to` — the context player). Supports placeholders, `{variables}` and `&` colours. Placeholders are evaluated for the caller, not the recipient."
+      ru: "Личное сообщение игрокам цели (без `to` — игроку из контекста). Поддерживает плейсхолдеры, `{переменные}`, `{@заготовку}` и цвета `&`. Кавычка внутри текста пишется дважды: `send \"оружие \"\"karabin\"\" старое\" to player`. Плейсхолдеры считаются от вызвавшего, а не от получателя.",
+      en: "Private message to the target players (without `to` — the context player). Supports placeholders, `{variables}`, `{@option}` and `&` colours. A quote inside the text is written twice: `send \"weapon \"\"karabin\"\" is old\" to player`. Placeholders are evaluated for the caller, not the recipient."
     },
     example: `send "&aПривет, %player%!" to player
 send "&eВнимание!" to all players`,
@@ -517,13 +536,14 @@ play sound entity.experience_orb.pickup to player with volume 0.4 pitch 1.2`,
   {
     id: "eff-give-item", category: "effects",
     name: { ru: "Выдать предмет", en: "Give item" },
-    syntax: ["give <цель> <предмет>", "give <цель> <предмет> <количество>", "give <цель> player's tool", "give <цель> {<переменная>}"],
+    syntax: ["give <цель> <предмет>", "give <цель> <предмет> <количество>", "give <цель> <предмет>{<nbt>}", "give <цель> player's tool", "give <цель> {<переменная>}"],
     desc: {
-      ru: "Выдаёт предмет (если инвентарь полон — бросает рядом). Количество — число или `{переменная}` (до 2304). В id можно плейсхолдер: `give player %arg-1%`. Предмет может быть выражением: `player's tool`, `{слот}`. Короткий id ищется как `minecraft:`, потом `scriptcraft:`, потом namespace скриптов.",
-      en: "Gives an item (drops it nearby if the inventory is full). Count is a number or `{variable}` (up to 2304). The id may contain a placeholder: `give player %arg-1%`. The item may be an expression: `player's tool`, `{slot}`. A short id is looked up as `minecraft:`, then `scriptcraft:`, then script namespaces."
+      ru: "Выдаёт предмет (если инвентарь полон — бросает рядом). Количество — число или `{переменная}` (до 2304). В id можно плейсхолдер: `give player %arg-1%`. Сразу за id можно написать SNBT: `give player tacz:modern_kinetic_gun{GunId:\"tacz:glock_17\"} 1`. Если двоеточие перед кавычкой пропущено (`GunId\"tacz:glock_17\"`), оно подставляется. То же nbt принимает `drop`, слот и проверки `has` / `holding`. Предмет может быть выражением: `player's tool`, `{слот}`. Короткий id ищется как `minecraft:`, потом `scriptcraft:`, потом namespace скриптов.",
+      en: "Gives an item (drops it nearby if the inventory is full). Count is a number or `{variable}` (up to 2304). The id may contain a placeholder: `give player %arg-1%`. SNBT may follow the id: `give player tacz:modern_kinetic_gun{GunId:\"tacz:glock_17\"} 1`. A missing colon before the quote (`GunId\"tacz:glock_17\"`) is inserted. `drop`, slots and `has` / `holding` accept the same nbt. The item may be an expression: `player's tool`, `{slot}`. A short id is looked up as `minecraft:`, then `scriptcraft:`, then script namespaces."
     },
     example: `give player diamond 3
 give all players example:ruby
+give player tacz:modern_kinetic_gun{GunId:"tacz:glock_17"} 1
 give player player's tool`,
     since: "0.1.0", related: ["struct-define-item", "eff-give-effect"]
   },
@@ -833,7 +853,7 @@ command /home:
     id: "eff-drop", category: "effects",
     name: { ru: "Бросить предмет", en: "Drop item" },
     syntax: ["drop <предмет> at <цель>", "drop <количество> <предмет> at <цель>", "drop <предмет> at <локация>"],
-    desc: { ru: "Роняет предмет у ног игроков цели или в точке локации (не в инвентарь). Предмет может быть `player's tool` или `{слот}`. id ищется так же, как у `give`.", en: "Drops the item at the target players' feet or at a location (not into the inventory). The item may be `player's tool` or `{slot}`. The id is resolved the same way as `give`." },
+    desc: { ru: "Роняет предмет у ног игроков цели или в точке локации (не в инвентарь). Предмет может быть `player's tool`, `{слот}` или id с nbt, как у `give`.", en: "Drops the item at the target players' feet or at a location (not into the inventory). The item may be `player's tool`, `{slot}` or an id with nbt, the same as `give`." },
     example: `drop 4 diamond at player
 drop player's tool at location of targeted block
 drop example:ruby at all players`,
@@ -921,10 +941,10 @@ if player is op or player has permission 2:
   {
     id: "cond-player", category: "conditions",
     name: { ru: "Состояние игрока", en: "Player state" },
-    syntax: ["<цель> is sneaking", "<цель> is not sneaking", "<цель> is sprinting", "<цель> is flying", "<цель> is sleeping", "<цель> is burning", "<цель> is on fire", "<цель> is op", "<цель> is alive", "<цель> is blocking", "<цель> is gliding", "<цель> is swimming", "<цель> is online", "<цель> is not online", "<цель> is holding <предмет>", "<цель> has <предмет>", "<цель> does not have <предмет>", "<цель> has permission <0-4>"],
+    syntax: ["<цель> is sneaking", "<цель> is not sneaking", "<цель> is sprinting", "<цель> is flying", "<цель> is sleeping", "<цель> is burning", "<цель> is on fire", "<цель> is op", "<цель> is alive", "<цель> is blocking", "<цель> is gliding", "<цель> is swimming", "<цель> is online", "<цель> is not online", "<цель> is holding <предмет>", "<цель> has <предмет>", "<цель> does not have <предмет>", "<цель> has permission <0-4>", "<цель> has permission \"<узел>\""],
     desc: {
-      ru: "Проверка для каждого игрока цели: никого нет — условие ложно (и для `is`, и для `is not`). `online` смотрит, есть ли игроки в цели. `holding` — предмет в основной руке, `has` — где угодно в инвентаре. Неизвестный предмет даёт ложь. `op` — запись в ops.txt, `permission N` — уровень прав.",
-      en: "Checked for every player of the target: nobody there — the condition is false (both `is` and `is not`). `online` is whether the target has any players. `holding` is the main hand, `has` is anywhere in the inventory. An unknown item is false. `op` is an ops.txt entry, `permission N` is the permission level."
+      ru: "Проверка для каждого игрока цели: никого нет — условие ложно (и для `is`, и для `is not`). `online` смотрит, есть ли игроки в цели. `holding` — предмет в основной руке, `has` — где угодно в инвентаре. Если у предмета указан nbt, каждый его ключ должен быть на стеке. Неизвестный предмет даёт ложь. `op` — запись в ops.txt, `permission N` — уровень прав, `permission \"узел\"` — LuckPerms (без мода — только оператор).",
+      en: "Checked for every player of the target: nobody there — the condition is false (both `is` and `is not`). `online` is whether the target has any players. `holding` is the main hand, `has` is anywhere in the inventory. If the item has nbt, every key of that tag must be on the stack. An unknown item is false. `op` is an ops.txt entry, `permission N` is the permission level, `permission \"node\"` is LuckPerms (without the mod — operators only)."
     },
     example: `if player is sneaking:
 	send "&7ты крадёшься" to player
@@ -1279,8 +1299,8 @@ button "Закрыть" at 0, 40 size 120x20 close`,
     name: { ru: "Слот с предметом", en: "Item slot" },
     syntax: ["slot <предмет> [<количество>] [at <X> <Y>] [anchor <точка>]", "slot hotbar <1-9>", "slot image \"<картинка>\"", "slot text \"<текст>\""],
     desc: {
-      ru: "Показывает предмет с подсказкой при наведении. Сам по себе слот ничего не берёт. `run \"/команда\"` или `close` — хитбокс ЛКМ по прямоугольнику слота на `open screen` (на HUD клика нет). С 0.1.33 слот может показывать предмет из хотбара игрока, картинку или текст (см. «Слоты HUD»).",
-      en: "Shows an item with a tooltip on hover. By itself the slot takes nothing. `run \"/command\"` or `close` is a left-click hitbox on the slot rectangle in `open screen` (HUD elements are not clickable). Since 0.1.33 a slot can also show an item from the player's hotbar, an image or a text (see “HUD slots”)."
+      ru: "Показывает предмет с подсказкой при наведении. Сам по себе слот ничего не берёт. В id можно дописать nbt, как в `give`. `run \"/команда\"` или `close` — хитбокс ЛКМ по прямоугольнику слота на `open screen` (на HUD клика нет). С 0.1.33 слот может показывать предмет из хотбара игрока, картинку или текст (см. «Слоты HUD»).",
+      en: "Shows an item with a tooltip on hover. By itself the slot takes nothing. The id may include nbt, as in `give`. `run \"/command\"` or `close` is a left-click hitbox on the slot rectangle in `open screen` (HUD elements are not clickable). Since 0.1.33 a slot can also show an item from the player's hotbar, an image or a text (see “HUD slots”)."
     },
     example: `slot diamond 5 at -30, -15
 slot example:ruby 4 at 60, -15`,

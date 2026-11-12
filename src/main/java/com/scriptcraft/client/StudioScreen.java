@@ -40,12 +40,14 @@ public class StudioScreen extends Screen {
     private static final int ROW = 0xFF222A38;
     private static final int YELLOW = 0x66C4A24A;
     private static final int BLUE = 0x663A6EA5;
+    private static final int QUOTE = 0x3348C878;
+    private static final int BAR_W = 8;
     private static final int LINE_H = 11;
     private static final int TITLE = 22;
     private static final int MENU_H = 16;
     private static final int TOOL_H = 20;
 
-    private enum Drag { NONE, MOVE, N, S, E, W, NE, NW, SE, SW, TEXT }
+    private enum Drag { NONE, MOVE, N, S, E, W, NE, NW, SE, SW, TEXT, VSCROLL, HSCROLL }
 
     private String menu;
     private boolean catalog;
@@ -520,7 +522,7 @@ public class StudioScreen extends Screen {
                     }
                     String num = Integer.toString(number);
                     g.drawString(this.font, num, codeX + 28 - this.font.width(num), ly, MUTED, false);
-                    drawCode(g, slice.lines().get(i), codeX + 34, ly, TEXT, codeW - 40);
+                    ScriptColors.draw(g, this.font, slice.lines().get(i), codeX + 34, ly, TEXT, codeW - 40);
                 }
                 ly += LINE_H;
             }
@@ -549,7 +551,7 @@ public class StudioScreen extends Screen {
                 }
                 String num = Integer.toString(number);
                 g.drawString(this.font, num, codeX + 28 - this.font.width(num), ly, MUTED, false);
-                drawCode(g, note.lines.get(i), codeX + 34, ly, TEXT, codeW - 40);
+                ScriptColors.draw(g, this.font, note.lines.get(i), codeX + 34, ly, TEXT, codeW - 40);
             }
             ly += LINE_H;
         }
@@ -579,36 +581,62 @@ public class StudioScreen extends Screen {
         if (!doc.loaded) {
             g.drawString(this.font, Messages.get("studio.loading"), editorX + 8, editorY + 8, MUTED, false);
         } else {
-            g.enableScissor(editorX, editorY, editorX + editorW, editorY + editorH);
-            int view = Math.max(1, editorH / LINE_H);
+            int textW = Math.max(40, editorW - 44 - BAR_W);
+            horizMax = 0;
+            for (String row : doc.lines) {
+                horizMax = Math.max(horizMax, spanWidth(row, row.length()) - textW + 8);
+            }
+            horizMax = Math.max(0, horizMax);
+            boolean wide = horizMax > 0;
+            int view = Math.max(1, (editorH - (wide ? BAR_W : 0)) / LINE_H);
             if (doc.followCaret) {
                 doc.ensureVisible(view, LINE_H);
+                revealCaret(doc, textW);
                 doc.followCaret = false;
             }
             int maxScroll = Math.max(0, doc.lines.size() - view);
+            scrollMax = maxScroll;
             if (doc.scroll > maxScroll) {
                 doc.scroll = maxScroll;
             }
+            if (doc.horiz > horizMax) {
+                doc.horiz = horizMax;
+            }
+            int textRight = editorX + editorW - BAR_W;
+            int textBottom = editorY + editorH - (wide ? BAR_W : 0);
             for (int i = doc.scroll; i < doc.lines.size(); i++) {
                 int ly = editorY + (i - doc.scroll) * LINE_H + 2;
-                if (ly > editorY + editorH) {
+                if (ly > textBottom) {
+                    break;
+                }
+                if (i == doc.line) {
+                    g.fill(editorX, ly - 1, textRight, ly + LINE_H - 1, 0xFF1A2230);
+                }
+            }
+            g.enableScissor(editorX + 34, editorY, textRight, textBottom);
+            for (int i = doc.scroll; i < doc.lines.size(); i++) {
+                int ly = editorY + (i - doc.scroll) * LINE_H + 2;
+                if (ly > textBottom) {
                     break;
                 }
                 String line = doc.lines.get(i);
-                if (i == doc.line) {
-                    g.fill(editorX, ly - 1, editorX + editorW, ly + LINE_H - 1, 0xFF1A2230);
-                }
                 int[] sel = doc.selectionOn(i);
                 if (sel != null) {
-                    int x0 = editorX + 36 + spanWidth(line, sel[0]);
-                    int x1 = editorX + 36 + spanWidth(line, sel[1]);
+                    int x0 = textX(line, sel[0]);
+                    int x1 = textX(line, sel[1]);
                     g.fill(x0, ly - 1, Math.max(x1, x0 + 2), ly + LINE_H - 1, 0x883A6EA5);
                 }
                 for (ScriptMarkup.Mark mark : ScriptMarkup.of(line)) {
-                    int x0 = editorX + 36 + spanWidth(line, mark.from());
-                    int x1 = editorX + 36 + spanWidth(line, mark.to());
-                    g.fill(x0, ly - 1, x1, ly + LINE_H - 1, mark.event() ? YELLOW : BLUE);
-                    if (!mark.event() && hover(mx, my, x0, ly - 1, Math.max(1, x1 - x0), LINE_H)) {
+                    int x0 = textX(line, mark.from());
+                    int x1 = textX(line, mark.to());
+                    int color = switch (mark.kind()) {
+                        case EVENT -> YELLOW;
+                        case QUOTE -> QUOTE;
+                        default -> BLUE;
+                    };
+                    g.fill(x0, ly - 1, Math.max(x1, x0 + 1), ly + LINE_H - 1, color);
+                    if (mark.kind() == ScriptMarkup.Kind.RESOURCE
+                            && hover(mx, my, x0, ly - 1, Math.max(1, x1 - x0), LINE_H)) {
                         TexturePreview.Image image = TexturePreview.lookup(mark.token());
                         if (image != null) {
                             preview = image;
@@ -617,15 +645,41 @@ public class StudioScreen extends Screen {
                         }
                     }
                 }
-                String num = Integer.toString(i + 1);
-                g.drawString(this.font, num, editorX + 30 - this.font.width(num), ly, MUTED, false);
-                drawCode(g, line, editorX + 36, ly, TEXT, editorW - 44);
+                ScriptColors.draw(g, this.font, line, editorX + 36 - doc.horiz, ly, TEXT, doc.horiz + textW);
                 if (i == doc.line && (System.currentTimeMillis() / 500) % 2 == 0) {
-                    int cx = editorX + 36 + spanWidth(line, Math.min(doc.col, line.length()));
+                    int cx = textX(line, Math.min(doc.col, line.length()));
                     g.fill(cx, ly - 1, cx + 1, ly + LINE_H - 2, TEXT);
                 }
             }
             g.disableScissor();
+            for (int i = doc.scroll; i < doc.lines.size(); i++) {
+                int ly = editorY + (i - doc.scroll) * LINE_H + 2;
+                if (ly > textBottom) {
+                    break;
+                }
+                String num = Integer.toString(i + 1);
+                g.drawString(this.font, num, editorX + 30 - this.font.width(num), ly, MUTED, false);
+            }
+            vBarX = editorX + editorW - BAR_W;
+            vBarY = editorY;
+            vBarH = textBottom - editorY;
+            thumbH = maxScroll == 0 ? vBarH : Math.max(12, vBarH * view / Math.max(view, doc.lines.size()));
+            int track = Math.max(1, vBarH - thumbH);
+            thumbY = vBarY + (maxScroll == 0 ? 0 : (int) (doc.scroll / (float) maxScroll * track));
+            g.fill(vBarX, vBarY, vBarX + BAR_W, vBarY + vBarH, 0xFF12161C);
+            g.fill(vBarX + 1, thumbY, vBarX + BAR_W - 1, Math.min(vBarY + vBarH, thumbY + thumbH), 0xFF5C6A80);
+            hBar = wide;
+            if (wide) {
+                hBarX = editorX;
+                hBarY = editorY + editorH - BAR_W;
+                hBarW = editorW - BAR_W;
+                int content = textW + horizMax;
+                hThumbW = Math.max(12, hBarW * textW / Math.max(textW, content));
+                int hTrack = Math.max(1, hBarW - hThumbW);
+                hThumbX = hBarX + (int) (doc.horiz / (float) Math.max(1, horizMax) * hTrack);
+                g.fill(hBarX, hBarY, hBarX + hBarW, hBarY + BAR_W, 0xFF12161C);
+                g.fill(hThumbX, hBarY + 1, Math.min(hBarX + hBarW, hThumbX + hThumbW), hBarY + BAR_W - 1, 0xFF5C6A80);
+            }
         }
         int sy = editorY + editorH;
         if (findOn) {
@@ -648,6 +702,12 @@ public class StudioScreen extends Screen {
     }
 
     private int editorX, editorY, editorW, editorH;
+    private int vBarX, vBarY, vBarH, thumbY, thumbH;
+    private int hBarX, hBarY, hBarW, hThumbX, hThumbW;
+    private boolean hBar;
+    private int scrollMax, horizMax;
+    private int pressX, pressY, scrollGrab;
+    private boolean textDrag;
 
     private boolean statusBad;
 
@@ -871,6 +931,22 @@ public class StudioScreen extends Screen {
         }
         ScriptDocument doc = script();
         if (doc != null && doc.loaded && hover(mx, my, editorX, editorY, editorW, editorH)) {
+            findFocus = false;
+            if (mx >= vBarX && mx < vBarX + BAR_W && my >= vBarY && my < vBarY + vBarH) {
+                drag = Drag.VSCROLL;
+                scrollGrab = my >= thumbY && my < thumbY + thumbH ? my - thumbY : thumbH / 2;
+                moveVScroll(doc, my);
+                return true;
+            }
+            if (hBar && my >= hBarY && my < hBarY + BAR_W && mx >= hBarX && mx < hBarX + hBarW) {
+                drag = Drag.HSCROLL;
+                scrollGrab = mx >= hThumbX && mx < hThumbX + hThumbW ? mx - hThumbX : hThumbW / 2;
+                moveHScroll(doc, mx);
+                return true;
+            }
+            pressX = mx;
+            pressY = my;
+            textDrag = false;
             placeCursor(doc, mx, my, false);
             drag = Drag.TEXT;
             return true;
@@ -882,9 +958,27 @@ public class StudioScreen extends Screen {
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dx, double dy) {
         int mx = (int) mouseX;
         int my = (int) mouseY;
+        if (drag == Drag.VSCROLL) {
+            ScriptDocument doc = script();
+            if (doc != null) {
+                moveVScroll(doc, my);
+            }
+            return true;
+        }
+        if (drag == Drag.HSCROLL) {
+            ScriptDocument doc = script();
+            if (doc != null) {
+                moveHScroll(doc, mx);
+            }
+            return true;
+        }
         if (drag == Drag.TEXT) {
             ScriptDocument doc = script();
             if (doc != null) {
+                if (!textDrag && Math.abs(mx - pressX) + Math.abs(my - pressY) < 4) {
+                    return true;
+                }
+                textDrag = true;
                 placeCursor(doc, mx, my, true);
             }
             return true;
@@ -943,9 +1037,12 @@ public class StudioScreen extends Screen {
         int step = (int) Math.signum(delta) * -3;
         ScriptDocument doc = script();
         if (doc != null && !settings) {
-            int view = Math.max(1, editorH / LINE_H);
-            int maxScroll = Math.max(0, doc.lines.size() - view);
-            doc.scroll = Math.max(0, Math.min(maxScroll, doc.scroll + step));
+            if (hasShiftDown()) {
+                doc.horiz = Math.max(0, Math.min(horizMax, doc.horiz + step * 12));
+            } else {
+                doc.scroll = Math.max(0, Math.min(scrollMax, doc.scroll + step));
+            }
+            doc.followCaret = false;
         } else if (StudioSession.JOURNAL.equals(StudioSession.active)) {
             if (mouseX < px + 8 + journalListW) {
                 listScroll = Math.max(0, Math.min(listMax, listScroll + step * 8));
@@ -1300,18 +1397,56 @@ public class StudioScreen extends Screen {
     }
 
     private void placeCursor(ScriptDocument doc, int mx, int my, boolean keep) {
-        int row = doc.scroll + (my - editorY - 2) / LINE_H;
+        int rel = my - editorY - 2;
+        int row = doc.scroll + (rel <= 0 ? 0 : rel / LINE_H);
         row = Math.max(0, Math.min(doc.lines.size() - 1, row));
         String line = doc.lines.get(row);
-        int local = mx - editorX - 36;
+        int local = mx - editorX - 36 + doc.horiz;
         int col = 0;
-        while (col < line.length() && spanWidth(line, col + 1) < local + 2) {
-            col++;
+        int best = Integer.MAX_VALUE;
+        for (int i = 0; i <= line.length(); i++) {
+            int dist = Math.abs(spanWidth(line, i) - local);
+            if (dist > best) {
+                break;
+            }
+            best = dist;
+            col = i;
         }
-        if (hasAltDown() || (keep && doc.box)) {
+        if (keep && (hasAltDown() || doc.box)) {
             doc.moveBox(row, col);
         } else {
             doc.move(row, col, keep);
+        }
+    }
+
+    private void moveVScroll(ScriptDocument doc, int my) {
+        int track = Math.max(1, vBarH - thumbH);
+        int pos = Math.max(0, Math.min(track, my - vBarY - scrollGrab));
+        doc.scroll = scrollMax == 0 ? 0 : Math.round(pos / (float) track * scrollMax);
+        doc.followCaret = false;
+    }
+
+    private void moveHScroll(ScriptDocument doc, int mx) {
+        int track = Math.max(1, hBarW - hThumbW);
+        int pos = Math.max(0, Math.min(track, mx - hBarX - scrollGrab));
+        doc.horiz = horizMax == 0 ? 0 : Math.round(pos / (float) track * horizMax);
+        doc.followCaret = false;
+    }
+
+    private int textX(String line, int col) {
+        ScriptDocument doc = script();
+        int horiz = doc == null ? 0 : doc.horiz;
+        return editorX + 36 + spanWidth(line, col) - horiz;
+    }
+
+    /** Подкручивает строку вбок, чтобы каретка была в видимой части. */
+    private void revealCaret(ScriptDocument doc, int textW) {
+        String line = doc.lines.get(Math.max(0, Math.min(doc.lines.size() - 1, doc.line)));
+        int caret = spanWidth(line, Math.min(doc.col, line.length()));
+        if (caret < doc.horiz + 4) {
+            doc.horiz = Math.max(0, caret - 8);
+        } else if (caret > doc.horiz + textW - 8) {
+            doc.horiz = Math.min(horizMax, Math.max(0, caret - textW + 16));
         }
     }
 
@@ -1725,51 +1860,7 @@ public class StudioScreen extends Screen {
     }
 
     private int spanWidth(String line, int count) {
-        int width = 0;
-        int start = 0;
-        int end = Math.max(0, Math.min(count, line.length()));
-        int tab = this.font.width("    ");
-        for (int i = 0; i < end; i++) {
-            if (line.charAt(i) == '\t') {
-                width += this.font.width(line.substring(start, i)) + tab;
-                start = i + 1;
-            }
-        }
-        return width + this.font.width(line.substring(start, end));
-    }
-
-    /** Рисует строку кода: таб — тонкая палка, а не квадрат отсутствующего глифа. */
-    private void drawCode(GuiGraphics g, String line, int x, int y, int color, int max) {
-        int drawn = 0;
-        int start = 0;
-        int tab = this.font.width("    ");
-        for (int i = 0; i <= line.length(); i++) {
-            boolean isTab = i < line.length() && line.charAt(i) == '\t';
-            if (!isTab && i < line.length()) {
-                continue;
-            }
-            if (start < i) {
-                String part = line.substring(start, i);
-                int partW = this.font.width(part);
-                if (drawn + partW > max) {
-                    g.drawString(this.font, this.font.plainSubstrByWidth(part, Math.max(0, max - drawn)), x + drawn, y, color, false);
-                    return;
-                }
-                g.drawString(this.font, part, x + drawn, y, color, false);
-                drawn += partW;
-            }
-            if (!isTab) {
-                return;
-            }
-            if (drawn + 2 < max) {
-                g.fill(x + drawn + 1, y, x + drawn + 2, y + 9, 0xFF5C6A80);
-            }
-            drawn += tab;
-            start = i + 1;
-            if (drawn >= max) {
-                return;
-            }
-        }
+        return ScriptColors.width(this.font, line, count);
     }
 
     private static boolean hover(int mx, int my, int x, int y, int w, int h) {

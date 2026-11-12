@@ -20,7 +20,6 @@ import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LightningBolt;
 import net.minecraft.world.food.FoodData;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
@@ -354,13 +353,17 @@ public final class Effects {
         }
     }
 
-    /** %arg-1% и {переменная} в id предмета раскрываются здесь, не при разборе строки. */
-    private static String resolvedItemId(String raw, ExecutionContext ctx) {
+    /** %arg-1% и {переменная} в id предмета раскрываются здесь, не при разборе строки. Регистр nbt сохраняется. */
+    private static String expandItem(String raw, ExecutionContext ctx) {
         String expanded = ctx.expandPlaceholders(raw).strip();
         if (expanded.length() > 2 && expanded.startsWith("{") && expanded.endsWith("}")) {
             expanded = Expression.toText(ctx.getVariable(expanded.substring(1, expanded.length() - 1)));
         }
-        return expanded.toLowerCase(java.util.Locale.ROOT);
+        return expanded;
+    }
+
+    private static ItemStack stackOf(String raw, ExecutionContext ctx) {
+        return ItemStacks.create(expandItem(raw, ctx), 1);
     }
 
     private static String itemText(Expression item, ExecutionContext ctx) {
@@ -368,20 +371,16 @@ public final class Effects {
         if (text.equals("<none>")) {
             throw new ScriptRuntimeException(Messages.get("effect.unknown_item", text));
         }
-        return text.toLowerCase(java.util.Locale.ROOT);
+        return text.strip();
     }
 
-    private static Item itemOf(String id) {
-        return ItemResolver.resolve(id)
-                .orElseThrow(() -> new ScriptRuntimeException(Messages.get("effect.unknown_item", id)));
-    }
-
-    private static void giveStacks(ServerPlayer player, Item item, int total) {
-        int maxStack = new ItemStack(item).getMaxStackSize();
+    private static void giveStacks(ServerPlayer player, ItemStack proto, int total) {
+        int maxStack = Math.max(1, proto.getMaxStackSize());
         int left = total;
         while (left > 0) {
             int size = Math.min(left, maxStack);
-            ItemStack stack = new ItemStack(item, size);
+            ItemStack stack = proto.copy();
+            stack.setCount(size);
             if (!player.getInventory().add(stack)) {
                 player.drop(stack, false);
             }
@@ -389,12 +388,26 @@ public final class Effects {
         }
     }
 
-    private static void dropStacks(ExecutionContext ctx, ScriptLocation loc, Item item, int total) {
-        int maxStack = new ItemStack(item).getMaxStackSize();
+    private static void giveDrop(ServerPlayer player, ItemStack proto, int total) {
+        int maxStack = Math.max(1, proto.getMaxStackSize());
         int left = total;
         while (left > 0) {
             int size = Math.min(left, maxStack);
-            Places.drop(ctx.server(), loc, new ItemStack(item, size));
+            ItemStack stack = proto.copy();
+            stack.setCount(size);
+            player.drop(stack, false);
+            left -= size;
+        }
+    }
+
+    private static void dropStacks(ExecutionContext ctx, ScriptLocation loc, ItemStack proto, int total) {
+        int maxStack = Math.max(1, proto.getMaxStackSize());
+        int left = total;
+        while (left > 0) {
+            int size = Math.min(left, maxStack);
+            ItemStack stack = proto.copy();
+            stack.setCount(size);
+            Places.drop(ctx.server(), loc, stack);
             left -= size;
         }
     }
@@ -407,10 +420,10 @@ public final class Effects {
     public record GiveItem(Target target, String itemId, @Nullable Expression count) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            Item item = itemOf(resolvedItemId(itemId, ctx));
+            ItemStack proto = stackOf(itemId, ctx);
             int total = itemCount(count, ctx);
             for (ServerPlayer p : target.resolve(ctx)) {
-                giveStacks(p, item, total);
+                giveStacks(p, proto, total);
             }
         }
     }
@@ -419,10 +432,10 @@ public final class Effects {
     public record GiveExpr(Target target, Expression item, @Nullable Expression count) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            Item resolved = itemOf(itemText(item, ctx));
+            ItemStack proto = ItemStacks.create(itemText(item, ctx), 1);
             int total = itemCount(count, ctx);
             for (ServerPlayer p : target.resolve(ctx)) {
-                giveStacks(p, resolved, total);
+                giveStacks(p, proto, total);
             }
         }
     }
@@ -705,21 +718,15 @@ public final class Effects {
     public record DropItem(Target target, String itemId, @Nullable Expression count) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            Item item = itemOf(resolvedItemId(itemId, ctx));
+            ItemStack proto = stackOf(itemId, ctx);
             int total = itemCount(count, ctx);
             ScriptLocation loc = Places.fromNamed(target, ctx);
             if (loc != null) {
-                dropStacks(ctx, loc, item, total);
+                dropStacks(ctx, loc, proto, total);
                 return;
             }
             for (ServerPlayer p : target.resolve(ctx)) {
-                int left = total;
-                int maxStack = new ItemStack(item).getMaxStackSize();
-                while (left > 0) {
-                    int size = Math.min(left, maxStack);
-                    p.drop(new ItemStack(item, size), false);
-                    left -= size;
-                }
+                giveDrop(p, proto, total);
             }
         }
     }
@@ -729,25 +736,19 @@ public final class Effects {
                            @Nullable Expression atPlace) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            Item resolved = itemOf(itemText(item, ctx));
+            ItemStack proto = ItemStacks.create(itemText(item, ctx), 1);
             int total = itemCount(count, ctx);
             if (atPlace != null) {
-                dropStacks(ctx, Places.require(atPlace.evaluate(ctx)), resolved, total);
+                dropStacks(ctx, Places.require(atPlace.evaluate(ctx)), proto, total);
                 return;
             }
             ScriptLocation loc = Places.fromNamed(atPlayer, ctx);
             if (loc != null) {
-                dropStacks(ctx, loc, resolved, total);
+                dropStacks(ctx, loc, proto, total);
                 return;
             }
             for (ServerPlayer p : atPlayer.resolve(ctx)) {
-                int left = total;
-                int maxStack = new ItemStack(resolved).getMaxStackSize();
-                while (left > 0) {
-                    int size = Math.min(left, maxStack);
-                    p.drop(new ItemStack(resolved, size), false);
-                    left -= size;
-                }
+                giveDrop(p, proto, total);
             }
         }
     }

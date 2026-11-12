@@ -412,11 +412,13 @@ final class EffectPatterns {
             if (raw.length() > 2 && raw.startsWith("{") && raw.endsWith("}")) {
                 return raw;
             }
-            String v = raw.toLowerCase(Locale.ROOT);
+            int brace = raw.indexOf('{');
+            String id = brace <= 0 ? raw : raw.substring(0, brace);
+            String v = id.toLowerCase(Locale.ROOT);
             if (!ID.matcher(v).matches()) {
                 throw new ParseException("некорректный id: '" + v + "' (пример: speed, minecraft:speed, entity.player.levelup)");
             }
-            return v;
+            return brace <= 0 ? v : v + raw.substring(brace);
         }
 
         /** Выражение, пойманное %piece% (не в конце строки). */

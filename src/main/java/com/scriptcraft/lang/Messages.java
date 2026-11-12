@@ -155,7 +155,7 @@ public final class Messages {
         add("studio.home", "Home", "Главная");
         add("studio.journal", "Journal", "Журнал");
         add("studio.patches", "Patches and versions", "Патчи и версии");
-        add("studio.p1", "0.4.1 — script reload rebuilds the HUD, command errors go to the journal", "0.4.1 — перезагрузка скрипта обновляет HUD, ошибки команд в журнале");
+        add("studio.p1", "0.4.1 — options, item nbt, LuckPerms, editor colors and a scrollbar", "0.4.1 — заготовки, nbt предметов, LuckPerms, цвета и ползунок редактора");
         add("studio.links", "Links", "Ссылки");
         add("studio.link.github", "GitHub", "GitHub");
         add("studio.link.docs", "Documentation", "Документация");
@@ -182,7 +182,7 @@ public final class Messages {
         add("studio.dev", "Developer", "Разработчик");
         add("studio.role", "author of the mod", "автор мода");
         add("studio.hint", "Open a script with + or File. On a server these are the server's scripts; in singleplayer, the local ones.", "Откройте скрипт кнопкой + или меню «Файл». На сервере это его скрипты, в одиночной игре — локальные.");
-        add("studio.parser", "Parser: events — yellow marker, textures and ids — blue. Hover a blue marker for the image and its size.", "Парсер: события — жёлтый маркер, текстуры и id — синий. Наведите на синий, чтобы увидеть картинку и размер.");
+        add("studio.parser", "Parser: events — yellow, if and else — blue, textures — blue, quote marks — faint green. &7 colours the text until the next colour. Hover a texture marker for the image.", "Парсер: события — жёлтый, if и else — синий, текстуры — синий, кавычки — едва зелёные. &7 красит текст, пока цвет не сменят. Наведите на текстуру, чтобы увидеть картинку.");
         add("studio.loading", "Loading...", "Загрузка...");
         add("studio.empty", "No scripts on this server yet", "На этом сервере пока нет скриптов");
         add("studio.find", "Find", "Найти");

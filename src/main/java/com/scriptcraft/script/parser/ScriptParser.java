@@ -92,6 +92,9 @@ public final class ScriptParser {
     private String currentFile = "?";
     /** Текущее пространство имён для define (сбрасывается на scriptcraft в начале каждого файла). */
     private String currentNamespace = ScriptCraft.MODID;
+    /** Заготовки файла: {@name} подставляется в текст до разбора строк. */
+    private final Map<String, String> options = new LinkedHashMap<>();
+    private static final Pattern OPTION_REF = Pattern.compile("\\{@([A-Za-z0-9_-]+)}");
 
     public ParseResult parse(List<ScriptSource> sources) {
         for (ScriptSource source : sources) {
@@ -162,6 +165,14 @@ public final class ScriptParser {
     }
 
     private void parseFile(List<Line> lines) {
+        options.clear();
+        collectOptions(lines);
+        settleOptions();
+        List<Line> expanded = new ArrayList<>(lines.size());
+        for (Line line : lines) {
+            expanded.add(new Line(line.number(), line.indent(), applyOptions(line.text(), line, true)));
+        }
+        lines = expanded;
         int i = 0;
         while (i < lines.size()) {
             Line line = lines.get(i);
@@ -199,6 +210,10 @@ public final class ScriptParser {
 
     private void parseTopLevel(Line headerLine, String header, List<Line> body) {
         String lower = header.toLowerCase(Locale.ROOT);
+
+        if (lower.equals("options")) {
+            return;
+        }
 
         if (lower.startsWith("every ")) {
             try {
@@ -397,6 +412,7 @@ public final class ScriptParser {
             return;
         }
         int permission = 0;
+        String permissionNode = null;
         Matcher legacy = LEGACY_PERMISSION.matcher(rest);
         if (legacy.find()) {
             permission = Integer.parseInt(legacy.group(1));
@@ -423,6 +439,12 @@ public final class ScriptParser {
                     Integer level = permissionValue(line);
                     if (level != null) {
                         permission = level;
+                        permissionNode = null;
+                    } else {
+                        String node = permissionNode(line);
+                        if (node != null) {
+                            permissionNode = node;
+                        }
                     }
                 }
                 if (line.text().toLowerCase(Locale.ROOT).startsWith("executable")) {
@@ -437,7 +459,7 @@ public final class ScriptParser {
             }
         }
         CommandDefinition def = new CommandDefinition(name, permission, List.copyOf(aliases), List.copyOf(arguments),
-                players, console, parseActions(actions), currentFile);
+                players, console, parseActions(actions), currentFile, permissionNode);
         commands.put(name, def);
         for (String alias : aliases) {
             commands.put(alias, def);
@@ -458,8 +480,9 @@ public final class ScriptParser {
         int colon = text.indexOf(':');
         String value = colon >= 0 ? text.substring(colon + 1).strip() : "";
         if (lower.startsWith("permission")) {
-            if (permissionValue(line) == null) {
-                error(line, "permission: число от 0 до 4");
+            if (permissionValue(line) == null && permissionNode(line) == null) {
+                error(line, "permission: a level 0-4 or a LuckPerms node",
+                        "permission: уровень 0–4 или узел LuckPerms");
             }
             return;
         }
@@ -523,6 +546,82 @@ public final class ScriptParser {
             return Integer.parseInt(value);
         }
         return null;
+    }
+
+    /** Узел LuckPerms или null, если это уровень 0–4 либо строка не похожа на узел. */
+    @Nullable
+    private String permissionNode(Line line) {
+        String text = line.text();
+        int colon = text.indexOf(':');
+        String value = (colon >= 0 ? text.substring(colon + 1) : text.replaceFirst("(?i)permission", "")).strip();
+        if (value.matches("[0-4]") || !value.matches("[A-Za-z0-9_.*-]+")) {
+            return null;
+        }
+        return value;
+    }
+
+    private void collectOptions(List<Line> lines) {
+        int i = 0;
+        while (i < lines.size()) {
+            Line line = lines.get(i);
+            int end = blockEnd(lines, i);
+            if (line.indent() == 0 && line.text().equalsIgnoreCase("options:")) {
+                for (Line row : lines.subList(i + 1, end)) {
+                    String text = row.text();
+                    int colon = text.indexOf(':');
+                    if (colon <= 0) {
+                        error(row, "option: name: value", "заготовка: имя: значение");
+                        continue;
+                    }
+                    String name = text.substring(0, colon).strip();
+                    if (!name.matches("[A-Za-z0-9_-]+")) {
+                        error(row, "an option name is letters, digits, _ and -", "имя заготовки: буквы, цифры, _ и -");
+                        continue;
+                    }
+                    options.put(name.toLowerCase(Locale.ROOT), text.substring(colon + 1).strip());
+                }
+            }
+            i = end;
+        }
+    }
+
+    /** Заготовки могут ссылаться друг на друга. Несколько проходов, без бесконечной подстановки. */
+    private void settleOptions() {
+        for (int pass = 0; pass < 8; pass++) {
+            boolean changed = false;
+            for (Map.Entry<String, String> entry : options.entrySet()) {
+                String next = applyOptions(entry.getValue(), null, false);
+                if (!next.equals(entry.getValue())) {
+                    entry.setValue(next);
+                    changed = true;
+                }
+            }
+            if (!changed) {
+                return;
+            }
+        }
+    }
+
+    private String applyOptions(String text, @Nullable Line line, boolean report) {
+        Matcher matcher = OPTION_REF.matcher(text);
+        StringBuilder out = new StringBuilder();
+        int last = 0;
+        while (matcher.find()) {
+            out.append(text, last, matcher.start());
+            String value = options.get(matcher.group(1).toLowerCase(Locale.ROOT));
+            if (value == null) {
+                if (report && line != null) {
+                    error(line, "unknown option {@" + matcher.group(1) + "}",
+                            "неизвестная заготовка {@" + matcher.group(1) + "}");
+                }
+                out.append(matcher.group());
+            } else {
+                out.append(value);
+            }
+            last = matcher.end();
+        }
+        out.append(text.substring(last));
+        return out.toString();
     }
 
     /** [игроки, консоль] или null, если строка не разобралась. */
@@ -747,18 +846,20 @@ public final class ScriptParser {
             int at = negate ? k + 3 : k + 1;
             if (word(t, at).equals("permission")) {
                 if (at + 1 >= t.size()) {
-                    throw new ParseException("нужно: player has permission <0-4>");
+                    throw new ParseException("need: player has permission <0-4 or \"node\">",
+                            "нужно: player has permission <0-4 или \"узел\">");
                 }
-                int level;
-                try {
-                    level = Integer.parseInt(t.get(at + 1).value());
-                } catch (NumberFormatException e) {
-                    throw new ParseException("уровень прав — число от 0 до 4");
+                Token perm = t.get(at + 1);
+                if (!perm.quoted() && perm.value().matches("[0-4]")) {
+                    return new ParsedCond(new Condition.Permission(target.target(), Integer.parseInt(perm.value()), null, negate),
+                            finish(t, at + 2));
                 }
-                if (level < 0 || level > 4) {
-                    throw new ParseException("уровень прав — число от 0 до 4");
+                String node = perm.value();
+                if (!node.matches("[A-Za-z0-9_.*-]+")) {
+                    throw new ParseException("the permission level is 0-4, or a LuckPerms node",
+                            "уровень прав — число от 0 до 4, либо узел LuckPerms");
                 }
-                return new ParsedCond(new Condition.Permission(target.target(), level, negate), finish(t, at + 2));
+                return new ParsedCond(new Condition.Permission(target.target(), 0, node, negate), finish(t, at + 2));
             }
             if (at >= t.size()) {
                 throw new ParseException("нужно: player has <предмет>");

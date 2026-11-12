@@ -1,9 +1,9 @@
 package com.scriptcraft.script.runtime;
 
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.GameType;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Objects;
@@ -130,15 +130,11 @@ public interface Condition {
         }
     }
 
-    /** player is [not] holding &lt;предмет&gt; — предмет в основной руке. */
+    /** player is [not] holding &lt;предмет&gt; — предмет в основной руке. Nbt в id тоже сравнивается. */
     record Holding(Target target, String itemId, boolean negate) implements Condition {
         @Override
         public boolean test(ExecutionContext ctx) {
-            Item want = ItemResolver.resolve(itemId).orElse(null);
-            if (want == null) {
-                return false;
-            }
-            return every(target, ctx, p -> p.getMainHandItem().is(want), negate);
+            return every(target, ctx, p -> ItemStacks.matches(p.getMainHandItem(), itemId), negate);
         }
     }
 
@@ -146,20 +142,27 @@ public interface Condition {
     record HasItem(Target target, String itemId, boolean negate) implements Condition {
         @Override
         public boolean test(ExecutionContext ctx) {
-            Item want = ItemResolver.resolve(itemId).orElse(null);
-            if (want == null) {
-                return false;
-            }
-            ItemStack probe = new ItemStack(want);
-            return every(target, ctx, p -> p.getInventory().contains(probe), negate);
+            return every(target, ctx, p -> {
+                for (ItemStack stack : p.getInventory().items) {
+                    if (ItemStacks.matches(stack, itemId)) {
+                        return true;
+                    }
+                }
+                for (ItemStack stack : p.getInventory().armor) {
+                    if (ItemStacks.matches(stack, itemId)) {
+                        return true;
+                    }
+                }
+                return ItemStacks.matches(p.getInventory().offhand.get(0), itemId);
+            }, negate);
         }
     }
 
-    /** player has permission &lt;0-4&gt;. */
-    record Permission(Target target, int level, boolean negate) implements Condition {
+    /** player has permission &lt;0-4&gt; или узел LuckPerms. node == null — числовой уровень. */
+    record Permission(Target target, int level, @Nullable String node, boolean negate) implements Condition {
         @Override
         public boolean test(ExecutionContext ctx) {
-            return every(target, ctx, p -> p.hasPermissions(level), negate);
+            return every(target, ctx, p -> node != null ? Permissions.hasNode(p, node) : p.hasPermissions(level), negate);
         }
     }
 

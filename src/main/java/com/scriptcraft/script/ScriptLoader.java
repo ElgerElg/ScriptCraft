@@ -390,6 +390,10 @@ public final class ScriptLoader {
         if (!player && !def.console()) {
             return false;
         }
+        if (def.permissionNode() != null && source.getEntity() instanceof ServerPlayer online
+                && !com.scriptcraft.script.runtime.Permissions.hasNode(online, def.permissionNode())) {
+            return false;
+        }
         return def.permissionLevel() <= 0 || source.hasPermission(def.permissionLevel());
     }
 

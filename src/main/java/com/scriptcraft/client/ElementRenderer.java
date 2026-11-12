@@ -262,12 +262,7 @@ public final class ElementRenderer {
         ItemStack stack = ItemStack.EMPTY;
         boolean selected = false;
         switch (slot.content()) {
-            case ITEM -> {
-                Item item = item(slot.value());
-                if (item != null) {
-                    stack = new ItemStack(item, Math.max(1, slot.count()));
-                }
-            }
+            case ITEM -> stack = com.scriptcraft.script.runtime.ItemStacks.tryCreate(slot.value(), Math.max(1, slot.count()));
             case HOTBAR -> {
                 // Настоящий предмет из хотбара игрока (номер 1..9) — обновляется сам, без пакетов.
                 LocalPlayer p = Minecraft.getInstance().player;
