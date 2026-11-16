@@ -13,9 +13,11 @@
       "nav.docs": "Документация", "nav.examples": "Примеры", "nav.start": "Начало", "nav.menu": "Разделы",
       "lang.btn": "EN", "lang.title": "Switch to English",
       "theme.title": "Светлая / тёмная тема", "github": "GitHub",
-      "docs.title": "Синтаксис ScriptCraft",
-      "docs.sub": "Всё, что умеет язык: события, эффекты, условия, выражения, цели, экраны, команды мода и конфиг. У каждой строки — пример.",
-      "search.ph": "Поиск: heal, переменная, radius, open screen…", "search.hint": "/ — поиск, Esc — очистить",
+      "docs.eyebrow": "Справочник языка · 0.4.3", "docs.title": "Синтаксис ScriptCraft",
+      "docs.sub": "Найдите нужную конструкцию, сравните варианты и скопируйте рабочий пример.",
+      "docs.start": "Написать первый скрипт", "docs.browse": "Смотреть примеры",
+      "docs.fact.search": "Поиск по справочнику", "docs.fact.indent": "Отступ вложенных строк", "docs.fact.reload": "Применить изменения",
+      "search.ph": "Событие, эффект или строка синтаксиса…", "search.hint": "/ — поиск, Esc — очистить",
       "chips.all": "Сбросить", "status.all": "Записей: {n}", "status.found": "Найдено: {n} из {total}",
       "empty": "Ничего не найдено. Попробуйте другое слово или сбросьте фильтры.",
       "card.syntax": "Синтаксис", "card.example": "Пример", "card.related": "См. также:", "card.since": "с версии {v}",
@@ -31,9 +33,11 @@
       "nav.docs": "Docs", "nav.examples": "Examples", "nav.start": "Getting started", "nav.menu": "Contents",
       "lang.btn": "RU", "lang.title": "Переключить на русский",
       "theme.title": "Light / dark theme", "github": "GitHub",
-      "docs.title": "ScriptCraft syntax",
-      "docs.sub": "Everything the language can do: events, effects, conditions, expressions, targets, screens, mod commands and config. Every line has an example.",
-      "search.ph": "Search: heal, variable, radius, open screen…", "search.hint": "/ to search, Esc to clear",
+      "docs.eyebrow": "Language reference · 0.4.3", "docs.title": "ScriptCraft syntax",
+      "docs.sub": "Find a construct, compare its forms, and copy a working example.",
+      "docs.start": "Write your first script", "docs.browse": "Browse examples",
+      "docs.fact.search": "Search the reference", "docs.fact.indent": "Indent nested lines", "docs.fact.reload": "Apply changes",
+      "search.ph": "Event, effect, or syntax line…", "search.hint": "/ to search, Esc to clear",
       "chips.all": "Reset", "status.all": "Entries: {n}", "status.found": "Found: {n} of {total}",
       "empty": "Nothing found. Try another word or reset the filters.",
       "card.syntax": "Syntax", "card.example": "Example", "card.related": "See also:", "card.since": "since {v}",
@@ -101,6 +105,15 @@
   };
   SC.paras = function (text) {
     return String(text).split(/\n\s*\n/).map(function (p) { return "<p>" + SC.inline(p.trim()) + "</p>"; }).join("");
+  };
+
+  /** Делит плотное описание на короткие смысловые строки после предложений. */
+  SC.readable = function (text) {
+    var parts = String(text).trim().split(/(?<=[.!?])\s+(?=(?:`|\*\*|[A-ZА-ЯЁ0-9]))/);
+    if (parts.length < 2) return SC.paras(text);
+    return '<ul class="desc-lines">' + parts.map(function (part) {
+      return "<li>" + SC.inline(part) + "</li>";
+    }).join("") + "</ul>";
   };
 
   // ------------------------------------------------------------ подсветка

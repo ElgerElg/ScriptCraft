@@ -104,8 +104,11 @@
       '<span class="badge c-' + e.category + '">' + SC.esc(SC.tr(cat)) + "</span>" +
       '<span class="since">' + SC.esc(SC.t("card.since", { v: e.since })) + "</span>" +
       '<a class="perma" href="#' + e.id + '" title="' + SC.esc(SC.t("card.link")) + '">#</a></div>' +
-      '<div class="syntax">' + e.syntax.map(function (s) { return "<code>" + mark(s, ts) + "</code>"; }).join("") + "</div>" +
-      '<div class="desc">' + SC.paras(SC.tr(e.desc)) + "</div>" +
+      '<div class="syntax" aria-label="' + SC.esc(SC.t("card.syntax")) + '">' + e.syntax.map(function (s, i) {
+        return '<div class="syntax-row"><span class="syntax-index">' + (i + 1) + '</span><code>' + mark(s, ts) + '</code>' +
+          '<button class="syntax-copy" type="button" data-copy-syntax="' + SC.esc(s) + '" title="' + SC.esc(SC.t("copy")) + '" aria-label="' + SC.esc(SC.t("copy")) + '">⧉</button></div>';
+      }).join("") + "</div>" +
+      '<div class="desc">' + SC.readable(SC.tr(e.desc)) + "</div>" +
       SC.codeBlock(e.example, e.category === "config" ? "toml" : "sc", SC.t("card.example") + (e.category === "config" ? " · scriptcraft/config.toml" : "")) +
       (related ? '<div class="related"><span>' + SC.esc(SC.t("card.related")) + "</span>" + related + "</div>" : "") +
       "</article>";
@@ -263,6 +266,15 @@
         var open = all.getAttribute("data-side") === "expand";
         els.side.querySelectorAll(".side-group").forEach(function (g) { setOpen(g.getAttribute("data-cat"), open); });
       }
+    });
+    els.list.addEventListener("click", function (ev) {
+      var copy = ev.target.closest("button[data-copy-syntax]");
+      if (!copy) return;
+      SC.copy(copy.getAttribute("data-copy-syntax")).then(function (ok) {
+        copy.textContent = ok ? "✓" : "!";
+        copy.classList.toggle("ok", ok);
+        setTimeout(function () { copy.textContent = "⧉"; copy.classList.remove("ok"); }, 1200);
+      });
     });
     els.chips.addEventListener("click", function (ev) {
       var b = ev.target.closest("button");
