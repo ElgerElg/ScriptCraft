@@ -92,6 +92,8 @@ public final class Messages {
         add("effectcmd.parse_error", "&cEffect command error: %s", "&cОшибка в эффект-команде: %s");
         add("effectcmd.run_error", "&cEffect command failed: %s", "&cЭффект-команда не выполнилась: %s");
         add("effectcmd.no_targets", "&eNo targets: no player matched", "&eНет целей: ни один игрок не подошёл");
+        add("effectcmd.disabled", "Effect commands are off. Set effectCommands.enableEffectCommands = true and run /sc reload config",
+                "Эффект-команды выключены. Поставьте effectCommands.enableEffectCommands = true и выполните /sc reload config");
 
         // --- эффекты
         add("target.bad_selector", "bad selector %s: %s", "ошибка в селекторе %s: %s");
@@ -155,7 +157,7 @@ public final class Messages {
         add("studio.home", "Home", "Главная");
         add("studio.journal", "Journal", "Журнал");
         add("studio.patches", "Patches and versions", "Патчи и версии");
-        add("studio.p1", "0.4.5 — LuckPerms — inventory slot — item nbt", "0.4.5 — LuckPerms — слот инвентаря — nbt предметов");
+        add("studio.p1", "0.4.6 — LuckPerms plugin — command permissions — ? commands", "0.4.6 — LuckPerms плагин — права команд — команды ?");
         add("studio.copy", "Copy", "Копия");
         add("studio.copy_all", "All", "Все");
         add("studio.copy_hint", "Copy this error", "Копировать эту ошибку");

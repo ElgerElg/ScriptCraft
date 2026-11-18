@@ -15,7 +15,7 @@
  */
 window.SC_DOCS = window.SC_DOCS || {};
 window.SC_DOCS.syntax = {
-  version: "0.4.5",
+  version: "0.4.6",
   categories: [
     { id: "events",     ru: "События",            en: "Events" },
     { id: "structures", ru: "Структуры",          en: "Structures" },
@@ -302,8 +302,8 @@ on join or load:
     name: { ru: "Своя команда", en: "Custom command" },
     syntax: ["command /<имя>:", "command /<имя> <слово> <тип>:", "command /<имя> <тип> [тип]:", "permission: <0-4>", "permission: <узел>", "aliases: <имя>, <имя>", "arguments: <тип>, [тип]", "executable by: players", "executable by: console", "executable by: players and console"],
     desc: {
-      ru: "Объявляет команду. Слово без скобок — часть пути и не считается аргументом: `command /bag take <text>:` это `/bag take <текст>`, а `%arg-1%` — текст. <тип> обязательный, [тип] можно не писать. Типы: text, player, offline player, integer, number, boolean, date, world, item. Без списка аргументов хвост строки — %args%. `permission: 2` — уровень оператора. `permission: scriptcraft.bag` — узел LuckPerms; без этого мода узел есть только у оператора. Консоль узлом не ограничивается.",
-      en: "Declares a command. A bare word is part of the path and is not an argument: `command /bag take <text>:` is `/bag take <text>`, and `%arg-1%` is the text. <type> is required, [type] may be omitted. Types: text, player, offline player, integer, number, boolean, date, world, item. With no argument list the rest of the line is %args%. `permission: 2` is the operator level. `permission: scriptcraft.bag` is a LuckPerms node; without that mod only operators have the node. The console is not limited by a node."
+      ru: "Объявляет команду. Слово без скобок — часть пути и не считается аргументом: `command /bag take <text>:` это `/bag take <текст>`, а `%arg-1%` — текст. <тип> обязательный, [тип] можно не писать. Типы: text, player, offline player, integer, number, boolean, date, world, item. Без списка аргументов хвост строки — %args%. `permission: 2` — уровень оператора. `permission: scriptcraft.bag` — узел LuckPerms, мод или плагин; та же проверка, что у `has permission`. Узел попадает в редактор LuckPerms. Без LuckPerms узел есть только у оператора. Консоль узлом не ограничивается.",
+      en: "Declares a command. A bare word is part of the path and is not an argument: `command /bag take <text>:` is `/bag take <text>`, and `%arg-1%` is the text. <type> is required, [type] may be omitted. Types: text, player, offline player, integer, number, boolean, date, world, item. With no argument list the rest of the line is %args%. `permission: 2` is the operator level. `permission: scriptcraft.bag` is a LuckPerms node, mod or plugin; the same check as `has permission`. The node is listed in the LuckPerms editor. Without LuckPerms only operators have the node. The console is not limited by a node."
     },
     example: `command /hello:
 	send "&bПривет из %script%, %player%! Ты написал: %args%" to player
@@ -2133,8 +2133,8 @@ show vanilla all for player`,
     name: { ru: "Эффект-команды в чате ?...", en: "Chat effect commands ?..." },
     syntax: ["?<строка скрипта>"],
     desc: {
-      ru: "Сообщение в чате, начинающееся с токена (по умолчанию `?`), выполняется как одна строка скрипта от имени написавшего. Выключено по умолчанию (`enableEffectCommands`). Право `scriptcraft.effectcommands` (PermissionAPI, по умолчанию — операторы). Блоки (`if`, `loop`, `open screen`) не поддерживаются; пустая цель — сообщение «Нет целей».",
-      en: "A chat message starting with the token (`?` by default) runs as one script line on behalf of the sender. Off by default (`enableEffectCommands`). Permission `scriptcraft.effectcommands` (PermissionAPI, operators by default). Blocks (`if`, `loop`, `open screen`) are not supported; an empty target replies “No targets”."
+      ru: "Сообщение в чате, начинающееся с токена (по умолчанию `?`), выполняется как одна строка скрипта от имени написавшего. На новом сервере включено. Если в конфиге уже стоит `enableEffectCommands = false`, `?` молчит, пока это не сменить и не сделать `/sc reload config`. На гибриде чат читается и через Bukkit. Право `scriptcraft.effectcommands` проверяет LuckPerms (мод или плагин) и Forge. Блоки (`if`, `loop`, `open screen`) не поддерживаются; пустая цель — сообщение «Нет целей».",
+      en: "A chat message starting with the token (`?` by default) runs as one script line on behalf of the sender. On a new server it is on. If the config already has `enableEffectCommands = false`, `?` stays quiet until that is changed and `/sc reload config` is run. On a hybrid, chat is also read through Bukkit. The node `scriptcraft.effectcommands` is checked in LuckPerms (mod or plugin) and Forge. Blocks (`if`, `loop`, `open screen`) are not supported; an empty target replies “No targets”."
     },
     example: `?heal player
 ?send "привет" to targeted player
@@ -2193,7 +2193,7 @@ show vanilla all for player`,
     example: `resourceChunkSizeKb = 256`, since: "0.1.2", related: ["cfg-syncResourcesToClients"] },
   { id: "cfg-enableEffectCommands", category: "config", name: { ru: "effectCommands.enableEffectCommands", en: "effectCommands.enableEffectCommands" },
     syntax: ["enableEffectCommands = false"],
-    desc: { ru: "Включить эффект-команды в чате (`?heal player`). По умолчанию выключено.", en: "Enable chat effect commands (`?heal player`). Off by default." },
+    desc: { ru: "Включить эффект-команды в чате (`?heal player`). На новом сервере включено. Уже записанный конфиг со значением `false` сам не меняется.", en: "Enable chat effect commands (`?heal player`). On for a new server. An existing config that says `false` is not changed by itself." },
     example: `enableEffectCommands = true`, since: "0.1.2", related: ["cmd-effect-commands"] },
   { id: "cfg-effectCommandToken", category: "config", name: { ru: "effectCommands.effectCommandToken", en: "effectCommands.effectCommandToken" },
     syntax: ["effectCommandToken = \"?\""],

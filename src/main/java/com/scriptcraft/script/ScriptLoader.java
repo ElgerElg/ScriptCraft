@@ -313,6 +313,20 @@ public final class ScriptLoader {
             server.getCommands().sendCommands(player);
         }
         BindingSync.apply(server, program, source);
+        LuckPermsLink.publishNodes(commandNodes());
+    }
+
+    /** Узлы permission: из команд плюс право эффект-команд. */
+    private static java.util.Set<String> commandNodes() {
+        java.util.Set<String> nodes = new java.util.LinkedHashSet<>();
+        nodes.add("scriptcraft.effectcommands");
+        for (String name : program.commandNames()) {
+            com.scriptcraft.script.parser.CommandDefinition def = program.command(name);
+            if (def != null && def.permissionNode() != null) {
+                nodes.add(def.permissionNode());
+            }
+        }
+        return nodes;
     }
 
     private static void sendErrors(CommandSourceStack source) {
@@ -372,6 +386,8 @@ public final class ScriptLoader {
     /** Сервер запущен (мир загружен, переменные прочитаны): "on load:" всех включённых скриптов. */
     public static void onServerStarted(MinecraftServer server) {
         LuckPermsLink.logPresence();
+        LuckPermsLink.publishNodes(commandNodes());
+        com.scriptcraft.command.EffectCommands.hookChat();
         fireScriptEvent(ScriptEvent.LOAD, f -> true, server);
         InputSync.sync(server);
     }

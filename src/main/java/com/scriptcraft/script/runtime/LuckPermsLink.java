@@ -27,6 +27,9 @@ public final class LuckPermsLink {
     }
 
     private static boolean warned;
+    /** Загрузчик, в котором лежит LuckPerms API. У плагина это не загрузчик мода. */
+    @Nullable
+    private static ClassLoader apiLoader;
 
     private LuckPermsLink() {
     }
@@ -461,8 +464,8 @@ public final class LuckPermsLink {
     @Nullable
     private static Object bukkitUser(ServerPlayer player) {
         try {
-            Class<?> playerClass = Class.forName("org.bukkit.entity.Player");
             Class<?> bukkit = Class.forName("org.bukkit.Bukkit");
+            Class<?> playerClass = Class.forName("org.bukkit.entity.Player", true, bukkit.getClassLoader());
             Object bukkitPlayer = bukkit.getMethod("getPlayer", UUID.class).invoke(null, player.getUUID());
             if (bukkitPlayer == null) {
                 return null;
@@ -523,22 +526,99 @@ public final class LuckPermsLink {
         return api;
     }
 
+    /** Узлы из скриптов попадают в список прав Bukkit, и редактор LuckPerms их показывает. */
+    public static void publishNodes(java.util.Collection<String> nodes) {
+        if (nodes == null || nodes.isEmpty() || !bukkitPresent()) {
+            return;
+        }
+        try {
+            ClassLoader bukkitLoader = Class.forName("org.bukkit.Bukkit").getClassLoader();
+            Class<?> permClass = Class.forName("org.bukkit.permissions.Permission", true, bukkitLoader);
+            Class<?> defaults = Class.forName("org.bukkit.permissions.PermissionDefault", true, bukkitLoader);
+            @SuppressWarnings({"unchecked", "rawtypes"})
+            Object deny = Enum.valueOf((Class<? extends Enum>) defaults.asSubclass(Enum.class), "FALSE");
+            Object manager = Class.forName("org.bukkit.Bukkit").getMethod("getPluginManager").invoke(null);
+            for (String node : nodes) {
+                if (node == null || node.isBlank() || invoke(manager, "getPermission", node) != null) {
+                    continue;
+                }
+                Object perm = permClass.getConstructor(String.class, defaults).newInstance(node, deny);
+                invoke(manager, "addPermission", perm);
+            }
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            warn(e);
+        }
+    }
+
     @Nullable
     private static Object api() {
         try {
-            Class<?> provider = Class.forName("net.luckperms.api.LuckPermsProvider");
-            return provider.getMethod("get").invoke(null);
-        } catch (ClassNotFoundException e) {
-            return null;
+            ClassLoader loader = apiLoader();
+            try {
+                Class<?> provider = Class.forName("net.luckperms.api.LuckPermsProvider", true, loader);
+                return provider.getMethod("get").invoke(null);
+            } catch (ClassNotFoundException | InvocationTargetException e) {
+                return service(loader);
+            }
         } catch (ReflectiveOperationException e) {
             warn(e);
             return null;
         }
     }
 
-    private static boolean apiClass() {
+    /** Bukkit ServicesManager — запасной путь, если провайдер плагина не виден напрямую. */
+    @Nullable
+    private static Object service(ClassLoader loader) throws ReflectiveOperationException {
+        if (!bukkitPresent()) {
+            return null;
+        }
+        Class<?> apiType;
         try {
-            Class.forName("net.luckperms.api.LuckPermsProvider");
+            apiType = Class.forName("net.luckperms.api.LuckPerms", true, loader);
+        } catch (ClassNotFoundException e) {
+            return null;
+        }
+        Object services = Class.forName("org.bukkit.Bukkit").getMethod("getServicesManager").invoke(null);
+        Object registration = invoke(services, "getRegistration", apiType);
+        if (registration == null) {
+            return null;
+        }
+        return registration.getClass().getMethod("getProvider").invoke(registration);
+    }
+
+    private static ClassLoader apiLoader() {
+        if (apiLoader != null) {
+            return apiLoader;
+        }
+        ClassLoader own = LuckPermsLink.class.getClassLoader();
+        if (hasProvider(own)) {
+            apiLoader = own;
+            return own;
+        }
+        Object plugin = pluginObject();
+        if (plugin != null && hasProvider(plugin.getClass().getClassLoader())) {
+            apiLoader = plugin.getClass().getClassLoader();
+            return apiLoader;
+        }
+        return own;
+    }
+
+    private static boolean hasProvider(ClassLoader loader) {
+        try {
+            Class.forName("net.luckperms.api.LuckPermsProvider", false, loader);
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
+        }
+    }
+
+    private static boolean apiClass() {
+        return hasProvider(apiLoader());
+    }
+
+    private static boolean bukkitPresent() {
+        try {
+            Class.forName("org.bukkit.Bukkit");
             return true;
         } catch (ClassNotFoundException e) {
             return false;
@@ -546,26 +626,42 @@ public final class LuckPermsLink {
     }
 
     private static boolean bukkitPlugin() {
+        Object plugin = pluginObject();
+        if (plugin == null) {
+            return false;
+        }
         try {
-            Class<?> bukkit = Class.forName("org.bukkit.Bukkit");
-            Object plugins = bukkit.getMethod("getPluginManager").invoke(null);
-            Object plugin = null;
-            for (Method method : plugins.getClass().getMethods()) {
-                if (method.getName().equals("getPlugin") && method.getParameterCount() == 1) {
-                    plugin = method.invoke(plugins, "LuckPerms");
-                    break;
-                }
-            }
-            if (plugin == null) {
-                return false;
-            }
             Object enabled = plugin.getClass().getMethod("isEnabled").invoke(plugin);
             return Boolean.TRUE.equals(enabled);
-        } catch (ClassNotFoundException e) {
-            return false;
         } catch (ReflectiveOperationException e) {
             return false;
         }
+    }
+
+    @Nullable
+    private static Object pluginObject() {
+        if (!bukkitPresent()) {
+            return null;
+        }
+        try {
+            Object plugins = Class.forName("org.bukkit.Bukkit").getMethod("getPluginManager").invoke(null);
+            return invoke(plugins, "getPlugin", "LuckPerms");
+        } catch (ReflectiveOperationException e) {
+            return null;
+        }
+    }
+
+    @Nullable
+    private static Object invoke(Object target, String name, Object arg) throws ReflectiveOperationException {
+        for (Method method : target.getClass().getMethods()) {
+            if (!method.getName().equals(name) || method.getParameterCount() != 1) {
+                continue;
+            }
+            if (arg == null || wrap(method.getParameterTypes()[0]).isInstance(arg)) {
+                return method.invoke(target, arg);
+            }
+        }
+        return null;
     }
 
     private static String group(String raw) {
@@ -601,7 +697,7 @@ public final class LuckPermsLink {
 
     private static Object callStatic(String className, String name, Object... args) {
         try {
-            Class<?> type = Class.forName(className);
+            Class<?> type = Class.forName(className, true, apiLoader());
             Method method = find(type.getMethods(), name, args, true);
             if (method == null) {
                 throw new ScriptRuntimeException(Messages.get("lp.fail", name));

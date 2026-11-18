@@ -102,7 +102,7 @@ public final class ScriptCraftConfig {
                 "Эффект-команды: сообщение в чате, начинающееся с токена, выполняется как одна строка скрипта").push("effectCommands");
 
         ENABLE_EFFECT_COMMANDS = b.comment("Enable effect commands / Включить эффект-команды")
-                .define("enableEffectCommands", false);
+                .define("enableEffectCommands", true);
 
         EFFECT_COMMAND_TOKEN = b.comment("Prefix of effect commands in chat / Префикс эффект-команд в чате")
                 .define("effectCommandToken", "?", v -> v instanceof String str && !str.isBlank() && str.length() <= 8 && !str.startsWith("/"));
@@ -162,7 +162,7 @@ public final class ScriptCraftConfig {
     }
 
     public static boolean enableEffectCommands() {
-        return safe(ENABLE_EFFECT_COMMANDS::get, false);
+        return safe(ENABLE_EFFECT_COMMANDS::get, true);
     }
 
     public static String effectCommandToken() {
