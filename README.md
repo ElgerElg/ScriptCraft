@@ -28,12 +28,12 @@ The same jar is required on the **server and on every client**. Screens, custom 
 
 | | Feature | In short |
 |---|---|---|
-| Events | Player and world | join, quit, first join, death, respawn, chat, break, place, left and right click, drop, pickup, **item received**, damage, world change, gamemode, load and unload, **key press**, **vanilla menu open** (can be cancelled), `every`, `wait` |
+| Events | Player and world | join, quit, first join, death, respawn, chat, break, place, left click, right click, drop, pickup, **item received**, damage, world change, gamemode, load, unload, **key press**, **vanilla menu open** (can be cancelled), `every`, `wait` |
 | Commands | Your own | permission, aliases, who may run it, typed arguments (`text`, `player`, `integer`, `item`, and more) |
-| Effects | On players | messages, titles, sounds, items, teleport, heal, damage, gamemode, flight, potions, experience, kick, weather and time, lightning, explosion, velocity, spawn point |
+| Effects | On players | messages, titles, sounds, items, teleport, heal, damage, gamemode, flight, potions, experience, kick, weather, time, lightning, explosion, velocity, spawn point |
 | Language | Expressions | player name, UUID, online count, command arguments, `health of player`, random numbers, event placeholders, `&` color codes |
 | Variables | Stored and temporary | saved across restarts (with backups) or kept until the next restart. A HUD label bound to `{variable}` updates when the variable is written |
-| Conditions | Branching | comparisons, `if` / `else if` / `else`, `and` / `or`, player state, item in hand, gamemode and world |
+| Conditions | Branching | comparisons, `if` / `else if` / `else`, `and` / `or`, player state, item in hand, gamemode, world |
 | Targets | Who it applies to | all players, a player by name, players in a radius, the player you look at, vanilla `@a` / `@p` / `@r` / `@s`, `loop` |
 | Screens | Custom GUI | text, buttons, images, item slots, progress bars, layers, anchors, a **vertical or horizontal list**, and **click hitboxes** on text, images and slots |
 | HUD | On the game view | hotbar, health and hunger bars, images and text, layers, hide parts of the vanilla HUD. The HUD comes back when the player rejoins |

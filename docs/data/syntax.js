@@ -85,21 +85,30 @@ on join or load:
   },
   {
     id: "event-death", category: "events",
-    name: { ru: "Смерть и возрождение", en: "Death and respawn" },
-    syntax: ["on death:", "on respawn:", "on player death:"],
+    name: { ru: "Смерть", en: "Death" },
+    syntax: ["on death:", "on player death:"],
     desc: {
-      ru: "`on death:` — игрок умер. `%attacker%` — кто ударил (или `<none>`), `%cause%` — причина (`player`, `fall`, `lava`...). `cancel event` отменяет смерть. `on respawn:` — игрок появился снова. Оба вместе с другими: `on death or respawn:`.",
-      en: "`on death:` — the player died. `%attacker%` is who hit them (or `<none>`), `%cause%` is the cause (`player`, `fall`, `lava`...). `cancel event` prevents the death. `on respawn:` — the player is back. Combine with `or`: `on death or respawn:`."
+      ru: "Игрок умер. `%attacker%` — кто ударил (или `<none>`), `%cause%` — причина (`player`, `fall`, `lava`...). `cancel event` отменяет смерть.",
+      en: "The player died. `%attacker%` is who hit them (or `<none>`), `%cause%` is the cause (`player`, `fall`, `lava`...). `cancel event` prevents the death."
     },
     example: `on death:
 	broadcast "&c%player% погиб (%cause%)"
 	if %attacker% is not "<none>":
-		send "&7Тебя убил %attacker%" to player
-
-on respawn:
+		send "&7Тебя убил %attacker%" to player`,
+    since: "0.2.0", related: ["event-respawn", "eff-cancel", "event-damage", "ph-event"]
+  },
+  {
+    id: "event-respawn", category: "events",
+    name: { ru: "Возрождение", en: "Respawn" },
+    syntax: ["on respawn:", "on player respawn:"],
+    desc: {
+      ru: "Игрок появился снова после смерти. `cancel event` это событие не отменяет.",
+      en: "The player is back after dying. `cancel event` does not cancel this event."
+    },
+    example: `on respawn:
 	heal player
 	feed player`,
-    since: "0.2.0", related: ["eff-cancel", "eff-heal", "event-damage"]
+    since: "0.2.0", related: ["event-death", "eff-heal", "eff-feed"]
   },
   {
     id: "event-chat", category: "events",
@@ -116,38 +125,82 @@ on respawn:
     since: "0.2.0", related: ["eff-cancel", "eff-send", "ph-event"]
   },
   {
-    id: "event-blocks", category: "events",
-    name: { ru: "Блоки и клики", en: "Blocks and clicks" },
-    syntax: ["on break:", "on place:", "on right click:", "on left click:"],
+    id: "event-break", category: "events",
+    name: { ru: "Сломать блок", en: "Block break" },
+    syntax: ["on break:", "on block break:", "on mine:", "on break block:"],
     desc: {
-      ru: "Сломал блок, поставил блок, ПКМ или ЛКМ по блоку (основная рука). `%block%` — id блока (`minecraft:stone`), `%x%` `%y%` `%z%` — координаты. `cancel event` отменяет действие. Клик по воздуху на выделенном сервере не приходит. Синонимы: `block break`, `mine`, `rightclick`.",
-      en: "Broke a block, placed a block, or right/left-clicked a block (main hand). `%block%` is the id (`minecraft:stone`), `%x%` `%y%` `%z%` are the coordinates. `cancel event` stops the action. Clicking air is not delivered on a dedicated server. Aliases: `block break`, `mine`, `rightclick`."
+      ru: "Игрок сломал блок. `%block%` — id (`minecraft:stone`), `%x%` `%y%` `%z%` — координаты. `cancel event` не даёт сломать.",
+      en: "The player broke a block. `%block%` is the id (`minecraft:stone`), `%x%` `%y%` `%z%` are the coordinates. `cancel event` stops the break."
     },
     example: `on break:
 	if %block% is "minecraft:diamond_ore":
-		send "&bТы нашёл алмазы на %x% %y% %z%" to player
-
-on place:
-	if %block% is "example:ruby_block":
-		play sound block.amethyst_block.place to player`,
-    since: "0.2.0", related: ["eff-cancel", "ph-event", "eff-sound"]
+		send "&bТы нашёл алмазы на %x% %y% %z%" to player`,
+    since: "0.2.0", related: ["event-place", "eff-cancel", "ph-event"]
   },
   {
-    id: "event-items", category: "events",
-    name: { ru: "Выбросить и подобрать", en: "Drop and pickup" },
-    syntax: ["on drop:", "on pickup:", "on pick up:"],
+    id: "event-place", category: "events",
+    name: { ru: "Поставить блок", en: "Block place" },
+    syntax: ["on place:", "on block place:", "on place block:"],
     desc: {
-      ru: "Игрок выбросил предмет (Q) или поднял его с земли. `%item%` — id предмета. `cancel event` отменяет. У выбрасывания предмет уже снят с инвентаря: отмена не возвращает его в руку.",
-      en: "The player tossed an item (Q) or picked one up. `%item%` is the item id. `cancel event` cancels it. A toss is already removed from the inventory: cancelling does not put it back."
+      ru: "Игрок поставил блок. `%block%` — id поставленного блока, `%x%` `%y%` `%z%` — координаты. `cancel event` не даёт поставить.",
+      en: "The player placed a block. `%block%` is the placed block's id, `%x%` `%y%` `%z%` are the coordinates. `cancel event` stops the placement."
+    },
+    example: `on place:
+	if %block% is "example:ruby_block":
+		play sound block.amethyst_block.place to player`,
+    since: "0.2.0", related: ["event-break", "eff-cancel", "ph-event", "eff-sound"]
+  },
+  {
+    id: "event-right-click", category: "events",
+    name: { ru: "ПКМ по блоку", en: "Right click block" },
+    syntax: ["on right click:", "on rightclick:", "on right click block:"],
+    desc: {
+      ru: "ПКМ по блоку основной рукой. `%block%` — id блока, `%x%` `%y%` `%z%` — координаты. `cancel event` отменяет клик. Клик по воздуху на выделенном сервере не приходит.",
+      en: "Right click on a block with the main hand. `%block%` is the block id, `%x%` `%y%` `%z%` are the coordinates. `cancel event` stops the click. Clicking air is not delivered on a dedicated server."
+    },
+    example: `on right click:
+	if %block% is "minecraft:chest":
+		cancel event
+		send "&eСундук закрыт" to player`,
+    since: "0.2.0", related: ["event-left-click", "eff-cancel", "ph-event"]
+  },
+  {
+    id: "event-left-click", category: "events",
+    name: { ru: "ЛКМ по блоку", en: "Left click block" },
+    syntax: ["on left click:", "on leftclick:", "on left click block:"],
+    desc: {
+      ru: "ЛКМ по блоку основной рукой. `%block%` — id блока, `%x%` `%y%` `%z%` — координаты. `cancel event` отменяет клик. Клик по воздуху на выделенном сервере не приходит.",
+      en: "Left click on a block with the main hand. `%block%` is the block id, `%x%` `%y%` `%z%` are the coordinates. `cancel event` stops the click. Clicking air is not delivered on a dedicated server."
+    },
+    example: `on left click:
+	send "&7ЛКМ по %block% на %x% %y% %z%" to player`,
+    since: "0.2.0", related: ["event-right-click", "event-break", "eff-cancel", "ph-event"]
+  },
+  {
+    id: "event-drop", category: "events",
+    name: { ru: "Выбросить предмет", en: "Drop item" },
+    syntax: ["on drop:", "on drop item:", "on item drop:"],
+    desc: {
+      ru: "Игрок выбросил предмет (Q). `%item%` — id предмета. `cancel event` отменяет выброс, но предмет уже снят с инвентаря: отмена не возвращает его в руку.",
+      en: "The player tossed an item (Q). `%item%` is the item id. `cancel event` cancels the toss, but the item is already out of the inventory: cancelling does not put it back."
     },
     example: `on drop:
 	if %item% is "minecraft:diamond":
 		cancel event
-		send "&cАлмазы выбрасывать нельзя" to player
-
-on pickup:
+		send "&cАлмазы выбрасывать нельзя" to player`,
+    since: "0.2.0", related: ["event-pickup", "eff-cancel", "eff-drop", "ph-event"]
+  },
+  {
+    id: "event-pickup", category: "events",
+    name: { ru: "Подобрать предмет", en: "Pick up item" },
+    syntax: ["on pickup:", "on pick up:", "on item pickup:"],
+    desc: {
+      ru: "Игрок поднял предмет с земли, ещё до инвентаря. `%item%` — id предмета. `cancel event` не даёт ему попасть в инвентарь. `on receive` при этом срабатывает отдельно, уже когда число в инвентаре выросло.",
+      en: "The player picked an item up off the ground, before it enters the inventory. `%item%` is the item id. `cancel event` keeps it out of the inventory. `on receive` still fires on its own, once the inventory count has grown."
+    },
+    example: `on pickup:
 	send "&7Поднято: %item%" to player`,
-    since: "0.2.0", related: ["eff-cancel", "eff-drop", "ph-event", "event-receive"]
+    since: "0.2.0", related: ["event-drop", "event-receive", "eff-cancel", "ph-event"]
   },
   {
     id: "event-receive", category: "events",
@@ -162,7 +215,7 @@ on pickup:
 	if %item% is "minecraft:diamond":
 		cancel event
 		send "&cАлмазы в этот инвентарь не кладутся" to player`,
-    since: "0.3.7", related: ["event-items", "eff-cancel", "eff-give-item", "ph-event"]
+    since: "0.3.7", related: ["event-pickup", "eff-cancel", "eff-give-item", "ph-event"]
   },
   {
     id: "event-key", category: "events",
@@ -206,23 +259,41 @@ on pickup:
     since: "0.2.0", related: ["eff-cancel", "eff-stop", "cond-gamemode"]
   },
   {
-    id: "event-world", category: "events",
-    name: { ru: "Мир, режим, первый вход", en: "World, game mode, first join" },
-    syntax: ["on first join:", "on world change:", "on gamemode change:"],
+    id: "event-first-join", category: "events",
+    name: { ru: "Первый вход", en: "First join" },
+    syntax: ["on first join:", "on firstjoin:"],
     desc: {
-      ru: "`on first join:` — игрок ещё ни разу не выходил (дополнительно к `on join:`). `on world change:` — смена измерения, `%from%` старый мир, `%world%` новый. `on gamemode change:` — `%from%` и `%gamemode%` (`survival`, `creative`...); `cancel event` не даёт сменить режим.",
-      en: "`on first join:` — the player has never logged out before (in addition to `on join:`). `on world change:` — dimension change, `%from%` is the old world, `%world%` the new one. `on gamemode change:` — `%from%` and `%gamemode%` (`survival`, `creative`...); `cancel event` keeps the old mode."
+      ru: "Игрок ещё ни разу не выходил. Срабатывает вместе с `on join:`, не вместо него.",
+      en: "The player has never logged out before. It fires together with `on join:`, not instead of it."
     },
     example: `on first join:
 	give player bread 16
-	send "&aДобро пожаловать, %player%!" to player
-
-on world change:
-	send "&7%from% → %world%" to player
-
-on gamemode change:
+	send "&aДобро пожаловать, %player%!" to player`,
+    since: "0.2.0", related: ["event-join", "eff-give-item"]
+  },
+  {
+    id: "event-world-change", category: "events",
+    name: { ru: "Смена мира", en: "World change" },
+    syntax: ["on world change:", "on change world:", "on dimension change:", "on worldchange:"],
+    desc: {
+      ru: "Игрок сменил измерение. `%from%` — старый мир, `%world%` — новый. `cancel event` это событие не отменяет.",
+      en: "The player changed dimension. `%from%` is the old world, `%world%` is the new one. `cancel event` does not cancel this event."
+    },
+    example: `on world change:
+	send "&7%from% → %world%" to player`,
+    since: "0.2.0", related: ["ph-event", "eff-teleport"]
+  },
+  {
+    id: "event-gamemode", category: "events",
+    name: { ru: "Смена режима", en: "Game mode change" },
+    syntax: ["on gamemode change:", "on game mode change:", "on gamemode:"],
+    desc: {
+      ru: "Игрок меняет режим. `%from%` — старый, `%gamemode%` — новый (`survival`, `creative`, `adventure`, `spectator`). `cancel event` оставляет старый режим.",
+      en: "The player is changing game mode. `%from%` is the old one, `%gamemode%` is the new one (`survival`, `creative`, `adventure`, `spectator`). `cancel event` keeps the old mode."
+    },
+    example: `on gamemode change:
 	send "&eТеперь ты в %gamemode%" to player`,
-    since: "0.2.0", related: ["event-join", "eff-cancel", "eff-gamemode"]
+    since: "0.2.0", related: ["eff-cancel", "eff-gamemode", "cond-gamemode", "ph-event"]
   },
 
   // ================================================================== СТРУКТУРЫ
@@ -316,7 +387,7 @@ command /shop:
 	chance of 25%:
 		give player emerald 1
 		send "&aРедкая находка!" to player`,
-    since: "0.2.0", related: ["event-blocks", "expr-random"]
+    since: "0.2.0", related: ["event-break", "expr-random"]
   },
   {
     id: "struct-loop", category: "structures",
@@ -451,21 +522,31 @@ command /hi:
     },
     example: `set {coins::%player%} to 0
 set {motd} to "Добро пожаловать"`,
-    since: "0.1.0", related: ["expr-variable", "eff-add-var", "eff-delete-var"]
+    since: "0.1.0", related: ["expr-variable", "eff-add-var", "eff-remove-var", "eff-delete-var"]
   },
   {
     id: "eff-add-var", category: "effects",
-    name: { ru: "Прибавить / отнять", en: "Add / remove" },
-    syntax: ["add <значение> to {<имя>}", "add <значение> {<имя>}", "remove <значение> from {<имя>}", "add <значение> to {<имя>::*}", "remove <значение> from {<имя>::*}"],
+    name: { ru: "Прибавить к переменной", en: "Add to variable" },
+    syntax: ["add <значение> to {<имя>}", "add <значение> {<имя>}", "add <значение> to {<имя>::*}"],
     desc: {
-      ru: "Число к числу считается как раньше: незаданная переменная — 0. Текст дописывается в конец, `remove` вырезает первое вхождение. `{список::*}` — это список, не число: `add` кладёт элемент под следующим номером (1, 2, 3…), `remove` убирает одно равное значение. Слово `to`/`from` можно не писать, если сразу после значения стоит переменная. В значение годится текст, `player` (имя), `loop-player`, `targeted block`, `player's tool` и локация.",
-      en: "A number added to a number works as before: an unset variable is 0. Text is appended, and `remove` cuts out the first occurrence. `{list::*}` is a list, not a number: `add` stores the element at the next index (1, 2, 3…), `remove` deletes one equal value. `to`/`from` can be left out when the variable comes right after the value. The value may be text, `player` (the name), `loop-player`, `targeted block`, `player's tool` or a location."
+      ru: "Число к числу: незаданная переменная считается 0. Текст дописывается в конец. `{список::*}` — список, не число: элемент кладётся под следующим номером (1, 2, 3…). Слово `to` можно не писать, если сразу после значения стоит переменная. В значение годится текст, `player` (имя), `loop-player`, `targeted block`, `player's tool` и локация.",
+      en: "A number added to a number treats an unset variable as 0. Text is appended. `{list::*}` is a list, not a number: the element is stored at the next index (1, 2, 3…). `to` can be left out when the variable comes right after the value. The value may be text, `player` (the name), `loop-player`, `targeted block`, `player's tool` or a location."
     },
     example: `add 5 to {coins::%player%}
-remove 1 from {coins::%player%}
 add player's tool to {tools::%player%::*}
 add targeted block {seen::%player%::*}`,
-    since: "0.1.0", related: ["eff-set-var", "expr-variable"]
+    since: "0.1.0", related: ["eff-remove-var", "eff-set-var", "expr-variable"]
+  },
+  {
+    id: "eff-remove-var", category: "effects",
+    name: { ru: "Отнять от переменной", en: "Remove from variable" },
+    syntax: ["remove <значение> from {<имя>}", "remove <значение> {<имя>}", "remove <значение> from {<имя>::*}"],
+    desc: {
+      ru: "Из числа вычитает. Из текста вырезает первое вхождение. Из списка `{список::*}` убирает одно равное значение. Слово `from` можно не писать, если сразу после значения стоит переменная.",
+      en: "Subtracts from a number. Cuts the first occurrence out of text. Removes one equal value from a list `{list::*}`. `from` can be left out when the variable comes right after the value."
+    },
+    example: `remove 1 from {coins::%player%}`,
+    since: "0.1.0", related: ["eff-add-var", "eff-set-var", "expr-variable"]
   },
   {
     id: "eff-delete-var", category: "effects",
@@ -480,16 +561,26 @@ add targeted block {seen::%player%::*}`,
   },
   {
     id: "eff-nbt", category: "effects",
-    name: { ru: "NBT", en: "NBT" },
-    syntax: ["set nbt \"<путь>\" of targeted entity to <значение>", "set nbt \"<путь>\" of targeted block to <значение>", "set nbt \"<путь>\" of targeted player to <значение>", "set nbt \"<путь>\" of player to <значение>", "remove nbt \"<путь>\" of targeted entity", "remove nbt \"<путь>\" of targeted block"],
+    name: { ru: "Записать NBT", en: "Set NBT" },
+    syntax: ["set nbt \"<путь>\" of targeted entity to <значение>", "set nbt \"<путь>\" of targeted block to <значение>", "set nbt \"<путь>\" of targeted player to <значение>", "set nbt \"<путь>\" of player to <значение>"],
     desc: {
-      ru: "Пишет или стирает NBT-тег сущности, игрока или блока в прицеле. Путь как в `/data`: `CustomName`, `Items[0].id`. Число пишется числом, `true`/`false` — байтом, текст — строкой, `{...}` и `[...]` — как SNBT. У блока без данных будет ошибка. Весь тег целиком: `%nbt of targeted entity%`, один путь: `%nbt CustomName of targeted entity%`.",
-      en: "Writes or removes an NBT tag on the entity, player or block in the crosshair. The path is the same as `/data`: `CustomName`, `Items[0].id`. A number is stored as a number, `true`/`false` as a byte, text as a string, `{...}` and `[...]` as SNBT. A block with no data is an error. The whole tag: `%nbt of targeted entity%`. One path: `%nbt CustomName of targeted entity%`."
+      ru: "Пишет NBT-тег сущности, игрока или блока в прицеле. Путь как в `/data`: `CustomName`, `Items[0].id`. Число пишется числом, `true`/`false` — байтом, текст — строкой, `{...}` и `[...]` — как SNBT. У блока без данных будет ошибка. Весь тег целиком: `%nbt of targeted entity%`, один путь: `%nbt CustomName of targeted entity%`.",
+      en: "Writes an NBT tag on the entity, player or block in the crosshair. The path is the same as `/data`: `CustomName`, `Items[0].id`. A number is stored as a number, `true`/`false` as a byte, text as a string, `{...}` and `[...]` as SNBT. A block with no data is an error. The whole tag: `%nbt of targeted entity%`. One path: `%nbt CustomName of targeted entity%`."
     },
     example: `send "%nbt of targeted entity%" to player
-set nbt "CustomName" of targeted entity to "\"Гриб\""
-remove nbt "CustomName" of targeted entity`,
-    since: "0.3.9", related: ["ph-targeted", "target-targeted"]
+set nbt "CustomName" of targeted entity to "\"Гриб\""`,
+    since: "0.3.9", related: ["eff-nbt-remove", "ph-targeted", "target-targeted"]
+  },
+  {
+    id: "eff-nbt-remove", category: "effects",
+    name: { ru: "Стереть NBT", en: "Remove NBT" },
+    syntax: ["remove nbt \"<путь>\" of targeted entity", "remove nbt \"<путь>\" of targeted block", "remove nbt \"<путь>\" of targeted player", "remove nbt \"<путь>\" of player"],
+    desc: {
+      ru: "Стирает один NBT-путь у сущности, игрока или блока в прицеле. Путь как в `/data`: `CustomName`, `Items[0].id`. У блока без данных будет ошибка.",
+      en: "Removes one NBT path from the entity, player or block in the crosshair. The path is the same as `/data`: `CustomName`, `Items[0].id`. A block with no data is an error."
+    },
+    example: `remove nbt "CustomName" of targeted entity`,
+    since: "0.3.9", related: ["eff-nbt", "ph-targeted", "target-targeted"]
   },
 
   // ================================================================== ЭФФЕКТЫ: чат
@@ -651,19 +742,29 @@ heal players in radius 10 of player by {bonus}`,
     },
     example: `feed player
 feed player by 6`,
-    since: "0.1.2", related: ["eff-set-food"]
+    since: "0.1.2", related: ["eff-set-food", "eff-set-saturation"]
   },
   {
     id: "eff-set-food", category: "effects",
-    name: { ru: "Голод и насыщение", en: "Food level & saturation" },
-    syntax: ["set food level of <цель> to <число>", "set hunger of <цель> to <число>", "set saturation of <цель> to <число>", "set player's food level to <число>", "set player's hunger to <число>", "set player's saturation to <число>"],
+    name: { ru: "Голод", en: "Food level" },
+    syntax: ["set food level of <цель> to <число>", "set hunger of <цель> to <число>", "set player's food level to <число>", "set player's hunger to <число>"],
     desc: {
-      ru: "Голод 0–20; насыщение не больше текущего голода (так работает ванилла).",
-      en: "Food 0–20; saturation cannot exceed the current food level (vanilla rule)."
+      ru: "Ставит голод, 0–20. `hunger` — то же, что `food level`.",
+      en: "Sets food level, 0–20. `hunger` is the same as `food level`."
     },
-    example: `set food level of player to 10
-set saturation of player to 5`,
-    since: "0.1.2", related: ["eff-feed"]
+    example: `set food level of player to 10`,
+    since: "0.1.2", related: ["eff-set-saturation", "eff-feed"]
+  },
+  {
+    id: "eff-set-saturation", category: "effects",
+    name: { ru: "Насыщение", en: "Saturation" },
+    syntax: ["set saturation of <цель> to <число>", "set player's saturation to <число>"],
+    desc: {
+      ru: "Ставит насыщение. Оно не бывает больше текущего голода — так устроена ванилла.",
+      en: "Sets saturation. It cannot exceed the current food level: that is how vanilla works."
+    },
+    example: `set saturation of player to 5`,
+    since: "0.1.2", related: ["eff-set-food", "eff-feed"]
   },
   {
     id: "eff-kill", category: "effects",
@@ -674,16 +775,26 @@ set saturation of player to 5`,
     since: "0.1.2", related: ["eff-damage"]
   },
   {
-    id: "eff-fire", category: "effects",
-    name: { ru: "Поджечь / потушить", en: "Ignite / extinguish" },
-    syntax: ["ignite <цель> for <число> seconds", "extinguish <цель>"],
+    id: "eff-ignite", category: "effects",
+    name: { ru: "Поджечь", en: "Ignite" },
+    syntax: ["ignite <цель> for <число> seconds"],
     desc: {
-      ru: "Поджигает на N секунд (1–3600) или тушит.",
-      en: "Sets on fire for N seconds (1–3600) or puts out the fire."
+      ru: "Поджигает игроков цели на N секунд (1–3600).",
+      en: "Sets the target players on fire for N seconds (1–3600)."
     },
-    example: `ignite player for 5 seconds
-extinguish player`,
-    since: "0.1.2", related: ["eff-damage"]
+    example: `ignite player for 5 seconds`,
+    since: "0.1.2", related: ["eff-extinguish", "eff-damage"]
+  },
+  {
+    id: "eff-extinguish", category: "effects",
+    name: { ru: "Потушить", en: "Extinguish" },
+    syntax: ["extinguish <цель>"],
+    desc: {
+      ru: "Тушит игроков цели.",
+      en: "Puts out the fire on the target players."
+    },
+    example: `extinguish player`,
+    since: "0.1.2", related: ["eff-ignite", "eff-damage"]
   },
   {
     id: "eff-clear-inventory", category: "effects",
@@ -728,29 +839,56 @@ set gamemode of all players to survival`,
     },
     example: `give player effect speed for 60 seconds level 2
 give @a[distance=..10] effect regeneration for 10 seconds`,
-    since: "0.1.2", related: ["eff-remove-effect"]
+    since: "0.1.2", related: ["eff-remove-effect", "eff-clear-effects"]
   },
   {
     id: "eff-remove-effect", category: "effects",
-    name: { ru: "Снять эффекты", en: "Remove effects" },
-    syntax: ["remove effect <id> from <цель>", "clear effects of <цель>", "clear all effects of <цель>"],
-    desc: { ru: "Снимает один эффект или все.", en: "Removes one effect or all of them." },
-    example: `remove effect speed from player
-clear effects of player`,
-    since: "0.1.2", related: ["eff-give-effect"]
+    name: { ru: "Снять эффект", en: "Remove effect" },
+    syntax: ["remove effect <id> from <цель>"],
+    desc: { ru: "Снимает один эффект зелья.", en: "Removes one potion effect." },
+    example: `remove effect speed from player`,
+    since: "0.1.2", related: ["eff-clear-effects", "eff-give-effect"]
+  },
+  {
+    id: "eff-clear-effects", category: "effects",
+    name: { ru: "Снять все эффекты", en: "Clear effects" },
+    syntax: ["clear effects of <цель>", "clear all effects of <цель>"],
+    desc: { ru: "Снимает все эффекты зелий. `clear all effects` — то же самое.", en: "Removes every potion effect. `clear all effects` is the same." },
+    example: `clear effects of player`,
+    since: "0.1.2", related: ["eff-remove-effect", "eff-give-effect"]
   },
   {
     id: "eff-xp", category: "effects",
-    name: { ru: "Опыт", en: "Experience" },
-    syntax: ["give <число> xp to <цель>", "give <число> experience to <цель>", "give <число> levels to <цель>", "set xp level of <цель> to <число>", "set level of <цель> to <число>", "set player's xp level to <число>"],
+    name: { ru: "Дать опыт", en: "Give experience" },
+    syntax: ["give <число> xp to <цель>", "give <число> experience to <цель>"],
     desc: {
-      ru: "`give N xp` добавляет очки опыта (не уровни; может быть отрицательным), `give N levels` прибавляет уровни (тоже может быть отрицательным), `set xp level` ставит уровень.",
-      en: "`give N xp` adds experience points (not levels; may be negative), `give N levels` adds levels (may be negative too), `set xp level` sets the level."
+      ru: "Добавляет очки опыта, не уровни. Число может быть отрицательным.",
+      en: "Adds experience points, not levels. The number may be negative."
     },
-    example: `give 100 xp to player
-give 3 levels to player
-set xp level of player to 30`,
-    since: "0.1.2", related: []
+    example: `give 100 xp to player`,
+    since: "0.1.2", related: ["eff-give-levels", "eff-set-xp"]
+  },
+  {
+    id: "eff-give-levels", category: "effects",
+    name: { ru: "Дать уровни", en: "Give levels" },
+    syntax: ["give <число> levels to <цель>", "give <число> level to <цель>"],
+    desc: {
+      ru: "Прибавляет уровни опыта. Число может быть отрицательным.",
+      en: "Adds experience levels. The number may be negative."
+    },
+    example: `give 3 levels to player`,
+    since: "0.1.2", related: ["eff-xp", "eff-set-xp"]
+  },
+  {
+    id: "eff-set-xp", category: "effects",
+    name: { ru: "Задать уровень", en: "Set experience level" },
+    syntax: ["set xp level of <цель> to <число>", "set level of <цель> to <число>", "set player's xp level to <число>", "set player's level to <число>"],
+    desc: {
+      ru: "Ставит уровень опыта. `level` — то же, что `xp level`.",
+      en: "Sets the experience level. `level` is the same as `xp level`."
+    },
+    example: `set xp level of player to 30`,
+    since: "0.1.2", related: ["eff-xp", "eff-give-levels"]
   },
 
   // ================================================================== ЭФФЕКТЫ: команды
@@ -783,28 +921,46 @@ set xp level of player to 30`,
     desc: { ru: "Отключает игроков цели. Без причины сообщение — `Kicked`.", en: "Disconnects the target players. Without a reason the message is `Kicked`." },
     example: `command /kickall permission 2:
 	kick all players due to "Перезапуск"`,
-    since: "0.2.0", related: ["eff-op", "target-all"]
+    since: "0.2.0", related: ["eff-op", "eff-deop", "target-all"]
   },
   {
     id: "eff-op", category: "effects",
-    name: { ru: "Оператор", en: "Operator" },
-    syntax: ["op <цель>", "deop <цель>"],
-    desc: { ru: "Добавляет игрока в список операторов сервера или убирает оттуда. Права применяются сразу.", en: "Adds the player to the server operator list or removes them. Permissions apply immediately." },
+    name: { ru: "Сделать оператором", en: "Op" },
+    syntax: ["op <цель>"],
+    desc: { ru: "Добавляет игрока в список операторов сервера. Права применяются сразу.", en: "Adds the player to the server operator list. Permissions apply immediately." },
     example: `command /makemeop permission 4:
 	op player`,
-    since: "0.2.0", related: ["cond-player", "eff-kick"]
+    since: "0.2.0", related: ["eff-deop", "cond-player", "eff-kick"]
+  },
+  {
+    id: "eff-deop", category: "effects",
+    name: { ru: "Снять оператора", en: "Deop" },
+    syntax: ["deop <цель>"],
+    desc: { ru: "Убирает игрока из списка операторов сервера. Права применяются сразу.", en: "Removes the player from the server operator list. Permissions apply immediately." },
+    example: `deop player`,
+    since: "0.2.0", related: ["eff-op", "cond-player", "eff-kick"]
   },
   {
     id: "eff-say", category: "effects",
-    name: { ru: "Сказать и записать в лог", en: "Say and log" },
-    syntax: ["make <цель> say \"<текст>\"", "make <цель> chat \"<текст>\"", "log \"<текст>\""],
+    name: { ru: "Сказать в чат", en: "Say" },
+    syntax: ["make <цель> say \"<текст>\"", "make <цель> chat \"<текст>\""],
     desc: {
-      ru: "`say` показывает строку в чате как сообщение этого игрока. `log` пишет строку в лог сервера (`[Script]`), игроки её не видят.",
-      en: "`say` shows the line in chat as that player's message. `log` writes it to the server log (`[Script]`); players do not see it."
+      ru: "Показывает строку в чате как сообщение этого игрока. `chat` — то же, что `say`.",
+      en: "Shows the line in chat as that player's message. `chat` is the same as `say`."
     },
-    example: `make player say "всем привет"
-log "%player% использовал /secret"`,
-    since: "0.2.0", related: ["eff-broadcast", "eff-send"]
+    example: `make player say "всем привет"`,
+    since: "0.2.0", related: ["eff-log", "eff-broadcast", "eff-send"]
+  },
+  {
+    id: "eff-log", category: "effects",
+    name: { ru: "Записать в лог", en: "Log" },
+    syntax: ["log \"<текст>\""],
+    desc: {
+      ru: "Пишет строку в лог сервера (`[Script]`). Игроки её не видят.",
+      en: "Writes the line to the server log (`[Script]`). Players do not see it."
+    },
+    example: `log "%player% использовал /secret"`,
+    since: "0.2.0", related: ["eff-say", "eff-broadcast"]
   },
   {
     id: "eff-stop", category: "effects",
@@ -829,48 +985,88 @@ log "%player% использовал /secret"`,
     example: `on chat:
 	if %message% is "secret":
 		cancel event`,
-    since: "0.2.0", related: ["event-chat", "event-blocks", "eff-stop"]
+    since: "0.2.0", related: ["event-chat", "event-break", "event-right-click", "event-drop", "event-death", "event-gamemode", "eff-stop"]
   },
   {
-    id: "eff-world", category: "effects",
-    name: { ru: "Время, погода, молния, взрыв", en: "Time, weather, lightning, explode" },
-    syntax: ["set time to day", "set time to noon", "set time to night", "set time to midnight", "set time to <тики>", "set weather to clear", "set weather to rain", "set weather to thunder", "set weather to rain for <секунды> seconds", "strike lightning at <цель>", "strike lightning at <x> <y> <z>", "strike lightning at <локация>", "explode at <цель>", "explode at <локация>", "explode at <цель> with force <0-8>"],
+    id: "eff-time", category: "effects",
+    name: { ru: "Время", en: "Time" },
+    syntax: ["set time to day", "set time to noon", "set time to night", "set time to midnight", "set time to <тики>"],
     desc: {
-      ru: "Время и погода меняются во всех мирах. Молния и взрыв без координат бьют по игрокам цели; координаты — в мире игрока из контекста, иначе в обычном мире. Вместо цели или координат можно дать локацию (`location of targeted block`, `{дом}`). Сила взрыва 0–8 (по умолчанию 3), блоки ломаются.",
-      en: "Time and weather change in every world. Lightning and an explosion without coordinates hit the target players; coordinates use the context player's world, otherwise the overworld. A location can stand in for the target or the coordinates (`location of targeted block`, `{home}`). Explosion force is 0–8 (default 3) and breaks blocks."
+      ru: "Меняет время во всех мирах. Имена: `day`, `noon`, `night`, `midnight`. Число — тики суток; длиннее суток заворачивается.",
+      en: "Changes the time in every world. Names: `day`, `noon`, `night`, `midnight`. A number is the time of day in ticks; past a full day it wraps."
     },
     example: `command /day permission 2:
-	set time to day
-	set weather to clear
-
-command /smite permission 2:
-	strike lightning at targeted player
-
-explode at player with force 2`,
-    since: "0.2.0", related: ["eff-teleport", "target-targeted"]
+	set time to day`,
+    since: "0.2.0", related: ["eff-weather"]
   },
   {
-    id: "eff-motion", category: "effects",
-    name: { ru: "Скорость и толчок", en: "Velocity and launch" },
-    syntax: ["set velocity of <цель> to <x> <y> <z>", "launch <цель> upwards", "launch <цель> forwards", "launch <цель> upwards by <скорость>"],
+    id: "eff-weather", category: "effects",
+    name: { ru: "Погода", en: "Weather" },
+    syntax: ["set weather to clear", "set weather to sun", "set weather to rain", "set weather to thunder", "set weather to storm", "set weather to rain for <секунды> seconds", "set weather to thunder for <секунды> seconds"],
     desc: {
-      ru: "Задаёт скорость игрока или толкает вверх / вперёд по взгляду. Скорость ограничена примерно −8…8. `by` можно писать как `with speed`.",
-      en: "Sets the player's velocity or pushes them up / forward along their look. Speed is clamped to about −8…8. `by` can also be written `with speed`."
+      ru: "Меняет погоду во всех мирах. `sun` — то же, что `clear`, `storm` — то же, что `thunder`. `for N seconds` задаёт, сколько погода держится.",
+      en: "Changes the weather in every world. `sun` is the same as `clear`, `storm` is the same as `thunder`. `for N seconds` sets how long it lasts."
+    },
+    example: `set weather to clear
+set weather to rain for 60 seconds`,
+    since: "0.2.0", related: ["eff-time"]
+  },
+  {
+    id: "eff-lightning", category: "effects",
+    name: { ru: "Молния", en: "Lightning" },
+    syntax: ["strike lightning at <цель>", "strike lightning at <x> <y> <z>", "strike lightning at <локация>"],
+    desc: {
+      ru: "Бьёт молнией по игрокам цели, по координатам или по локации (`location of targeted block`, `{дом}`). Координаты — в мире игрока из контекста, иначе в обычном мире.",
+      en: "Strikes the target players, coordinates, or a location (`location of targeted block`, `{home}`). Coordinates use the context player's world, otherwise the overworld."
+    },
+    example: `command /smite permission 2:
+	strike lightning at targeted player`,
+    since: "0.2.0", related: ["eff-explode", "target-targeted", "expr-location"]
+  },
+  {
+    id: "eff-explode", category: "effects",
+    name: { ru: "Взрыв", en: "Explosion" },
+    syntax: ["explode at <цель>", "explode at <x> <y> <z>", "explode at <локация>", "explode at <цель> with force <0-8>", "explode at <локация> with force <0-8>"],
+    desc: {
+      ru: "Взрыв у игроков цели, по координатам или по локации. Сила 0–8, по умолчанию 3. Блоки ломаются. Координаты — в мире игрока из контекста, иначе в обычном мире. `power` — то же, что `force`.",
+      en: "An explosion at the target players, at coordinates, or at a location. Force is 0–8, default 3. Blocks break. Coordinates use the context player's world, otherwise the overworld. `power` is the same as `force`."
+    },
+    example: `explode at player with force 2`,
+    since: "0.2.0", related: ["eff-lightning", "expr-location"]
+  },
+  {
+    id: "eff-velocity", category: "effects",
+    name: { ru: "Скорость", en: "Velocity" },
+    syntax: ["set velocity of <цель> to <x> <y> <z>"],
+    desc: {
+      ru: "Задаёт скорость игрока по трём осям.",
+      en: "Sets the player's velocity on the three axes."
+    },
+    example: `set velocity of player to 0 1 0`,
+    since: "0.2.0", related: ["eff-launch", "eff-teleport"]
+  },
+  {
+    id: "eff-launch", category: "effects",
+    name: { ru: "Толчок", en: "Launch" },
+    syntax: ["launch <цель> upwards", "launch <цель> forwards", "launch <цель> upwards by <скорость>", "launch <цель> forwards by <скорость>"],
+    desc: {
+      ru: "Толкает вверх или вперёд по взгляду. Без числа вверх — около 1.2, вперёд — около 1.5. Скорость ограничена примерно −8…8. `by` можно писать как `with speed`.",
+      en: "Pushes up, or forward along the look direction. With no number, up is about 1.2 and forward is about 1.5. Speed is clamped to about −8…8. `by` can also be written `with speed`."
     },
     example: `command /jump:
 	launch player upwards by 1.2
 
 command /dash:
 	launch player forwards by 2`,
-    since: "0.2.0", related: ["eff-teleport", "expr-property"]
+    since: "0.2.0", related: ["eff-velocity", "eff-teleport"]
   },
   {
     id: "eff-spawn", category: "effects",
     name: { ru: "Точка возрождения", en: "Spawn point" },
-    syntax: ["set spawn of <цель>", "set spawn of <цель> to <x> <y> <z>", "set spawn of <цель> to <локация>", "teleport <цель> to spawn", "teleport <цель> to world spawn"],
+    syntax: ["set spawn of <цель>", "set spawn of <цель> to <x> <y> <z>", "set spawn of <цель> to <локация>"],
     desc: {
-      ru: "`set spawn` без координат ставит кровать/возрождение там, где стоит игрок (в его мире). С координатами — в его текущем мире. С локацией — в мире и точке этой локации. `to spawn` телепортирует на точку возрождения, если её нет — на спавн обычного мира. `to world spawn` — всегда общий спавн обычного мира.",
-      en: "`set spawn` without coordinates sets the respawn point where the player stands (in their world). With coordinates — in their current world. With a location — in that location's world and point. `to spawn` teleports to the respawn point, or the overworld spawn if they have none. `to world spawn` is always the shared overworld spawn."
+      ru: "Без координат ставит точку возрождения там, где стоит игрок (в его мире). С координатами — в его текущем мире. С локацией — в мире и точке этой локации. Телепорт туда — `teleport ... to spawn`.",
+      en: "Without coordinates, sets the respawn point where the player stands (in their world). With coordinates — in their current world. With a location — in that location's world and point. Teleporting there is `teleport ... to spawn`."
     },
     example: `command /sethome:
 	set spawn of player
@@ -878,7 +1074,7 @@ command /dash:
 
 command /home:
 	teleport player to spawn`,
-    since: "0.2.0", related: ["eff-teleport", "event-death"]
+    since: "0.2.0", related: ["eff-teleport", "event-death", "event-respawn"]
   },
   {
     id: "eff-drop", category: "effects",
@@ -888,21 +1084,73 @@ command /home:
     example: `drop 4 diamond at player
 drop player's tool at location of targeted block
 drop example:ruby at all players`,
-    since: "0.2.0", related: ["eff-give-item", "event-items"]
+    since: "0.2.0", related: ["eff-give-item", "event-drop", "event-pickup"]
   },
   {
-    id: "eff-body", category: "effects",
-    name: { ru: "Скорость ходьбы, воздух, абсорбция, инвентарь", en: "Walk speed, air, absorption, inventory" },
-    syntax: ["set walk speed of <цель> to <число>", "set fly speed of <цель> to <число>", "set air of <цель> to <число>", "set oxygen of <цель> to <число>", "set absorption of <цель> to <число>", "close inventory of <цель>", "wake up <цель>"],
+    id: "eff-walk-speed", category: "effects",
+    name: { ru: "Скорость ходьбы", en: "Walk speed" },
+    syntax: ["set walk speed of <цель> to <число>", "set player's walk speed to <число>"],
     desc: {
-      ru: "Скорость ходьбы ванили — `0.1`, полёта — `0.05` (диапазон 0–1). Воздух обрезается по максимуму игрока. `close inventory` закрывает открытый сундук или верстак. `wake up` будит, если игрок спит. Форма `set player's walk speed to ...` тоже работает.",
-      en: "Vanilla walk speed is `0.1`, fly speed is `0.05` (range 0–1). Air is clamped to the player's maximum. `close inventory` closes an open chest or crafting table. `wake up` wakes the player if they are sleeping. `set player's walk speed to ...` works too."
+      ru: "Скорость ходьбы. У ванили это `0.1`, диапазон 0–1.",
+      en: "Walk speed. Vanilla uses `0.1`. The range is 0–1."
     },
-    example: `set walk speed of player to 0.2
-set air of player to 300
-close inventory of player
-wake up all players`,
-    since: "0.2.0", related: ["eff-flying", "eff-clear-inventory", "expr-property"]
+    example: `set walk speed of player to 0.2`,
+    since: "0.2.0", related: ["eff-fly-speed", "expr-property"]
+  },
+  {
+    id: "eff-fly-speed", category: "effects",
+    name: { ru: "Скорость полёта", en: "Fly speed" },
+    syntax: ["set fly speed of <цель> to <число>", "set flying speed of <цель> to <число>", "set player's fly speed to <число>"],
+    desc: {
+      ru: "Скорость полёта. У ванили это `0.05`, диапазон 0–1. `flying speed` — то же, что `fly speed`.",
+      en: "Fly speed. Vanilla uses `0.05`. The range is 0–1. `flying speed` is the same as `fly speed`."
+    },
+    example: `set fly speed of player to 0.1`,
+    since: "0.2.0", related: ["eff-walk-speed", "eff-flying", "expr-property"]
+  },
+  {
+    id: "eff-air", category: "effects",
+    name: { ru: "Воздух", en: "Air" },
+    syntax: ["set air of <цель> to <число>", "set oxygen of <цель> to <число>", "set player's air to <число>"],
+    desc: {
+      ru: "Запас воздуха. Обрезается по максимуму игрока. `oxygen` — то же, что `air`.",
+      en: "Air supply. Clamped to the player's maximum. `oxygen` is the same as `air`."
+    },
+    example: `set air of player to 300`,
+    since: "0.2.0", related: ["expr-property"]
+  },
+  {
+    id: "eff-absorption", category: "effects",
+    name: { ru: "Абсорбция", en: "Absorption" },
+    syntax: ["set absorption of <цель> to <число>", "set player's absorption to <число>"],
+    desc: {
+      ru: "Ставит жёлтые сердца абсорбции.",
+      en: "Sets the yellow absorption hearts."
+    },
+    example: `set absorption of player to 4`,
+    since: "0.2.0", related: ["eff-set-health", "expr-property"]
+  },
+  {
+    id: "eff-close-inventory", category: "effects",
+    name: { ru: "Закрыть инвентарь", en: "Close inventory" },
+    syntax: ["close inventory of <цель>"],
+    desc: {
+      ru: "Закрывает открытый сундук или верстак.",
+      en: "Closes an open chest or crafting table."
+    },
+    example: `close inventory of player`,
+    since: "0.2.0", related: ["eff-clear-inventory", "event-open"]
+  },
+  {
+    id: "eff-wake", category: "effects",
+    name: { ru: "Разбудить", en: "Wake up" },
+    syntax: ["wake up <цель>", "wake <цель> up"],
+    desc: {
+      ru: "Будит игрока, если он спит.",
+      en: "Wakes the player if they are sleeping."
+    },
+    example: `wake up all players`,
+    since: "0.2.0", related: ["cond-player"]
   },
 
   // ================================================================== УСЛОВИЯ
@@ -983,7 +1231,7 @@ if player is not holding diamond_sword:
 	give player diamond_sword 1
 if player does not have bread:
 	give player bread 8`,
-    since: "0.2.0", related: ["cond-gamemode", "cond-and", "eff-give-item", "cond-permission"]
+    since: "0.2.0", related: ["cond-gamemode", "cond-world", "cond-and", "eff-give-item", "cond-permission"]
   },
   {
     id: "cond-permission", category: "conditions",
@@ -1004,17 +1252,27 @@ if player does not have permission 2:
   },
   {
     id: "cond-gamemode", category: "conditions",
-    name: { ru: "Режим и мир", en: "Game mode and world" },
-    syntax: ["<цель> is in creative", "<цель> is in survival", "<цель> is in adventure", "<цель> is in spectator", "<цель> is not in creative", "<цель> is in gamemode <режим>", "<цель> is in world <мир>", "<цель> is not in world <мир>"],
+    name: { ru: "Режим игры", en: "Game mode" },
+    syntax: ["<цель> is in creative", "<цель> is in survival", "<цель> is in adventure", "<цель> is in spectator", "<цель> is not in creative", "<цель> is in gamemode <режим>"],
     desc: {
-      ru: "Режим можно писать и со словом `mode`: `is in creative mode`. Мир: `overworld`, `nether`, `the_end` или полный id `minecraft:the_nether`.",
-      en: "The mode can also include the word `mode`: `is in creative mode`. World: `overworld`, `nether`, `the_end` or a full id `minecraft:the_nether`."
+      ru: "Режим можно писать и со словом `mode`: `is in creative mode`. Никого в цели нет — условие ложно.",
+      en: "The mode can also include the word `mode`: `is in creative mode`. Nobody in the target — the condition is false."
     },
     example: `if player is in creative:
-	send "&bКреатив" to player
-if player is in world the_nether:
+	send "&bКреатив" to player`,
+    since: "0.2.0", related: ["cond-world", "eff-gamemode", "event-gamemode", "cond-player"]
+  },
+  {
+    id: "cond-world", category: "conditions",
+    name: { ru: "Мир игрока", en: "Player's world" },
+    syntax: ["<цель> is in world <мир>", "<цель> is not in world <мир>"],
+    desc: {
+      ru: "Мир: `overworld`, `nether`, `the_end` или полный id `minecraft:the_nether`. Никого в цели нет — условие ложно.",
+      en: "World: `overworld`, `nether`, `the_end` or a full id `minecraft:the_nether`. Nobody in the target — the condition is false."
+    },
+    example: `if player is in world the_nether:
 	send "&cТы в аду" to player`,
-    since: "0.2.0", related: ["eff-gamemode", "event-world", "cond-player"]
+    since: "0.2.0", related: ["cond-gamemode", "event-world-change", "cond-player"]
   },
 
   // ================================================================== ВЫРАЖЕНИЯ
@@ -1166,18 +1424,62 @@ if number of all players >= 5:
   },
   {
     id: "expr-location", category: "expressions",
-    name: { ru: "Локация, предмет в руке, блок в прицеле", en: "Location, held item, targeted block" },
-    syntax: ["player's location", "location of <цель>", "location of targeted block", "location of targeted entity", "location of targeted player", "targeted location", "location at <x> <y> <z>", "spawn of <цель>", "world spawn", "player's tool", "tool of <цель>", "targeted block", "targeted entity", "targeted player", "%location%", "%tool%"],
+    name: { ru: "Локация", en: "Location" },
+    syntax: ["player's location", "location of <цель>", "location at <x> <y> <z>", "spawn of <цель>", "world spawn", "%location%"],
     desc: {
-      ru: "Локация — мир, координаты и поворот. Её можно записать в переменную и подставить в `teleport`, `set spawn`, `drop`, `strike lightning` и `explode`. `player` и `loop-player` в значении — имя игрока. `player's tool` — id предмета в руке (`minecraft:air`, если пусто). То же самое: `tool of player` и `held item of player`. `targeted block` — id блока в прицеле, `targeted entity` — id типа моба, `targeted player` — имя. `player's <свойство>` работает и для остальных свойств (`player's health`). В тексте: `%location%` и `%tool%` от игрока из контекста. В переменной локация хранится целиком, в чат выводится мир и три координаты.",
-      en: "A location is a world, coordinates and rotation. Store it in a variable and pass it to `teleport`, `set spawn`, `drop`, `strike lightning` and `explode`. As a value, `player` and `loop-player` are the player's name. `player's tool` is the id of the held item (`minecraft:air` if empty). The same value: `tool of player` and `held item of player`. `targeted block` is the block id in the crosshair, `targeted entity` is the mob's type id, `targeted player` is the name. `player's <property>` also works for the other properties (`player's health`). In text, `%location%` and `%tool%` use the context player. A variable keeps the whole location; chat shows the world and the three coordinates."
+      ru: "Мир, координаты и поворот. Её можно записать в переменную и подставить в `teleport`, `set spawn`, `drop`, `strike lightning` и `explode`. В тексте `%location%` берётся у игрока из контекста. В чат выводится мир и три координаты.",
+      en: "A world, coordinates and rotation. Store it in a variable and pass it to `teleport`, `set spawn`, `drop`, `strike lightning` and `explode`. In text, `%location%` uses the context player. Chat shows the world and the three coordinates."
     },
     example: `set {home::%player%} to player's location
-add player's tool to {tools::%player%::*}
-add targeted block {seen::%player%::*}
-teleport player to {home::%player%}
-send "&7%location% &8%tool%" to player`,
-    since: "0.3.10", related: ["eff-add-var", "eff-teleport", "eff-give-item", "ph-targeted", "expr-property"]
+teleport player to {home::%player%}`,
+    since: "0.3.10", related: ["eff-teleport", "eff-spawn", "expr-targeted-block", "expr-tool"]
+  },
+  {
+    id: "expr-tool", category: "expressions",
+    name: { ru: "Предмет в руке", en: "Held item" },
+    syntax: ["player's tool", "tool of <цель>", "held item of <цель>", "%tool%"],
+    desc: {
+      ru: "Id предмета в руке (`minecraft:air`, если пусто). `player` и `loop-player` в значении — имя игрока, не предмет. В тексте `%tool%` берётся у игрока из контекста.",
+      en: "The id of the held item (`minecraft:air` if empty). As a value, `player` and `loop-player` are the player's name, not an item. In text, `%tool%` uses the context player."
+    },
+    example: `add player's tool to {tools::%player%::*}
+give player player's tool`,
+    since: "0.3.10", related: ["expr-location", "eff-give-item", "eff-add-var"]
+  },
+  {
+    id: "expr-targeted-block", category: "expressions",
+    name: { ru: "Блок в прицеле", en: "Targeted block" },
+    syntax: ["targeted block", "location of targeted block", "targeted location"],
+    desc: {
+      ru: "`targeted block` — id блока в прицеле. `location of targeted block` и `targeted location` — точка, куда смотрит игрок.",
+      en: "`targeted block` is the block id in the crosshair. `location of targeted block` and `targeted location` are the point the player is looking at."
+    },
+    example: `add targeted block {seen::%player%::*}
+teleport player to location of targeted block`,
+    since: "0.3.10", related: ["expr-targeted-entity", "expr-targeted-player", "expr-location", "target-targeted"]
+  },
+  {
+    id: "expr-targeted-entity", category: "expressions",
+    name: { ru: "Сущность в прицеле", en: "Targeted entity" },
+    syntax: ["targeted entity", "location of targeted entity"],
+    desc: {
+      ru: "`targeted entity` — id типа моба в прицеле. `location of targeted entity` — его точка.",
+      en: "`targeted entity` is the type id of the mob in the crosshair. `location of targeted entity` is its point."
+    },
+    example: `set {mob} to targeted entity`,
+    since: "0.3.10", related: ["expr-targeted-block", "expr-targeted-player", "ph-targeted"]
+  },
+  {
+    id: "expr-targeted-player", category: "expressions",
+    name: { ru: "Игрок в прицеле", en: "Targeted player" },
+    syntax: ["targeted player", "location of targeted player"],
+    desc: {
+      ru: "`targeted player` — имя игрока в прицеле. `location of targeted player` — его точка.",
+      en: "`targeted player` is the name of the player in the crosshair. `location of targeted player` is their point."
+    },
+    example: `set {who} to targeted player
+send "Ты смотришь на %{who}%" to player`,
+    since: "0.3.10", related: ["expr-targeted-block", "expr-targeted-entity", "ph-targeted", "target-targeted"]
   },
   {
     id: "expr-random", category: "expressions",
@@ -1192,7 +1494,7 @@ if {roll} is 6:
 	give player diamond 1
 set {bonus} to random integer between 1 and 4
 give {bonus} levels to player`,
-    since: "0.2.0", related: ["expr-property", "struct-chance", "eff-xp"]
+    since: "0.2.0", related: ["expr-property", "struct-chance", "eff-xp", "eff-give-levels"]
   },
   {
     id: "expr-script", category: "expressions",
@@ -1227,15 +1529,15 @@ set {from} to script`,
     name: { ru: "Плейсхолдеры событий", en: "Event placeholders" },
     syntax: ["%message%", "%block%", "%item%", "%x%", "%y%", "%z%", "%attacker%", "%cause%", "%damage%", "%world%", "%from%", "%gamemode%"],
     desc: {
-      ru: "Появляются только в своём событии. Чат — `%message%`. Блок и клик — `%block%`, `%x%`, `%y%`, `%z%`. Выброс и подбор — `%item%`. Смерть и урон — `%attacker%`, `%cause%`, у урона ещё `%damage%`. Смена мира — `%from%` и `%world%`. Смена режима — `%from%` и `%gamemode%`. Вне события плейсхолдер остаётся текстом `%message%`.",
-      en: "Present only inside their event. Chat — `%message%`. Blocks and clicks — `%block%`, `%x%`, `%y%`, `%z%`. Drop and pickup — `%item%`. Death and damage — `%attacker%`, `%cause%`, and damage also has `%damage%`. World change — `%from%` and `%world%`. Game mode change — `%from%` and `%gamemode%`. Outside the event the placeholder stays as the text `%message%`."
+      ru: "Появляются только в своём событии. `on chat` — `%message%`. `on break`, `on place`, `on right click` и `on left click` — `%block%`, `%x%`, `%y%`, `%z%`. `on drop` и `on pickup` — `%item%`. `on death` и `on damage` — `%attacker%` и `%cause%`, у `on damage` ещё `%damage%`. `on world change` — `%from%` и `%world%`. `on gamemode change` — `%from%` и `%gamemode%`. Вне события плейсхолдер остаётся текстом `%message%`.",
+      en: "Present only inside their own event. `on chat` — `%message%`. `on break`, `on place`, `on right click` and `on left click` — `%block%`, `%x%`, `%y%`, `%z%`. `on drop` and `on pickup` — `%item%`. `on death` and `on damage` — `%attacker%` and `%cause%`, and `on damage` also has `%damage%`. `on world change` — `%from%` and `%world%`. `on gamemode change` — `%from%` and `%gamemode%`. Outside the event the placeholder stays as the text `%message%`."
     },
     example: `on chat:
 	log "%player%: %message%"
 
 on break:
 	send "%block% @ %x% %y% %z%" to player`,
-    since: "0.2.0", related: ["event-chat", "event-blocks", "event-damage", "event-world"]
+    since: "0.2.0", related: ["event-chat", "event-break", "event-place", "event-right-click", "event-left-click", "event-drop", "event-pickup", "event-damage", "event-death", "event-world-change", "event-gamemode"]
   },
 
   // ================================================================== ЦЕЛИ
