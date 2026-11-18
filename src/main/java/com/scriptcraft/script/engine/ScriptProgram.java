@@ -53,6 +53,9 @@ public interface ScriptProgram {
     /** Выполняет команду. Возвращает false, если команды больше нет в скриптах. */
     boolean runCommand(String name, ExecutionContext ctx);
 
+    /** Вызов function. Бросает ScriptRuntimeException, если функции нет или аргументы не сходятся. */
+    void callFunction(String name, java.util.List<Object> args, ExecutionContext ctx);
+
     /** Периодические блоки "every N seconds:" — раз в период, без игрока в контексте. */
     void tickEvery(MinecraftServer server);
 }

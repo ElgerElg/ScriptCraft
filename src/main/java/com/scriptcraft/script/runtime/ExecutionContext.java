@@ -8,7 +8,9 @@ import org.jetbrains.annotations.Nullable;
 
 import com.scriptcraft.script.variables.VariableStore;
 
+import java.util.ArrayDeque;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -26,6 +28,14 @@ public final class ExecutionContext {
                     + "|%nbt of targeted (entity|block|player)%"
                     + "|%targeted (player|entity|block)%"
                     + "|%([a-zA-Z0-9_-]+)%");
+    /** Инвентарь и LuckPerms. Отдельный шаблон, чтобы номера групп выше не сдвинулись. */
+    private static final Pattern EXTRA = Pattern.compile(
+            "%nbt from items in player's inventory%"
+                    + "|%nbt of items in player's inventory%"
+                    + "|%nbt of player's inventory%"
+                    + "|%nbt ([^%]+?) of slot (\\d+) of player(?:'s inventory)?%"
+                    + "|%nbt of slot (\\d+) of player(?:'s inventory)?%"
+                    + "|%(prefix|suffix|group|groups) of player%");
     /** В кавычках значение переменной только так: %{имя}%. Голые {имя} в тексте остаются как есть. */
     private static final Pattern TEXT_VARIABLE = Pattern.compile("%\\{([^{}]+)}%");
     /** Шаблоны полосы HUD по-прежнему хранят {имя} целиком. */
@@ -56,6 +66,10 @@ public final class ExecutionContext {
     private int targetHits;
     /** stop — прервать остальные действия этого запуска. */
     private boolean stopped;
+    /** Кадры параметров функций. Верхний кадр — текущий вызов. */
+    private final ArrayDeque<Map<String, Object>> frames = new ArrayDeque<>();
+    private final ArrayDeque<Boolean> stopMarks = new ArrayDeque<>();
+    private int functionDepth;
     /** cancel event — отменить отменяемое событие Forge (чат, ломание блока, урон...). */
     private boolean cancelled;
 
@@ -217,6 +231,70 @@ public final class ExecutionContext {
         }
     }
 
+    public boolean hasLocal(String name) {
+        String key = name.toLowerCase(Locale.ROOT);
+        for (Map<String, Object> frame : frames) {
+            if (frame.containsKey(key)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Nullable
+    public Object local(String name) {
+        String key = name.toLowerCase(Locale.ROOT);
+        for (Map<String, Object> frame : frames) {
+            if (frame.containsKey(key)) {
+                return frame.get(key);
+            }
+        }
+        return null;
+    }
+
+    public void pushFrame(Map<String, Object> frame) {
+        frames.push(frame);
+    }
+
+    public void popFrame() {
+        if (!frames.isEmpty()) {
+            frames.pop();
+        }
+    }
+
+    /** Копия параметров для wait: продолжение видит те же аргументы функции. */
+    public Map<String, Object> snapshotLocals() {
+        Map<String, Object> all = new LinkedHashMap<>();
+        var oldestFirst = frames.descendingIterator();
+        while (oldestFirst.hasNext()) {
+            all.putAll(oldestFirst.next());
+        }
+        return all;
+    }
+
+    public void restoreLocals(@Nullable Map<String, Object> saved) {
+        frames.clear();
+        if (saved != null && !saved.isEmpty()) {
+            frames.push(new LinkedHashMap<>(saved));
+        }
+    }
+
+    /** false — вызовы вложены глубже 32. stop внутри функции не останавливает вызывающего. */
+    public boolean enterFunction() {
+        if (functionDepth >= 32) {
+            return false;
+        }
+        functionDepth++;
+        stopMarks.push(stopped);
+        stopped = false;
+        return true;
+    }
+
+    public void exitFunction() {
+        functionDepth = Math.max(0, functionDepth - 1);
+        stopped = stopMarks.isEmpty() ? stopped : stopMarks.pop();
+    }
+
     public void stop() {
         stopped = true;
     }
@@ -308,14 +386,42 @@ public final class ExecutionContext {
     }
 
     private String expandPlaceholders0(String raw) {
-        Matcher m = PLACEHOLDER.matcher(raw);
+        raw = expand(raw, EXTRA, this::extraHit);
+        return expand(raw, PLACEHOLDER, this::placeholderHit);
+    }
+
+    private String expand(String raw, Pattern pattern, java.util.function.Function<Matcher, String> hit) {
+        Matcher m = pattern.matcher(raw);
         StringBuilder sb = new StringBuilder();
         while (m.find()) {
-            String value = placeholderHit(m);
-            m.appendReplacement(sb, Matcher.quoteReplacement(value));
+            m.appendReplacement(sb, Matcher.quoteReplacement(hit.apply(m)));
         }
         m.appendTail(sb);
         return sb.toString();
+    }
+
+    private String extraHit(Matcher m) {
+        if (m.group(4) != null) {
+            return lpText(m.group(4), null);
+        }
+        if (player == null) {
+            return m.group(2) != null || m.group(3) != null ? "<none>" : "[]";
+        }
+        if (m.group(2) != null) {
+            return InventoryItems.slot(player, Integer.parseInt(m.group(2)), m.group(1).strip());
+        }
+        if (m.group(3) != null) {
+            return InventoryItems.slot(player, Integer.parseInt(m.group(3)), null);
+        }
+        return InventoryItems.inventory(player);
+    }
+
+    private String lpText(String kind, @Nullable String key) {
+        if (player == null || !LuckPermsLink.available()) {
+            return "<none>";
+        }
+        String value = LuckPermsLink.value(this, new Target.Self(), kind, key);
+        return value == null || value.isBlank() ? "<none>" : value;
     }
 
     private String placeholderHit(Matcher m) {
@@ -329,6 +435,13 @@ public final class ExecutionContext {
             return lookText(m.group(4));
         }
         String key = m.group(5).toLowerCase(Locale.ROOT);
+        if (hasLocal(key)) {
+            Object local = local(key);
+            if (local instanceof ServerPlayer player) {
+                return player.getGameProfile().getName();
+            }
+            return Expression.toText(local);
+        }
         String value = variables.get(key);
         if (value == null) {
             value = dynamicPlaceholder(key, m.group(0));
@@ -373,6 +486,7 @@ public final class ExecutionContext {
             case "tool" -> player == null ? "<none>" : Places.tool(player);
             case "loop-player" -> loopPlayer == null ? "<none>" : loopPlayer.getGameProfile().getName();
             case "script" -> scriptName();
+            case "prefix", "suffix", "group", "groups" -> lpText(key, null);
             default -> fallback;
         };
     }

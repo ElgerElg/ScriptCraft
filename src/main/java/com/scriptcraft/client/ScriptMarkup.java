@@ -18,7 +18,7 @@ public final class ScriptMarkup {
     public record Mark(int from, int to, Kind kind, String token) {
     }
 
-    private static final Pattern HEADER = Pattern.compile("(?i)^(\\s*)((?:on|every|command)\\b[^:\\n]*:|define\\b)");
+    private static final Pattern HEADER = Pattern.compile("(?i)^(\\s*)((?:on|every|command)\\b[^:\\n]*:|function\\b|define\\b)");
     private static final Pattern ELSE_WORD = Pattern.compile("(?i)^\\s*(else)\\b(?:\\s+(if)\\b)?");
     private static final Pattern IF_WORD = Pattern.compile("(?i)^\\s*(if)\\b");
     private static final Pattern RESOURCE = Pattern.compile("(?i)(?:[a-z0-9_.-]+:[a-z0-9_./-]+)|(?:[a-z0-9_.-]+(?:/[a-z0-9_.-]+)+\\.png)");

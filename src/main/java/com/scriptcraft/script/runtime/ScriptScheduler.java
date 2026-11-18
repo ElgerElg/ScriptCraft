@@ -20,7 +20,7 @@ public final class ScriptScheduler {
     private static final List<Task> TASKS = new ArrayList<>();
 
     private record Task(int runAt, @Nullable String script, @Nullable UUID player,
-                        Map<String, String> placeholders, List<Action> actions) {
+                        Map<String, String> placeholders, Map<String, Object> locals, List<Action> actions) {
     }
 
     private ScriptScheduler() {
@@ -32,7 +32,8 @@ public final class ScriptScheduler {
         }
         int delay = Math.max(1, Math.min(MAX_DELAY, ticks));
         UUID id = ctx.player() == null ? null : ctx.player().getUUID();
-        TASKS.add(new Task(ctx.server().getTickCount() + delay, ctx.script(), id, ctx.snapshotPlaceholders(), actions));
+        TASKS.add(new Task(ctx.server().getTickCount() + delay, ctx.script(), id,
+                ctx.snapshotPlaceholders(), ctx.snapshotLocals(), actions));
     }
 
     /** script == null — снять все задачи (полная перезагрузка и остановка сервера). */
@@ -65,6 +66,7 @@ public final class ScriptScheduler {
             ExecutionContext ctx = new ExecutionContext(server, player, null);
             ctx.setScript(task.script());
             ctx.restorePlaceholders(task.placeholders());
+            ctx.restoreLocals(task.locals());
             try {
                 Actions.runAll(task.actions(), ctx);
             } catch (RuntimeException e) {

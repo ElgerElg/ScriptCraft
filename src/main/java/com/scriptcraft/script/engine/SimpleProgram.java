@@ -6,19 +6,25 @@ import com.scriptcraft.script.parser.BlockDefinition;
 import com.scriptcraft.script.parser.CommandDefinition;
 import com.scriptcraft.script.parser.EventHandler;
 import com.scriptcraft.script.parser.ItemDefinition;
+import com.scriptcraft.lang.Messages;
+import com.scriptcraft.script.parser.FunctionDefinition;
 import com.scriptcraft.script.parser.ParseResult;
 import com.scriptcraft.script.parser.PeriodHandler;
 import com.scriptcraft.script.runtime.Action;
 import com.scriptcraft.script.runtime.Actions;
 import com.scriptcraft.script.runtime.ExecutionContext;
+import com.scriptcraft.script.runtime.Functions;
 import com.scriptcraft.script.runtime.HudActions;
 import com.scriptcraft.script.runtime.ScriptEvent;
+import com.scriptcraft.script.runtime.ScriptRuntimeException;
 
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
@@ -164,6 +170,39 @@ final class SimpleProgram implements ScriptProgram {
         ctx.setScript(def.file());
         runActions(def.actions(), ctx);
         return true;
+    }
+
+    @Override
+    public void callFunction(String name, List<Object> args, ExecutionContext ctx) {
+        FunctionDefinition def = parsed.functions().get(name.toLowerCase(Locale.ROOT));
+        if (def == null) {
+            throw new ScriptRuntimeException(Messages.get("fn.unknown", name));
+        }
+        if (args.size() != def.params().size()) {
+            throw new ScriptRuntimeException(Messages.get("fn.arity", def.name(), def.params().size(), args.size()));
+        }
+        if (!ctx.enterFunction()) {
+            throw new ScriptRuntimeException(Messages.get("fn.depth"));
+        }
+        Map<String, Object> frame = new LinkedHashMap<>();
+        String previous = ctx.script();
+        boolean pushed = false;
+        try {
+            for (int i = 0; i < args.size(); i++) {
+                FunctionDefinition.Param param = def.params().get(i);
+                frame.put(param.key(), Functions.coerce(param.type(), args.get(i), ctx, param.name()));
+            }
+            ctx.pushFrame(frame);
+            pushed = true;
+            ctx.setScript(def.file());
+            Actions.runAll(def.actions(), ctx);
+        } finally {
+            if (pushed) {
+                ctx.popFrame();
+            }
+            ctx.setScript(previous);
+            ctx.exitFunction();
+        }
     }
 
     @Override

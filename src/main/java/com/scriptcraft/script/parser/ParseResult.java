@@ -11,5 +11,6 @@ public record ParseResult(Map<ScriptEvent, List<EventHandler>> events,
                           List<BlockDefinition> blocks,
                           List<ItemDefinition> items,
                           List<PeriodHandler> periods,
+                          Map<String, FunctionDefinition> functions,
                           List<String> errors) {
 }

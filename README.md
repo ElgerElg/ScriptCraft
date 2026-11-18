@@ -30,10 +30,10 @@ The same jar is required on the **server and on every client**. Screens, custom 
 |---|---|---|
 | Events | Player and world | join, quit, first join, death, respawn, chat, break, place, left click, right click, drop, pickup, **item received**, damage, world change, gamemode, load, unload, **key press**, **vanilla menu open** (can be cancelled), `every`, `wait` |
 | Commands | Your own | permission, aliases, who may run it, typed arguments (`text`, `player`, `integer`, `item`, and more) |
-| Effects | On players | messages, titles, sounds, items, teleport, heal, damage, gamemode, flight, potions, experience, kick, weather, time, lightning, explosion, velocity, spawn point |
-| Language | Expressions | player name, UUID, online count, command arguments, `health of player`, random numbers, event placeholders, `&` color codes |
+| Effects | On players | messages, titles, sounds, items, teleport, heal, damage, gamemode, flight, potions, experience, kick, ban, set block, inventory slot, LuckPerms (permission, group, prefix, suffix, meta), weather, time, lightning, explosion, velocity, spawn point |
+| Language | Expressions | functions, player name, UUID, online count, command arguments, `health of player`, LuckPerms prefix and group, inventory item NBT, random numbers, event placeholders, `&` color codes |
 | Variables | Stored and temporary | saved across restarts (with backups) or kept until the next restart. A HUD label bound to `{variable}` updates when the variable is written |
-| Conditions | Branching | comparisons, `if` / `else if` / `else`, `and` / `or`, player state, item in hand, gamemode, world |
+| Conditions | Branching | comparisons, `if` / `else if` / `else`, `and` / `or`, player state, banned, LuckPerms group, item in hand, gamemode, world |
 | Targets | Who it applies to | all players, a player by name, players in a radius, the player you look at, vanilla `@a` / `@p` / `@r` / `@s`, `loop` |
 | Screens | Custom GUI | text, buttons, images, item slots, progress bars, layers, anchors, a **vertical or horizontal list**, and **click hitboxes** on text, images and slots |
 | HUD | On the game view | hotbar, health and hunger bars, images and text, layers, hide parts of the vanilla HUD. The HUD comes back when the player rejoins |
@@ -42,7 +42,7 @@ The same jar is required on the **server and on every client**. Screens, custom 
 | Resources | No manual resource pack | the server sends textures, models and translations to players |
 | Chat effects | One line in chat | a `?` token runs a script effect, gated by permission |
 | Reload | No restart | `/sc reload` rereads scripts and reports the file and line of an error |
-| Studio | In-game editor | F3 + `` ` `` (Ё on a Russian layout) opens the mod window for operators: home, journal, and script editing |
+| Studio | In-game editor | F3 + `` ` `` (Ё on a Russian layout) opens the mod window for operators: home, journal, and script editing. The journal can copy one error, every error, or the text you select |
 | Languages | Mod messages | English or Russian, set in `scriptcraft/config.toml` |
 
 The full syntax, with an example on every entry, is on the [documentation site](https://elgerelg.github.io/ScriptCraft/). The site opens in English. The **RU** button switches it to Russian.

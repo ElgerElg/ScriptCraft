@@ -15,7 +15,7 @@
  */
 window.SC_DOCS = window.SC_DOCS || {};
 window.SC_DOCS.syntax = {
-  version: "0.4.3",
+  version: "0.4.5",
   categories: [
     { id: "events",     ru: "События",            en: "Events" },
     { id: "structures", ru: "Структуры",          en: "Structures" },
@@ -312,7 +312,26 @@ command /heal <player> [integer]:
 	permission: 2
 	aliases: h, healme
 	heal arg-1 by arg-2`,
-    since: "0.1.0", related: ["ph-args", "cmd-reload", "struct-options"]
+    since: "0.1.0", related: ["ph-args", "cmd-reload", "struct-options", "struct-function"]
+  },
+  {
+    id: "struct-function", category: "structures",
+    name: { ru: "Функция", en: "Function" },
+    syntax: ["function <имя>(<параметр>: <тип>):", "<имя>(<аргумент>, <аргумент>)"],
+    desc: {
+      ru: "Своя команда внутри скрипта. Заголовок можно писать без двоеточия, тело — с отступом. Типы: player, offline player, entity, block, location, text, integer, number, boolean, world, item. Вызов — отдельная строка, аргументы любые выражения: `player`, `targeted player`, `targeted entity`, `targeted block`, `location of targeted block`, `{переменная}`. Параметр player — это цель (`send \"hi\" to who`, `health of who`, `%who%`). entity и block получают id, location — точку. Имя функции ищется без учёта регистра. `stop` обрывает только эту функцию.",
+      en: "A command of your own inside the script. The header may omit the colon; the body is indented. Types: player, offline player, entity, block, location, text, integer, number, boolean, world, item. A call is its own line. Arguments are any expression: `player`, `targeted player`, `targeted entity`, `targeted block`, `location of targeted block`, `{variable}`. A player parameter is a target (`send \"hi\" to who`, `health of who`, `%who%`). entity and block receive an id, location receives a point. The name is case-insensitive. `stop` ends only this function."
+    },
+    example: `function Test(who: player):
+	send "&aПривет, %who%!" to who
+
+function Mark(spot: location, id: block):
+	set block at spot to id
+
+on right click:
+	Test(targeted player)
+	Mark(location of targeted block, glass)`,
+    since: "0.4.4", related: ["eff-send", "eff-set-block", "expr-targeted-player", "expr-targeted-entity", "expr-location"]
   },
   {
     id: "struct-options", category: "structures",
@@ -564,12 +583,12 @@ add targeted block {seen::%player%::*}`,
     name: { ru: "Записать NBT", en: "Set NBT" },
     syntax: ["set nbt \"<путь>\" of targeted entity to <значение>", "set nbt \"<путь>\" of targeted block to <значение>", "set nbt \"<путь>\" of targeted player to <значение>", "set nbt \"<путь>\" of player to <значение>"],
     desc: {
-      ru: "Пишет NBT-тег сущности, игрока или блока в прицеле. Путь как в `/data`: `CustomName`, `Items[0].id`. Число пишется числом, `true`/`false` — байтом, текст — строкой, `{...}` и `[...]` — как SNBT. У блока без данных будет ошибка. Весь тег целиком: `%nbt of targeted entity%`, один путь: `%nbt CustomName of targeted entity%`.",
+      ru: "Пишет NBT-тег сущности, игрока или блока в прицеле. Путь как в `/data`: `CustomName`, `Items[0].id`. Число пишется числом, `true`/`false` — байтом, текст — строкой, `{...}` и `[...]` — как SNBT. У блока без данных будет ошибка. Весь тег целиком: `%nbt of targeted entity%`, один путь: `%nbt CustomName of targeted entity%`. NBT предметов в инвентаре — отдельное выражение.",
       en: "Writes an NBT tag on the entity, player or block in the crosshair. The path is the same as `/data`: `CustomName`, `Items[0].id`. A number is stored as a number, `true`/`false` as a byte, text as a string, `{...}` and `[...]` as SNBT. A block with no data is an error. The whole tag: `%nbt of targeted entity%`. One path: `%nbt CustomName of targeted entity%`."
     },
     example: `send "%nbt of targeted entity%" to player
 set nbt "CustomName" of targeted entity to "\"Гриб\""`,
-    since: "0.3.9", related: ["eff-nbt-remove", "ph-targeted", "target-targeted"]
+    since: "0.3.9", related: ["eff-nbt-remove", "ph-targeted", "target-targeted", "expr-item-nbt"]
   },
   {
     id: "eff-nbt-remove", category: "effects",
@@ -667,7 +686,21 @@ play sound entity.experience_orb.pickup to player with volume 0.4 pitch 1.2`,
 give all players example:ruby
 give player tacz:modern_kinetic_gun{GunId:"tacz:glock_17"} 1
 give player player's tool`,
-    since: "0.1.0", related: ["struct-define-item", "eff-give-effect"]
+    since: "0.1.0", related: ["struct-define-item", "eff-give-effect", "eff-set-slot"]
+  },
+  {
+    id: "eff-set-slot", category: "effects",
+    name: { ru: "Слот инвентаря", en: "Inventory slot" },
+    syntax: ["set slot <слот> of <цель> to <предмет>", "set slot <слот> of <цель> to <количество> <предмет>", "set slot hotbar <1-9> of <цель> to <предмет>", "clear slot <слот> of <цель>"],
+    desc: {
+      ru: "Кладёт один стак в слот. Номера 0–8 — хотбар, 9–35 — инвентарь, 36 ботинки, 37 штаны, 38 нагрудник, 39 шлем, 40 левая рука. `slot hotbar 1` — это слот 0. Имена: `helmet`, `chestplate`, `leggings`, `boots`, `offhand`, `mainhand`. Количество больше максимума стака обрезается. `air` и количество 0 очищают слот. Предмет — выражение: `diamond`, `diamond{Unbreakable:1b}`, `player's tool`, `{переменная}`, параметр функции. `named \"текст\"` ставит имя (цвета `&`, без курсива). `with nbt {тег}` дописывает NBT после тега в id. Имя пишется последним и перекрывает `display.Name` из тега. Можно `of player's inventory` и `of who`, если `who` — параметр-игрок.",
+      en: "Puts one stack into a slot. Indices 0–8 are the hotbar, 9–35 storage, 36 boots, 37 leggings, 38 chestplate, 39 helmet, 40 offhand. `slot hotbar 1` is slot 0. Names: `helmet`, `chestplate`, `leggings`, `boots`, `offhand`, `mainhand`. A count above the stack limit is clamped. `air` and a count of 0 clear the slot. The item is an expression: `diamond`, `diamond{Unbreakable:1b}`, `player's tool`, `{variable}`, a function parameter. `named \"text\"` sets the display name (`&` colours, not italic). `with nbt {tag}` merges NBT after the tag in the id. The name is applied last and overrides `display.Name` from the tag. `of player's inventory` and `of who` work when `who` is a player parameter."
+    },
+    example: `set slot 0 of player to 1 diamond named "тест"
+set slot hotbar 1 of player to diamond{Unbreakable:1b} named "&bМеч" with nbt {Damage:0}
+set slot helmet of who to 1 netherite_helmet
+clear slot 40 of player`,
+    since: "0.4.5", related: ["eff-give-item", "expr-item-nbt", "eff-nbt"]
   },
   {
     id: "eff-teleport", category: "effects",
@@ -921,7 +954,90 @@ give @a[distance=..10] effect regeneration for 10 seconds`,
     desc: { ru: "Отключает игроков цели. Без причины сообщение — `Kicked`.", en: "Disconnects the target players. Without a reason the message is `Kicked`." },
     example: `command /kickall permission 2:
 	kick all players due to "Перезапуск"`,
-    since: "0.2.0", related: ["eff-op", "eff-deop", "target-all"]
+    since: "0.2.0", related: ["eff-ban", "eff-op", "eff-deop", "target-all"]
+  },
+  {
+    id: "eff-ban", category: "effects",
+    name: { ru: "Забанить", en: "Ban" },
+    syntax: ["ban <цель>", "ban <цель> due to \"<причина>\"", "ban <цель> because \"<причина>\"", "ban <цель> for \"<причина>\""],
+    desc: {
+      ru: "Пишет игрока в бан-лист сервера и отключает, если он онлайн. Без причины сообщение — `Banned`. Имя оффлайн банится, только если этот профиль уже заходил на сервер. `kick` по-прежнему только отключает и не пишет в бан-лист.",
+      en: "Adds the player to the server ban list and disconnects them if they are online. Without a reason the message is `Banned`. An offline name is banned only when that profile has already joined this server. `kick` still only disconnects and does not write the ban list."
+    },
+    example: `command /banplayer <player> permission 2:
+	ban arg-1 due to "Читер"
+
+command /banoffline <text> permission 2:
+	ban arg-1 for "Реклама"`,
+    since: "0.4.4", related: ["eff-kick", "cond-banned", "target-named"]
+  },
+  {
+    id: "eff-lp-permission", category: "effects",
+    name: { ru: "Право LuckPerms", en: "LuckPerms permission" },
+    syntax: ["set permission <узел> of <цель> to true|false", "add permission <узел> to <цель>", "give permission <узел> to <цель>", "remove permission <узел> from <цель>", "clear permissions of <цель>"],
+    desc: {
+      ru: "Ставит, добавляет, снимает или сбрасывает узел LuckPerms. Узел и значение — выражения: кавычки, `{переменная}`, параметр функции. В конце можно `for <число> seconds|minutes|hours|days`. `set ... to false` записывает запрет. `clear` убирает обычные и regex-права, группы не трогает. Цель — любой игрок, в том числе параметр функции и имя оффлайн, если сервер уже видел профиль. Без LuckPerms строка — ошибка в журнале. В консоли при старте: `LuckPerms: мод`, `плагин`, `мод и плагин`, `api` или `нет`.",
+      en: "Sets, adds, removes or clears a LuckPerms node. The node and the value are expressions: quotes, `{variable}`, a function parameter. A tail `for <number> seconds|minutes|hours|days` is optional. `set ... to false` stores a deny. `clear` removes normal and regex permissions and leaves groups. The target is any player, including a function parameter and an offline name the server has already seen. Without LuckPerms the line is a journal error. The console at startup says `LuckPerms: mod`, `plugin`, `mod and plugin`, `api` or `no`."
+    },
+    example: `add permission "scriptcraft.shop" to player
+set permission "essentials.fly" of player to false
+add permission "temp.fly" to player for 2 hours
+clear permissions of "Steve"`,
+    since: "0.4.5", related: ["eff-lp-group", "cond-permission", "cond-group"]
+  },
+  {
+    id: "eff-lp-group", category: "effects",
+    name: { ru: "Группа LuckPerms", en: "LuckPerms group" },
+    syntax: ["add group <имя> to <цель>", "give group <имя> to <цель>", "remove group <имя> from <цель>", "set group of <цель> to <имя>", "set primary group of <цель> to <имя>", "clear groups of <цель>"],
+    desc: {
+      ru: "Добавляет или снимает наследование группы. `set group` и `set primary group` делают группу основной и добавляют её в наследование. `clear groups` снимает наследование и ставит основную группу `default`. Имя приводится к нижнему регистру. Срок — `for <число> days` (и seconds, minutes, hours). Оффлайн-имя пишется, если профиль уже есть на сервере.",
+      en: "Adds or removes a group inheritance. `set group` and `set primary group` make that group primary and add the inheritance. `clear groups` removes inheritance and sets the primary group to `default`. The name is lowercased. A duration is `for <number> days` (also seconds, minutes, hours). An offline name is written when the server already has that profile."
+    },
+    example: `add group "vip" to player for 7 days
+set primary group of player to "member"
+remove group "vip" from "Steve"
+clear groups of player`,
+    since: "0.4.5", related: ["eff-lp-permission", "cond-group", "expr-lp"]
+  },
+  {
+    id: "eff-lp-prefix", category: "effects",
+    name: { ru: "Префикс LuckPerms", en: "LuckPerms prefix" },
+    syntax: ["set prefix of <цель> to <текст>", "add prefix <текст> to <цель>", "remove prefix of <цель>", "clear prefixes of <цель>"],
+    desc: {
+      ru: "Префикс в чате LuckPerms. Цвета `&` работают. Приоритет по умолчанию 100: `with priority 200`. `set` без приоритета заменяет все префиксы, с приоритетом — только этот вес. `add` не стирает остальные. `remove` без приоритета стирает все, с приоритетом — один вес. Срок и приоритет можно писать в любом порядке: `for 1 hour with priority 10`.",
+      en: "A LuckPerms chat prefix. `&` colours work. The default priority is 100: `with priority 200`. `set` without a priority replaces every prefix; with a priority it replaces only that weight. `add` leaves the others. `remove` without a priority clears all, with a priority only that weight. Duration and priority can be written in either order: `for 1 hour with priority 10`."
+    },
+    example: `set prefix of player to "&6[VIP] "
+add prefix "&c[Админ] " to player with priority 200
+remove prefix of player with priority 200
+clear prefixes of player`,
+    since: "0.4.5", related: ["eff-lp-suffix", "expr-lp", "expr-colors"]
+  },
+  {
+    id: "eff-lp-suffix", category: "effects",
+    name: { ru: "Суффикс LuckPerms", en: "LuckPerms suffix" },
+    syntax: ["set suffix of <цель> to <текст>", "add suffix <текст> to <цель>", "remove suffix of <цель>", "clear suffixes of <цель>"],
+    desc: {
+      ru: "Суффикс LuckPerms. Те же правила, что у префикса: цвета `&`, `with priority`, `for <срок>`, `set` заменяет, `add` добавляет, `clear suffixes` стирает все.",
+      en: "A LuckPerms suffix. Same rules as a prefix: `&` colours, `with priority`, `for <duration>`, `set` replaces, `add` adds, `clear suffixes` removes all."
+    },
+    example: `set suffix of player to " &7новичок"
+add suffix " &b★" to player with priority 50 for 1 day
+clear suffixes of player`,
+    since: "0.4.5", related: ["eff-lp-prefix", "expr-lp"]
+  },
+  {
+    id: "eff-lp-meta", category: "effects",
+    name: { ru: "Meta LuckPerms", en: "LuckPerms meta" },
+    syntax: ["set meta <ключ> of <цель> to <значение>", "remove meta <ключ> of <цель>", "clear meta of <цель>"],
+    desc: {
+      ru: "Произвольная meta-запись LuckPerms. Ключ и значение — выражения. `clear meta` стирает все meta-ключи игрока и не трогает префикс, суффикс и группы.",
+      en: "An arbitrary LuckPerms meta entry. The key and the value are expressions. `clear meta` removes every meta key of the player and leaves the prefix, suffix and groups."
+    },
+    example: `set meta "color" of player to "gold"
+set {color} to meta "color" of player
+remove meta "color" of player`,
+    since: "0.4.5", related: ["eff-lp-prefix", "expr-lp"]
   },
   {
     id: "eff-op", category: "effects",
@@ -1021,7 +1137,20 @@ set weather to rain for 60 seconds`,
     },
     example: `command /smite permission 2:
 	strike lightning at targeted player`,
-    since: "0.2.0", related: ["eff-explode", "target-targeted", "expr-location"]
+    since: "0.2.0", related: ["eff-explode", "eff-set-block", "target-targeted", "expr-location"]
+  },
+  {
+    id: "eff-set-block", category: "effects",
+    name: { ru: "Поставить блок", en: "Set block" },
+    syntax: ["set block at <x> <y> <z> to <блок>", "set block at <локация> to <блок>", "set block at targeted block to <блок>"],
+    desc: {
+      ru: "Ставит блок в состоянии по умолчанию. Координаты без локации — мир игрока из контекста, иначе обычный мир. `<блок>` — id (`stone`, `minecraft:glass`, `{блок}`) или параметр функции типа block. `air` убирает блок. `targeted block` — блок, на который смотрит игрок.",
+      en: "Places the block's default state. Coordinates without a location use the context player's world, otherwise the overworld. `<block>` is an id (`stone`, `minecraft:glass`, `{block}`) or a function parameter of type block. `air` removes the block. `targeted block` is the block the player is looking at."
+    },
+    example: `set block at 10 64 10 to stone
+set block at location of targeted block to air
+set block at targeted block to glass`,
+    since: "0.4.4", related: ["expr-location", "expr-targeted-block", "struct-function"]
   },
   {
     id: "eff-explode", category: "effects",
@@ -1222,8 +1351,8 @@ if player is op or player has permission 2:
     name: { ru: "Состояние игрока", en: "Player state" },
     syntax: ["<цель> is sneaking", "<цель> is not sneaking", "<цель> is sprinting", "<цель> is flying", "<цель> is sleeping", "<цель> is burning", "<цель> is on fire", "<цель> is op", "<цель> is alive", "<цель> is blocking", "<цель> is gliding", "<цель> is swimming", "<цель> is online", "<цель> is not online", "<цель> is holding <предмет>", "<цель> has <предмет>", "<цель> does not have <предмет>", "<цель> has permission <0-4>", "<цель> has permission \"<узел>\""],
     desc: {
-      ru: "Проверка для каждого игрока цели: никого нет — условие ложно (и для `is`, и для `is not`). `online` смотрит, есть ли игроки в цели. `holding` — предмет в основной руке, `has` — где угодно в инвентаре. Если у предмета указан nbt, каждый его ключ должен быть на стеке. Неизвестный предмет даёт ложь. `op` — запись в ops.txt, `permission N` — уровень прав, `permission \"узел\"` — LuckPerms (без мода — только оператор).",
-      en: "Checked for every player of the target: nobody there — the condition is false (both `is` and `is not`). `online` is whether the target has any players. `holding` is the main hand, `has` is anywhere in the inventory. If the item has nbt, every key of that tag must be on the stack. An unknown item is false. `op` is an ops.txt entry, `permission N` is the permission level, `permission \"node\"` is LuckPerms (without the mod — operators only)."
+      ru: "Проверка для каждого игрока цели: никого нет — условие ложно (и для `is`, и для `is not`). `online` смотрит, есть ли игроки в цели. `holding` — предмет в основной руке, `has` — где угодно в инвентаре. Если у предмета указан nbt, каждый его ключ должен быть на стеке. Неизвестный предмет даёт ложь. `op` — запись в ops.txt, `permission N` — уровень прав, `permission \"узел\"` — LuckPerms (мод или плагин; без него — узел Forge или оператор).",
+      en: "Checked for every player of the target: nobody there — the condition is false (both `is` and `is not`). `online` is whether the target has any players. `holding` is the main hand, `has` is anywhere in the inventory. If the item has nbt, every key of that tag must be on the stack. An unknown item is false. `op` is an ops.txt entry, `permission N` is the permission level, `permission \"node\"` is LuckPerms (a mod or a plugin; without it — a Forge node or an operator)."
     },
     example: `if player is sneaking:
 	send "&7ты крадёшься" to player
@@ -1231,15 +1360,43 @@ if player is not holding diamond_sword:
 	give player diamond_sword 1
 if player does not have bread:
 	give player bread 8`,
-    since: "0.2.0", related: ["cond-gamemode", "cond-world", "cond-and", "eff-give-item", "cond-permission"]
+    since: "0.2.0", related: ["cond-banned", "cond-gamemode", "cond-world", "cond-and", "eff-give-item", "cond-permission"]
+  },
+  {
+    id: "cond-banned", category: "conditions",
+    name: { ru: "Игрок забанен", en: "Player is banned" },
+    syntax: ["<цель> is banned", "<цель> is not banned"],
+    desc: {
+      ru: "Смотрит бан-лист сервера. Для имени, которого нет в сети (`\"Steve\" is banned`), проверяется профиль, если сервер его уже видел. Никого в цели нет и имени нет — условие ложно.",
+      en: "Reads the server ban list. A name that is not online (`\"Steve\" is banned`) is checked when the server has already seen that profile. Nobody in the target and no name — the condition is false."
+    },
+    example: `if player is banned:
+	kick player due to "Banned"
+if "Steve" is not banned:
+	send "&aSteve не в бане" to player`,
+    since: "0.4.4", related: ["eff-ban", "eff-kick", "cond-player"]
+  },
+  {
+    id: "cond-group", category: "conditions",
+    name: { ru: "Группа LuckPerms", en: "LuckPerms group" },
+    syntax: ["<цель> is in group <имя>", "<цель> is not in group <имя>"],
+    desc: {
+      ru: "Игрок в этой группе LuckPerms: основная группа или наследование. Имя — выражение. Никого в цели нет и имени нет — ложь и для `is`, и для `is not`. Имя оффлайн проверяется, если LuckPerms уже загрузил этот профиль. Без LuckPerms условие ложно.",
+      en: "The player is in that LuckPerms group: the primary group or an inheritance. The name is an expression. Nobody in the target and no name — false for both `is` and `is not`. An offline name is checked when LuckPerms has already loaded that profile. Without LuckPerms the condition is false."
+    },
+    example: `if player is in group "vip":
+	send "&6VIP" to player
+if "Steve" is not in group "banned":
+	add group "member" to "Steve"`,
+    since: "0.4.5", related: ["eff-lp-group", "cond-permission", "cond-player"]
   },
   {
     id: "cond-permission", category: "conditions",
     name: { ru: "Есть право", en: "Has permission" },
     syntax: ["<цель> has permission <0-4>", "<цель> has permission \"<узел>\"", "<цель> does not have permission <0-4>", "<цель> does not have permission \"<узел>\""],
     desc: {
-      ru: "Число 0–4 — ванильный уровень (2 — оператор). Строка в кавычках — узел LuckPerms, например `scriptcraft.shop`. Если мода LuckPerms нет, такой узел есть только у оператора. Никого в цели нет — условие ложно.",
-      en: "A number 0–4 is the vanilla level (2 is operator). A quoted string is a LuckPerms node, for example `scriptcraft.shop`. Without LuckPerms that node is held only by operators. Nobody in the target — the condition is false."
+      ru: "Число 0–4 — ванильный уровень (2 — оператор). Строка — узел прав, например `scriptcraft.shop`. Его проверяет LuckPerms, если он стоит модом или плагином. Если LuckPerms не ответил, проверяется узел, который мод зарегистрировал в Forge. Иначе такой узел есть только у оператора. Никого в цели нет — условие ложно.",
+      en: "A number 0–4 is the vanilla level (2 is operator). A string is a permission node, for example `scriptcraft.shop`. LuckPerms answers it whether LuckPerms is installed as a mod or as a plugin. If LuckPerms does not answer, a node registered with Forge is checked. Otherwise only operators have that node. Nobody in the target — the condition is false."
     },
     example: `if player has permission "scriptcraft.shop":
 	send "&aМожно" to player
@@ -1421,6 +1578,33 @@ send "&7Онлайн: " to player
 if number of all players >= 5:
 	broadcast "&aНа сервере людно"`,
     since: "0.2.0", related: ["eff-set-health", "cond-compare", "ph-online", "expr-random", "expr-location"]
+  },
+  {
+    id: "expr-lp", category: "expressions",
+    name: { ru: "Данные LuckPerms", en: "LuckPerms data" },
+    syntax: ["prefix of <цель>", "suffix of <цель>", "group of <цель>", "groups of <цель>", "meta <ключ> of <цель>", "%prefix%", "%suffix%", "%group%", "%groups%", "%prefix of player%"],
+    desc: {
+      ru: "Читает LuckPerms: префикс, суффикс, основную группу, список групп через запятую, meta по ключу. Работает в `set`, `if`, аргументе функции и в тексте. `%prefix%`, `%suffix%`, `%group%`, `%groups%` — игрок из контекста. `%prefix of player%` тоже он. Внутри функции `prefix of who` — параметр, а `%prefix%` остаётся вызвавшим, если параметра с именем `prefix` нет. Параметр или переменная `prefix` перекрывает `%prefix%`. Нет LuckPerms или значения — `<none>`.",
+      en: "Reads LuckPerms: prefix, suffix, primary group, a comma-separated group list, meta by key. Works in `set`, `if`, a function argument and in text. `%prefix%`, `%suffix%`, `%group%`, `%groups%` are the context player. `%prefix of player%` is that player too. Inside a function, `prefix of who` is the parameter, while `%prefix%` stays the caller unless a parameter named `prefix` exists. A parameter or variable named `prefix` shadows `%prefix%`. No LuckPerms or no value — `<none>`."
+    },
+    example: `send "%prefix%%player%" to player
+set {rank} to group of player
+if meta "color" of player is "gold":
+	send "&6золото" to player`,
+    since: "0.4.5", related: ["eff-lp-prefix", "eff-lp-group", "cond-group", "ph-player"]
+  },
+  {
+    id: "expr-item-nbt", category: "expressions",
+    name: { ru: "NBT предметов", en: "Item NBT" },
+    syntax: ["nbt from items in player's inventory", "nbt of player's inventory", "%nbt from items in player's inventory%", "%nbt of slot <слот> of player%", "%nbt <путь> of slot <слот> of player%"],
+    desc: {
+      ru: "Весь инвентарь — SNBT-список непустых слотов с полем `Slot`. Пустой инвентарь — `[]`. Один слот — SNBT предмета, пустой слот — `<none>`. Путь читает тег предмета, как `%nbt CustomName of targeted entity%`. Слот — число, `hotbar 1` или выражение. В тексте: `%nbt from items in player's inventory%`, `%nbt of items in player's inventory%`, `%nbt of player's inventory%`, `%nbt of slot 0 of player%`, `%nbt Damage of slot 0 of player's inventory%`. В функции `nbt of slot 0 of who` читает параметр.",
+      en: "The whole inventory is an SNBT list of non-empty stacks with a `Slot` field. An empty inventory is `[]`. One slot is the item SNBT, an empty slot is `<none>`. A path reads the item tag, like `%nbt CustomName of targeted entity%`. The slot is a number, `hotbar 1` or an expression. In text: `%nbt from items in player's inventory%`, `%nbt of items in player's inventory%`, `%nbt of player's inventory%`, `%nbt of slot 0 of player%`, `%nbt Damage of slot 0 of player's inventory%`. Inside a function, `nbt of slot 0 of who` reads the parameter."
+    },
+    example: `send "%nbt from items in player's inventory%" to player
+set {tag} to nbt of slot 0 of player
+send "%nbt Damage of slot 0 of player%" to player`,
+    since: "0.4.5", related: ["eff-nbt", "eff-set-slot", "eff-give-item"]
   },
   {
     id: "expr-location", category: "expressions",

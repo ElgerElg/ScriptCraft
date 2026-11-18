@@ -35,10 +35,16 @@ public final class NbtAccess {
     }
 
     public static String read(ServerPlayer viewer, String kind, String path) {
-        Holder holder = holder(viewer, kind);
-        CompoundTag tag = holder.read();
+        return format(holder(viewer, kind).read(), path);
+    }
+
+    /** Весь тег или один путь. Пустой тег без пути — {@code {}}. */
+    public static String format(@org.jetbrains.annotations.Nullable CompoundTag tag, String path) {
+        if (tag == null) {
+            return "<none>";
+        }
         if (path == null || path.isBlank()) {
-            return tag.getAsString();
+            return tag.toString();
         }
         try {
             List<Tag> found = path(path).get(tag);

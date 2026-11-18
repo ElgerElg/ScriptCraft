@@ -30,7 +30,7 @@ import java.util.Set;
  * Синтаксис целей разбирает {@code TargetParser}; здесь только выполнение.
  */
 public sealed interface Target permits Target.Self, Target.Named, Target.LoopPlayer, Target.All,
-        Target.Targeted, Target.InRadius, Target.Selector {
+        Target.Targeted, Target.InRadius, Target.Selector, Target.Local {
 
     /** Сам выбор игроков (без учёта статистики). */
     List<ServerPlayer> select(ExecutionContext ctx);
@@ -221,6 +221,26 @@ public sealed interface Target permits Target.Self, Target.Named, Target.LoopPla
         @Override
         public String toString() {
             return "Selector[" + raw + "]";
+        }
+    }
+
+    /**
+     * Параметр функции типа player или offline player.
+     * Имя само по себе — цель: send "hi" to who, heal who.
+     */
+    record Local(String name) implements Target {
+        @Override
+        public List<ServerPlayer> select(ExecutionContext ctx) {
+            Object value = ctx.local(name);
+            if (value instanceof ServerPlayer player) {
+                ServerPlayer live = ctx.server().getPlayerList().getPlayer(player.getUUID());
+                return live == null ? List.of() : List.of(live);
+            }
+            if (value instanceof String text && !text.isBlank() && !text.equals("<none>")) {
+                ServerPlayer found = ctx.server().getPlayerList().getPlayerByName(text.strip());
+                return found == null ? List.of() : List.of(found);
+            }
+            return List.of();
         }
     }
 }

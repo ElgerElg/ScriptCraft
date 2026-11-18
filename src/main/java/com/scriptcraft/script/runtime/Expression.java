@@ -247,6 +247,60 @@ public interface Expression {
         return null;
     }
 
+    /** Параметр текущей функции. Игрок здесь — его имя, локация — закодированная точка. */
+    record Local(String name) implements Expression {
+        @Override
+        public Object evaluate(ExecutionContext ctx) {
+            if (!ctx.hasLocal(name)) {
+                return null;
+            }
+            Object value = ctx.local(name);
+            if (value instanceof ServerPlayer player) {
+                return player.getGameProfile().getName();
+            }
+            return value;
+        }
+    }
+
+    /** prefix/suffix/group/groups/meta of <цель>. Нет LuckPerms — null. */
+    record LpValue(String kind, Target target, @Nullable Expression key) implements Expression {
+        @Override
+        public Object evaluate(ExecutionContext ctx) {
+            String extra = key == null ? null : toText(key.evaluate(ctx));
+            return LuckPermsLink.value(ctx, target, kind, extra);
+        }
+    }
+
+    /** SNBT непустых слотов. Пустой инвентарь — []. */
+    record InventoryNbt(Target target) implements Expression {
+        @Override
+        public Object evaluate(ExecutionContext ctx) {
+            java.util.List<ServerPlayer> players = target.select(ctx);
+            if (players.isEmpty()) {
+                return "[]";
+            }
+            return InventoryItems.inventory(players.get(0));
+        }
+    }
+
+    /** NBT одного слота. Пустой слот — &lt;none&gt;. */
+    record SlotNbt(Target target, Expression slot, boolean hotbar, @Nullable Expression path) implements Expression {
+        @Override
+        public Object evaluate(ExecutionContext ctx) {
+            java.util.List<ServerPlayer> players = target.select(ctx);
+            if (players.isEmpty()) {
+                return "<none>";
+            }
+            ServerPlayer player = players.get(0);
+            int index = Effects.inventorySlot(player, slot, hotbar, ctx);
+            String extra = path == null ? null : toText(path.evaluate(ctx));
+            if (extra != null && (extra.isBlank() || extra.equals("<none>"))) {
+                extra = null;
+            }
+            return InventoryItems.slot(player, index, extra);
+        }
+    }
+
     /** Значение -> текст для вывода: 5.0 -> "5", null -> "<none>" (как в Skript). */
     static String toText(@Nullable Object value) {
         if (value == null) {

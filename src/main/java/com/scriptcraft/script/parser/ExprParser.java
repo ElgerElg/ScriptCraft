@@ -130,6 +130,25 @@ final class ExprParser {
      */
     private static Parsed tryElement(List<Token> t, int i) throws ParseException {
         String w = word(t, i);
+        FuncType local = ScriptParser.localType(w);
+        if (local != null) {
+            String next = word(t, i + 1);
+            if (!next.equals("of") && !next.equals("at") && !next.equals("between")) {
+                String key = w;
+                if (key.length() > 2 && key.startsWith("%") && key.endsWith("%")) {
+                    key = key.substring(1, key.length() - 1);
+                }
+                return new Parsed(new Expression.Local(key), i + 1);
+            }
+        }
+        Parsed luck = tryLuckPerms(t, i);
+        if (luck != null) {
+            return luck;
+        }
+        Parsed items = tryItemNbt(t, i);
+        if (items != null) {
+            return items;
+        }
         if (w.equals("player") || w.equals("%player%")) {
             return new Parsed(new Expression.Property(Expression.Prop.NAME, new Target.Self()), i + 1);
         }
@@ -170,13 +189,120 @@ final class ExprParser {
         return null;
     }
 
+    private static Parsed tryLuckPerms(List<Token> t, int i) throws ParseException {
+        String w = word(t, i);
+        if (w.equals("prefix") || w.equals("suffix") || w.equals("group") || w.equals("groups")) {
+            if (!word(t, i + 1).equals("of")) {
+                return null;
+            }
+            TargetParser.Parsed target = TargetParser.parse(t, i + 2);
+            if (target == null) {
+                throw new ParseException("need: " + w + " of <target>", "нужно: " + w + " of <цель>");
+            }
+            return new Parsed(new Expression.LpValue(w, target.target(), null), target.end());
+        }
+        if (!w.equals("meta") || i + 1 >= t.size() || word(t, i + 1).equals("of")) {
+            if (w.equals("meta") && word(t, i + 1).equals("of")) {
+                throw new ParseException("need: meta <key> of <target>", "нужно: meta <ключ> of <цель>");
+            }
+            return null;
+        }
+        Parsed key = parse(t, i + 1);
+        if (!word(t, key.end()).equals("of")) {
+            return null;
+        }
+        TargetParser.Parsed target = TargetParser.parse(t, key.end() + 1);
+        if (target == null) {
+            throw new ParseException("need: meta <key> of <target>", "нужно: meta <ключ> of <цель>");
+        }
+        return new Parsed(new Expression.LpValue("meta", target.target(), key.expression()), target.end());
+    }
+
+    private static Parsed tryItemNbt(List<Token> t, int i) throws ParseException {
+        if (!word(t, i).equals("nbt")) {
+            return null;
+        }
+        if (word(t, i + 1).equals("of") || word(t, i + 1).equals("from")) {
+            return itemNbt(t, i + 1, null);
+        }
+        if (i + 1 >= t.size()) {
+            return null;
+        }
+        Parsed path = parse(t, i + 1);
+        if (word(t, path.end()).equals("of") && word(t, path.end() + 1).equals("slot")) {
+            return slotNbt(t, path.end() + 2, path.expression());
+        }
+        return null;
+    }
+
+    private static Parsed itemNbt(List<Token> t, int i, Expression path) throws ParseException {
+        if (word(t, i).equals("from") || (word(t, i).equals("of") && word(t, i + 1).equals("items") && word(t, i + 2).equals("in"))) {
+            int at = word(t, i).equals("from") ? i + 1 : i + 1;
+            if (word(t, i).equals("from") && !(word(t, i + 1).equals("items") && word(t, i + 2).equals("in"))) {
+                throw new ParseException("need: nbt from items in player's inventory",
+                        "нужно: nbt from items in player's inventory");
+            }
+            return inventoryTarget(t, at + 2);
+        }
+        if (word(t, i).equals("of") && word(t, i + 1).equals("slot")) {
+            return slotNbt(t, i + 2, path);
+        }
+        if (word(t, i).equals("of") && word(t, i + 1).equals("player's") && word(t, i + 2).equals("inventory")) {
+            return new Parsed(new Expression.InventoryNbt(playerTarget()), i + 3);
+        }
+        throw new ParseException("need: nbt of player's inventory or nbt of slot <slot> of <target>",
+                "нужно: nbt of player's inventory или nbt of slot <слот> of <цель>");
+    }
+
+    private static Parsed inventoryTarget(List<Token> t, int i) throws ParseException {
+        if (word(t, i).equals("player's") && word(t, i + 1).equals("inventory")) {
+            return new Parsed(new Expression.InventoryNbt(playerTarget()), i + 2);
+        }
+        throw new ParseException("need: nbt from items in player's inventory",
+                "нужно: nbt from items in player's inventory");
+    }
+
+    private static Parsed slotNbt(List<Token> t, int i, Expression path) throws ParseException {
+        boolean hotbar = word(t, i).equals("hotbar");
+        if (hotbar) {
+            i++;
+        }
+        Parsed slot = parse(t, i);
+        if (!word(t, slot.end()).equals("of")) {
+            throw new ParseException("need: nbt of slot <slot> of <target>", "нужно: nbt of slot <слот> of <цель>");
+        }
+        int at = slot.end() + 1;
+        if (word(t, at).equals("player's") && word(t, at + 1).equals("inventory")) {
+            return new Parsed(new Expression.SlotNbt(playerTarget(), slot.expression(), hotbar, path), at + 2);
+        }
+        TargetParser.Parsed target = TargetParser.parse(t, at);
+        if (target == null) {
+            throw new ParseException("need: nbt of slot <slot> of <target>", "нужно: nbt of slot <слот> of <цель>");
+        }
+        int end = target.end();
+        if (word(t, end).equals("inventory")) {
+            end++;
+        }
+        return new Parsed(new Expression.SlotNbt(target.target(), slot.expression(), hotbar, path), end);
+    }
+
+    private static Target playerTarget() {
+        FuncType local = ScriptParser.localType("player");
+        if (local == FuncType.PLAYER || local == FuncType.OFFLINE) {
+            return new Target.Local("player");
+        }
+        return new Target.Self();
+    }
+
     /** player's tool, loop-player's location, targeted player's health. */
     private static Parsed tryPossessive(List<Token> t, int i) throws ParseException {
         String w = word(t, i);
         Target target = null;
         int from = i + 1;
         if (w.equals("player's")) {
-            target = new Target.Self();
+            FuncType local = ScriptParser.localType("player");
+            target = local == FuncType.PLAYER || local == FuncType.OFFLINE
+                    ? new Target.Local("player") : new Target.Self();
         } else if (w.equals("loop-player's")) {
             target = new Target.LoopPlayer();
         } else if (w.equals("targeted") && word(t, i + 1).equals("player's")) {

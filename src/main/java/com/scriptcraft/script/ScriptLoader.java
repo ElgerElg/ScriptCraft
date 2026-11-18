@@ -13,6 +13,7 @@ import com.scriptcraft.script.engine.ScriptProgram;
 import com.scriptcraft.script.engine.SimpleScriptEngine;
 import com.scriptcraft.script.runtime.ArgType;
 import com.scriptcraft.script.runtime.ExecutionContext;
+import com.scriptcraft.script.runtime.LuckPermsLink;
 import com.scriptcraft.script.runtime.ScriptEvent;
 import com.scriptcraft.script.runtime.ScriptScheduler;
 import com.scriptcraft.script.variables.VariableStore;
@@ -58,6 +59,11 @@ public final class ScriptLoader {
 
     public static ScriptProgram getProgram() {
         return program;
+    }
+
+    /** Вызов function из эффекта. Смотрит в программу, которая загружена прямо сейчас. */
+    public static void callFunction(String name, List<Object> args, ExecutionContext ctx) {
+        program.callFunction(name, args, ctx);
     }
 
     public static List<String> lastErrors() {
@@ -365,6 +371,7 @@ public final class ScriptLoader {
 
     /** Сервер запущен (мир загружен, переменные прочитаны): "on load:" всех включённых скриптов. */
     public static void onServerStarted(MinecraftServer server) {
+        LuckPermsLink.logPresence();
         fireScriptEvent(ScriptEvent.LOAD, f -> true, server);
         InputSync.sync(server);
     }

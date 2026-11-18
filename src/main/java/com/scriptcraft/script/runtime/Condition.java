@@ -176,6 +176,60 @@ public interface Condition {
     }
 
     /**
+     * player is banned / "Steve" is banned.
+     * Пустая цель без имени — ложь. Имя, которого нет в сети, проверяется по бан-листу.
+     */
+    record Banned(Target target, boolean negate) implements Condition {
+        @Override
+        public boolean test(ExecutionContext ctx) {
+            if (target instanceof Target.Local local) {
+                Object value = ctx.local(local.name());
+                if (value instanceof ServerPlayer player) {
+                    return Effects.isBanned(ctx, player.getGameProfile()) != negate;
+                }
+            }
+            List<ServerPlayer> players = target.select(ctx);
+            if (!players.isEmpty()) {
+                for (ServerPlayer player : players) {
+                    if (Effects.isBanned(ctx, player.getGameProfile()) == negate) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+            String name = Effects.storedName(target, ctx);
+            if (name != null) {
+                return Effects.isBannedName(ctx, name) != negate;
+            }
+            return false;
+        }
+    }
+
+    /** player is in group "vip". Нет LuckPerms — ложь. Имя оффлайн проверяется, если профиль уже загружен. */
+    record InGroup(Target target, Expression group, boolean negate) implements Condition {
+        @Override
+        public boolean test(ExecutionContext ctx) {
+        if (!LuckPermsLink.available()) {
+            return false;
+        }
+        String name = Expression.toText(group.evaluate(ctx));
+        List<ServerPlayer> players = target.select(ctx);
+        if (!players.isEmpty()) {
+            for (ServerPlayer player : players) {
+                if (LuckPermsLink.inGroup(player, name) == negate) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if (Effects.storedName(target, ctx) == null) {
+            return false;
+        }
+        return LuckPermsLink.member(ctx, target, name) != negate;
+        }
+    }
+
+    /**
      * Условие верно, если оно верно для каждого игрока цели.
      * Никого нет — условие ложно (и для "is", и для "is not"): оффлайн — это не "не крадётся".
      */

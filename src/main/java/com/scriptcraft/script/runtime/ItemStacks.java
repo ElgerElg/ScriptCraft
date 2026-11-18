@@ -99,6 +99,14 @@ public final class ItemStacks {
         return true;
     }
 
+    public static CompoundTag parseCompound(String snbt) {
+        String text = snbt == null ? "" : snbt.strip();
+        if (!text.startsWith("{")) {
+            text = "{" + text + "}";
+        }
+        return readTag(text);
+    }
+
     private static CompoundTag readTag(String snbt) {
         try {
             return TagParser.parseTag(snbt);

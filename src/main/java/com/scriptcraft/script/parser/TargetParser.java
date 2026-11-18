@@ -54,6 +54,17 @@ final class TargetParser {
         if (v.length() > 2 && v.startsWith("{") && v.endsWith("}")) {
             return new Parsed(new Target.Named(ScriptParser.expression(tok)), i + 1);
         }
+        FuncType local = ScriptParser.localType(w);
+        if (local == FuncType.PLAYER || local == FuncType.OFFLINE) {
+            String key = w;
+            if (key.length() > 2 && key.startsWith("%") && key.endsWith("%")) {
+                key = key.substring(1, key.length() - 1);
+            }
+            return new Parsed(new Target.Local(key), i + 1);
+        }
+        if (local != null) {
+            return null;
+        }
         switch (w) {
             case "player", "%player%" -> {
                 return new Parsed(new Target.Self(), i + 1);

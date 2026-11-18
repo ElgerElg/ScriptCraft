@@ -1,11 +1,14 @@
 package com.scriptcraft.script.runtime;
 
-import com.scriptcraft.ScriptCraft;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraftforge.fml.ModList;
+import net.minecraftforge.server.permission.PermissionAPI;
+import net.minecraftforge.server.permission.nodes.PermissionNode;
+import net.minecraftforge.server.permission.nodes.PermissionTypes;
 
 /**
- * Узел прав. Если стоит LuckPerms, спрашивает его. Без мода узел есть только у оператора (уровень 2).
+ * Узел прав. Сначала LuckPerms — и мод Forge, и плагин Bukkit.
+ * Если LuckPerms не ответил, смотрит узел, зарегистрированный в Forge.
+ * Иначе узел есть только у оператора (уровень 2).
  * Числовой уровень 0–4 по-прежнему проверяет сама игра, не этот класс.
  */
 public final class Permissions {
@@ -16,43 +19,33 @@ public final class Permissions {
         if (player == null || node == null || node.isBlank()) {
             return false;
         }
-        if (ModList.get().isLoaded("luckperms")) {
-            Boolean result = luckperms(player, node);
+        String key = node.strip();
+        if (LuckPermsLink.available()) {
+            Boolean result = LuckPermsLink.check(player, key);
             if (result != null) {
                 return result;
             }
         }
+        Boolean forge = forgeNode(player, key);
+        if (forge != null) {
+            return forge;
+        }
         return player.hasPermissions(2);
     }
 
-    /** null — LuckPerms не ответил, тогда решает запасной уровень оператора. */
-    private static Boolean luckperms(ServerPlayer player, String node) {
+    /** Узел, который мод объявил в Forge. Незарегистрированное имя — null. */
+    @SuppressWarnings("unchecked")
+    private static Boolean forgeNode(ServerPlayer player, String node) {
         try {
-            Class<?> provider = Class.forName("net.luckperms.api.LuckPermsProvider");
-            Object api = provider.getMethod("get").invoke(null);
-            Object adapter = api.getClass().getMethod("getPlayerAdapter", Class.class).invoke(api, ServerPlayer.class);
-            java.lang.reflect.Method getUser = null;
-            for (java.lang.reflect.Method method : adapter.getClass().getMethods()) {
-                if (method.getName().equals("getUser") && method.getParameterCount() == 1
-                        && method.getParameterTypes()[0].isAssignableFrom(ServerPlayer.class)) {
-                    getUser = method;
-                    break;
+            for (PermissionNode<?> registered : PermissionAPI.getRegisteredNodes()) {
+                if (!node.equals(registered.getNodeName()) || registered.getType() != PermissionTypes.BOOLEAN) {
+                    continue;
                 }
+                return PermissionAPI.getPermission(player, (PermissionNode<Boolean>) registered);
             }
-            if (getUser == null) {
-                return null;
-            }
-            Object user = getUser.invoke(adapter, player);
-            if (user == null) {
-                return null;
-            }
-            Object cached = user.getClass().getMethod("getCachedData").invoke(user);
-            Object data = cached.getClass().getMethod("getPermissionData").invoke(cached);
-            Object tri = data.getClass().getMethod("checkPermission", String.class).invoke(data, node);
-            return (Boolean) tri.getClass().getMethod("asBoolean").invoke(tri);
-        } catch (ReflectiveOperationException | ClassCastException e) {
-            ScriptCraft.LOGGER.warn("[ScriptCraft] LuckPerms: {}", e.toString());
+        } catch (RuntimeException ignored) {
             return null;
         }
+        return null;
     }
 }

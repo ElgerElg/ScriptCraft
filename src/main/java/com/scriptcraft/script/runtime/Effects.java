@@ -3,6 +3,7 @@ package com.scriptcraft.script.runtime;
 import com.scriptcraft.config.ScriptCraftConfig;
 import com.scriptcraft.lang.Messages;
 import com.scriptcraft.ScriptCraft;
+import com.mojang.authlib.GameProfile;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
@@ -13,6 +14,8 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.players.UserBanList;
+import net.minecraft.server.players.UserBanListEntry;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.effect.MobEffect;
@@ -23,10 +26,13 @@ import net.minecraft.world.food.FoodData;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.registries.ForgeRegistries;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Date;
 import java.util.List;
 
 /**
@@ -428,6 +434,89 @@ public final class Effects {
         }
     }
 
+    /**
+     * set slot 0 of player to 1 diamond named "тест" with nbt {Unbreakable:1b}.
+     * item == null — очистить слот. 0–8 хотбар, 9–35 инвентарь, 36–39 броня, 40 левая рука.
+     */
+    public record SetSlot(Expression slot, boolean hotbar, Target target, @Nullable Expression count,
+                          @Nullable Expression item, @Nullable Expression name, @Nullable Expression nbt) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            ItemStack stack = item == null ? ItemStack.EMPTY : decorate(ctx);
+            for (ServerPlayer player : target.resolve(ctx)) {
+                int index = slotIndex(player, ctx);
+                player.getInventory().setItem(index, stack.copy());
+                player.inventoryMenu.broadcastChanges();
+            }
+        }
+
+        private ItemStack decorate(ExecutionContext ctx) {
+            String id = itemText(item, ctx);
+            if (id.equalsIgnoreCase("air") || id.equalsIgnoreCase("minecraft:air")) {
+                return ItemStack.EMPTY;
+            }
+            int total = count == null ? 1 : (int) Math.round(number(count, ctx));
+            if (total <= 0) {
+                return ItemStack.EMPTY;
+            }
+            ItemStack stack = ItemStacks.create(id, 1);
+            stack.setCount(Math.min(total, Math.max(1, stack.getMaxStackSize())));
+            if (nbt != null) {
+                String extra = Expression.toText(nbt.evaluate(ctx)).strip();
+                if (!extra.isEmpty() && !extra.equals("<none>")) {
+                    stack.getOrCreateTag().merge(ItemStacks.parseCompound(extra));
+                }
+            }
+            if (name != null) {
+                String label = ctx.format(Expression.toText(name.evaluate(ctx)));
+                if (!label.isEmpty() && !label.equals("<none>")) {
+                    stack.setHoverName(Component.literal(label).withStyle(style -> style.withItalic(false)));
+                }
+            }
+            return stack;
+        }
+
+        private int slotIndex(ServerPlayer player, ExecutionContext ctx) {
+            return inventorySlot(player, slot, hotbar, ctx);
+        }
+    }
+
+    /** 0–40, hotbar 1–9 или имя: helmet, chestplate, leggings, boots, offhand, mainhand. */
+    public static int inventorySlot(ServerPlayer player, Expression slot, boolean hotbar, ExecutionContext ctx) {
+        if (hotbar) {
+            int n = (int) Math.round(number(slot, ctx));
+            if (n < 1 || n > 9) {
+                throw new ScriptRuntimeException(Messages.get("effect.bad_slot", n));
+            }
+            return n - 1;
+        }
+        Object raw = slot.evaluate(ctx);
+        if (raw instanceof String text && !text.isBlank() && Expression.toNumber(text) == null) {
+            Integer named = namedSlot(player, text.strip().toLowerCase(java.util.Locale.ROOT));
+            if (named == null) {
+                throw new ScriptRuntimeException(Messages.get("effect.bad_slot", text));
+            }
+            return named;
+        }
+        int index = (int) Math.round(number(slot, ctx));
+        if (index < 0 || index >= player.getInventory().getContainerSize()) {
+            throw new ScriptRuntimeException(Messages.get("effect.bad_slot", index));
+        }
+        return index;
+    }
+
+    private static Integer namedSlot(ServerPlayer player, String name) {
+        return switch (name) {
+            case "mainhand", "hand", "tool" -> player.getInventory().selected;
+            case "offhand" -> 40;
+            case "boots", "feet" -> 36;
+            case "leggings", "legs" -> 37;
+            case "chestplate", "chest" -> 38;
+            case "helmet", "head" -> 39;
+            default -> null;
+        };
+    }
+
     /** give player player's tool / give player {слот} — предмет из выражения. */
     public record GiveExpr(Target target, Expression item, @Nullable Expression count) implements Action {
         @Override
@@ -528,6 +617,61 @@ public final class Effects {
 
     // ------------------------------------------------------------------ кик, права, чат, мир
 
+    /**
+     * set block at x y z to stone / set block at {home} to air / set block at targeted block to glass.
+     * Координаты без локации — мир игрока из контекста, иначе обычный мир. Ставится состояние блока по умолчанию.
+     */
+    public record SetBlock(Mode mode, @Nullable Expression x, @Nullable Expression y, @Nullable Expression z,
+                           @Nullable Expression place, Expression block) implements Action {
+        public enum Mode { LOOK, XYZ, PLACE }
+
+        @Override
+        public void execute(ExecutionContext ctx) {
+            BlockState state = resolveBlock(block.evaluate(ctx)).defaultBlockState();
+            ServerLevel level;
+            BlockPos pos;
+            switch (mode) {
+                case LOOK -> {
+                    ServerPlayer viewer = ctx.requirePlayer();
+                    String encoded = Places.blockLocation(viewer);
+                    if (encoded == null) {
+                        throw new ScriptRuntimeException(Messages.get("effect.no_block"));
+                    }
+                    ScriptLocation loc = Places.require(encoded);
+                    level = Places.level(ctx.server(), loc);
+                    pos = BlockPos.containing(loc.x(), loc.y(), loc.z());
+                }
+                case PLACE -> {
+                    ScriptLocation loc = Places.require(place.evaluate(ctx));
+                    level = Places.level(ctx.server(), loc);
+                    pos = BlockPos.containing(loc.x(), loc.y(), loc.z());
+                }
+                default -> {
+                    level = ctx.player() != null ? ctx.player().serverLevel() : ctx.server().overworld();
+                    pos = BlockPos.containing(number(x, ctx), number(y, ctx), number(z, ctx));
+                }
+            }
+            level.setBlock(pos, state, 3);
+        }
+    }
+
+    private static Block resolveBlock(@Nullable Object raw) {
+        String text = Expression.toText(raw).strip();
+        String id = text.toLowerCase(java.util.Locale.ROOT);
+        if (!id.contains(":")) {
+            id = "minecraft:" + id;
+        }
+        ResourceLocation key = ResourceLocation.tryParse(id);
+        if (key == null || !ForgeRegistries.BLOCKS.containsKey(key)) {
+            throw new ScriptRuntimeException(Messages.get("effect.unknown_block", text));
+        }
+        Block block = ForgeRegistries.BLOCKS.getValue(key);
+        if (block == null) {
+            throw new ScriptRuntimeException(Messages.get("effect.unknown_block", text));
+        }
+        return block;
+    }
+
     /** kick player [due to "причина"] */
     public record Kick(Target target, @Nullable String reason) implements Action {
         @Override
@@ -537,6 +681,89 @@ public final class Effects {
                 p.connection.disconnect(message);
             }
         }
+    }
+
+    /** ban player [due to|because|for "причина"]. Оффлайн-имя банится, если сервер уже видел этот профиль. */
+    public record Ban(Target target, @Nullable String reason) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            String why = reason == null ? "Banned" : ctx.format(reason);
+            if (target instanceof Target.Local local) {
+                Object value = ctx.local(local.name());
+                if (value instanceof ServerPlayer player) {
+                    banAndKick(ctx, player.getGameProfile(), why);
+                    return;
+                }
+            }
+            List<ServerPlayer> players = target.resolve(ctx);
+            if (!players.isEmpty()) {
+                for (ServerPlayer player : players) {
+                    banAndKick(ctx, player.getGameProfile(), why);
+                }
+                return;
+            }
+            String name = storedName(target, ctx);
+            if (name == null) {
+                return;
+            }
+            GameProfile profile = profileByName(ctx, name);
+            if (profile == null || profile.getId() == null) {
+                throw new ScriptRuntimeException(Messages.get("effect.ban_unknown", name));
+            }
+            banAndKick(ctx, profile, why);
+        }
+    }
+
+    private static void banAndKick(ExecutionContext ctx, GameProfile profile, String why) {
+        if (profile.getId() == null) {
+            throw new ScriptRuntimeException(Messages.get("effect.ban_unknown", profile.getName()));
+        }
+        UserBanList bans = ctx.server().getPlayerList().getBans();
+        bans.add(new UserBanListEntry(profile, new Date(), "ScriptCraft", null, why));
+        ServerPlayer live = ctx.server().getPlayerList().getPlayer(profile.getId());
+        if (live != null) {
+            live.connection.disconnect(Component.literal(why));
+        }
+    }
+
+    @Nullable
+    static String storedName(Target target, ExecutionContext ctx) {
+        if (target instanceof Target.Named named) {
+            return plainName(Expression.toText(named.name().evaluate(ctx)));
+        }
+        if (target instanceof Target.Local local) {
+            return plainName(Expression.toText(ctx.local(local.name())));
+        }
+        return null;
+    }
+
+    @Nullable
+    private static String plainName(@Nullable String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String name = raw.strip();
+        if (name.isEmpty() || name.equals("<none>")) {
+            return null;
+        }
+        return name;
+    }
+
+    @Nullable
+    static GameProfile profileByName(ExecutionContext ctx, String name) {
+        var cache = ctx.server().getProfileCache();
+        if (cache == null) {
+            return null;
+        }
+        return cache.get(name).orElse(null);
+    }
+
+    static boolean isBanned(ExecutionContext ctx, @Nullable GameProfile profile) {
+        return profile != null && profile.getId() != null && ctx.server().getPlayerList().getBans().isBanned(profile);
+    }
+
+    static boolean isBannedName(ExecutionContext ctx, String name) {
+        return isBanned(ctx, profileByName(ctx, name));
     }
 
     /** op player / deop player */

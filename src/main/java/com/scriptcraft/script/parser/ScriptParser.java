@@ -88,7 +88,10 @@ public final class ScriptParser {
     private final Map<String, BlockDefinition> blocks = new LinkedHashMap<>();
     private final Map<String, ItemDefinition> items = new LinkedHashMap<>();
     private final List<PeriodHandler> periods = new ArrayList<>();
+    private final Map<String, FunctionDefinition> functions = new LinkedHashMap<>();
     private final List<String> errors = new ArrayList<>();
+    /** Параметры функции, пока разбирается её тело. Пусто вне функции. */
+    private static final ThreadLocal<Map<String, FuncType>> LOCALS = new ThreadLocal<>();
     private String currentFile = "?";
     /** Текущее пространство имён для define (сбрасывается на scriptcraft в начале каждого файла). */
     private String currentNamespace = ScriptCraft.MODID;
@@ -107,7 +110,7 @@ public final class ScriptParser {
             }
         }
         return new ParseResult(events, commands, List.copyOf(blocks.values()), List.copyOf(items.values()),
-                List.copyOf(periods), List.copyOf(errors));
+                List.copyOf(periods), Map.copyOf(functions), List.copyOf(errors));
     }
 
     /**
@@ -196,12 +199,16 @@ public final class ScriptParser {
                 i = end;
                 continue;
             }
+            boolean functionHeader = lowerText.startsWith("function ") && lowerText.contains("(");
             if (line.indent() != 0) {
                 error(line, "неожиданный отступ");
-            } else if (!line.text().endsWith(":")) {
+            } else if (!line.text().endsWith(":") && !functionHeader) {
                 error(line, "ожидается заголовок блока с двоеточием, например 'on join:'");
             } else {
-                String header = line.text().substring(0, line.text().length() - 1).strip();
+                String header = line.text().strip();
+                if (header.endsWith(":")) {
+                    header = header.substring(0, header.length() - 1).strip();
+                }
                 parseTopLevel(line, header, lines.subList(i + 1, end));
             }
             i = end;
@@ -366,7 +373,167 @@ public final class ScriptParser {
             return;
         }
 
+        if (lower.startsWith("function ") || lower.startsWith("function(")) {
+            parseFunction(headerLine, header, body);
+            return;
+        }
+
         error(headerLine, "неизвестный блок: " + header);
+    }
+
+    /**
+     * function Test(who: player):
+     *     send "hi" to who
+     * Двоеточие у заголовка можно не писать. Вызов — отдельная строка: Test(targeted player).
+     */
+    private void parseFunction(Line headerLine, String header, List<Line> body) {
+        String rest = header.substring("function".length()).strip();
+        int open = rest.indexOf('(');
+        int close = rest.lastIndexOf(')');
+        if (open <= 0 || close < open || !rest.substring(close + 1).isBlank()) {
+            error(headerLine, "need: function Name(who: player):", "нужно: function Name(who: player):");
+            return;
+        }
+        String name = rest.substring(0, open).strip();
+        if (!name.matches("[A-Za-z_][A-Za-z0-9_]*")) {
+            error(headerLine, "function name must be letters, digits or _",
+                    "имя функции — буквы, цифры или _");
+            return;
+        }
+        String key = name.toLowerCase(Locale.ROOT);
+        if (functions.containsKey(key)) {
+            error(headerLine, "function '" + name + "' is already defined",
+                    "функция '" + name + "' уже объявлена");
+            return;
+        }
+        List<FunctionDefinition.Param> params = new ArrayList<>();
+        Map<String, FuncType> scope = new LinkedHashMap<>();
+        String inside = rest.substring(open + 1, close).strip();
+        if (!inside.isEmpty()) {
+            for (String part : splitArgs(inside)) {
+                String piece = part.strip();
+                int colon = piece.indexOf(':');
+                if (colon <= 0) {
+                    error(headerLine, "parameter needs a type: name: player",
+                            "параметру нужен тип: имя: player");
+                    continue;
+                }
+                String param = piece.substring(0, colon).strip();
+                String typeRaw = piece.substring(colon + 1).strip();
+                if (!param.matches("[A-Za-z_][A-Za-z0-9_]*")) {
+                    error(headerLine, "parameter name must be letters, digits or _",
+                            "имя параметра — буквы, цифры или _");
+                    continue;
+                }
+                FuncType type = FuncType.parse(typeRaw);
+                if (type == null) {
+                    error(headerLine, "unknown type '" + typeRaw + "' (player, offline player, entity, block, location, text, integer, number, boolean, world, item)",
+                            "неизвестный тип '" + typeRaw + "' (player, offline player, entity, block, location, text, integer, number, boolean, world, item)");
+                    continue;
+                }
+                if (scope.put(param.toLowerCase(Locale.ROOT), type) != null) {
+                    error(headerLine, "parameter '" + param + "' is listed twice",
+                            "параметр '" + param + "' указан дважды");
+                    continue;
+                }
+                params.add(new FunctionDefinition.Param(param, type));
+            }
+        }
+        Map<String, FuncType> previous = LOCALS.get();
+        LOCALS.set(scope);
+        List<Action> actions;
+        try {
+            actions = parseActions(body);
+        } finally {
+            if (previous == null) {
+                LOCALS.remove();
+            } else {
+                LOCALS.set(previous);
+            }
+        }
+        functions.put(key, new FunctionDefinition(name, List.copyOf(params), actions, currentFile));
+    }
+
+    /** Тип параметра функции с таким именем, пока разбирается её тело. */
+    @Nullable
+    static FuncType localType(String word) {
+        if (word == null || word.isEmpty()) {
+            return null;
+        }
+        Map<String, FuncType> map = LOCALS.get();
+        if (map == null) {
+            return null;
+        }
+        String key = word.toLowerCase(Locale.ROOT);
+        if (key.length() > 2 && key.startsWith("%") && key.endsWith("%")) {
+            key = key.substring(1, key.length() - 1);
+        }
+        return map.get(key);
+    }
+
+    /** Аргументы вызова и параметры заголовка: запятая вне кавычек и скобок. */
+    private static List<String> splitArgs(String inside) {
+        List<String> parts = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        boolean quote = false;
+        int depth = 0;
+        for (int i = 0; i < inside.length(); i++) {
+            char c = inside.charAt(i);
+            if (c == '"') {
+                quote = !quote;
+                current.append(c);
+                continue;
+            }
+            if (!quote && (c == '(' || c == '{')) {
+                depth++;
+            } else if (!quote && (c == ')' || c == '}') && depth > 0) {
+                depth--;
+            }
+            if (!quote && depth == 0 && c == ',') {
+                parts.add(current.toString());
+                current.setLength(0);
+                continue;
+            }
+            current.append(c);
+        }
+        if (!current.isEmpty() || !parts.isEmpty()) {
+            parts.add(current.toString());
+        }
+        return parts;
+    }
+
+    /**
+     * Test(player) / Mark(location of targeted block, stone).
+     * Запятые токенайзер съедает, поэтому строка разбирается целиком, до таблицы эффектов.
+     */
+    @Nullable
+    private static Action tryFunctionCall(String text) throws ParseException {
+        int open = text.indexOf('(');
+        if (open <= 0 || !text.endsWith(")") || text.substring(0, open).indexOf('"') >= 0) {
+            return null;
+        }
+        String name = text.substring(0, open).strip();
+        if (!name.matches("[A-Za-z_][A-Za-z0-9_]*")) {
+            return null;
+        }
+        String inside = text.substring(open + 1, text.length() - 1).strip();
+        List<Expression> args = new ArrayList<>();
+        if (!inside.isEmpty()) {
+            for (String part : splitArgs(inside)) {
+                String piece = part.strip();
+                if (piece.isEmpty()) {
+                    throw new ParseException("empty function argument", "пустой аргумент функции");
+                }
+                List<Token> tokens = Tokenizer.tokenize(piece);
+                ExprParser.Parsed parsed = ExprParser.parse(tokens, 0);
+                if (parsed.end() != tokens.size()) {
+                    throw new ParseException("extra text in function argument: " + piece,
+                            "лишний текст в аргументе функции: " + piece);
+                }
+                args.add(parsed.expression());
+            }
+        }
+        return new Actions.CallFunction(name, args);
     }
 
     /** null, если пространство имён допустимо, иначе текст ошибки. */
@@ -920,6 +1087,9 @@ public final class ScriptParser {
             }
             return new ParsedCond(new Condition.Online(target.target(), want), finish(t, n + 1));
         }
+        if (s.equals("banned")) {
+            return new ParsedCond(new Condition.Banned(target.target(), negate), finish(t, n + 1));
+        }
         if (s.equals("holding")) {
             if (n + 1 >= t.size()) {
                 throw new ParseException("нужно: player is holding <предмет>");
@@ -928,6 +1098,10 @@ public final class ScriptParser {
         }
         if (s.equals("in")) {
             String next = word(t, n + 1);
+            if (next.equals("group")) {
+                ExprParser.Parsed name = ExprParser.parse(t, n + 2);
+                return new ParsedCond(new Condition.InGroup(target.target(), name.expression(), negate), finish(t, name.end()));
+            }
             if (next.equals("world")) {
                 if (n + 2 >= t.size()) {
                     throw new ParseException("нужно: player is in world overworld");
@@ -1163,8 +1337,21 @@ public final class ScriptParser {
         if (effect != null) {
             return effect;
         }
+        if (!hasBlock) {
+            Action call = tryFunctionCall(text.strip());
+            if (call != null) {
+                return call;
+            }
+        }
         if (word(t, 1).equals("nbt") && (head.equals("set") || head.equals("remove") || head.equals("delete") || head.equals("clear"))) {
             return parseNbt(t, head.equals("set"));
+        }
+        if ((head.equals("set") || head.equals("clear") || head.equals("delete")) && word(t, 1).equals("slot")) {
+            return head.equals("set") ? SlotSyntax.parseSet(t) : SlotSyntax.parseClear(t);
+        }
+        Action luck = LuckPermsSyntax.parse(t);
+        if (luck != null) {
+            return luck;
         }
 
         switch (head) {

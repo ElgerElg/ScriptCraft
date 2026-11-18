@@ -47,7 +47,7 @@ public class StudioScreen extends Screen {
     private static final int MENU_H = 16;
     private static final int TOOL_H = 20;
 
-    private enum Drag { NONE, MOVE, N, S, E, W, NE, NW, SE, SW, TEXT, VSCROLL, HSCROLL }
+    private enum Drag { NONE, MOVE, N, S, E, W, NE, NW, SE, SW, TEXT, JOURNAL, VSCROLL, HSCROLL }
 
     private String menu;
     private boolean catalog;
@@ -431,6 +431,8 @@ public class StudioScreen extends Screen {
     }
 
     private void renderJournal(GuiGraphics g, int mx, int my) {
+        copyBtnY = -1;
+        journalTextX = -1;
         int y = contentY();
         int h = contentH();
         int listW = Math.max(180, (pw - 16) / 2);
@@ -489,7 +491,11 @@ public class StudioScreen extends Screen {
         journalY = y;
         journalH = h;
         if (historySel >= 0 && historySel < StudioSession.history.size()) {
-            drawJournalNote(g, StudioSession.history.get(historySel), y, h, listW);
+            StudioSession.Note note = StudioSession.history.get(historySel);
+            boolean code = !note.lines.isEmpty();
+            List<String> rows = code ? note.lines : noteBody(note.body);
+            drawJournalDetail(g, mx, my, y, h, listW, rows, code ? note.firstLine : 0,
+                    code ? note.line : -1, code ? note.body : "", code, historySel + 1);
             return;
         }
         if (StudioSession.issues.isEmpty()) {
@@ -499,63 +505,164 @@ public class StudioScreen extends Screen {
         }
         ScriptLog.Issue current = StudioSession.issues.get(journal);
         ScriptLog.Slice slice = slice(current.file());
+        List<String> rows = slice == null ? List.of() : slice.lines();
+        drawJournalDetail(g, mx, my, y, h, listW, rows, slice == null ? 0 : slice.firstLine(), current.line(),
+                current.reason(), slice != null && !slice.lines().isEmpty(), -journal - 1);
+    }
+
+    private void drawJournalDetail(GuiGraphics g, int mx, int my, int y, int h, int listW, List<String> rows,
+                                   int firstNumber, int highlight, String reason, boolean numbers, int stamp) {
+        if (journalStamp != stamp) {
+            journalStamp = stamp;
+            clearJournalSelection();
+        }
+        journalLines.clear();
         int codeX = px + 16 + listW;
-        int codeW = pw - listW - 28;
-        g.enableScissor(codeX, y, codeX + codeW, y + h - 22);
-        int lines = slice == null ? 0 : slice.lines().size();
-        codeMax = Math.max(0, lines * LINE_H - (h - 22));
+        int codeW = Math.max(40, pw - listW - 28);
+        journalTextX = codeX;
+        journalTextW = codeW;
+        drawCopyButtons(g, mx, my, codeX, y, codeW);
+        journalViewTop = y + 18;
+        journalViewBottom = Math.max(journalViewTop + LINE_H, y + h - 22);
+        int viewH = journalViewBottom - journalViewTop;
+        codeMax = Math.max(0, rows.size() * LINE_H - viewH);
         codeScroll = Math.max(0, Math.min(codeScroll, codeMax));
-        if (slice == null || slice.lines().isEmpty()) {
-            g.drawString(this.font, Messages.get("log.no_file"), codeX + 6, y + 8, MUTED, false);
+        g.enableScissor(codeX, journalViewTop, codeX + codeW, journalViewBottom);
+        if (rows.isEmpty()) {
+            journalLine(g, journalViewTop + 4, codeX + 6, Messages.get("log.no_file"), MUTED, true, true, false);
         } else {
-            int ly = y + 4 - codeScroll;
-            for (int i = 0; i < slice.lines().size(); i++) {
-                int number = slice.firstLine() + i;
-                if (ly > y - LINE_H && ly < y + h) {
-                    if (number == current.line()) {
-                        g.fill(codeX, ly - 1, codeX + codeW, ly + LINE_H - 1, 0xAAD25A5A);
-                    }
+            int ly = journalViewTop - codeScroll;
+            for (int i = 0; i < rows.size(); i++) {
+                int number = firstNumber + i;
+                boolean visible = ly + LINE_H > journalViewTop && ly < journalViewBottom;
+                if (visible && numbers && number == highlight) {
+                    g.fill(codeX, ly - 1, codeX + codeW, ly + LINE_H - 1, 0xAAD25A5A);
+                }
+                if (visible && numbers) {
                     String num = Integer.toString(number);
                     g.drawString(this.font, num, codeX + 28 - this.font.width(num), ly, MUTED, false);
-                    ScriptColors.draw(g, this.font, slice.lines().get(i), codeX + 34, ly, TEXT, codeW - 40);
                 }
+                int textX = codeX + (numbers ? 34 : 6);
+                journalLine(g, ly, textX, rows.get(i), TEXT, !numbers, visible, false);
                 ly += LINE_H;
             }
         }
         g.disableScissor();
-        g.drawString(this.font, trim(Messages.get("log.reason") + ": " + current.reason(), codeW), codeX, y + h - 14, 0xFFF0C2C2, false);
+        if (reason != null && !reason.isBlank()) {
+            String line = trim(Messages.get("log.reason") + ": " + reason, codeW);
+            journalLine(g, y + h - 14, codeX, line, 0xFFF0C2C2, true, true, true);
+        }
     }
 
-    private void drawJournalNote(GuiGraphics g, StudioSession.Note note, int y, int h, int listW) {
-        int codeX = px + 16 + listW;
-        int codeW = pw - listW - 28;
-        if (note.lines.isEmpty()) {
-            drawWrapped(g, note.body, codeX + 6, y + 8, codeW - 12, TEXT, y + h - 8);
-            codeMax = 0;
+    private void drawCopyButtons(GuiGraphics g, int mx, int my, int x, int y, int width) {
+        String copy = Messages.get("studio.copy");
+        String all = Messages.get("studio.copy_all");
+        copyBtnW = this.font.width(copy) + 10;
+        copyAllW = this.font.width(all) + 10;
+        copyBtnX = x;
+        copyBtnY = y + 3;
+        paintJournalButton(g, mx, my, copyBtnX, copyBtnY, copyBtnW, copy, Messages.get("studio.copy_hint"));
+        int next = copyBtnX + copyBtnW + 4;
+        if (next + copyAllW <= x + width) {
+            copyAllX = next;
+            paintJournalButton(g, mx, my, copyAllX, copyBtnY, copyAllW, all, Messages.get("studio.copy_all_hint"));
+        } else {
+            copyAllX = -1;
+        }
+    }
+
+    private void paintJournalButton(GuiGraphics g, int mx, int my, int x, int y, int w, String label, String hint) {
+        boolean hot = hover(mx, my, x, y, w, 12);
+        g.fill(x, y, x + w, y + 12, hot ? 0xFF2E3A4E : ROW);
+        g.drawString(this.font, label, x + 5, y + 2, hot ? GOLD : TEXT, false);
+        if (hot) {
+            tip = hint;
+            tipX = mx + 8;
+            tipY = my;
+        }
+    }
+
+    private void journalLine(GuiGraphics g, int y, int x, String text, int color, boolean plain, boolean visible, boolean footer) {
+        int index = journalLines.size();
+        String shown = text == null ? "" : text;
+        journalLines.add(new JLine(y, x, shown, plain, footer));
+        if (!visible) {
             return;
         }
-        g.enableScissor(codeX, y, codeX + codeW, y + h - 22);
-        codeMax = Math.max(0, note.lines.size() * LINE_H - (h - 22));
-        codeScroll = Math.max(0, Math.min(codeScroll, codeMax));
-        int ly = y + 4 - codeScroll;
-        for (int i = 0; i < note.lines.size(); i++) {
-            int number = note.firstLine + i;
-            if (ly > y - LINE_H && ly < y + h) {
-                if (number == note.line) {
-                    g.fill(codeX, ly - 1, codeX + codeW, ly + LINE_H - 1, 0xAAD25A5A);
-                }
-                String num = Integer.toString(number);
-                g.drawString(this.font, num, codeX + 28 - this.font.width(num), ly, MUTED, false);
-                ScriptColors.draw(g, this.font, note.lines.get(i), codeX + 34, ly, TEXT, codeW - 40);
-            }
-            ly += LINE_H;
+        paintJournalSelection(g, index, y, x, shown, plain);
+        if (plain) {
+            g.drawString(this.font, shown, x, y, color, false);
+        } else {
+            ScriptColors.draw(g, this.font, shown, x, y, color, 8000);
         }
-        g.disableScissor();
-        g.drawString(this.font, trim(Messages.get("log.reason") + ": " + note.body, codeW), codeX, y + h - 14, 0xFFF0C2C2, false);
+    }
+
+    private void paintJournalSelection(GuiGraphics g, int index, int y, int x, String text, boolean plain) {
+        if (selA < 0 || selB < 0) {
+            return;
+        }
+        int a = selA;
+        int b = selB;
+        int ca = colA;
+        int cb = colB;
+        if (a > b || (a == b && ca > cb)) {
+            int swap = a;
+            a = b;
+            b = swap;
+            swap = ca;
+            ca = cb;
+            cb = swap;
+        }
+        if (index < a || index > b) {
+            return;
+        }
+        int from = index == a ? ca : 0;
+        int to = index == b ? cb : text.length();
+        from = Math.max(0, Math.min(from, text.length()));
+        to = Math.max(from, Math.min(to, text.length()));
+        if (from == to) {
+            return;
+        }
+        int x0 = x + journalWidth(text, from, plain);
+        int x1 = x + journalWidth(text, to, plain);
+        g.fill(x0, y, Math.max(x0 + 1, x1), y + LINE_H - 1, 0x883A6EA8);
+    }
+
+    private int journalWidth(String text, int count, boolean plain) {
+        count = Math.max(0, Math.min(count, text.length()));
+        if (plain) {
+            return this.font.width(text.substring(0, count));
+        }
+        return ScriptColors.width(this.font, text, count);
     }
 
     private int historySel = -1;
     private final java.util.ArrayList<JournalHit> journalHits = new java.util.ArrayList<>();
+    private final List<JLine> journalLines = new ArrayList<>();
+    private int selA = -1;
+    private int selB = -1;
+    private int colA;
+    private int colB;
+    private int journalStamp = Integer.MIN_VALUE;
+    private int copyBtnX;
+    private int copyBtnY = -1;
+    private int copyBtnW;
+    private int copyAllX = -1;
+    private int copyAllW;
+    private int journalTextX = -1;
+    private int journalTextW;
+    private int journalViewTop;
+    private int journalViewBottom;
+
+    private record JLine(int y, int x, String text, boolean plain, boolean footer) {
+    }
+
+    private static List<String> noteBody(String body) {
+        if (body == null || body.isBlank()) {
+            return List.of();
+        }
+        return java.util.Arrays.asList(body.replace("\r\n", "\n").replace('\r', '\n').split("\n", -1));
+    }
 
     private record JournalHit(int y, int h, int kind, int index) {
     }
@@ -967,6 +1074,10 @@ public class StudioScreen extends Screen {
             }
             return true;
         }
+        if (drag == Drag.JOURNAL) {
+            placeJournalCaret((int) mouseX, (int) mouseY, true);
+            return true;
+        }
         if (drag == Drag.TEXT) {
             ScriptDocument doc = script();
             if (doc != null) {
@@ -1117,6 +1228,16 @@ public class StudioScreen extends Screen {
                 find = find.substring(0, find.length() - 1);
             }
             return true;
+        }
+        if (StudioSession.JOURNAL.equals(StudioSession.active) && !settings) {
+            if (ctrl && key == GLFW.GLFW_KEY_A) {
+                selectAllJournal();
+                return true;
+            }
+            if (ctrl && key == GLFW.GLFW_KEY_C) {
+                copyJournalKey();
+                return true;
+            }
         }
         if (doc == null || !doc.loaded || settings) {
             return true;
@@ -1353,6 +1474,171 @@ public class StudioScreen extends Screen {
         ScriptDocument doc = StudioSession.openScript(name);
         doc.load(body);
         ModNetwork.sendToServer(new ScriptDataPacket.Save(name, body));
+    }
+
+    private void placeJournalCaret(int mx, int my, boolean extend) {
+        int line = journalHitLine(my);
+        if (line < 0) {
+            return;
+        }
+        JLine row = journalLines.get(line);
+        int col = journalColumn(row, mx);
+        if (!extend || selA < 0) {
+            selA = line;
+            selB = line;
+            colA = col;
+            colB = col;
+        } else {
+            selB = line;
+            colB = col;
+        }
+    }
+
+    private int journalHitLine(int my) {
+        int best = -1;
+        int bestDist = Integer.MAX_VALUE;
+        for (int i = 0; i < journalLines.size(); i++) {
+            JLine line = journalLines.get(i);
+            boolean inView = line.y + LINE_H > journalViewTop && line.y < journalViewBottom;
+            if (!line.footer && !inView) {
+                continue;
+            }
+            int dist = Math.abs(line.y + LINE_H / 2 - my);
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = i;
+            }
+        }
+        return best;
+    }
+
+    private int journalColumn(JLine line, int mx) {
+        int best = 0;
+        int bestDist = Integer.MAX_VALUE;
+        for (int i = 0; i <= line.text.length(); i++) {
+            int dist = Math.abs(line.x + journalWidth(line.text, i, line.plain) - mx);
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = i;
+            }
+        }
+        return best;
+    }
+
+    private String journalSelection() {
+        if (selA < 0 || selB < 0 || journalLines.isEmpty()) {
+            return "";
+        }
+        int a = selA;
+        int b = selB;
+        int ca = colA;
+        int cb = colB;
+        if (a > b || (a == b && ca > cb)) {
+            int swap = a;
+            a = b;
+            b = swap;
+            swap = ca;
+            ca = cb;
+            cb = swap;
+        }
+        a = Math.max(0, Math.min(a, journalLines.size() - 1));
+        b = Math.max(0, Math.min(b, journalLines.size() - 1));
+        StringBuilder sb = new StringBuilder();
+        for (int i = a; i <= b; i++) {
+            String text = journalLines.get(i).text;
+            int from = i == a ? Math.min(Math.max(ca, 0), text.length()) : 0;
+            int to = i == b ? Math.min(Math.max(cb, from), text.length()) : text.length();
+            if (i > a) {
+                sb.append('\n');
+            }
+            sb.append(text, from, to);
+        }
+        return sb.toString();
+    }
+
+    private void clearJournalSelection() {
+        selA = -1;
+        selB = -1;
+        colA = 0;
+        colB = 0;
+    }
+
+    private void selectAllJournal() {
+        if (journalLines.isEmpty()) {
+            return;
+        }
+        selA = 0;
+        colA = 0;
+        selB = journalLines.size() - 1;
+        colB = journalLines.get(selB).text.length();
+    }
+
+    private void copyJournalKey() {
+        String selected = journalSelection();
+        if (!selected.isEmpty()) {
+            copyJournalText(selected);
+        } else {
+            copyJournalText(currentDetailText());
+        }
+    }
+
+    private void copyJournalText(String text) {
+        if (text == null || text.isBlank() || this.minecraft == null) {
+            return;
+        }
+        this.minecraft.keyboardHandler.setClipboard(text);
+        ClientToasts.push(Messages.toast("studio.copied"));
+    }
+
+    private String currentDetailText() {
+        if (historySel >= 0 && historySel < StudioSession.history.size()) {
+            StudioSession.Note note = StudioSession.history.get(historySel);
+            StringBuilder sb = new StringBuilder();
+            if (note.title != null && !note.title.isBlank()) {
+                sb.append(note.title);
+            }
+            if (note.body != null && !note.body.isBlank()) {
+                if (!sb.isEmpty()) {
+                    sb.append('\n');
+                }
+                sb.append(note.body);
+            }
+            return sb.toString();
+        }
+        if (StudioSession.issues.isEmpty()) {
+            return "";
+        }
+        int index = Math.max(0, Math.min(journal, StudioSession.issues.size() - 1));
+        return issueText(StudioSession.issues.get(index), true);
+    }
+
+    private String allIssuesText() {
+        StringBuilder sb = new StringBuilder();
+        for (ScriptLog.Issue issue : StudioSession.issues) {
+            if (!sb.isEmpty()) {
+                sb.append('\n');
+            }
+            sb.append(issueText(issue, false));
+        }
+        return sb.toString();
+    }
+
+    private String issueText(ScriptLog.Issue issue, boolean withLine) {
+        String where = issue.file() == null || issue.file().isEmpty() ? "—" : issue.file();
+        if (issue.line() > 0) {
+            where = where + ":" + issue.line();
+        }
+        StringBuilder sb = new StringBuilder(where).append(": ").append(issue.reason() == null ? "" : issue.reason());
+        if (withLine) {
+            ScriptLog.Slice slice = slice(issue.file());
+            if (slice != null && issue.line() > 0) {
+                int idx = issue.line() - slice.firstLine();
+                if (idx >= 0 && idx < slice.lines().size()) {
+                    sb.append('\n').append(slice.lines().get(idx));
+                }
+            }
+        }
+        return sb.toString();
     }
 
     private void copy(ScriptDocument doc) {
@@ -1659,9 +1945,24 @@ public class StudioScreen extends Screen {
     }
 
     private void journalClick(int mx, int my) {
+        if (copyBtnY >= 0 && hover(mx, my, copyBtnX, copyBtnY, copyBtnW, 12)) {
+            copyJournalText(currentDetailText());
+            return;
+        }
+        if (copyAllX >= 0 && hover(mx, my, copyAllX, copyBtnY, copyAllW, 12)) {
+            copyJournalText(allIssuesText());
+            return;
+        }
+        if (journalTextX >= 0 && mx >= journalTextX && mx < journalTextX + journalTextW
+                && my >= journalViewTop - 2 && my < journalY + journalH) {
+            placeJournalCaret(mx, my, false);
+            drag = Drag.JOURNAL;
+            return;
+        }
         if (mx < px + 8 || mx >= px + 8 + journalListW || my < journalY || my >= journalY + journalH) {
             return;
         }
+        clearJournalSelection();
         for (JournalHit hit : journalHits) {
             if (my < hit.y || my >= hit.y + hit.h) {
                 continue;

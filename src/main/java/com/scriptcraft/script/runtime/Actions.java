@@ -189,6 +189,18 @@ public final class Actions {
         }
     }
 
+    /** Name(arg, ...) — вызов function. Тело берётся из текущей программы, чтобы reload подхватил новое. */
+    public record CallFunction(String name, List<Expression> args) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            List<Object> values = new ArrayList<>(args.size());
+            for (Expression arg : args) {
+                values.add(arg.evaluate(ctx));
+            }
+            com.scriptcraft.script.ScriptLoader.callFunction(name, values, ctx);
+        }
+    }
+
     /** stop — не выполнять оставшиеся действия этого запуска. */
     public record Stop() implements Action {
         @Override

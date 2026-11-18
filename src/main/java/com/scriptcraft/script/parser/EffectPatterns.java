@@ -148,6 +148,16 @@ final class EffectPatterns {
         rule("kick %target% due to %text%", c -> new Effects.Kick(c.target(0), c.text(1)));
         rule("kick %target% because %text%", c -> new Effects.Kick(c.target(0), c.text(1)));
         rule("kick %target%", c -> new Effects.Kick(c.target(0), null));
+        rule("ban %target% due to %text%", c -> new Effects.Ban(c.target(0), c.text(1)));
+        rule("ban %target% because %text%", c -> new Effects.Ban(c.target(0), c.text(1)));
+        rule("ban %target% for %text%", c -> new Effects.Ban(c.target(0), c.text(1)));
+        rule("ban %target%", c -> new Effects.Ban(c.target(0), null));
+        rule("set block at targeted block to %expr%",
+                c -> new Effects.SetBlock(Effects.SetBlock.Mode.LOOK, null, null, null, null, c.expr(0)));
+        rule("set block at %piece% to %expr%",
+                c -> new Effects.SetBlock(Effects.SetBlock.Mode.PLACE, null, null, null, c.exprValue(0), c.expr(1)));
+        rule("set block at %num% %num% %num% to %expr%",
+                c -> new Effects.SetBlock(Effects.SetBlock.Mode.XYZ, c.num(0), c.num(1), c.num(2), null, c.expr(3)));
         rule("op %target%", c -> new Effects.ChangeOp(c.target(0), true));
         rule("deop %target%", c -> new Effects.ChangeOp(c.target(0), false));
         rule("make %target% say|chat %text%", c -> new Effects.Say(c.target(0), c.text(1)));
