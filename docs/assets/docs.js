@@ -11,8 +11,21 @@
   DATA.categories.forEach(function (c, i) { c.order = i; catById[c.id] = c; });
   DATA.entries.forEach(function (e, i) { e.order = i; byId[e.id] = e; });
 
-  var state = { q: "", cats: {} };
+  var state = { q: "", cats: {}, onlyNew: false, selected: null };
   var els = {};
+
+  var CAT_ICONS = {
+    events: "⚡",
+    structures: "❖",
+    effects: "✦",
+    conditions: "◈",
+    expressions: "λ",
+    targets: "◎",
+    screen: "▣",
+    hud: "▤",
+    commands: "⌘",
+    config: "⚙"
+  };
 
   function norm(s) { return String(s).toLowerCase().replace(/ё/g, "е"); }
 
@@ -84,6 +97,7 @@
     var list = [];
     DATA.entries.forEach(function (e) {
       if (anyCat && !state.cats[e.category]) return;
+      if (state.onlyNew && e.since !== DATA.version) return;
       var s = ts.length ? score(e, ts) : 1;
       if (s > 0) list.push({ e: e, s: s });
     });
@@ -96,37 +110,92 @@
 
   function card(e, ts) {
     var cat = catById[e.category];
+    var isSel = state.selected === e.id;
     var related = (e.related || []).filter(function (r) { return byId[r]; }).map(function (r) {
       return '<a href="#' + r + '">' + SC.esc(SC.tr(byId[r].name)) + "</a>";
     }).join("");
-    return '<article class="card" id="' + e.id + '">' +
+    return '<article class="card' + (isSel ? " selected" : "") + '" id="' + e.id + '" data-entry="' + e.id + '">' +
       '<div class="card-h"><h3>' + mark(SC.tr(e.name), ts) + "</h3>" +
-      '<span class="badge c-' + e.category + '">' + SC.esc(SC.tr(cat)) + "</span>" +
-      '<span class="since">' + SC.esc(SC.t("card.since", { v: e.since })) + "</span>" +
+      '<span class="badge c-' + e.category + '">' + (CAT_ICONS[e.category] || "") + " " + SC.esc(SC.tr(cat)) + "</span>" +
+      '<span class="since' + (e.since === DATA.version ? " is-new" : "") + '">' + SC.esc(SC.t("card.since", { v: e.since })) + "</span>" +
       '<a class="perma" href="#' + e.id + '" title="' + SC.esc(SC.t("card.link")) + '">#</a></div>' +
       '<div class="syntax" aria-label="' + SC.esc(SC.t("card.syntax")) + '">' + e.syntax.map(function (s, i) {
         return '<div class="syntax-row"><span class="syntax-index">' + (i + 1) + '</span><code>' + mark(s, ts) + '</code>' +
           '<button class="syntax-copy" type="button" data-copy-syntax="' + SC.esc(s) + '" title="' + SC.esc(SC.t("copy")) + '" aria-label="' + SC.esc(SC.t("copy")) + '">⧉</button></div>';
       }).join("") + "</div>" +
       '<div class="desc">' + SC.readable(SC.tr(e.desc)) + "</div>" +
+      '<div class="card-example-inline">' +
       SC.codeBlock(e.example, e.category === "config" ? "toml" : "sc", SC.t("card.example") + (e.category === "config" ? " · scriptcraft/config.toml" : "")) +
+      "</div>" +
       (related ? '<div class="related"><span>' + SC.esc(SC.t("card.related")) + "</span>" + related + "</div>" : "") +
       "</article>";
   }
 
+  function renderPreview() {
+    if (!els.preview) return;
+    var e = state.selected && byId[state.selected];
+    if (!e) {
+      els.preview.innerHTML = '<div class="preview-card"><div class="preview-head"><span class="preview-dot"></span><b>' +
+        SC.esc(SC.t("preview.title")) + '</b></div><div class="preview-body"><p class="preview-empty">' +
+        SC.esc(SC.t("preview.empty")) + "</p></div></div>";
+      return;
+    }
+    var cat = catById[e.category];
+    var fileLabel = e.category === "config" ? "scriptcraft/config.toml" : (e.id + ".sc");
+    var related = (e.related || []).filter(function (r) { return byId[r]; }).map(function (r) {
+      return '<a href="#' + r + '">' + SC.esc(SC.tr(byId[r].name)) + "</a>";
+    }).join("");
+    els.preview.innerHTML =
+      '<div class="preview-card">' +
+      '<div class="preview-head"><span class="preview-dot"></span><b>' + SC.esc(SC.t("preview.title")) + '</b>' +
+      '<span class="since' + (e.since === DATA.version ? " is-new" : "") + '">' + SC.esc(SC.t("card.since", { v: e.since })) + '</span></div>' +
+      '<div class="preview-body">' +
+      '<div class="preview-title-row"><h4>' + SC.esc(SC.tr(e.name)) + '</h4>' +
+      '<span class="badge c-' + e.category + '">' + (CAT_ICONS[e.category] || "") + " " + SC.esc(SC.tr(cat)) + '</span></div>' +
+      SC.codeBlock(e.example, e.category === "config" ? "toml" : "sc", fileLabel) +
+      '<div class="preview-sec">' + SC.esc(SC.t("preview.syntax")) + '</div>' +
+      '<div class="preview-syn">' + e.syntax.map(function (s) {
+        return '<div class="preview-syn-row"><code>' + SC.esc(s) + '</code>' +
+          '<button class="syntax-copy" type="button" data-copy-syntax="' + SC.esc(s) + '" title="' + SC.esc(SC.t("copy")) + '">⧉</button></div>';
+      }).join("") + '</div>' +
+      '<div class="preview-sec">' + SC.esc(SC.t("preview.desc")) + '</div>' +
+      '<div class="desc preview-desc">' + SC.readable(SC.tr(e.desc)) + '</div>' +
+      (related ? '<div class="related"><span>' + SC.esc(SC.t("card.related")) + "</span>" + related + "</div>" : "") +
+      '</div></div>';
+  }
+
+  function selectEntry(id) {
+    if (!id || !byId[id]) return;
+    state.selected = id;
+    els.list.querySelectorAll(".card.selected").forEach(function (c) { c.classList.remove("selected"); });
+    var el = document.getElementById(id);
+    if (el) el.classList.add("selected");
+    renderPreview();
+  }
+
   function renderChips() {
     var counts = {};
-    DATA.entries.forEach(function (e) { counts[e.category] = (counts[e.category] || 0) + 1; });
+    var newCount = 0;
+    DATA.entries.forEach(function (e) {
+      counts[e.category] = (counts[e.category] || 0) + 1;
+      if (e.since === DATA.version) newCount++;
+    });
     var anyCat = Object.keys(state.cats).some(function (k) { return state.cats[k]; });
     els.chips.innerHTML = DATA.categories.map(function (c) {
       return '<button type="button" class="chip' + (state.cats[c.id] ? " on" : "") + '" data-cat="' + c.id + '" aria-pressed="' + !!state.cats[c.id] + '">' +
+        '<span class="chip-ico">' + (CAT_ICONS[c.id] || "") + "</span> " +
         SC.esc(SC.tr(c)) + '<span class="n">' + (counts[c.id] || 0) + "</span></button>";
-    }).join("") + (anyCat || state.q ? '<button type="button" class="chip clear" data-clear="1">✕ ' + SC.esc(SC.t("chips.all")) + "</button>" : "");
+    }).join("") +
+      (newCount ? '<button type="button" class="chip chip-new' + (state.onlyNew ? " on" : "") + '" data-new="1">★ ' + SC.esc(SC.t("chips.new")) + '<span class="n">' + newCount + "</span></button>" : "") +
+      (anyCat || state.q || state.onlyNew ? '<button type="button" class="chip clear" data-clear="1">✕ ' + SC.esc(SC.t("chips.all")) + "</button>" : "");
   }
 
   function render() {
     var ts = terms();
     var list = visible();
+    if (!state.selected || !list.some(function (x) { return x.id === state.selected; })) {
+      state.selected = list.length ? list[0].id : null;
+    }
     renderChips();
     els.status.textContent = list.length === DATA.entries.length
       ? SC.t("status.all", { n: list.length })
@@ -137,13 +206,14 @@
       if (!ts.length && e.category !== lastCat) {
         var c = catById[e.category];
         var n = list.filter(function (x) { return x.category === c.id; }).length;
-        html += '<h2 class="cat-title">' + SC.esc(SC.tr(c)) + "<small>" + n + "</small></h2>";
+        html += '<h2 class="cat-title"><span class="cat-ico">' + (CAT_ICONS[c.id] || "") + "</span> " + SC.esc(SC.tr(c)) + "<small>" + n + "</small></h2>";
       }
       lastCat = e.category;
       html += card(e, ts);
     });
     els.list.innerHTML = html || '<div class="empty">' + SC.esc(SC.t("empty")) + "</div>";
     renderSide(list, ts);
+    renderPreview();
     SC.measure();
   }
 
@@ -179,6 +249,7 @@
       var open = isOpen(cat);
       return '<div class="side-group' + (open ? "" : " collapsed") + '" data-cat="' + cat + '">' +
         '<button type="button" class="side-cat" aria-expanded="' + open + '" aria-controls="side-' + cat + '">' + CHEVRON +
+        '<span class="side-ico">' + (CAT_ICONS[cat] || "") + '</span>' +
         '<span class="side-name">' + SC.esc(SC.tr(catById[cat])) + '</span><span class="side-n">' + byCat[cat].length + "</span></button>" +
         '<div class="side-items" id="side-' + cat + '"><div class="side-inner">' +
         byCat[cat].map(function (e) { return '<a href="#' + e.id + '" data-id="' + e.id + '"' + (open ? "" : ' tabindex="-1"') + ">" + SC.esc(SC.tr(e.name)) + "</a>"; }).join("") +
@@ -223,6 +294,7 @@
     el.classList.remove("flash");
     void el.offsetWidth;
     el.classList.add("flash");
+    selectEntry(id);
     markSide(id);
   }
 
@@ -236,6 +308,7 @@
     els.status = document.getElementById("status");
     els.list = document.getElementById("list");
     els.side = document.getElementById("side");
+    els.preview = document.getElementById("preview");
 
     // ?q=... и ?cat=effects,targets в адресе — для ссылок на подборки.
     var params = new URLSearchParams(location.search);
@@ -269,24 +342,44 @@
     });
     els.list.addEventListener("click", function (ev) {
       var copy = ev.target.closest("button[data-copy-syntax]");
-      if (!copy) return;
-      SC.copy(copy.getAttribute("data-copy-syntax")).then(function (ok) {
-        copy.textContent = ok ? "✓" : "!";
-        copy.classList.toggle("ok", ok);
-        setTimeout(function () { copy.textContent = "⧉"; copy.classList.remove("ok"); }, 1200);
-      });
+      if (copy) {
+        SC.copy(copy.getAttribute("data-copy-syntax")).then(function (ok) {
+          copy.textContent = ok ? "✓" : "!";
+          copy.classList.toggle("ok", ok);
+          setTimeout(function () { copy.textContent = "⧉"; copy.classList.remove("ok"); }, 1200);
+        });
+        return;
+      }
+      var cardEl = ev.target.closest("article.card[data-entry]");
+      if (cardEl) {
+        selectEntry(cardEl.getAttribute("data-entry"));
+      }
     });
+    if (els.preview) {
+      els.preview.addEventListener("click", function (ev) {
+        var copy = ev.target.closest("button[data-copy-syntax]");
+        if (!copy) return;
+        SC.copy(copy.getAttribute("data-copy-syntax")).then(function (ok) {
+          copy.textContent = ok ? "✓" : "!";
+          copy.classList.toggle("ok", ok);
+          setTimeout(function () { copy.textContent = "⧉"; copy.classList.remove("ok"); }, 1200);
+        });
+      });
+    }
     els.chips.addEventListener("click", function (ev) {
       var b = ev.target.closest("button");
       if (!b) return;
-      if (b.getAttribute("data-clear")) { state.cats = {}; state.q = ""; els.input.value = ""; }
+      if (b.getAttribute("data-clear")) { state.cats = {}; state.q = ""; state.onlyNew = false; els.input.value = ""; }
+      else if (b.getAttribute("data-new")) { state.onlyNew = !state.onlyNew; }
       else { var c = b.getAttribute("data-cat"); state.cats[c] = !state.cats[c]; }
       render();
       window.scrollTo(0, 0);
     });
     document.addEventListener("keydown", function (ev) {
       if (ev.key === "Escape" && document.documentElement.classList.contains("nav-open")) { setNav(false); return; }
-      if (ev.key === "/" && document.activeElement !== els.input) { ev.preventDefault(); els.input.focus(); els.input.select(); }
+      if (((ev.key === "/" && document.activeElement !== els.input) || ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "k"))) {
+        ev.preventDefault(); els.input.focus(); els.input.select();
+      }
       else if (ev.key === "Escape" && document.activeElement === els.input) { els.input.value = ""; state.q = ""; render(); }
     });
     // Клик по ссылке на текущий же #id не вызывает hashchange — обрабатываем сами.
