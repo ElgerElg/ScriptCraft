@@ -90,7 +90,7 @@ public final class DefineCache {
         return Collections.unmodifiableSet(new LinkedHashSet<>(ITEMS));
     }
 
-    /** Дописывает id (с сервера или из MissingMappings). true — файл изменился (нужен перезапуск клиента). */
+    /** Дописывает id (из MissingMappings при неудачном входе). true — файл изменился (нужен перезапуск клиента). */
     public static synchronized boolean add(Collection<String> blockIds, Collection<String> itemIds) {
         ensureLoaded();
         boolean changed = false;
@@ -108,6 +108,36 @@ public final class DefineCache {
             save();
         }
         return changed;
+    }
+
+    /**
+     * Синхронизирует кэш с актуальным списком define текущего удалённого сервера:
+     * удаляет устаревшие/отключённые id (иначе лишние блоки клиента, которых нет на сервере,
+     * ломают откат реестра Forge revertToFrozen при выходе/перезапуске сервера).
+     */
+    public static synchronized boolean replace(Collection<String> blockIds, Collection<String> itemIds) {
+        ensureLoaded();
+        Set<String> nextBlocks = new LinkedHashSet<>();
+        Set<String> nextItems = new LinkedHashSet<>();
+        for (String id : blockIds) {
+            if (ID.matcher(id).matches() && nextBlocks.size() + nextItems.size() < MAX_IDS) {
+                nextBlocks.add(id);
+            }
+        }
+        for (String id : itemIds) {
+            if (ID.matcher(id).matches() && !nextBlocks.contains(id) && nextBlocks.size() + nextItems.size() < MAX_IDS) {
+                nextItems.add(id);
+            }
+        }
+        if (nextBlocks.equals(BLOCKS) && nextItems.equals(ITEMS)) {
+            return false;
+        }
+        BLOCKS.clear();
+        BLOCKS.addAll(nextBlocks);
+        ITEMS.clear();
+        ITEMS.addAll(nextItems);
+        save();
+        return true;
     }
 
     private static void save() {

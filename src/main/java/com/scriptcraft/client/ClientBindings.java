@@ -48,7 +48,11 @@ public final class ClientBindings {
         blocks.addAll(snapshot.blockSlots().keySet());
         List<String> items = new ArrayList<>(snapshot.realItems().keySet());
         items.addAll(snapshot.itemSlots().keySet());
-        DefineCache.add(blocks, items);
+        if (Minecraft.getInstance().getSingleplayerServer() == null) {
+            DefineCache.replace(blocks, items);
+        } else {
+            DefineCache.add(blocks, items);
+        }
 
         List<String> temporary = new ArrayList<>();
         for (String id : snapshot.blockSlots().keySet()) {
