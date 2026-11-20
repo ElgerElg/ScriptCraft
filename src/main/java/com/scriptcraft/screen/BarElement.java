@@ -69,8 +69,12 @@ public record BarElement(Layout layout, String id, String value, String max, Bar
                 fillTexture, backgroundTexture, textureWidth, textureHeight, formatter.apply(text), shadow);
     }
 
-    public BarElement withValues(String newValue, String newMax) {
-        return new BarElement(layout, id, newValue, newMax, direction, backgroundColor, fillTexture, backgroundTexture,
+    public BarElement withValues(@org.jetbrains.annotations.Nullable String newValue,
+                                 @org.jetbrains.annotations.Nullable String newMax) {
+        return new BarElement(layout, id,
+                newValue != null ? newValue : value,
+                newMax != null ? newMax : max,
+                direction, backgroundColor, fillTexture, backgroundTexture,
                 textureWidth, textureHeight, text, shadow);
     }
 

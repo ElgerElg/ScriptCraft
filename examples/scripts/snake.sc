@@ -161,6 +161,10 @@ function SnakeSpawnApple(p: player):
 	set {-ay::%p%} to {-row} * 12
 	move screen "apple" for p to {-ax::%p%}, {-ay::%p%}
 
+function SnakeUpdateBonusBar(p: player):
+	update screen "Змейка" for p:
+		bar "bonus_bar" value {-snake_bonus_t::%p%} max 40 at 0, -78 size 182x5 color #FACC15 background #55000000 layer 3
+
 function SnakeSpawnBonus(p: player):
 	set {-col} to random integer between -7 and 7
 	set {-row} to random integer between -5 and 5
@@ -169,7 +173,7 @@ function SnakeSpawnBonus(p: player):
 	set {-snake_bonus_t::%p%} to 40
 	move screen "bonus" for p to {-bx::%p%}, {-by::%p%}
 	show screen "bonus" for p
-	set value of screen bar "bonus_bar" for p to 40
+	SnakeUpdateBonusBar(p)
 	play sound block.amethyst_block.chime to p with volume 0.9 pitch 1.3
 
 function SnakeUpdateHud(p: player):
@@ -344,7 +348,7 @@ function SnakeStep(p: player):
 	# Таймер бонусного золотого яблока
 	if {-snake_bonus_t::%p%} > 0:
 		remove 1 from {-snake_bonus_t::%p%}
-		set value of screen bar "bonus_bar" for p to {-snake_bonus_t::%p%}
+		SnakeUpdateBonusBar(p)
 		if {-snake_bonus_t::%p%} is 0:
 			hide screen "bonus" for p
 
@@ -357,7 +361,7 @@ function SnakeStep(p: player):
 	if {-snake_bonus_t::%p%} > 0 and {-nx} is {-bx::%p%} and {-ny} is {-by::%p%}:
 		set {-snake_bonus_t::%p%} to 0
 		hide screen "bonus" for p
-		set value of screen bar "bonus_bar" for p to 0
+		SnakeUpdateBonusBar(p)
 		add 30 to {-snake_score::%p%}
 		add 5 to {coins::%p%}
 		if {-snake_score::%p%} > {snake_best::%p%}:
