@@ -922,54 +922,56 @@ function SnakeAddSeg(p: player, id: integer, x: integer, y: integer):
 function SnakeMoveSeg(p: player, id: integer, x: integer, y: integer):
 	set {-sx::%p%::%id%} to x
 	set {-sy::%p%::%id%} to y
+	set {-mx} to x
+	set {-my} to y
 	if id is 1:
-		move screen "seg_1" for p to x, y
+		move screen "seg_1" for p to {-mx}, {-my}
 	else if id is 2:
-		move screen "seg_2" for p to x, y
+		move screen "seg_2" for p to {-mx}, {-my}
 	else if id is 3:
-		move screen "seg_3" for p to x, y
+		move screen "seg_3" for p to {-mx}, {-my}
 	else if id is 4:
-		move screen "seg_4" for p to x, y
+		move screen "seg_4" for p to {-mx}, {-my}
 	else if id is 5:
-		move screen "seg_5" for p to x, y
+		move screen "seg_5" for p to {-mx}, {-my}
 	else if id is 6:
-		move screen "seg_6" for p to x, y
+		move screen "seg_6" for p to {-mx}, {-my}
 	else if id is 7:
-		move screen "seg_7" for p to x, y
+		move screen "seg_7" for p to {-mx}, {-my}
 	else if id is 8:
-		move screen "seg_8" for p to x, y
+		move screen "seg_8" for p to {-mx}, {-my}
 	else if id is 9:
-		move screen "seg_9" for p to x, y
+		move screen "seg_9" for p to {-mx}, {-my}
 	else if id is 10:
-		move screen "seg_10" for p to x, y
+		move screen "seg_10" for p to {-mx}, {-my}
 	else if id is 11:
-		move screen "seg_11" for p to x, y
+		move screen "seg_11" for p to {-mx}, {-my}
 	else if id is 12:
-		move screen "seg_12" for p to x, y
+		move screen "seg_12" for p to {-mx}, {-my}
 	else if id is 13:
-		move screen "seg_13" for p to x, y
+		move screen "seg_13" for p to {-mx}, {-my}
 	else if id is 14:
-		move screen "seg_14" for p to x, y
+		move screen "seg_14" for p to {-mx}, {-my}
 	else if id is 15:
-		move screen "seg_15" for p to x, y
+		move screen "seg_15" for p to {-mx}, {-my}
 	else if id is 16:
-		move screen "seg_16" for p to x, y
+		move screen "seg_16" for p to {-mx}, {-my}
 	else if id is 17:
-		move screen "seg_17" for p to x, y
+		move screen "seg_17" for p to {-mx}, {-my}
 	else if id is 18:
-		move screen "seg_18" for p to x, y
+		move screen "seg_18" for p to {-mx}, {-my}
 	else if id is 19:
-		move screen "seg_19" for p to x, y
+		move screen "seg_19" for p to {-mx}, {-my}
 	else if id is 20:
-		move screen "seg_20" for p to x, y
+		move screen "seg_20" for p to {-mx}, {-my}
 	else if id is 21:
-		move screen "seg_21" for p to x, y
+		move screen "seg_21" for p to {-mx}, {-my}
 	else if id is 22:
-		move screen "seg_22" for p to x, y
+		move screen "seg_22" for p to {-mx}, {-my}
 	else if id is 23:
-		move screen "seg_23" for p to x, y
+		move screen "seg_23" for p to {-mx}, {-my}
 	else if id is 24:
-		move screen "seg_24" for p to x, y
+		move screen "seg_24" for p to {-mx}, {-my}
 
 function SnakeStep(p: player):
 	set {-snake_dir::%p%} to {-snake_next::%p%}
