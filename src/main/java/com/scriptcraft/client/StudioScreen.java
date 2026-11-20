@@ -543,14 +543,32 @@ public class StudioScreen extends Screen {
         homeLinks.clear();
         int y = contentY();
         int h = contentH();
-        int cx = px + pw / 2;
+
+        boolean sbOpen = ClientUiSettings.sidebarOpen();
+        boolean sbRight = ClientUiSettings.sidebarRight();
+        int sbWidth = sbOpen ? Math.min(ClientUiSettings.sidebarWidth(), Math.max(110, pw / 2)) : 20;
+        sbY = y + 4;
+        sbH = Math.max(24, h - 8);
+        sbW = sbWidth;
+        int homeX, homeW;
+        if (sbRight) {
+            homeX = px + 6;
+            homeW = Math.max(120, pw - 12 - sbWidth - 4);
+            sbX = homeX + homeW + 4;
+        } else {
+            sbX = px + 6;
+            homeX = sbX + sbWidth + 4;
+            homeW = Math.max(120, pw - 12 - sbWidth - 4);
+        }
+        int cx = homeX + homeW / 2;
 
         // Мягкий вертикальный фон на главной
         g.fillGradient(px + 1, y, px + pw - 1, y + h, 0xFF111722, 0xFF0D111A);
+        renderSidebar(g, mx, my, sbOpen, sbRight);
 
         // Заголовок + бейдж версии + анимированный слоган
         int titleY = y + Math.max(12, Math.min(26, h / 14));
-        float titleScale = pw > 520 ? 2.2f : 1.7f;
+        float titleScale = homeW > 420 ? 2.2f : 1.7f;
         g.pose().pushPose();
         g.pose().translate(cx, titleY, 0);
         g.pose().scale(titleScale, titleScale, 1f);
@@ -582,9 +600,9 @@ public class StudioScreen extends Screen {
         // Центральный блок: слева карточка разработчика (уменьшенная моделька), справа кнопки-ссылки
         int heroTop = tagY + 18;
         int availH = Math.max(120, y + h - heroTop - 12);
-        int gap = 16;
-        int devW = Math.max(136, Math.min(176, (pw - 48) / 3));
-        int btnW = Math.max(176, Math.min(250, pw - devW - gap - 40));
+        int gap = 14;
+        int devW = Math.max(124, Math.min(168, (homeW - 36) / 2));
+        int btnW = Math.max(150, Math.min(236, homeW - devW - gap - 28));
         int totalW = devW + gap + btnW;
         int heroX = cx - totalW / 2;
         int cardH = Math.max(124, Math.min(188, availH));
@@ -2137,7 +2155,8 @@ public class StudioScreen extends Screen {
             return true;
         }
         ScriptDocument doc = script();
-        if (doc != null && !settings) {
+        boolean hasSidebar = !settings && (doc != null || StudioSession.HOME.equals(StudioSession.active));
+        if (hasSidebar) {
             // Сайдбар файлов: перетаскивание границы и клики по файлам
             int resizeEdgeX = ClientUiSettings.sidebarRight() ? sbX : sbX + sbW - 2;
             if (ClientUiSettings.sidebarOpen() && Math.abs(mx - resizeEdgeX) <= 3 && my >= sbY && my <= sbY + sbH) {
@@ -2329,11 +2348,12 @@ public class StudioScreen extends Screen {
             return true;
         }
         ScriptDocument doc = script();
+        if (!settings && (doc != null || StudioSession.HOME.equals(StudioSession.active))
+                && hover((int) mouseX, (int) mouseY, sbX, sbY, sbW, sbH)) {
+            sidebarScroll = Math.max(0, Math.min(sidebarMaxScroll, sidebarScroll + step * 10));
+            return true;
+        }
         if (doc != null && !settings) {
-            if (hover((int) mouseX, (int) mouseY, sbX, sbY, sbW, sbH)) {
-                sidebarScroll = Math.max(0, Math.min(sidebarMaxScroll, sidebarScroll + step * 10));
-                return true;
-            }
             if (hasShiftDown()) {
                 doc.horiz = Math.max(0, Math.min(horizMax, doc.horiz + step * 12));
             } else {
@@ -2457,7 +2477,8 @@ public class StudioScreen extends Screen {
             openToolPanel(2);
             return true;
         }
-        if (ClientUiSettings.matches("toggleSidebar", key, ctrl, shift, alt) && doc != null && !settings) {
+        if (ClientUiSettings.matches("toggleSidebar", key, ctrl, shift, alt) && !settings
+                && (doc != null || StudioSession.HOME.equals(StudioSession.active))) {
             ClientUiSettings.setSidebarOpen(!ClientUiSettings.sidebarOpen());
             return true;
         }
