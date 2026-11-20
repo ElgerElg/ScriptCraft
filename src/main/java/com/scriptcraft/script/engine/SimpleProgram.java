@@ -73,14 +73,14 @@ final class SimpleProgram implements ScriptProgram {
 
     @Override
     public void fireEvent(ScriptEvent event, ExecutionContext ctx) {
-        String filter = switch (event) {
-            case KEY -> ctx.placeholder("key");
-            case OPEN -> ctx.placeholder("menu");
-            default -> null;
-        };
+        if (ctx.player() != null && ctx.placeholderOrNull("screen") == null) {
+            String active = com.scriptcraft.screen.ScreenManager.activeScreen(ctx.player());
+            if (active != null) {
+                ctx.setPlaceholder("screen", active);
+            }
+        }
         for (EventHandler handler : parsed.events().getOrDefault(event, List.of())) {
-            if (handler.filter() != null && filter != null
-                    && !handler.filter().equals(filter) && !handler.filter().equals("any")) {
+            if (!matchesFilter(event, handler.filter(), ctx)) {
                 continue;
             }
             ctx.setScript(handler.file());
@@ -91,6 +91,42 @@ final class SimpleProgram implements ScriptProgram {
                 ScriptLoader.noteRuntime(handler.file(), e.getMessage(), ctx.player(), ctx.server());
             }
         }
+    }
+
+    private static boolean matchesFilter(ScriptEvent event, String handlerFilter, ExecutionContext ctx) {
+        if (handlerFilter == null || handlerFilter.isEmpty()) {
+            return true;
+        }
+        return switch (event) {
+            case KEY, KEY_RELEASE, KEY_HOLD -> {
+                String key = ctx.placeholder("key");
+                String screen = ctx.placeholderOrNull("screen");
+                int at = handlerFilter.indexOf('@');
+                String wantKey = at >= 0 ? handlerFilter.substring(0, at) : handlerFilter;
+                String wantScreen = at >= 0 ? handlerFilter.substring(at + 1) : null;
+                boolean keyOk = wantKey.equals("any") || wantKey.equalsIgnoreCase(key);
+                if (!keyOk) {
+                    yield false;
+                }
+                if (wantScreen == null) {
+                    yield true;
+                }
+                boolean hasScreen = screen != null && !screen.isEmpty() && !screen.equals("none");
+                if (wantScreen.equals("*")) {
+                    yield hasScreen;
+                }
+                yield hasScreen && wantScreen.equalsIgnoreCase(screen);
+            }
+            case OPEN -> {
+                String menu = ctx.placeholder("menu");
+                yield handlerFilter.equals("any") || handlerFilter.equalsIgnoreCase(menu);
+            }
+            case SCREEN_OPEN, SCREEN_CLOSE -> {
+                String screen = ctx.placeholder("screen");
+                yield handlerFilter.equals("*") || handlerFilter.equals("any") || handlerFilter.equalsIgnoreCase(screen);
+            }
+            default -> true;
+        };
     }
 
     @Override

@@ -30,7 +30,10 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class InputSync {
     public static final String JUMP_TOKEN = "$jump";
+    public static final String ESC_TOKEN = "$esc";
     private static Set<String> keys = Set.of();
+    private static Set<String> releaseKeys = Set.of();
+    private static Set<String> holdKeys = Set.of();
     private static Set<String> menus = Set.of();
     private static boolean cancelJump;
     private static InputSyncPacket packet = new InputSyncPacket(List.of(), List.of(), List.of());
@@ -41,12 +44,34 @@ public final class InputSync {
 
     public static void sync(MinecraftServer server) {
         Set<String> keySet = new LinkedHashSet<>();
+        Set<String> pressSet = new LinkedHashSet<>();
+        Set<String> relSet = new LinkedHashSet<>();
+        Set<String> holdSet = new LinkedHashSet<>();
         Set<String> watch = new LinkedHashSet<>();
         Set<String> cancel = new LinkedHashSet<>();
         ScriptProgram program = ScriptLoader.getProgram();
         for (EventHandler handler : program.eventHandlers(ScriptEvent.KEY)) {
             if (handler.filter() != null) {
-                keySet.add(handler.filter());
+                String k = baseKey(handler.filter());
+                keySet.add(k);
+                pressSet.add(k);
+                if (("escape".equals(k) || "any".equals(k)) && containsCancel(handler.actions())) {
+                    cancel.add(ESC_TOKEN);
+                }
+            }
+        }
+        for (EventHandler handler : program.eventHandlers(ScriptEvent.KEY_RELEASE)) {
+            if (handler.filter() != null) {
+                String k = baseKey(handler.filter());
+                keySet.add("^" + k);
+                relSet.add(k);
+            }
+        }
+        for (EventHandler handler : program.eventHandlers(ScriptEvent.KEY_HOLD)) {
+            if (handler.filter() != null) {
+                String k = baseKey(handler.filter());
+                keySet.add("~" + k);
+                holdSet.add(k);
             }
         }
         boolean jumpBlocks = false;
@@ -82,7 +107,9 @@ public final class InputSync {
                 }
             }
         }
-        keys = Set.copyOf(keySet);
+        keys = Set.copyOf(pressSet);
+        releaseKeys = Set.copyOf(relSet);
+        holdKeys = Set.copyOf(holdSet);
         menus = Set.copyOf(watch);
         packet = new InputSyncPacket(List.copyOf(keySet), List.copyOf(watch), List.copyOf(cancel));
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
@@ -90,8 +117,21 @@ public final class InputSync {
         }
     }
 
+    private static String baseKey(String filter) {
+        int at = filter.indexOf('@');
+        return at >= 0 ? filter.substring(0, at) : filter;
+    }
+
     public static boolean watchesKey(String name) {
-        return keys.contains(name);
+        return keys.contains(name) || keys.contains("any");
+    }
+
+    public static boolean watchesRelease(String name) {
+        return releaseKeys.contains(name) || releaseKeys.contains("any");
+    }
+
+    public static boolean watchesHold(String name) {
+        return holdKeys.contains(name) || holdKeys.contains("any");
     }
 
     public static boolean watchesMenu(String name) {
@@ -100,6 +140,12 @@ public final class InputSync {
 
     public static boolean cancelsJump() {
         return cancelJump;
+    }
+
+    public static void clearScreen(ServerPlayer player) {
+        if (player != null) {
+            SCREEN_FUNCS.remove(player.getUUID());
+        }
     }
 
     /** Запоминает вызовы функций ("fn:..."), доступные игроку на открытом экране. */
@@ -117,14 +163,15 @@ public final class InputSync {
 
     private static void collectFuncAction(Set<String> out, ScreenElement element) {
         String action = null;
-        if (element instanceof ButtonElement b) action = b.action();
-        else if (element instanceof TextElement t) action = t.action();
-        else if (element instanceof ImageElement img) action = img.action();
-        else if (element instanceof SlotElement s) action = s.action();
+        if (element instanceof ButtonElement b) action = com.scriptcraft.screen.ScreenMeta.rawAction(b.action());
+        else if (element instanceof TextElement t) action = com.scriptcraft.screen.ScreenMeta.rawAction(t.action());
+        else if (element instanceof ImageElement img) action = com.scriptcraft.screen.ScreenMeta.rawAction(img.action());
+        else if (element instanceof SlotElement s) action = com.scriptcraft.screen.ScreenMeta.rawAction(s.action());
         else if (element instanceof ListElement list) {
             for (ListElement.Row row : list.rows()) {
-                if (row.action() != null && row.action().startsWith("fn:")) {
-                    out.add(row.action().substring(3));
+                String rowAct = com.scriptcraft.screen.ScreenMeta.rawAction(row.action());
+                if (rowAct.startsWith("fn:")) {
+                    out.add(rowAct.substring(3));
                 }
             }
         }

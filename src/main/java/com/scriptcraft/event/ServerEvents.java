@@ -111,6 +111,7 @@ public final class ServerEvents {
             InventoryWatch.forget(player);
             ResourceSync.onLogout(player);
             com.scriptcraft.studio.StudioRooms.onQuit(player);
+            com.scriptcraft.screen.ScreenManager.onQuit(player);
             ScoreboardManager.onQuit(player);
             SNEAK_STATE.remove(player.getUUID());
             SPRINT_STATE.remove(player.getUUID());

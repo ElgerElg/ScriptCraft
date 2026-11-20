@@ -81,6 +81,9 @@ public final class ElementRenderer {
      */
     public static ItemStack render(GuiGraphics g, Font font, ScreenElement e, int screenW, int screenH,
                                    int mouseX, int mouseY, int listScroll) {
+        if (com.scriptcraft.screen.ScreenMeta.isHidden(e)) {
+            return ItemStack.EMPTY;
+        }
         if (e instanceof TextElement text) {
             renderText(g, font, text, screenW, screenH);
         } else if (e instanceof ImageElement image) {
@@ -101,6 +104,9 @@ public final class ElementRenderer {
      */
     @Nullable
     public static String clickAction(Font font, ScreenElement e, int screenW, int screenH, double mouseX, double mouseY, int listScroll) {
+        if (com.scriptcraft.screen.ScreenMeta.isHidden(e)) {
+            return null;
+        }
         if (e instanceof TextElement text) {
             return hit(text.action(), textBounds(font, text, screenW, screenH), mouseX, mouseY);
         }
@@ -125,7 +131,8 @@ public final class ElementRenderer {
     /** На сколько пикселей список вообще можно сдвинуть. */
     public static int listMaxScroll(Font font, ListElement list, int screenW, int screenH) {
         Box box = listBox(list, screenW, screenH);
-        int header = list.header().isEmpty() ? 0 : ListElement.ROW;
+        String headerText = com.scriptcraft.screen.ScreenMeta.rawAction(list.header());
+        int header = headerText.isEmpty() ? 0 : ListElement.ROW;
         int view = list.horizontal() ? box.w : Math.max(0, box.h - header);
         int content = list.horizontal()
                 ? list.rows().size() * rowSpan(font, list)
@@ -389,11 +396,12 @@ public final class ElementRenderer {
 
     private static void renderList(GuiGraphics g, Font font, ListElement list, int sw, int sh, int mouseX, int mouseY, int scroll) {
         Box box = listBox(list, sw, sh);
-        int header = list.header().isEmpty() ? 0 : ListElement.ROW;
+        String headerText = com.scriptcraft.screen.ScreenMeta.rawAction(list.header());
+        int header = headerText.isEmpty() ? 0 : ListElement.ROW;
         g.fill(box.x, box.y, box.x + box.w, box.y + box.h, 0xC0101010);
         g.fill(box.x, box.y, box.x + box.w, box.y + 1, 0xFF3A3A3A);
         if (header > 0) {
-            g.drawString(font, codes(list.header()), box.x + 4, box.y + 3, 0xFFFFD700, false);
+            g.drawString(font, codes(headerText), box.x + 4, box.y + 3, 0xFFFFD700, false);
         }
         int span = rowSpan(font, list);
         g.enableScissor(box.x, box.y + header, box.x + box.w, box.y + box.h);
@@ -417,7 +425,8 @@ public final class ElementRenderer {
         if (mouseX < box.x || mouseY < box.y || mouseX >= box.x + box.w || mouseY >= box.y + box.h) {
             return null;
         }
-        int header = list.header().isEmpty() ? 0 : ListElement.ROW;
+        String headerText = com.scriptcraft.screen.ScreenMeta.rawAction(list.header());
+        int header = headerText.isEmpty() ? 0 : ListElement.ROW;
         if (mouseY < box.y + header) {
             return "";
         }
@@ -464,7 +473,7 @@ public final class ElementRenderer {
     /** null — курсор мимо. Пустая строка — попали в элемент без команды. */
     @Nullable
     private static String hit(String action, Box box, double mouseX, double mouseY) {
-        if (action.isEmpty()) {
+        if (com.scriptcraft.screen.ScreenMeta.rawAction(action).isEmpty()) {
             return null;
         }
         if (mouseX < box.x || mouseY < box.y || mouseX >= box.x + box.w || mouseY >= box.y + box.h) {

@@ -219,15 +219,40 @@ on join or load:
   },
   {
     id: "event-key", category: "events",
-    name: { ru: "Клавиша", en: "Key press" },
-    syntax: ["on key <клавиша>:", "on key press <клавиша>:"],
+    name: { ru: "Клавиша (нажатие / отпускание / удержание)", en: "Key press / release / hold" },
+    syntax: [
+      "on key <клавиша>:",
+      "on key <клавиша> in screen [\"<заголовок>\"]:",
+      "on key release <клавиша> [in screen [\"<заголовок>\"]]:",
+      "on key hold <клавиша> [in screen [\"<заголовок>\"]]:",
+      "on any key [in screen [\"<заголовок>\"]]:"
+    ],
     desc: {
-      ru: "Игрок нажал клавишу, и ни один экран не открыт (чат и меню не считаются). Клавиша не проглатывается: так нельзя отменить E. Имена — латиница, физическая клавиша, раскладка не важна: `a-z`, `0-9`, `f1-f12`, `space`, `escape`, `tab`, `enter`, `backspace`, `delete`, `up`, `down`, `left`, `right`, `lshift`, `rshift`, `lctrl`, `rctrl`, `lalt`, `ralt`, `grave`. `%key%` — это имя.",
-      en: "The player pressed a key while no screen is open (chat and menus do not count). The key is not swallowed, so this cannot stop E. Names are Latin and physical, the layout does not matter: `a-z`, `0-9`, `f1-f12`, `space`, `escape`, `tab`, `enter`, `backspace`, `delete`, `up`, `down`, `left`, `right`, `lshift`, `rshift`, `lctrl`, `rctrl`, `lalt`, `ralt`, `grave`. `%key%` is that name."
+      ru: "Обработка физических клавиш (независимо от раскладки клавиатуры RU/EN): `a-z`, `0-9`, `f1-f12`, `space`, `escape`, `tab`, `enter`, `backspace`, `delete`, стрелки (`up`, `down`, `left`, `right`), `lshift`, `rshift`, `lctrl`, `rctrl`, `lalt`, `ralt`, `grave`, либо `any` (любая клавиша). Работает как в игре, так и при открытом кастомном экране (`open screen`). Добавка `in screen` (или `in screen \"Змейка\"`) фильтрует событие только когда открыт кастомный экран. `on key release` срабатывает при отпускании, `on key hold` — каждый тик (20 раз/сек), пока клавиша зажата. В открытом GUI нажатия поглощаются и не передаются стандартному управлению Minecraft (а `cancel event` в `on key escape in screen:` запрещает закрытие экрана по Esc). Плейсхолдеры: `%key%` — клавиша, `%screen%` — заголовок открытого экрана (или `none`).",
+      en: "Physical key handling (independent of OS keyboard layout): `a-z`, `0-9`, `f1-f12`, `space`, `escape`, `tab`, `enter`, `backspace`, `delete`, arrows (`up`, `down`, `left`, `right`), `lshift`, `rshift`, `lctrl`, `rctrl`, `lalt`, `ralt`, `grave`, or `any`. Works both in normal gameplay and while a custom `open screen` GUI is open. Adding `in screen` (or `in screen \"Snake\"`) filters the event to when that screen is open. `on key release` fires when released, `on key hold` fires every tick (20 TPS) while held down. Inside an open GUI, keys are consumed so vanilla binds don't trigger (and `cancel event` inside `on key escape in screen:` prevents closing the screen with Esc). Placeholders: `%key%` and `%screen%`."
     },
-    example: `on key g:
-	send "&eНажата G" to player`,
-    since: "0.3.7", related: ["event-open", "ph-event"]
+    example: `on key w in screen "Змейка":
+	MoveSnake(player, "up")
+
+on key hold d in screen "Змейка":
+	StepRight(player)`,
+    since: "0.3.7", related: ["event-open", "event-screen-open", "screen-button", "ph-event"]
+  },
+  {
+    id: "event-screen-open", category: "events",
+    name: { ru: "Открытие и закрытие экрана скрипта", en: "Custom screen open & close" },
+    syntax: [
+      "on screen open [\"<заголовок>\"]:",
+      "on screen close [\"<заголовок>\"]:"
+    ],
+    desc: {
+      ru: "Срабатывает, когда у игрока открывается (`on screen open:`) или закрывается (`on screen close:`) кастомный GUI-экран (`open screen`). Можно указать конкретный заголовок в кавычках. При закрытии экрана (по Esc, кнопке `close`, эффекту `close screen` или выходу игрока) автоматически очищаются все зажатые клавиши и колбэки этого экрана. Плейсхолдер `%screen%` — заголовок экрана.",
+      en: "Fires when a custom `open screen` GUI opens (`on screen open:`) or closes (`on screen close:`) for a player. You may filter by screen title in quotes. When the screen closes (via Esc, a `close` button, `close screen` or disconnect), all held keys and button callbacks for that screen are automatically cleaned up. `%screen%` is the screen title."
+    },
+    example: `on screen close "Змейка":
+	delete {snake::%player%::*}
+	send "&7Игра окончена!" to player`,
+    since: "0.6.2", related: ["eff-open-screen", "event-key"]
   },
   {
     id: "event-open", category: "events",
@@ -1821,19 +1846,18 @@ text "&aПолучить бонус" at 0, -40 run GiveBonus(player)`,
     id: "screen-button", category: "screen",
     name: { ru: "Кнопка", en: "Button" },
     syntax: [
-      "button \"<надпись>\" [at <X> <Y>] [size <W>x<H>] [anchor <точка>] run \"/<команда>\"",
-      "button \"<надпись>\" [at <X> <Y>] [size <W>x<H>] [anchor <точка>] run <Функция>(<аргументы>)",
-      "button \"<надпись>\" [at <X> <Y>] [size <W>x<H>] [anchor <точка>] function <Функция>(<аргументы>)",
-      "button \"<надпись>\" ... close"
+      "button \"<надпись>\" [at <X> <Y>] [size <W>x<H>] [anchor <точка>] [key <клавиша>] run \"/<команда>\" [keep open]",
+      "button \"<надпись>\" [at <X> <Y>] [size <W>x<H>] [anchor <точка>] [key <клавиша>] run <Функция>(<аргументы>) [keep open]",
+      "button \"<надпись>\" [at <X> <Y>] [size <W>x<H>] [anchor <точка>] [id <имя>] [hidden] close"
     ],
     desc: {
-      ru: "Кнопка (по умолчанию 100x20). `run \"/cmd\"` — игрок выполняет команду (со своими правами) и экран закрывается. `run MyFunc(player, 10)` (или `run \"MyFunc(player, 10)\"`, либо `function MyFunc(player, 10)`) — вызывает функцию скрипта напрямую на сервере (без регистрации команд) и закрывает экран. `close` — просто закрыть экран (по умолчанию).",
-      en: "A button (100x20 by default). `run \"/cmd\"` makes the player run the command (with their own permissions) and closes the screen. `run MyFunc(player, 10)` (or `run \"MyFunc(player, 10)\"`, or `function MyFunc(player, 10)`) directly calls a script function on the server (without registering a command) and closes the screen. `close` just closes it (default)."
+      ru: "Кнопка (по умолчанию 100x20). `run \"/cmd\"` выполняет команду от игрока, `run MyFunc(player, 10)` (или `function MyFunc(...)`) вызывает функцию скрипта на сервере. По умолчанию клик закрывает экран (сохранено поведение для старых скриптов); если дописать **`keep open`**, команда или функция выполнится **без закрытия экрана**. Параметр **`key <клавиша>`** (или `hotkey <клавиша>`, например `key w`, `key up`, `key space`) назначает кнопке горячую клавишу в открытом окне (независимо от раскладки клавиатуры). `id <имя>` позволяет обновлять кнопку на лету, `hidden` — создать скрытой.",
+      en: "A button (100x20 by default). `run \"/cmd\"` runs a command as the player, `run MyFunc(player, 10)` (or `function MyFunc(...)`) calls a script function on the server. By default clicking closes the screen (preserving backward compatibility); adding **`keep open`** runs the command or function **without closing the screen**. **`key <key>`** (or `hotkey <key>`, e.g. `key w`, `key up`, `key space`) binds a layout-independent physical hotkey to the button while the screen is open. `id <name>` allows live updates, `hidden` starts it hidden."
     },
-    example: `button "Сказать привет" at 0, -10 size 120x20 run "/hello из меню"
-button "Купить меч" at 0, 15 size 120x20 run BuyItem(player, "diamond_sword", 50)
-button "Закрыть" at 0, 40 size 120x20 close`,
-    since: "0.1.0", related: ["eff-open-screen", "screen-layout", "struct-function"]
+    example: `button "Вверх (W)" at 0, -25 size 90x20 key w run Move(player, "up") keep open
+button "Купить меч" at 0, 5 size 120x20 run BuyItem(player, "diamond_sword", 50) keep open
+button "Закрыть" at 0, 35 size 120x20 close`,
+    since: "0.1.0", related: ["eff-open-screen", "screen-layout", "struct-function", "event-key"]
   },
   {
     id: "screen-slot", category: "screen",
@@ -1898,8 +1922,35 @@ text "Взять алмаз" at -40, 16 run GiveReward(player, "diamond")`,
       en: "A panel of rows. `vertical` is a column, `horizontal` is a row. `header` is a line above the list. `select` highlights the row under the cursor. A click on a row with `run` runs the command or calls a script function and closes the screen. `list from {name::*}` builds one row per direct index when the screen opens: the single `row` is a template with `%loop-index%` and `%loop-value%`. An empty list draws only the header. The wheel scrolls when the rows do not fit in `size`. On a HUD the list is display only, and it is a snapshot too."
     },
     example: `list from {bag::%player%::*} vertical at 0, 0 size 180x160 header "&7Предмет" select:
-	row "&f%loop-index% &8x%loop-value%" run TakeFromBag(player, "%loop-index%")`,
+	row "&f%loop-index% &8x%loop-value%" run TakeFromBag(player, "%loop-index%") keep open`,
     since: "0.3.7", related: ["screen-click", "eff-open-screen", "event-open", "expr-variable", "ph-loop-index", "struct-function"]
+  },
+  {
+    id: "screen-dynamic", category: "screen",
+    name: { ru: "Динамическое обновление экрана", en: "Dynamic screen updates" },
+    syntax: [
+      "update screen [\"<заголовок>\"] [for <цель>]:",
+      "set text of screen \"<id>\" [for <цель>] to \"<текст>\"",
+      "set image of screen \"<id>\" [for <цель>] to \"<текстура>\"",
+      "set position of screen \"<id>\" [for <цель>] to <X> <Y>",
+      "move screen \"<id>\" [for <цель>] to <X> <Y>",
+      "set item of screen \"<id>\" [for <цель>] to <предмет> [<кол-во>]",
+      "set value of screen bar \"<id>\" [for <цель>] to <значение>",
+      "show screen \"<id>\" [for <цель>]",
+      "hide screen \"<id>\" [for <цель>]",
+      "remove screen \"<id>\" [from <цель>]",
+      "clear screen [of <цель>]",
+      "close screen [of <цель>]"
+    ],
+    desc: {
+      ru: "Обновляет уже открытый кастомный экран игрока на лету **без повторного `open screen` и без пересоздания окна** (фокус, прокрутка и зажатые клавиши сохраняются). Блок `update screen for player:` добавляет новые элементы или заменяет существующие элементы с тем же `id`. Точечные эффекты изменяют текст, картинку, координаты (`at X Y`), предмет слота, значение полосы и видимость (`show`/`hide`) элемента по его `id`, либо удаляют элемент (`remove screen \"id\"`). Если новое состояние элемента или экрана не отличается от текущего, пакет по сети не отправляется. Для проверки открытого экрана используйте условия `if player has screen open:`, `if player has screen \"Меню\" open:`, `if player is in screen \"Меню\":` или выражение `screen of player` / `%screen%`.",
+      en: "Updates a player's currently open custom screen on the fly **without re-running `open screen` and without recreating the GUI** (focus, scroll and held keys are preserved). The `update screen for player:` block adds new elements or replaces existing elements with the same `id`. Targeted effects change the text, texture, coordinates (`at X Y`), slot item, bar value or visibility (`show`/`hide`) of an element by its `id`, or remove it (`remove screen \"id\"`). If the new state is identical to the current one, no network packet is sent. Check the active screen with `if player has screen open:`, `if player has screen \"Menu\" open:`, `if player is in screen \"Menu\":` or the `screen of player` / `%screen%` expression."
+    },
+    example: `set text of screen "score" for player to "&eОчки: &f%{score::%player%}%"
+move screen "head" for player to {x::%player%} {y::%player%}
+update screen for player:
+	image "example:textures/gui/coin.png" id "apple" at {ax} {ay} size 12x12`,
+    since: "0.6.2", related: ["eff-open-screen", "screen-button", "event-screen-open", "event-key"]
   },
 
   // ================================================================== UI / HUD

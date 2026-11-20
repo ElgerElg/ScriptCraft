@@ -60,15 +60,12 @@ public final class ClientEvents {
      */
     @SubscribeEvent
     public static void onKey(InputEvent.Key event) {
-        if (event.getAction() != GLFW.GLFW_PRESS) {
-            return;
-        }
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.screen != null) {
             return;
         }
         int key = event.getKey();
-        if (key == ClientUiSettings.openKey()) {
+        if (event.getAction() == GLFW.GLFW_PRESS && key == ClientUiSettings.openKey()) {
             boolean studio = true;
             if (ClientUiSettings.withF3()) {
                 long window = mc.getWindow().getWindow();
@@ -80,8 +77,15 @@ public final class ClientEvents {
         }
         // Клавиша не проглатывается: setCanceled на InputEvent.Key роняет игру.
         String name = ClientKeys.name(key);
-        if (name != null && ClientInput.watchesKey(name)) {
+        if (name == null) {
+            return;
+        }
+        if (event.getAction() == GLFW.GLFW_PRESS && ClientInput.watchesKey(name)) {
             ModNetwork.sendToServer(new InputPacket(InputPacket.KEY, name));
+        } else if (event.getAction() == GLFW.GLFW_RELEASE && ClientInput.watchesRelease(name)) {
+            ModNetwork.sendToServer(new InputPacket(InputPacket.KEY_RELEASE, name));
+        } else if (event.getAction() == GLFW.GLFW_REPEAT && ClientInput.watchesHold(name)) {
+            ModNetwork.sendToServer(new InputPacket(InputPacket.KEY_HOLD, name));
         }
     }
 

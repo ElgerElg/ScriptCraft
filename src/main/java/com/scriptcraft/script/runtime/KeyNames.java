@@ -20,6 +20,7 @@ public final class KeyNames {
             NAMES.add("f" + i);
         }
         NAMES.addAll(List.of(
+                "any",
                 "space", "escape", "tab", "enter", "backspace", "delete",
                 "up", "down", "left", "right",
                 "lshift", "rshift", "lctrl", "rctrl", "lalt", "ralt", "grave"));

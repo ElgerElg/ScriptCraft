@@ -115,6 +115,90 @@ final class EffectPatterns {
         rule("show vanilla %part% for|to %target%", c -> new HudActions.Vanilla(c.target(1), vanillaPart(c.raw(0)), false));
         rule("show vanilla %part%", c -> new HudActions.Vanilla(new Target.Self(), vanillaPart(c.raw(0)), false));
 
+        // --- Динамическое обновление открытого экрана (open screen) без его пересоздания
+        rule("set text of screen element %text% for|of %target% to %expr%",
+                c -> new Actions.ScreenSetText(c.target(1), hudName(c.text(0)), c.expr(2)));
+        rule("set text of screen %text% for|of %target% to %expr%",
+                c -> new Actions.ScreenSetText(c.target(1), hudName(c.text(0)), c.expr(2)));
+        rule("set text of screen element %text% to %expr%",
+                c -> new Actions.ScreenSetText(new Target.Self(), hudName(c.text(0)), c.expr(1)));
+        rule("set text of screen %text% to %expr%",
+                c -> new Actions.ScreenSetText(new Target.Self(), hudName(c.text(0)), c.expr(1)));
+
+        rule("set image|texture of screen element %text% for|of %target% to %expr%",
+                c -> new Actions.ScreenSetTexture(c.target(1), hudName(c.text(0)), c.expr(2)));
+        rule("set image|texture of screen %text% for|of %target% to %expr%",
+                c -> new Actions.ScreenSetTexture(c.target(1), hudName(c.text(0)), c.expr(2)));
+        rule("set image|texture of screen element %text% to %expr%",
+                c -> new Actions.ScreenSetTexture(new Target.Self(), hudName(c.text(0)), c.expr(1)));
+        rule("set image|texture of screen %text% to %expr%",
+                c -> new Actions.ScreenSetTexture(new Target.Self(), hudName(c.text(0)), c.expr(1)));
+
+        rule("set position of screen element %text% for|of %target% to %num% %num%",
+                c -> new Actions.ScreenSetPosition(c.target(1), hudName(c.text(0)), c.num(2), c.num(3)));
+        rule("set position of screen %text% for|of %target% to %num% %num%",
+                c -> new Actions.ScreenSetPosition(c.target(1), hudName(c.text(0)), c.num(2), c.num(3)));
+        rule("set position of screen element %text% to %num% %num%",
+                c -> new Actions.ScreenSetPosition(new Target.Self(), hudName(c.text(0)), c.num(1), c.num(2)));
+        rule("set position of screen %text% to %num% %num%",
+                c -> new Actions.ScreenSetPosition(new Target.Self(), hudName(c.text(0)), c.num(1), c.num(2)));
+        rule("move screen element %text% for|of %target% to %num% %num%",
+                c -> new Actions.ScreenSetPosition(c.target(1), hudName(c.text(0)), c.num(2), c.num(3)));
+        rule("move screen %text% for|of %target% to %num% %num%",
+                c -> new Actions.ScreenSetPosition(c.target(1), hudName(c.text(0)), c.num(2), c.num(3)));
+        rule("move screen element %text% to %num% %num%",
+                c -> new Actions.ScreenSetPosition(new Target.Self(), hudName(c.text(0)), c.num(1), c.num(2)));
+        rule("move screen %text% to %num% %num%",
+                c -> new Actions.ScreenSetPosition(new Target.Self(), hudName(c.text(0)), c.num(1), c.num(2)));
+
+        rule("set value|progress of screen bar %text% for|of %target% to %expr%",
+                c -> new Actions.ScreenSetBar(c.target(1), hudName(c.text(0)), barValue(c.expr(2)), null));
+        rule("set value|progress of screen bar %text% to %expr%",
+                c -> new Actions.ScreenSetBar(new Target.Self(), hudName(c.text(0)), barValue(c.expr(1)), null));
+        rule("set max of screen bar %text% for|of %target% to %expr%",
+                c -> new Actions.ScreenSetBar(c.target(1), hudName(c.text(0)), null, barValue(c.expr(2))));
+        rule("set max of screen bar %text% to %expr%",
+                c -> new Actions.ScreenSetBar(new Target.Self(), hudName(c.text(0)), null, barValue(c.expr(1))));
+
+        rule("set item|slot of screen element %text% for|of %target% to %id% %num%",
+                c -> new Actions.ScreenSetSlot(c.target(1), hudName(c.text(0)), c.id(2), c.num(3)));
+        rule("set item|slot of screen %text% for|of %target% to %id% %num%",
+                c -> new Actions.ScreenSetSlot(c.target(1), hudName(c.text(0)), c.id(2), c.num(3)));
+        rule("set item|slot of screen element %text% for|of %target% to %id%",
+                c -> new Actions.ScreenSetSlot(c.target(1), hudName(c.text(0)), c.id(2), null));
+        rule("set item|slot of screen %text% for|of %target% to %id%",
+                c -> new Actions.ScreenSetSlot(c.target(1), hudName(c.text(0)), c.id(2), null));
+        rule("set item|slot of screen element %text% to %id% %num%",
+                c -> new Actions.ScreenSetSlot(new Target.Self(), hudName(c.text(0)), c.id(1), c.num(2)));
+        rule("set item|slot of screen %text% to %id% %num%",
+                c -> new Actions.ScreenSetSlot(new Target.Self(), hudName(c.text(0)), c.id(1), c.num(2)));
+        rule("set item|slot of screen element %text% to %id%",
+                c -> new Actions.ScreenSetSlot(new Target.Self(), hudName(c.text(0)), c.id(1), null));
+        rule("set item|slot of screen %text% to %id%",
+                c -> new Actions.ScreenSetSlot(new Target.Self(), hudName(c.text(0)), c.id(1), null));
+
+        rule("show screen element %text% to|for %target%", c -> new Actions.ScreenSetVisible(c.target(1), hudName(c.text(0)), true));
+        rule("show screen %text% to|for %target%", c -> new Actions.ScreenSetVisible(c.target(1), hudName(c.text(0)), true));
+        rule("show screen element %text%", c -> new Actions.ScreenSetVisible(new Target.Self(), hudName(c.text(0)), true));
+        rule("show screen %text%", c -> new Actions.ScreenSetVisible(new Target.Self(), hudName(c.text(0)), true));
+        rule("hide screen element %text% from|for %target%", c -> new Actions.ScreenSetVisible(c.target(1), hudName(c.text(0)), false));
+        rule("hide screen %text% from|for %target%", c -> new Actions.ScreenSetVisible(c.target(1), hudName(c.text(0)), false));
+        rule("hide screen element %text%", c -> new Actions.ScreenSetVisible(new Target.Self(), hudName(c.text(0)), false));
+        rule("hide screen %text%", c -> new Actions.ScreenSetVisible(new Target.Self(), hudName(c.text(0)), false));
+
+        rule("remove screen element %text% from|for %target%", c -> new Actions.ScreenRemove(c.target(1), hudName(c.text(0))));
+        rule("remove screen %text% from|for %target%", c -> new Actions.ScreenRemove(c.target(1), hudName(c.text(0))));
+        rule("remove screen element %text%", c -> new Actions.ScreenRemove(new Target.Self(), hudName(c.text(0))));
+        rule("remove screen %text%", c -> new Actions.ScreenRemove(new Target.Self(), hudName(c.text(0))));
+
+        rule("clear screen elements of|for %target%", c -> new Actions.ScreenClear(c.target(0)));
+        rule("clear screen of|for %target%", c -> new Actions.ScreenClear(c.target(0)));
+        rule("clear screen elements", c -> new Actions.ScreenClear(new Target.Self()));
+        rule("clear screen", c -> new Actions.ScreenClear(new Target.Self()));
+
+        rule("close screen of|for %target%", c -> new Actions.ScreenClose(c.target(0)));
+        rule("close screen", c -> new Actions.ScreenClose(new Target.Self()));
+
         // --- звук, титры, опыт
         rule("play sound %id% at %num% %num% %num% for|to %target% with volume %num% pitch %expr%",
                 c -> new Effects.PlaySoundAt(c.id(0), null, null, c.num(1), c.num(2), c.num(3), c.target(4), c.num(5), c.expr(6)));

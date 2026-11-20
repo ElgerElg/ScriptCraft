@@ -37,8 +37,16 @@ public enum ScriptEvent {
      * %item% — id, %amount% — на сколько выросло число. cancel event забирает эту добавку обратно.
      */
     RECEIVE("receive", true, "item receive", "receive item"),
-    /** Нажата клавиша (on key e:). %key% — имя. Клавиша при этом не проглатывается. */
-    KEY("key", true, "key press"),
+    /** Нажата клавиша (on key e:). %key% — имя, %screen% — открытый экран или none. */
+    KEY("key", true, "key press", "press key"),
+    /** Отпущена клавиша (on key release e:). %key% — имя, %screen% — открытый экран или none. */
+    KEY_RELEASE("key release", true, "release key"),
+    /** Удерживается клавиша (on key hold e:). %key% — имя, %screen% — открытый экран или none. */
+    KEY_HOLD("key hold", true, "hold key"),
+    /** Открыт кастомный экран скрипта (on screen open:). %screen% — заголовок экрана. */
+    SCREEN_OPEN("screen open", true, "open screen", "gui open", "open gui"),
+    /** Закрыт кастомный экран скрипта (on screen close:). %screen% — заголовок экрана. */
+    SCREEN_CLOSE("screen close", true, "close screen", "gui close", "close gui"),
     /** Открывается ванильный экран (on open inventory:). %menu%. cancel event в теле блокирует экран на клиенте. */
     OPEN("open", true, "open menu", "menu open"),
     /** Получил урон. Можно отменить. %damage%, %attacker%, %cause%. */

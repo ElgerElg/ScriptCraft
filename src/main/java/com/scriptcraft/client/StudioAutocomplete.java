@@ -17,7 +17,8 @@ public final class StudioAutocomplete {
             "on break:", "on place:", "on right click:", "on left click:", "on damage:",
             "on kill:", "on attack:", "on shoot:", "on projectile hit:", "on consume:",
             "on craft:", "on fish:", "on sneak:", "on sprint:", "on jump:", "on command:",
-            "on drop:", "on pickup:", "on receive:", "on item break:", "on key :", "on open :",
+            "on drop:", "on pickup:", "on receive:", "on item break:", "on key :", "on key release :", "on key hold :",
+            "on open :", "on screen open:", "on screen close:",
             "on world change:", "on gamemode change:", "on load:", "on unload:",
             "command /", "every 5 seconds:", "function ", "define item ", "define block "
     );
@@ -42,7 +43,10 @@ public final class StudioAutocomplete {
             "set scoreboard title \"&6Stats\" for player",
             "set scoreboard line 1 to \"&7Online: %online%\" for player",
             "clear scoreboard of player",
-            "open screen \"Menu\" to player:", "create hud \"stats\" for player:",
+            "open screen \"Menu\" to player:", "update screen for player:", "close screen of player",
+            "set text of screen \"id\" for player to \"\"", "set position of screen \"id\" for player to 0 0",
+            "set image of screen \"id\" for player to \"\"", "show screen \"id\" for player", "hide screen \"id\" for player",
+            "remove screen \"id\" from player", "create hud \"stats\" for player:",
             "set block at targeted block to ", "execute console command \"\"",
             "make player execute command \"\"", "kick player due to \"\"", "log \"\""
     );
@@ -51,7 +55,8 @@ public final class StudioAutocomplete {
             "%player%", "%online%", "%arg-1%", "%arg-2%", "%args%", "%message%",
             "%victim%", "%attacker%", "%cause%", "%block%", "%item%", "%amount%",
             "%x%", "%y%", "%z%", "%world%", "%from%", "%gamemode%", "%command%",
-            "%loop-number%", "%loop-player%", "%sneaking%", "%sprinting%", "%projectile%",
+            "%loop-number%", "%loop-player%", "%sneaking%", "%sprinting%", "%projectile%", "%screen%",
+            "player has screen open", "player is in screen \"Menu\"", "screen of player",
             "clicked entity is set", "clicked player is set", "clicked block is set",
             "targeted block", "targeted entity", "targeted player", "location of player",
             "location of targeted block", "location at ", "health of player", "food of player",

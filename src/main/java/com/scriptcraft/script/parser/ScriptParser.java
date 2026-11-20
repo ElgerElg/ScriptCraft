@@ -237,9 +237,35 @@ public final class ScriptParser {
         }
 
         if (lower.startsWith("on ")) {
-            String rest = lower.substring(3).strip();
+            String rawRest = header.substring(3).strip();
+            String rest = rawRest.toLowerCase(Locale.ROOT);
+            if (rest.startsWith("key release ") || rest.startsWith("release key ")) {
+                String tail = rawRest.substring(12).strip();
+                parseKeyed(headerLine, ScriptEvent.KEY_RELEASE, keyFilter(headerLine, tail), body);
+                return;
+            }
+            if (rest.startsWith("key hold ") || rest.startsWith("hold key ")) {
+                String tail = rawRest.substring(9).strip();
+                parseKeyed(headerLine, ScriptEvent.KEY_HOLD, keyFilter(headerLine, tail), body);
+                return;
+            }
+            if (rest.startsWith("any key")) {
+                String tail = "any" + rawRest.substring(7);
+                parseKeyed(headerLine, ScriptEvent.KEY, keyFilter(headerLine, tail), body);
+                return;
+            }
             if (rest.startsWith("key ")) {
-                parseKeyed(headerLine, ScriptEvent.KEY, keyFilter(headerLine, rest.substring(4).strip()), body);
+                parseKeyed(headerLine, ScriptEvent.KEY, keyFilter(headerLine, rawRest.substring(4).strip()), body);
+                return;
+            }
+            if (rest.startsWith("screen open") || rest.startsWith("open screen")
+                    || rest.startsWith("gui open") || rest.startsWith("open gui")) {
+                parseKeyed(headerLine, ScriptEvent.SCREEN_OPEN, screenEventFilter(headerLine, rawRest), body);
+                return;
+            }
+            if (rest.startsWith("screen close") || rest.startsWith("close screen")
+                    || rest.startsWith("gui close") || rest.startsWith("close gui")) {
+                parseKeyed(headerLine, ScriptEvent.SCREEN_CLOSE, screenEventFilter(headerLine, rawRest), body);
                 return;
             }
             if (rest.startsWith("open ")) {
@@ -1081,6 +1107,34 @@ public final class ScriptParser {
         if (head.equals("has") || (head.equals("does") && word(t, k + 1).equals("not") && word(t, k + 2).equals("have"))) {
             boolean negate = head.equals("does");
             int at = negate ? k + 3 : k + 1;
+            if (!negate && word(t, at).equals("no")) {
+                negate = true;
+                at++;
+            }
+            if (word(t, at).equals("a") || word(t, at).equals("an") || word(t, at).equals("any")) {
+                at++;
+            }
+            if (word(t, at).equals("screen") || word(t, at).equals("gui")) {
+                int next = at + 1;
+                String title = null;
+                if (next < t.size() && t.get(next).quoted()) {
+                    title = t.get(next).value();
+                    next++;
+                }
+                if (word(t, next).equals("open") || word(t, next).equals("opened")) {
+                    next++;
+                }
+                return new ParsedCond(new Condition.ScreenOpen(target.target(), title, negate), finish(t, next));
+            }
+            if (word(t, at).equals("open") && (word(t, at + 1).equals("screen") || word(t, at + 1).equals("gui"))) {
+                int next = at + 2;
+                String title = null;
+                if (next < t.size() && t.get(next).quoted()) {
+                    title = t.get(next).value();
+                    next++;
+                }
+                return new ParsedCond(new Condition.ScreenOpen(target.target(), title, negate), finish(t, next));
+            }
             if (word(t, at).equals("permission")) {
                 if (at + 1 >= t.size()) {
                     throw new ParseException("need: player has permission <0-4 or \"node\">",
@@ -1134,6 +1188,15 @@ public final class ScriptParser {
         }
         if (s.equals("in")) {
             String next = word(t, n + 1);
+            if (next.equals("screen") || next.equals("gui")) {
+                int after = n + 2;
+                String title = null;
+                if (after < t.size() && t.get(after).quoted()) {
+                    title = t.get(after).value();
+                    after++;
+                }
+                return new ParsedCond(new Condition.ScreenOpen(target.target(), title, negate), finish(t, after));
+            }
             if (next.equals("group")) {
                 ExprParser.Parsed name = ExprParser.parse(t, n + 2);
                 return new ParsedCond(new Condition.InGroup(target.target(), name.expression(), negate), finish(t, name.end()));
@@ -1361,8 +1424,8 @@ public final class ScriptParser {
         }
         String head = word(t, 0);
 
-        if (hasBlock && !head.equals("open") && !head.equals("create")) {
-            throw new ParseException("двоеточие допустимо только у 'open screen', 'create hud', 'loop', 'if' и 'else'");
+        if (hasBlock && !head.equals("open") && !head.equals("create") && !head.equals("update")) {
+            throw new ParseException("двоеточие допустимо только у 'open screen', 'update screen', 'create hud', 'loop', 'if' и 'else'");
         }
         if (!hasBlock && !children.isEmpty()) {
             throw new ParseException("у этого действия не может быть вложенных строк");
@@ -1463,6 +1526,32 @@ public final class ScriptParser {
                 }
                 return new Actions.OpenScreen(target, title, elements);
             }
+            case "update" -> {
+                // update screen ["Заголовок"] [for|to <цель>]:
+                expectWord(t, 1, "screen");
+                int idx = 2;
+                String title = null;
+                if (idx < t.size() && t.get(idx).quoted()) {
+                    title = t.get(idx).value();
+                    idx++;
+                }
+                Target target = new Target.Self();
+                if (idx < t.size()) {
+                    String w = word(t, idx);
+                    if (!w.equals("for") && !w.equals("to")) {
+                        throw new ParseException("ожидается 'for <цель>', например update screen for player:");
+                    }
+                    target = TargetParser.parseWhole(t, idx + 1, "update screen for player:");
+                }
+                if (!hasBlock || children.isEmpty()) {
+                    throw new ParseException("у 'update screen' нет элементов: допишите двоеточие и элементы с отступом");
+                }
+                List<ScreenElement> elements = new ArrayList<>();
+                for (ParsedElement pe : parseScreenBody(children)) {
+                    elements.add(pe.element());
+                }
+                return new Actions.UpdateScreen(target, title, elements);
+            }
             case "create" -> {
                 // create hud "имя" [for|to <цель>]:  + элементы (как у open screen, кроме кнопок)
                 expectWord(t, 1, "hud");
@@ -1517,15 +1606,66 @@ public final class ScriptParser {
 
     @Nullable
     private String keyFilter(Line header, String rest) {
-        String name = rest.toLowerCase(Locale.ROOT);
-        if (name.startsWith("press ")) {
-            name = name.substring(6).strip();
-        }
-        if (!KeyNames.known(name)) {
-            error(header, "неизвестная клавиша '" + name + "' (" + KeyNames.names() + ")");
+        try {
+            List<Token> t = Tokenizer.tokenize(rest);
+            int idx = 0;
+            String w0 = word(t, idx);
+            if (w0.equals("press") || w0.equals("release") || w0.equals("hold")) {
+                idx++;
+            }
+            if (idx >= t.size()) {
+                error(header, "не указана клавиша (" + KeyNames.names() + ")");
+                return null;
+            }
+            String key = word(t, idx);
+            idx++;
+            if (key.equals("any") && idx < t.size() && word(t, idx).equals("key")) {
+                idx++;
+            }
+            if (!KeyNames.known(key)) {
+                error(header, "неизвестная клавиша '" + key + "' (" + KeyNames.names() + ")");
+                return null;
+            }
+            String screenFilter = null;
+            if (idx < t.size()) {
+                if (word(t, idx).equals("in") && (word(t, idx + 1).equals("screen") || word(t, idx + 1).equals("gui"))) {
+                    idx += 2;
+                    if (idx < t.size() && t.get(idx).quoted()) {
+                        screenFilter = t.get(idx).value();
+                        idx++;
+                    } else {
+                        screenFilter = "*";
+                    }
+                }
+                if (idx < t.size()) {
+                    error(header, "лишний текст в заголовке события клавиши: " + t.get(idx).value());
+                    return null;
+                }
+            }
+            return screenFilter == null ? key : key + "@" + screenFilter;
+        } catch (ParseException e) {
+            error(header, e.getMessage());
             return null;
         }
-        return name;
+    }
+
+    @Nullable
+    private String screenEventFilter(Line header, String rawRest) {
+        try {
+            List<Token> t = Tokenizer.tokenize(rawRest);
+            // screen open ["Title"] | open screen ["Title"] | gui open ["Title"]
+            if (t.size() == 2) {
+                return "*";
+            }
+            if (t.size() == 3 && t.get(2).quoted()) {
+                return t.get(2).value();
+            }
+            error(header, "нужно: on screen open [\"Заголовок\"]:  или  on screen close [\"Заголовок\"]:");
+            return null;
+        } catch (ParseException e) {
+            error(header, e.getMessage());
+            return null;
+        }
     }
 
     @Nullable
@@ -1587,6 +1727,7 @@ public final class ScriptParser {
         int idx = 1;
         boolean horizontal = false;
         boolean select = false;
+        boolean hidden = false;
         String header = "";
         String from = "";
         String id = "";
@@ -1663,10 +1804,15 @@ public final class ScriptParser {
                     id = EffectPatterns.hudName(t.get(idx + 1).value());
                     idx += 2;
                 }
-                default -> throw new ParseException("у list нет параметра '" + opt + "' (from, vertical, horizontal, select, header, at, size, anchor, layer, color, id)");
+                case "hidden" -> {
+                    hidden = true;
+                    idx++;
+                }
+                default -> throw new ParseException("у list нет параметра '" + opt + "' (from, vertical, horizontal, select, header, at, size, anchor, layer, color, id, hidden)");
             }
         }
         Layout layout = new Layout(x, y, w, h, anchor, color, layer);
+        String packedHeader = com.scriptcraft.screen.ScreenMeta.pack(id, false, "", hidden, header);
         if (!from.isEmpty()) {
             if (nested.size() > 1) {
                 throw new ParseException("у list from одна строка-шаблон: row \"%loop-index%\"");
@@ -1678,7 +1824,7 @@ public final class ScriptParser {
                 rowText = template.text();
                 rowAction = template.action();
             }
-            return new ParsedElement(id, new VariableListElement(layout, header, horizontal, select, from, rowText, rowAction));
+            return new ParsedElement(id, new VariableListElement(layout, packedHeader, horizontal, select, from, rowText, rowAction));
         }
         if (nested.isEmpty()) {
             throw new ParseException("у list нет строк: row \"текст\" run \"/команда\"");
@@ -1701,7 +1847,7 @@ public final class ScriptParser {
         if (rows.isEmpty()) {
             throw new ParseException("у list нет строк row");
         }
-        return new ParsedElement(id, new ListElement(layout, header, horizontal, select, List.copyOf(rows)));
+        return new ParsedElement(id, new ListElement(layout, packedHeader, horizontal, select, List.copyOf(rows)));
     }
 
     private ListElement.Row parseRow(Line line) throws ParseException {
@@ -1711,24 +1857,26 @@ public final class ScriptParser {
         }
         String label = quoted(t, 1);
         String action = "";
-        if (t.size() > 2) {
-            String opt = word(t, 2);
+        boolean keepOpen = false;
+        int idx = 2;
+        while (idx < t.size()) {
+            String opt = word(t, idx);
             if (opt.equals("run") || opt.equals("function")) {
-                ParsedScreenRun parsedRun = parseScreenRun(line, t, 2, opt.equals("function"));
+                ParsedScreenRun parsedRun = parseScreenRun(line, t, idx, opt.equals("function"));
                 action = parsedRun.action();
-                if (parsedRun.nextIdx() < t.size()) {
-                    throw new ParseException("лишний текст в row");
-                }
+                idx = parsedRun.nextIdx();
             } else if (opt.equals("close")) {
                 action = "close";
-                if (t.size() > 3) {
-                    throw new ParseException("лишний текст в row");
-                }
+                idx++;
+            } else if (opt.equals("keep") || opt.equals("stay")) {
+                expectWord(t, idx + 1, "open");
+                keepOpen = true;
+                idx += 2;
             } else {
-                throw new ParseException("у row ожидается run \"/команда\", run Func(...) или close");
+                throw new ParseException("у row ожидается run \"/команда\", run Func(...), keep open или close");
             }
         }
-        return new ListElement.Row(label, action);
+        return new ListElement.Row(label, com.scriptcraft.screen.ScreenMeta.pack("", keepOpen, "", false, action));
     }
 
     private record ParsedScreenRun(String action, int nextIdx) {
@@ -1851,12 +1999,12 @@ public final class ScriptParser {
 
     /** Какие параметры допустимы у каждого вида элемента (лишний параметр — понятная ошибка, а не тихое игнорирование). */
     private static final Map<String, Set<String>> ELEMENT_OPTIONS = Map.of(
-            "text", Set.of("at", "anchor", "color", "shadow", "layer", "id", "run", "function", "close"),
-            "button", Set.of("at", "size", "anchor", "run", "function", "close", "layer", "id"),
-            "image", Set.of("at", "size", "texture", "anchor", "color", "layer", "id", "run", "function", "close"),
-            "slot", Set.of("at", "size", "anchor", "color", "no", "layer", "id", "run", "function", "close"),
+            "text", Set.of("at", "anchor", "color", "shadow", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden"),
+            "button", Set.of("at", "size", "anchor", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "layer", "id"),
+            "image", Set.of("at", "size", "texture", "anchor", "color", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden"),
+            "slot", Set.of("at", "size", "anchor", "color", "no", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden"),
             "bar", Set.of("at", "size", "texture", "anchor", "color", "layer", "id", "value", "max", "direction",
-                    "background", "fill", "text", "shadow"),
+                    "background", "fill", "text", "shadow", "hidden"),
             "hotbar", Set.of("at", "size", "anchor", "color", "no", "layer", "id", "spacing"));
 
     /**
@@ -1925,7 +2073,8 @@ public final class ScriptParser {
         int color = 0xFFFFFFFF;
         boolean colorSet = false, atSet = false, anchorSet = false;
         Anchor anchor = Anchor.CENTER;
-        boolean shadow = false, frame = true;
+        boolean shadow = false, frame = true, keepOpen = false, hidden = false;
+        String hotkey = "";
         // У кнопки клик без run всё равно закрывает экран. У текста, картинки и слота клика нет, пока не написать run или close.
         String action = kind.equals("button") ? "close" : "";
         // Полоса
@@ -1983,6 +2132,24 @@ public final class ScriptParser {
                 }
                 case "close" -> {
                     action = "close";
+                    idx++;
+                }
+                case "keep", "stay" -> {
+                    expectWord(t, idx + 1, "open");
+                    keepOpen = true;
+                    idx += 2;
+                }
+                case "key", "hotkey" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: key <клавиша>");
+                    String k = t.get(idx + 1).value().strip().toLowerCase(Locale.ROOT);
+                    if (!KeyNames.known(k) || "any".equals(k)) {
+                        throw new ParseException("неизвестная клавиша '" + k + "' (" + KeyNames.names() + ")");
+                    }
+                    hotkey = k;
+                    idx += 2;
+                }
+                case "hidden" -> {
+                    hidden = true;
                     idx++;
                 }
                 case "layer" -> {
@@ -2060,13 +2227,15 @@ public final class ScriptParser {
             color = 0xFF4CAF50;
         }
         Layout layout = new Layout(x, y, w, h, anchor, color, layer);
+        String packedAction = com.scriptcraft.screen.ScreenMeta.pack(id, keepOpen, hotkey, hidden, action);
         ScreenElement element = switch (kind) {
-            case "text" -> new TextElement(layout, main, shadow, action);
-            case "button" -> new ButtonElement(layout, main, action);
-            case "slot" -> new SlotElement(layout, slotContent, main, count, frame, action);
-            case "bar" -> new BarElement(layout, id, value, max != null ? max : defaultMax(value), direction,
+            case "text" -> new TextElement(layout, main, shadow, packedAction);
+            case "button" -> new ButtonElement(layout, main, packedAction);
+            case "slot" -> new SlotElement(layout, slotContent, main, count, frame, packedAction);
+            case "bar" -> new BarElement(layout, com.scriptcraft.screen.ScreenMeta.packBarId(id, hidden),
+                    value, max != null ? max : defaultMax(value), direction,
                     backgroundColor, fillTexture, backgroundTexture, texW, texH, barText, shadow);
-            default -> new ImageElement(layout, main, texW, texH, action);
+            default -> new ImageElement(layout, main, texW, texH, packedAction);
         };
         return List.of(new ParsedElement(id, element));
     }

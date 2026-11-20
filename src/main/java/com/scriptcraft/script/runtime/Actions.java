@@ -283,10 +283,118 @@ public final class Actions {
             for (ScreenElement element : elements) {
                 formatted.add(VariableLists.expand(element, ctx).format(ctx::format));
             }
-            ScreenDescription screen = new ScreenDescription(ctx.format(title), formatted);
+            String formattedTitle = ctx.format(title);
             for (ServerPlayer player : players) {
-                com.scriptcraft.script.InputSync.allowScreenElements(player, formatted);
-                ModNetwork.sendTo(player, new OpenScreenPacket(screen));
+                com.scriptcraft.screen.ScreenManager.open(player, formattedTitle, formatted);
+            }
+        }
+    }
+
+    /** update screen ["Заголовок"] [for|to <цель>]: + элементы (добавляет или заменяет по id без пересоздания экрана). */
+    public record UpdateScreen(Target target, @org.jetbrains.annotations.Nullable String title, List<ScreenElement> elements) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            List<ServerPlayer> players = target.resolve(ctx);
+            if (players.isEmpty()) {
+                return;
+            }
+            List<ScreenElement> formatted = new ArrayList<>(elements.size());
+            for (ScreenElement element : elements) {
+                formatted.add(VariableLists.expand(element, ctx).format(ctx::format));
+            }
+            String formattedTitle = title == null || title.isEmpty() ? null : ctx.format(title);
+            for (ServerPlayer player : players) {
+                com.scriptcraft.screen.ScreenManager.updateElements(player, formattedTitle, formatted);
+            }
+        }
+    }
+
+    public record ScreenSetText(Target target, String id, Expression text) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            String val = Expression.toText(text.evaluate(ctx));
+            for (ServerPlayer p : target.resolve(ctx)) {
+                com.scriptcraft.screen.ScreenManager.mutateElement(p, id, e -> com.scriptcraft.screen.ScreenMeta.withText(e, val));
+            }
+        }
+    }
+
+    public record ScreenSetTexture(Target target, String id, Expression texture) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            String val = Expression.toText(texture.evaluate(ctx)).strip();
+            for (ServerPlayer p : target.resolve(ctx)) {
+                com.scriptcraft.screen.ScreenManager.mutateElement(p, id, e -> com.scriptcraft.screen.ScreenMeta.withTexture(e, val));
+            }
+        }
+    }
+
+    public record ScreenSetPosition(Target target, String id, Expression x, Expression y) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            int px = (int) Math.round(Effects.number(x, ctx));
+            int py = (int) Math.round(Effects.number(y, ctx));
+            for (ServerPlayer p : target.resolve(ctx)) {
+                com.scriptcraft.screen.ScreenManager.mutateElement(p, id, e -> com.scriptcraft.screen.ScreenMeta.withPosition(e, px, py));
+            }
+        }
+    }
+
+    public record ScreenSetVisible(Target target, String id, boolean visible) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            for (ServerPlayer p : target.resolve(ctx)) {
+                com.scriptcraft.screen.ScreenManager.mutateElement(p, id, e -> com.scriptcraft.screen.ScreenMeta.withHidden(e, !visible));
+            }
+        }
+    }
+
+    public record ScreenSetBar(Target target, String id, @org.jetbrains.annotations.Nullable Expression value,
+                               @org.jetbrains.annotations.Nullable Expression max) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            String v = value == null ? null : HudActions.barValue(value, ctx);
+            String m = max == null ? null : HudActions.barValue(max, ctx);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                com.scriptcraft.screen.ScreenManager.setBar(p, id, v, m);
+            }
+        }
+    }
+
+    public record ScreenSetSlot(Target target, String id, String item, @org.jetbrains.annotations.Nullable Expression count) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            int c = count == null ? 1 : Math.max(1, (int) Math.round(Effects.number(count, ctx)));
+            String resolvedItem = ctx.format(item);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                com.scriptcraft.screen.ScreenManager.mutateElement(p, id, e -> com.scriptcraft.screen.ScreenMeta.withSlotItem(e, resolvedItem, c));
+            }
+        }
+    }
+
+    public record ScreenRemove(Target target, String id) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            for (ServerPlayer p : target.resolve(ctx)) {
+                com.scriptcraft.screen.ScreenManager.removeElement(p, id);
+            }
+        }
+    }
+
+    public record ScreenClear(Target target) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            for (ServerPlayer p : target.resolve(ctx)) {
+                com.scriptcraft.screen.ScreenManager.clearElements(p);
+            }
+        }
+    }
+
+    public record ScreenClose(Target target) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            for (ServerPlayer p : target.resolve(ctx)) {
+                com.scriptcraft.screen.ScreenManager.close(p);
             }
         }
     }

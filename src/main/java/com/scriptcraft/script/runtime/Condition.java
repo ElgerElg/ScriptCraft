@@ -122,6 +122,14 @@ public interface Condition {
         }
     }
 
+    /** player has screen ["Title"] open / player is [not] in screen ["Title"]. */
+    record ScreenOpen(Target target, @Nullable String expectedTitle, boolean negate) implements Condition {
+        @Override
+        public boolean test(ExecutionContext ctx) {
+            return every(target, ctx, p -> com.scriptcraft.screen.ScreenManager.hasScreenOpen(p, expectedTitle), negate);
+        }
+    }
+
     /** player is [not] online. Пустая цель (игрока нет в сети) — это offline. */
     record Online(Target target, boolean wantOnline) implements Condition {
         @Override

@@ -21,7 +21,7 @@ public interface Expression {
     /** Свойство игрока в духе Skript: health of player, gamemode of player, x of player... */
     enum Prop {
         HEALTH, MAX_HEALTH, FOOD, SATURATION, LEVEL, XP, AIR, MAX_AIR, ABSORPTION,
-        WALK_SPEED, FLY_SPEED, PING, X, Y, Z, YAW, PITCH, GAMEMODE, WORLD, NAME, UUID, HELD, LOCATION, ONLINE
+        WALK_SPEED, FLY_SPEED, PING, X, Y, Z, YAW, PITCH, GAMEMODE, WORLD, NAME, UUID, HELD, LOCATION, ONLINE, SCREEN
     }
 
     /** Число/логическое значение как есть. */
@@ -84,6 +84,7 @@ public interface Expression {
                 case HELD -> itemId(p.getMainHandItem());
                 case LOCATION -> Places.ofPlayer(p);
                 case ONLINE -> (double) ctx.server().getPlayerCount();
+                case SCREEN -> com.scriptcraft.screen.ScreenManager.activeScreen(p);
             };
         }
 

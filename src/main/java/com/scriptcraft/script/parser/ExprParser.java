@@ -23,6 +23,10 @@ final class ExprParser {
     private static final Object[][] PROPS = {
             {words("max", "health"), Expression.Prop.MAX_HEALTH},
             {words("max", "air"), Expression.Prop.MAX_AIR},
+            {words("active", "screen"), Expression.Prop.SCREEN},
+            {words("current", "screen"), Expression.Prop.SCREEN},
+            {words("open", "screen"), Expression.Prop.SCREEN},
+            {words("screen"), Expression.Prop.SCREEN},
             {words("food", "level"), Expression.Prop.FOOD},
             {words("xp", "level"), Expression.Prop.LEVEL},
             {words("walk", "speed"), Expression.Prop.WALK_SPEED},

@@ -16,7 +16,30 @@ public final class ClientPacketHandler {
     }
 
     public static void openScreen(ScreenDescription description) {
-        Minecraft.getInstance().setScreen(new ScriptScreen(description));
+        Minecraft mc = Minecraft.getInstance();
+        String title = description.title();
+        if (com.scriptcraft.screen.ScreenManager.CLOSE_TOKEN.equals(title)) {
+            if (mc.screen instanceof ScriptScreen current) {
+                current.markServerClosed();
+                mc.setScreen(null);
+            }
+            return;
+        }
+        if (title.startsWith(com.scriptcraft.screen.ScreenManager.PATCH_PREFIX)) {
+            String realTitle = title.substring(com.scriptcraft.screen.ScreenManager.PATCH_PREFIX.length());
+            ScreenDescription clean = new ScreenDescription(realTitle, description.elements());
+            if (mc.screen instanceof ScriptScreen current) {
+                current.applyUpdate(clean);
+            } else {
+                mc.setScreen(new ScriptScreen(clean));
+            }
+            return;
+        }
+        if (mc.screen instanceof ScriptScreen current && current.titleText().equals(title)) {
+            current.applyUpdate(description);
+            return;
+        }
+        mc.setScreen(new ScriptScreen(description));
     }
 
     public static void openLog(List<ScriptLog.Issue> issues, List<ScriptLog.Slice> files, boolean open) {

@@ -15,6 +15,9 @@ public record InputPacket(byte kind, String name) {
     public static final byte KEY = 0;
     public static final byte OPEN = 1;
     public static final byte FUNC = 2;
+    public static final byte KEY_RELEASE = 3;
+    public static final byte KEY_HOLD = 4;
+    public static final byte SCREEN_CLOSE = 5;
 
     public static void encode(InputPacket packet, FriendlyByteBuf buf) {
         buf.writeByte(packet.kind);
@@ -31,8 +34,16 @@ public record InputPacket(byte kind, String name) {
             if (player == null) {
                 return;
             }
+            String activeScreen = com.scriptcraft.screen.ScreenManager.activeScreen(player);
+            String screenVal = activeScreen == null ? "none" : activeScreen;
             if (packet.kind == KEY && InputSync.watchesKey(packet.name)) {
-                ScriptLoader.fireEvent(ScriptEvent.KEY, player, Map.of("key", packet.name));
+                ScriptLoader.fireEvent(ScriptEvent.KEY, player, Map.of("key", packet.name, "screen", screenVal));
+            } else if (packet.kind == KEY_RELEASE && InputSync.watchesRelease(packet.name)) {
+                ScriptLoader.fireEvent(ScriptEvent.KEY_RELEASE, player, Map.of("key", packet.name, "screen", screenVal));
+            } else if (packet.kind == KEY_HOLD && InputSync.watchesHold(packet.name)) {
+                ScriptLoader.fireEvent(ScriptEvent.KEY_HOLD, player, Map.of("key", packet.name, "screen", screenVal));
+            } else if (packet.kind == SCREEN_CLOSE) {
+                com.scriptcraft.screen.ScreenManager.onClientClosed(player, packet.name);
             } else if (packet.kind == OPEN && InputSync.JUMP_TOKEN.equals(packet.name) && InputSync.cancelsJump()) {
                 com.scriptcraft.event.ServerEvents.handleJump(player, true);
             } else if (packet.kind == OPEN && InputSync.watchesMenu(packet.name)) {
