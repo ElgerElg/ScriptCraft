@@ -401,10 +401,11 @@ public final class StudioRooms {
         return created;
     }
 
-    /** Трёхстороннее построчное слияние: позволяет двум редакторам печатать одновременно. */
+    /** Трёхстороннее построчное и внутристрочное слияние: позволяет двум редакторам печатать одновременно. */
     private static String merge3Way(String base, String current, String incoming) {
         if (base.equals(incoming)) return current;
         if (base.equals(current)) return incoming;
+        if (current.equals(incoming)) return current;
         List<String> b = Arrays.asList(base.split("\n", -1));
         List<String> c = new ArrayList<>(Arrays.asList(current.split("\n", -1)));
         List<String> inc = Arrays.asList(incoming.split("\n", -1));
@@ -419,34 +420,82 @@ public final class StudioRooms {
         int bFrom = p, bTo = b.size() - s;
         int iFrom = p, iTo = inc.size() - s;
 
-        // Находим, где этот же диапазон [bFrom..bTo) оказался в current
-        int cp = 0;
-        int minBC = Math.min(b.size(), c.size());
-        while (cp < minBC && b.get(cp).equals(c.get(cp))) cp++;
-        int cs = 0;
-        while (cs < minBC - cp && b.get(b.size() - 1 - cs).equals(c.get(c.size() - 1 - cs))) cs++;
-        int cDiff = c.size() - b.size();
-
-        int targetFrom, targetTo;
-        if (bTo <= cp) {
-            // Правка incoming строго выше правки current
-            targetFrom = bFrom;
-            targetTo = bTo;
-        } else if (bFrom >= b.size() - cs) {
-            // Правка incoming строго ниже правки current
-            targetFrom = bFrom + cDiff;
-            targetTo = bTo + cDiff;
-        } else {
-            // Обе правки в одной и той же строке — сохраняем входящую, если не совпадает
-            return incoming;
+        int[] span = locateBaseSpan(b, c, bFrom, bTo);
+        if (span != null) {
+            List<String> out = new ArrayList<>(c.size() + (iTo - iFrom));
+            out.addAll(c.subList(0, span[0]));
+            out.addAll(inc.subList(iFrom, iTo));
+            out.addAll(c.subList(span[1], c.size()));
+            return String.join("\n", out);
         }
-        targetFrom = Math.max(0, Math.min(targetFrom, c.size()));
-        targetTo = Math.max(targetFrom, Math.min(targetTo, c.size()));
-        List<String> out = new ArrayList<>(c.size() + (iTo - iFrom));
-        out.addAll(c.subList(0, targetFrom));
-        out.addAll(inc.subList(iFrom, iTo));
-        out.addAll(c.subList(targetTo, c.size()));
-        return String.join("\n", out);
+
+        if (bTo - bFrom == 1 && iTo - iFrom == 1) {
+            int row = Math.max(0, Math.min(c.size() - 1, bFrom));
+            c.set(row, mergeLine3Way(b.get(bFrom), c.get(row), inc.get(iFrom)));
+            return String.join("\n", c);
+        }
+        return incoming;
+    }
+
+    private static int[] locateBaseSpan(List<String> b, List<String> c, int bFrom, int bTo) {
+        int len = bTo - bFrom;
+        if (len > 0) {
+            List<String> needle = b.subList(bFrom, bTo);
+            int best = -1;
+            int bestScore = Integer.MIN_VALUE;
+            for (int idx = 0; idx + len <= c.size(); idx++) {
+                if (c.subList(idx, idx + len).equals(needle)) {
+                    int score = -Math.abs(idx - bFrom);
+                    if (bFrom > 0 && idx > 0 && c.get(idx - 1).equals(b.get(bFrom - 1))) score += 100;
+                    if (bTo < b.size() && idx + len < c.size() && c.get(idx + len).equals(b.get(bTo))) score += 100;
+                    if (score > bestScore) {
+                        bestScore = score;
+                        best = idx;
+                    }
+                }
+            }
+            return best >= 0 ? new int[]{best, best + len} : null;
+        }
+        String prev = bFrom > 0 ? b.get(bFrom - 1) : null;
+        String next = bFrom < b.size() ? b.get(bFrom) : null;
+        int best = -1;
+        int bestScore = Integer.MIN_VALUE;
+        for (int idx = 0; idx <= c.size(); idx++) {
+            boolean prevOk = (prev == null && idx == 0) || (prev != null && idx > 0 && c.get(idx - 1).equals(prev));
+            boolean nextOk = (next == null && idx == c.size()) || (next != null && idx < c.size() && c.get(idx).equals(next));
+            if (prevOk || nextOk) {
+                int score = (prevOk ? 100 : 0) + (nextOk ? 100 : 0) - Math.abs(idx - bFrom);
+                if (score > bestScore) {
+                    bestScore = score;
+                    best = idx;
+                }
+            }
+        }
+        return best >= 0 ? new int[]{best, best} : null;
+    }
+
+    private static String mergeLine3Way(String base, String cur, String inc) {
+        if (base.equals(inc)) return cur;
+        if (base.equals(cur)) return inc;
+        int p = 0, minBI = Math.min(base.length(), inc.length());
+        while (p < minBI && base.charAt(p) == inc.charAt(p)) p++;
+        int s = 0;
+        while (s < minBI - p && base.charAt(base.length() - 1 - s) == inc.charAt(inc.length() - 1 - s)) s++;
+        int cp = 0, minBC = Math.min(base.length(), cur.length());
+        while (cp < minBC && base.charAt(cp) == cur.charAt(cp)) cp++;
+        int cs = 0;
+        while (cs < minBC - cp && base.charAt(base.length() - 1 - cs) == cur.charAt(cur.length() - 1 - cs)) cs++;
+        int bTo = base.length() - s;
+        if (bTo <= cp) {
+            return inc.substring(0, inc.length() - s) + cur.substring(bTo);
+        }
+        if (p >= base.length() - cs) {
+            int shift = cur.length() - base.length();
+            int at = Math.max(0, Math.min(cur.length(), p + shift));
+            int end = Math.max(at, Math.min(cur.length(), bTo + shift));
+            return cur.substring(0, at) + inc.substring(p, inc.length() - s) + cur.substring(end);
+        }
+        return inc;
     }
 
     /** Сдвигает сохранённую строку курсора остальных участников при вставке/удалении строк. */

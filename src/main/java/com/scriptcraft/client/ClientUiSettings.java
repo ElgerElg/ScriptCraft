@@ -80,6 +80,7 @@ public final class ClientUiSettings {
     private static boolean sidebarRight = false;
     private static boolean sidebarOpen = true;
     private static int sidebarWidth = 156;
+    private static String language = "ru";
     private static final Map<String, KeyBind> DEFAULTS = defaultBinds();
     private static final Map<String, KeyBind> BINDS = new LinkedHashMap<>(DEFAULTS);
 
@@ -153,6 +154,25 @@ public final class ClientUiSettings {
     public static int sidebarWidth() {
         load();
         return sidebarWidth;
+    }
+
+    public static String language() {
+        load();
+        return language;
+    }
+
+    public static void setLanguage(String value) {
+        load();
+        language = normalizeLang(value);
+        com.scriptcraft.lang.Messages.setClientLanguage(language);
+        save();
+    }
+
+    private static String normalizeLang(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "ru";
+        }
+        return raw.trim().toLowerCase(Locale.ROOT).startsWith("en") ? "en" : "ru";
     }
 
     public static Map<String, KeyBind> keyBinds() {
@@ -287,6 +307,8 @@ public final class ClientUiSettings {
             return;
         }
         loaded = true;
+        language = normalizeLang(com.scriptcraft.config.ScriptCraftConfig.language());
+        com.scriptcraft.lang.Messages.setClientLanguage(language);
         Path file = file();
         if (!Files.isRegularFile(file)) {
             return;
@@ -307,6 +329,8 @@ public final class ClientUiSettings {
         sidebarRight = Boolean.parseBoolean(p.getProperty("sidebarRight", "false"));
         sidebarOpen = Boolean.parseBoolean(p.getProperty("sidebarOpen", "true"));
         sidebarWidth = Math.max(110, Math.min(320, parseInt(p.getProperty("sidebarWidth"), sidebarWidth)));
+        language = normalizeLang(p.getProperty("language", language));
+        com.scriptcraft.lang.Messages.setClientLanguage(language);
         for (var entry : DEFAULTS.entrySet()) {
             BINDS.put(entry.getKey(), KeyBind.decode(p.getProperty("bind." + entry.getKey()), entry.getValue()));
         }
@@ -327,6 +351,7 @@ public final class ClientUiSettings {
             sb.append("sidebarRight=").append(sidebarRight).append('\n');
             sb.append("sidebarOpen=").append(sidebarOpen).append('\n');
             sb.append("sidebarWidth=").append(sidebarWidth).append('\n');
+            sb.append("language=").append(language).append('\n');
             for (var entry : BINDS.entrySet()) {
                 sb.append("bind.").append(entry.getKey()).append('=').append(entry.getValue().encode()).append('\n');
             }

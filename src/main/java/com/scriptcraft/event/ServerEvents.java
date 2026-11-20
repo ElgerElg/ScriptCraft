@@ -355,16 +355,36 @@ public final class ServerEvents {
         }
     }
 
+    private static final Map<UUID, Integer> LAST_JUMP_TICK = new java.util.concurrent.ConcurrentHashMap<>();
+
     @SubscribeEvent
     public static void onJump(LivingEvent.LivingJumpEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
-            ExecutionContext ctx = ScriptLoader.fireEvent(ScriptEvent.JUMP, player);
-            if (ctx != null && ctx.isCancelled()) {
-                net.minecraft.world.phys.Vec3 v = player.getDeltaMovement();
-                player.setDeltaMovement(v.x, Math.min(-0.08, v.y - 0.42), v.z);
-                player.hurtMarked = true;
-                player.connection.send(new net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket(player));
-            }
+            handleJump(player, false);
+        }
+    }
+
+    public static void handleJump(ServerPlayer player, boolean fromClientPacket) {
+        if (player == null || player.getServer() == null) {
+            return;
+        }
+        int tick = player.getServer().getTickCount();
+        Integer prev = LAST_JUMP_TICK.put(player.getUUID(), tick);
+        if (prev != null && prev == tick) {
+            return;
+        }
+        ExecutionContext ctx = ScriptLoader.fireEvent(ScriptEvent.JUMP, player);
+        if (ctx != null && ctx.isCancelled()) {
+            net.minecraft.world.phys.Vec3 v = player.getDeltaMovement();
+            player.setDeltaMovement(v.x, Math.min(0.0, v.y), v.z);
+            player.hurtMarked = true;
+            player.connection.send(new net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket(player));
+        } else if (fromClientPacket) {
+            // Клиент заранее погасил прыжок, но условие if в on jump не сработало — разрешаем прыжок с сервера
+            net.minecraft.world.phys.Vec3 v = player.getDeltaMovement();
+            player.setDeltaMovement(v.x, 0.42D, v.z);
+            player.hurtMarked = true;
+            player.connection.send(new net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket(player));
         }
     }
 

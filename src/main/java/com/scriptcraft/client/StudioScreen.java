@@ -104,7 +104,7 @@ public class StudioScreen extends Screen {
     private final List<PeerHeadHit> peerHeadHits = new ArrayList<>();
     private final List<HotkeyHit> hotkeyHits = new ArrayList<>();
     private int hkResetX, hkResetY, hkResetW;
-    private int setAcX, setAcY, setAutoX, setAutoY, setSbLeftX, setSbRightX, setSbY;
+    private int setAcX, setAcY, setAutoX, setAutoY, setSbLeftX, setSbRightX, setSbY, setLangRuX, setLangEnX, setLangY;
 
     private record SidebarHit(int y, int h, String fullPath, boolean dir, boolean parent, int toggleX) {
     }
@@ -824,7 +824,7 @@ public class StudioScreen extends Screen {
                     where = where + ":" + issue.line();
                 }
                 g.drawString(this.font, trim(where, listW - 20), px + 16, row + 2, on ? GOLD : TEXT, false);
-                g.drawString(this.font, trim(issue.reason(), listW - 20), px + 16, row + 12, MUTED, false);
+                g.drawString(this.font, trim(com.scriptcraft.lang.Phrase.forClient(issue.reason()), listW - 20), px + 16, row + 12, MUTED, false);
             }
             row += 24;
         }
@@ -841,7 +841,7 @@ public class StudioScreen extends Screen {
                 if (on) {
                     g.fill(px + 12, row, px + 4 + listW, row + 20, 0xFF2E3A4E);
                 }
-                g.drawString(this.font, trim(StudioSession.history.get(i).title, listW - 20), px + 16, row + 4, on ? GOLD : MUTED, false);
+                g.drawString(this.font, trim(com.scriptcraft.lang.Phrase.forClient(StudioSession.history.get(i).title), listW - 20), px + 16, row + 4, on ? GOLD : MUTED, false);
             }
             row += 22;
         }
@@ -852,9 +852,10 @@ public class StudioScreen extends Screen {
         if (historySel >= 0 && historySel < StudioSession.history.size()) {
             StudioSession.Note note = StudioSession.history.get(historySel);
             boolean code = !note.lines.isEmpty();
-            List<String> rows = code ? note.lines : noteBody(note.body);
+            String locBody = com.scriptcraft.lang.Phrase.forClient(note.body);
+            List<String> rows = code ? note.lines : noteBody(locBody);
             drawJournalDetail(g, mx, my, y, h, listW, rows, code ? note.firstLine : 0,
-                    code ? note.line : -1, code ? note.body : "", code, historySel + 1);
+                    code ? note.line : -1, code ? locBody : "", code, historySel + 1);
             return;
         }
         if (StudioSession.issues.isEmpty()) {
@@ -866,7 +867,7 @@ public class StudioScreen extends Screen {
         ScriptLog.Slice slice = slice(current.file());
         List<String> rows = slice == null ? List.of() : slice.lines();
         drawJournalDetail(g, mx, my, y, h, listW, rows, slice == null ? 0 : slice.firstLine(), current.line(),
-                current.reason(), slice != null && !slice.lines().isEmpty(), -journal - 1);
+                com.scriptcraft.lang.Phrase.forClient(current.reason()), slice != null && !slice.lines().isEmpty(), -journal - 1);
     }
 
     private void drawJournalDetail(GuiGraphics g, int mx, int my, int y, int h, int listW, List<String> rows,
@@ -1106,7 +1107,7 @@ public class StudioScreen extends Screen {
             Map<Integer, String> lineErrors = new HashMap<>();
             for (ScriptLog.Issue issue : StudioSession.issues) {
                 if (issue.file().equals(doc.name) && issue.line() > 0) {
-                    lineErrors.putIfAbsent(issue.line() - 1, issue.reason());
+                    lineErrors.putIfAbsent(issue.line() - 1, com.scriptcraft.lang.Phrase.forClient(issue.reason()));
                 }
             }
             int[] pairMatch = ClientUiSettings.autoClose() ? doc.matchingBracket() : null;
@@ -1411,7 +1412,7 @@ public class StudioScreen extends Screen {
         for (ScriptLog.Issue issue : StudioSession.issues) {
             if (issue.file().equals(doc.name) && issue.line() == doc.line + 1) {
                 statusBad = true;
-                return issue.reason();
+                return com.scriptcraft.lang.Phrase.forClient(issue.reason());
             }
         }
         statusBad = false;
@@ -1737,6 +1738,14 @@ public class StudioScreen extends Screen {
         setSbRightX = x + 166;
         drawSideBtn(g, mx, my, setSbLeftX, setSbY, 58, Messages.get("studio.sidebar.left"), !ClientUiSettings.sidebarRight());
         drawSideBtn(g, mx, my, setSbRightX, setSbY, 58, Messages.get("studio.sidebar.right"), ClientUiSettings.sidebarRight());
+        y += 19;
+        g.drawString(this.font, Messages.get("studio.set.language"), x, y + 3, MUTED, false);
+        setLangY = y;
+        setLangRuX = x + 104;
+        setLangEnX = x + 166;
+        boolean isRu = "ru".equals(ClientUiSettings.language());
+        drawSideBtn(g, mx, my, setLangRuX, setLangY, 58, "РУС", isRu);
+        drawSideBtn(g, mx, my, setLangEnX, setLangY, 58, "ENG", !isRu);
 
         // --- Правая колонка: Все горячие клавиши клиента ---
         int rx = midX + 6;
@@ -3841,6 +3850,14 @@ public class StudioScreen extends Screen {
         }
         if (hover(mx, my, setSbRightX, setSbY, 58, 15)) {
             ClientUiSettings.setSidebarRight(true);
+            return;
+        }
+        if (hover(mx, my, setLangRuX, setLangY, 58, 15)) {
+            ClientUiSettings.setLanguage("ru");
+            return;
+        }
+        if (hover(mx, my, setLangEnX, setLangY, 58, 15)) {
+            ClientUiSettings.setLanguage("en");
             return;
         }
         if (hover(mx, my, hkResetX, hkResetY, hkResetW, 14)) {

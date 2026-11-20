@@ -66,6 +66,25 @@ public final class ScriptLoader {
         program.callFunction(name, args, ctx);
     }
 
+    /** Вызов function по клику на кнопку/элемент экрана (open screen). */
+    public static void runScreenFunction(ServerPlayer player, String call) {
+        if (player == null || player.getServer() == null || call == null || call.isBlank()) {
+            return;
+        }
+        ExecutionContext ctx = new ExecutionContext(player.getServer(), player, player.createCommandSourceStack());
+        try {
+            com.scriptcraft.script.runtime.Action action = com.scriptcraft.script.parser.ScriptParser.parseScreenFunctionCall(call);
+            if (action != null) {
+                action.execute(ctx);
+            }
+        } catch ( Exception e) {
+            String msg = e.getMessage() == null ? e.toString() : e.getMessage();
+            String file = ctx.script() == null ? "" : ctx.script();
+            ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка функции экрана '{}': {}", call, msg);
+            noteRuntime(file, msg, player, player.getServer());
+        }
+    }
+
     public static List<String> lastErrors() {
         return lastErrors;
     }

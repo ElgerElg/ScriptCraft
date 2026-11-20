@@ -152,11 +152,15 @@ public final class ScriptDocument {
         int keepHoriz = horiz;
         String keepSaved = saved;
         boolean wasLoaded = loaded;
+        List<Snap> keepUndo = wasLoaded && !disk ? new ArrayList<>(undo) : List.of();
+        List<Snap> keepRedo = wasLoaded && !disk ? new ArrayList<>(redo) : List.of();
         load(raw);
         scroll = keepScroll;
         horiz = keepHoriz;
         if (!disk) {
             saved = wasLoaded ? keepSaved : "";
+            undo.addAll(keepUndo);
+            redo.addAll(keepRedo);
         }
         if (!wasLoaded) {
             return;

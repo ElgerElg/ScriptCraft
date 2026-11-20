@@ -92,4 +92,31 @@ public final class ClientEvents {
             event.setCanceled(true);
         }
     }
+
+    /**
+     * Если на сервере в on jump есть cancel event, гасим прыжок прямо на клиенте в момент отрыва от земли,
+     * чтобы игрок вообще не подпрыгивал на полблока, и уведомляем сервер для выполнения тела on jump.
+     */
+    @SubscribeEvent
+    public static void onLivingJump(net.minecraftforge.event.entity.living.LivingEvent.LivingJumpEvent event) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || event.getEntity() != mc.player) {
+            return;
+        }
+        if (!ClientInput.cancels(com.scriptcraft.script.InputSync.JUMP_TOKEN)) {
+            return;
+        }
+        net.minecraft.world.phys.Vec3 v = mc.player.getDeltaMovement();
+        double vx = v.x;
+        double vz = v.z;
+        if (mc.player.isSprinting()) {
+            float rad = mc.player.getYRot() * ((float) Math.PI / 180F);
+            vx += net.minecraft.util.Mth.sin(rad) * 0.2D;
+            vz -= net.minecraft.util.Mth.cos(rad) * 0.2D;
+        }
+        mc.player.setDeltaMovement(vx, 0.0D, vz);
+        mc.player.hasImpulse = false;
+        mc.player.setOnGround(true);
+        ModNetwork.sendToServer(new InputPacket(InputPacket.OPEN, com.scriptcraft.script.InputSync.JUMP_TOKEN));
+    }
 }

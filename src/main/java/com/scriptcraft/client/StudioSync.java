@@ -10,14 +10,22 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * Отправляет курсор и текст открытого скрипта, когда сервер включил совместную правку.
- * Полный текст уходит не чаще, чем раз в 70 мс, и ещё раз сразу перед сохранением или уходом из файла.
+ * Дифференциальная синхронизация (shadow + inFlight): локальный набор второго редактора
+ * никогда не затирается приходящими пакетами, а сливается построчно и внутри строки.
  */
 @OnlyIn(Dist.CLIENT)
 public final class StudioSync {
     private static String watching;
+    /** Последняя подтверждённая общая база с сервером (shadow). */
+    private static String shadow = "";
+    /** Текст пакета, который сейчас летит на сервер и ждёт ack (null — ничего не летит). */
+    private static String inFlight;
     private static String lastSent = "";
     private static int lastLine;
     private static int lastCol;
@@ -26,12 +34,15 @@ public final class StudioSync {
     private static boolean lastBox;
     private static boolean announced;
     private static long lastSend;
+    private static long inFlightSince;
 
     private StudioSync() {
     }
 
     public static void reset() {
         watching = null;
+        shadow = "";
+        inFlight = null;
         lastSent = "";
         lastLine = 0;
         lastCol = 0;
@@ -39,6 +50,7 @@ public final class StudioSync {
         lastAnchorCol = 0;
         lastBox = false;
         announced = false;
+        inFlightSince = 0;
     }
 
     public static void watch(ScriptDocument doc) {
@@ -49,7 +61,9 @@ public final class StudioSync {
         if (!doc.name.equals(watching)) {
             leave();
             watching = doc.name;
-            lastSent = doc.text();
+            shadow = doc.text();
+            inFlight = null;
+            lastSent = shadow;
             remember(doc);
             announced = false;
         }
@@ -96,20 +110,25 @@ public final class StudioSync {
         if (doc == null || !doc.live || !doc.loaded || !doc.name.equals(watching)) {
             return;
         }
-        if (doc.text().equals(lastSent)) {
+        String current = doc.text();
+        if (current.equals(lastSent)) {
             return;
         }
         send(doc, true);
-        lastSent = doc.text();
+        inFlight = current;
+        inFlightSince = System.currentTimeMillis();
+        lastSent = current;
         remember(doc);
         announced = true;
-        lastSend = System.currentTimeMillis();
+        lastSend = inFlightSince;
     }
 
     /** Текст на экране уже совпадает с тем, что сервер прислал: не отправлять его обратно. */
     public static void arm(ScriptDocument doc) {
         if (doc != null && doc.name.equals(watching)) {
-            lastSent = doc.text();
+            shadow = doc.text();
+            inFlight = null;
+            lastSent = shadow;
             remember(doc);
         }
     }
@@ -144,16 +163,48 @@ public final class StudioSync {
             return;
         }
         doc.live = true;
-        if (view.replace() && !view.text().equals(doc.text())) {
-            doc.replaceFromServer(view.text(), false);
-            if (view.stale()) {
-                ClientToasts.push(Messages.toast("studio.stale"));
+        boolean isWatching = doc.name.equals(watching);
+
+        if (view.ack()) {
+            String ackBase = inFlight != null ? inFlight : shadow;
+            inFlight = null;
+            if (view.replace()) {
+                String serverText = view.text();
+                String merged = isWatching ? merge3Way(ackBase, doc.text(), serverText) : serverText;
+                if (!merged.equals(doc.text())) {
+                    doc.replaceFromServer(merged, false);
+                }
+                shadow = serverText;
+                if (view.stale()) {
+                    ClientToasts.push(Messages.toast("studio.stale"));
+                }
+            } else {
+                shadow = ackBase;
             }
-            arm(doc);
+            lastSent = shadow;
+            remember(doc);
             doc.revision = view.revision();
             return;
         }
-        if (view.replace() || view.ack() || !doc.name.equals(watching) || doc.text().equals(lastSent)) {
+
+        if (view.replace()) {
+            String serverText = view.text();
+            String base = shadow;
+            String merged = isWatching ? merge3Way(base, doc.text(), serverText) : serverText;
+            if (!merged.equals(doc.text())) {
+                doc.replaceFromServer(merged, false);
+            }
+            if (inFlight != null) {
+                inFlight = merge3Way(base, inFlight, serverText);
+            }
+            shadow = serverText;
+            lastSent = shadow;
+            remember(doc);
+            doc.revision = view.revision();
+            return;
+        }
+
+        if (!isWatching || (inFlight == null && doc.text().equals(shadow))) {
             doc.revision = view.revision();
         }
     }
@@ -167,24 +218,137 @@ public final class StudioSync {
             lastSend = now;
             return;
         }
-        boolean textChanged = !doc.text().equals(lastSent);
+        if (inFlight != null && now - inFlightSince > 1500) {
+            // Защита от потерянного ack
+            shadow = inFlight;
+            inFlight = null;
+        }
+        String current = doc.text();
+        boolean textChanged = !current.equals(inFlight != null ? inFlight : shadow);
         boolean caretChanged = doc.line != lastLine || doc.col != lastCol
                 || doc.anchorLine != lastAnchorLine || doc.anchorCol != lastAnchorCol || doc.box != lastBox;
-        if (textChanged) {
-            if (now - lastSend < 70) {
+        if (textChanged && inFlight == null) {
+            if (now - lastSend < 55) {
                 return;
             }
             send(doc, true);
-            lastSent = doc.text();
+            inFlight = current;
+            inFlightSince = now;
+            lastSent = current;
             remember(doc);
             lastSend = now;
             return;
         }
-        if (caretChanged && now - lastSend >= 40) {
+        if (caretChanged && inFlight == null && now - lastSend >= 40) {
             send(doc, false);
             remember(doc);
             lastSend = now;
         }
+    }
+
+    /**
+     * Трёхстороннее слияние на клиенте: base (shadow), local (текущий текст в редакторе), incoming (с сервера).
+     * Если оба редактора печатают в разных строках (или в разных частях одной строки), сохраняются оба набора.
+     */
+    private static String merge3Way(String base, String local, String incoming) {
+        if (base == null || base.equals(incoming)) return local;
+        if (base.equals(local)) return incoming;
+        if (local.equals(incoming)) return local;
+
+        List<String> b = Arrays.asList(base.split("\n", -1));
+        List<String> c = new ArrayList<>(Arrays.asList(local.split("\n", -1)));
+        List<String> inc = Arrays.asList(incoming.split("\n", -1));
+
+        int p = 0;
+        int minBI = Math.min(b.size(), inc.size());
+        while (p < minBI && b.get(p).equals(inc.get(p))) p++;
+        int s = 0;
+        while (s < minBI - p && b.get(b.size() - 1 - s).equals(inc.get(inc.size() - 1 - s))) s++;
+
+        int bFrom = p, bTo = b.size() - s;
+        int iFrom = p, iTo = inc.size() - s;
+
+        int[] span = locateBaseSpan(b, c, bFrom, bTo);
+        if (span != null) {
+            List<String> out = new ArrayList<>(c.size() + (iTo - iFrom));
+            out.addAll(c.subList(0, span[0]));
+            out.addAll(inc.subList(iFrom, iTo));
+            out.addAll(c.subList(span[1], c.size()));
+            return String.join("\n", out);
+        }
+
+        // Оба редактора изменили одну и ту же строку — сливаем посимвольно, сохраняя локальный набор
+        if (bTo - bFrom == 1 && iTo - iFrom == 1) {
+            int row = Math.max(0, Math.min(c.size() - 1, bFrom));
+            c.set(row, mergeLine3Way(b.get(bFrom), c.get(row), inc.get(iFrom)));
+            return String.join("\n", c);
+        }
+        return local;
+    }
+
+    private static int[] locateBaseSpan(List<String> b, List<String> c, int bFrom, int bTo) {
+        int len = bTo - bFrom;
+        if (len > 0) {
+            List<String> needle = b.subList(bFrom, bTo);
+            int best = -1;
+            int bestScore = Integer.MIN_VALUE;
+            for (int idx = 0; idx + len <= c.size(); idx++) {
+                if (c.subList(idx, idx + len).equals(needle)) {
+                    int score = -Math.abs(idx - bFrom);
+                    if (bFrom > 0 && idx > 0 && c.get(idx - 1).equals(b.get(bFrom - 1))) score += 100;
+                    if (bTo < b.size() && idx + len < c.size() && c.get(idx + len).equals(b.get(bTo))) score += 100;
+                    if (score > bestScore) {
+                        bestScore = score;
+                        best = idx;
+                    }
+                }
+            }
+            if (best >= 0) {
+                return new int[]{best, best + len};
+            }
+            return null;
+        }
+        // Чистая вставка строк (bFrom == bTo): ищем границу между b[bFrom-1] и b[bFrom]
+        String prev = bFrom > 0 ? b.get(bFrom - 1) : null;
+        String next = bFrom < b.size() ? b.get(bFrom) : null;
+        int best = -1;
+        int bestScore = Integer.MIN_VALUE;
+        for (int idx = 0; idx <= c.size(); idx++) {
+            boolean prevOk = (prev == null && idx == 0) || (prev != null && idx > 0 && c.get(idx - 1).equals(prev));
+            boolean nextOk = (next == null && idx == c.size()) || (next != null && idx < c.size() && c.get(idx).equals(next));
+            if (prevOk || nextOk) {
+                int score = (prevOk ? 100 : 0) + (nextOk ? 100 : 0) - Math.abs(idx - bFrom);
+                if (score > bestScore) {
+                    bestScore = score;
+                    best = idx;
+                }
+            }
+        }
+        return best >= 0 ? new int[]{best, best} : null;
+    }
+
+    private static String mergeLine3Way(String base, String local, String inc) {
+        if (base.equals(inc)) return local;
+        if (base.equals(local)) return inc;
+        int p = 0, minBI = Math.min(base.length(), inc.length());
+        while (p < minBI && base.charAt(p) == inc.charAt(p)) p++;
+        int s = 0;
+        while (s < minBI - p && base.charAt(base.length() - 1 - s) == inc.charAt(inc.length() - 1 - s)) s++;
+        int cp = 0, minBC = Math.min(base.length(), local.length());
+        while (cp < minBC && base.charAt(cp) == local.charAt(cp)) cp++;
+        int cs = 0;
+        while (cs < minBC - cp && base.charAt(base.length() - 1 - cs) == local.charAt(local.length() - 1 - cs)) cs++;
+        int bTo = base.length() - s;
+        if (bTo <= cp) {
+            return inc.substring(0, inc.length() - s) + local.substring(bTo);
+        }
+        if (p >= base.length() - cs) {
+            int shift = local.length() - base.length();
+            int at = Math.max(0, Math.min(local.length(), p + shift));
+            int end = Math.max(at, Math.min(local.length(), bTo + shift));
+            return local.substring(0, at) + inc.substring(p, inc.length() - s) + local.substring(end);
+        }
+        return local;
     }
 
     private static boolean online() {

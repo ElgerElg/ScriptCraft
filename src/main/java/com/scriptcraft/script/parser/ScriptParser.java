@@ -536,6 +536,18 @@ public final class ScriptParser {
         return new Actions.CallFunction(name, args);
     }
 
+    /** Разбор строки вызова функции из кнопки/элемента экрана: "Buy(player, 10)" или "Heal()". */
+    public static Action parseScreenFunctionCall(String text) throws ParseException {
+        if (text == null) {
+            return null;
+        }
+        String trimmed = text.strip();
+        if (!trimmed.contains("(")) {
+            trimmed = trimmed + "()";
+        }
+        return tryFunctionCall(trimmed);
+    }
+
     /** null, если пространство имён допустимо, иначе текст ошибки. */
     private static String namespaceProblem(String ns) {
         if (hasCyrillic(ns)) {
@@ -1701,12 +1713,10 @@ public final class ScriptParser {
         String action = "";
         if (t.size() > 2) {
             String opt = word(t, 2);
-            if (opt.equals("run")) {
-                action = quoted(t, 3);
-                if (!action.startsWith("/")) {
-                    action = "/" + action;
-                }
-                if (t.size() > 4) {
+            if (opt.equals("run") || opt.equals("function")) {
+                ParsedScreenRun parsedRun = parseScreenRun(line, t, 2, opt.equals("function"));
+                action = parsedRun.action();
+                if (parsedRun.nextIdx() < t.size()) {
                     throw new ParseException("лишний текст в row");
                 }
             } else if (opt.equals("close")) {
@@ -1715,10 +1725,122 @@ public final class ScriptParser {
                     throw new ParseException("лишний текст в row");
                 }
             } else {
-                throw new ParseException("у row ожидается run \"/команда\" или close");
+                throw new ParseException("у row ожидается run \"/команда\", run Func(...) или close");
             }
         }
         return new ListElement.Row(label, action);
+    }
+
+    private record ParsedScreenRun(String action, int nextIdx) {
+    }
+
+    /**
+     * Разбирает действие клика элемента экрана (button, text, image, slot, row):
+     * - run "/cmd" или run "cmd" -> "/cmd"
+     * - run "Func(a, b)" -> "fn:Func(a, b)"
+     * - run Func(a, b) или function Func(a, b) или function "Func(a, b)" -> "fn:Func(a, b)"
+     */
+    private ParsedScreenRun parseScreenRun(Line line, List<Token> t, int optIdx, boolean forceFunction) throws ParseException {
+        int i = optIdx + 1;
+        if (!forceFunction && i < t.size() && !t.get(i).quoted() && word(t, i).equals("function")) {
+            forceFunction = true;
+            i++;
+        }
+        if (i >= t.size()) {
+            throw new ParseException("после '" + word(t, optIdx) + "' ожидается команда в кавычках или вызов функции Name(...)");
+        }
+        if (t.get(i).quoted()) {
+            String raw = t.get(i).value().strip();
+            if (forceFunction || (!raw.startsWith("/") && raw.matches("[A-Za-z_][A-Za-z0-9_]*\\s*\\(.*\\)"))) {
+                String call = raw.contains("(") ? raw : raw + "()";
+                validateScreenFunctionCall(call);
+                return new ParsedScreenRun("fn:" + call, i + 1);
+            }
+            return new ParsedScreenRun(raw.startsWith("/") ? raw : "/" + raw, i + 1);
+        }
+        // Некавычечный вызов функции: run Name(arg1, arg2) или function Name(arg1, arg2)
+        String fnName = t.get(i).value().strip();
+        if (!fnName.matches("[A-Za-z_][A-Za-z0-9_]*")) {
+            throw new ParseException("ожидается текст в кавычках или вызов функции Name(...)");
+        }
+        int cur = i + 1;
+        if (cur >= t.size() || !word(t, cur).equals("(")) {
+            if (forceFunction) {
+                return new ParsedScreenRun("fn:" + fnName + "()", cur);
+            }
+            throw new ParseException("ожидается '(' после имени функции '" + fnName + "' (или возьмите команду в кавычки)");
+        }
+        int depth = 0;
+        int closeTokenIdx = -1;
+        for (int k = cur; k < t.size(); k++) {
+            if (!t.get(k).quoted()) {
+                String w = t.get(k).value();
+                if (w.equals("(")) depth++;
+                else if (w.equals(")")) {
+                    depth--;
+                    if (depth == 0) {
+                        closeTokenIdx = k;
+                        break;
+                    }
+                }
+            }
+        }
+        if (closeTokenIdx < 0) {
+            throw new ParseException("незакрытая скобка ')' в вызове функции " + fnName);
+        }
+        String rawCall = extractRawCallFromLine(line.text(), fnName, cur + 1, closeTokenIdx, t);
+        validateScreenFunctionCall(rawCall);
+        return new ParsedScreenRun("fn:" + rawCall, closeTokenIdx + 1);
+    }
+
+    private static String extractRawCallFromLine(String lineText, String fnName, int argStartIdx, int closeIdx, List<Token> t) {
+        if (argStartIdx >= closeIdx) {
+            return fnName + "()";
+        }
+        // Находим вызов fnName(...) в исходной строке, чтобы сохранить запятые и кавычки
+        Pattern p = Pattern.compile("\\b" + Pattern.quote(fnName) + "\\s*\\(");
+        Matcher m = p.matcher(lineText);
+        if (m.find()) {
+            int openPos = m.end() - 1;
+            int depth = 0;
+            boolean inQ = false;
+            for (int k = openPos; k < lineText.length(); k++) {
+                char c = lineText.charAt(k);
+                if (c == '"' && (k == 0 || lineText.charAt(k - 1) != '\\')) {
+                    inQ = !inQ;
+                } else if (!inQ) {
+                    if (c == '(') depth++;
+                    else if (c == ')') {
+                        depth--;
+                        if (depth == 0) {
+                            return fnName + lineText.substring(openPos, k + 1);
+                        }
+                    }
+                }
+            }
+        }
+        StringBuilder sb = new StringBuilder(fnName).append('(');
+        for (int k = argStartIdx; k < closeIdx; k++) {
+            if (k > argStartIdx) sb.append(", ");
+            if (t.get(k).quoted()) {
+                sb.append('"').append(t.get(k).value()).append('"');
+            } else {
+                sb.append(t.get(k).value());
+            }
+        }
+        sb.append(')');
+        return sb.toString();
+    }
+
+    private static void validateScreenFunctionCall(String call) throws ParseException {
+        int open = call.indexOf('(');
+        if (open <= 0 || !call.endsWith(")")) {
+            throw new ParseException("некорректный вызов функции: " + call);
+        }
+        String name = call.substring(0, open).strip();
+        if (!name.matches("[A-Za-z_][A-Za-z0-9_]*")) {
+            throw new ParseException("некорректное имя функции: " + name);
+        }
     }
 
     // ------------------------------------------------------------------ элементы экрана и HUD
@@ -1729,10 +1851,10 @@ public final class ScriptParser {
 
     /** Какие параметры допустимы у каждого вида элемента (лишний параметр — понятная ошибка, а не тихое игнорирование). */
     private static final Map<String, Set<String>> ELEMENT_OPTIONS = Map.of(
-            "text", Set.of("at", "anchor", "color", "shadow", "layer", "id", "run", "close"),
-            "button", Set.of("at", "size", "anchor", "run", "close", "layer", "id"),
-            "image", Set.of("at", "size", "texture", "anchor", "color", "layer", "id", "run", "close"),
-            "slot", Set.of("at", "size", "anchor", "color", "no", "layer", "id", "run", "close"),
+            "text", Set.of("at", "anchor", "color", "shadow", "layer", "id", "run", "function", "close"),
+            "button", Set.of("at", "size", "anchor", "run", "function", "close", "layer", "id"),
+            "image", Set.of("at", "size", "texture", "anchor", "color", "layer", "id", "run", "function", "close"),
+            "slot", Set.of("at", "size", "anchor", "color", "no", "layer", "id", "run", "function", "close"),
             "bar", Set.of("at", "size", "texture", "anchor", "color", "layer", "id", "value", "max", "direction",
                     "background", "fill", "text", "shadow"),
             "hotbar", Set.of("at", "size", "anchor", "color", "no", "layer", "id", "spacing"));
@@ -1854,10 +1976,10 @@ public final class ScriptParser {
                     shadow = true;
                     idx++;
                 }
-                case "run" -> {
-                    action = quoted(t, idx + 1);
-                    if (!action.startsWith("/")) action = "/" + action;
-                    idx += 2;
+                case "run", "function" -> {
+                    ParsedScreenRun parsedRun = parseScreenRun(line, t, idx, opt.equals("function"));
+                    action = parsedRun.action();
+                    idx = parsedRun.nextIdx();
                 }
                 case "close" -> {
                     action = "close";

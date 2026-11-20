@@ -148,6 +148,9 @@ public class ScriptScreen extends Screen {
         if (action.startsWith("/") && this.minecraft != null && this.minecraft.player != null) {
             // Команда уходит на сервер как обычная команда игрока — сервер сам проверит права.
             this.minecraft.player.connection.sendCommand(action.substring(1));
+        } else if (action.startsWith("fn:")) {
+            com.scriptcraft.network.ModNetwork.sendToServer(
+                    new com.scriptcraft.network.InputPacket(com.scriptcraft.network.InputPacket.FUNC, action.substring(3)));
         }
         onClose();
     }

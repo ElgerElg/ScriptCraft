@@ -238,6 +238,7 @@ public final class Messages {
         add("studio.m.tabs_to_spaces", "Tabs -> Spaces", "TAB -> Пробелы");
         add("studio.converted_indent", "Updated lines: %d", "Обновлено строк: %d");
         add("studio.set.editor", "Editor", "Редактор");
+        add("studio.set.language", "Mod language", "Язык мода");
         add("studio.set.autocomplete", "Autocomplete", "Автодополнение");
         add("studio.set.autoclose", "Auto-close brackets & quotes", "Автозакрытие скобок и кавычек");
         add("studio.set.hotkeys", "Hotkeys", "Горячие клавиши");
@@ -292,7 +293,26 @@ public final class Messages {
         add("studio.m.utf", "UTF-8", "UTF-8");
     }
 
+    private static volatile String clientLanguage;
+
     private Messages() {
+    }
+
+    public static void setClientLanguage(String lang) {
+        if (lang == null || lang.isBlank()) {
+            clientLanguage = null;
+        } else {
+            clientLanguage = lang.trim().toLowerCase(Locale.ROOT).startsWith("ru") ? "ru" : "en";
+        }
+    }
+
+    /** Текущий язык: на клиенте — из настроек редактора, на выделенном сервере — из config.toml. */
+    public static String language() {
+        String cl = clientLanguage;
+        if (cl != null && net.minecraftforge.fml.loading.FMLEnvironment.dist.isClient()) {
+            return cl;
+        }
+        return ScriptCraftConfig.language();
     }
 
     private static void add(String key, String en, String ru) {
@@ -301,7 +321,7 @@ public final class Messages {
     }
 
     private static Map<String, String> table() {
-        return "ru".equals(ScriptCraftConfig.language()) ? RU : EN;
+        return "ru".equals(language()) ? RU : EN;
     }
 
     /** Строка по ключу на текущем языке; цветовые коды &x превращаются в §x. Без префикса — для лога и предметов. */

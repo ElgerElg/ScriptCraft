@@ -1808,48 +1808,55 @@ give 50 xp to @r`,
   {
     id: "screen-text", category: "screen",
     name: { ru: "Текст на экране", en: "Screen text" },
-    syntax: ["text \"<текст>\" [at <X> <Y>] [anchor <точка>] [color #RRGGBB] [shadow]", "text \"<текст>\" run \"/<команда>\"", "text \"<текст>\" close"],
+    syntax: ["text \"<текст>\" [at <X> <Y>] [anchor <точка>] [color #RRGGBB] [shadow]", "text \"<текст>\" run \"/<команда>\"", "text \"<текст>\" run <Функция>(<аргументы>)", "text \"<текст>\" close"],
     desc: {
-      ru: "Надпись. `color` — `#RRGGBB` или `#AARRGGBB`, `shadow` — с тенью. Плейсхолдеры и `{переменные}` подставляются при открытии. `run` или `close` делают хитбокс: ЛКМ по тексту (или по `size`, если задан) выполняет команду и закрывает экран. На HUD клика нет.",
-      en: "A label. `color` is `#RRGGBB` or `#AARRGGBB`, `shadow` adds a shadow. Placeholders and `{variables}` are filled in when opening. `run` or `close` adds a hitbox: left click on the text (or on `size`, if set) runs the command and closes the screen. HUD elements are not clickable."
+      ru: "Надпись. `color` — `#RRGGBB` или `#AARRGGBB`, `shadow` — с тенью. Плейсхолдеры и `{переменные}` подставляются при открытии. `run` (команда `\"/cmd\"` или функция `MyFunc(player)`), `function MyFunc(player)` или `close` делают хитбокс: ЛКМ по тексту (или по `size`, если задан) выполняет действие и закрывает экран. На HUD клика нет.",
+      en: "A label. `color` is `#RRGGBB` or `#AARRGGBB`, `shadow` adds a shadow. Placeholders and `{variables}` are filled in when opening. `run` (a `\"/cmd\"` command or a `MyFunc(player)` function call), `function MyFunc(player)` or `close` adds a hitbox: left click on the text (or on `size`, if set) runs the action and closes the screen. HUD elements are not clickable."
     },
-    example: `text "Добро пожаловать, %player%!" at 0, -60 color #FFD700 shadow`,
-    since: "0.1.0", related: ["eff-open-screen", "screen-layout"]
+    example: `text "Добро пожаловать, %player%!" at 0, -60 color #FFD700 shadow
+text "&aПолучить бонус" at 0, -40 run GiveBonus(player)`,
+    since: "0.1.0", related: ["eff-open-screen", "screen-layout", "struct-function"]
   },
   {
     id: "screen-button", category: "screen",
     name: { ru: "Кнопка", en: "Button" },
-    syntax: ["button \"<надпись>\" [at <X> <Y>] [size <W>x<H>] [anchor <точка>] run \"/<команда>\"", "button \"<надпись>\" ... close"],
+    syntax: [
+      "button \"<надпись>\" [at <X> <Y>] [size <W>x<H>] [anchor <точка>] run \"/<команда>\"",
+      "button \"<надпись>\" [at <X> <Y>] [size <W>x<H>] [anchor <точка>] run <Функция>(<аргументы>)",
+      "button \"<надпись>\" [at <X> <Y>] [size <W>x<H>] [anchor <точка>] function <Функция>(<аргументы>)",
+      "button \"<надпись>\" ... close"
+    ],
     desc: {
-      ru: "Кнопка (по умолчанию 100x20). `run \"/cmd\"` — игрок выполняет команду (со своими правами) и экран закрывается, `close` — просто закрыть экран (по умолчанию).",
-      en: "A button (100x20 by default). `run \"/cmd\"` makes the player run the command (with their own permissions) and closes the screen, `close` just closes it (default)."
+      ru: "Кнопка (по умолчанию 100x20). `run \"/cmd\"` — игрок выполняет команду (со своими правами) и экран закрывается. `run MyFunc(player, 10)` (или `run \"MyFunc(player, 10)\"`, либо `function MyFunc(player, 10)`) — вызывает функцию скрипта напрямую на сервере (без регистрации команд) и закрывает экран. `close` — просто закрыть экран (по умолчанию).",
+      en: "A button (100x20 by default). `run \"/cmd\"` makes the player run the command (with their own permissions) and closes the screen. `run MyFunc(player, 10)` (or `run \"MyFunc(player, 10)\"`, or `function MyFunc(player, 10)`) directly calls a script function on the server (without registering a command) and closes the screen. `close` just closes it (default)."
     },
-    example: `button "Сказать привет" at 0, 15 size 120x20 run "/hello из меню"
+    example: `button "Сказать привет" at 0, -10 size 120x20 run "/hello из меню"
+button "Купить меч" at 0, 15 size 120x20 run BuyItem(player, "diamond_sword", 50)
 button "Закрыть" at 0, 40 size 120x20 close`,
-    since: "0.1.0", related: ["eff-open-screen", "screen-layout"]
+    since: "0.1.0", related: ["eff-open-screen", "screen-layout", "struct-function"]
   },
   {
     id: "screen-slot", category: "screen",
     name: { ru: "Слот с предметом", en: "Item slot" },
-    syntax: ["slot <предмет> [<количество>] [at <X> <Y>] [anchor <точка>]", "slot hotbar <1-9>", "slot image \"<картинка>\"", "slot text \"<текст>\""],
+    syntax: ["slot <предмет> [<количество>] [at <X> <Y>] [anchor <точка>]", "slot <предмет> ... run <Функция>(<аргументы>)", "slot hotbar <1-9>", "slot image \"<картинка>\"", "slot text \"<текст>\""],
     desc: {
-      ru: "Показывает предмет с подсказкой при наведении. Сам по себе слот ничего не берёт. В id можно дописать nbt, как в `give`. `run \"/команда\"` или `close` — хитбокс ЛКМ по прямоугольнику слота на `open screen` (на HUD клика нет). С 0.1.33 слот может показывать предмет из хотбара игрока, картинку или текст (см. «Слоты HUD»).",
-      en: "Shows an item with a tooltip on hover. By itself the slot takes nothing. The id may include nbt, as in `give`. `run \"/command\"` or `close` is a left-click hitbox on the slot rectangle in `open screen` (HUD elements are not clickable). Since 0.1.33 a slot can also show an item from the player's hotbar, an image or a text (see “HUD slots”)."
+      ru: "Показывает предмет с подсказкой при наведении. Сам по себе слот ничего не берёт. В id можно дописать nbt, как в `give`. `run \"/команда\"`, `run MyFunc(player)` или `close` — хитбокс ЛКМ по прямоугольнику слота на `open screen` (на HUD клика нет). С 0.1.33 слот может показывать предмет из хотбара игрока, картинку или текст (см. «Слоты HUD»).",
+      en: "Shows an item with a tooltip on hover. By itself the slot takes nothing. The id may include nbt, as in `give`. `run \"/command\"`, `run MyFunc(player)` or `close` is a left-click hitbox on the slot rectangle in `open screen` (HUD elements are not clickable). Since 0.1.33 a slot can also show an item from the player's hotbar, an image or a text (see “HUD slots”)."
     },
-    example: `slot diamond 5 at -30, -15
+    example: `slot diamond 5 at -30, -15 run BuyItem(player, "diamond", 5)
 slot example:ruby 4 at 60, -15`,
-    since: "0.1.0", related: ["eff-open-screen", "hud-slot"]
+    since: "0.1.0", related: ["eff-open-screen", "hud-slot", "struct-function"]
   },
   {
     id: "screen-image", category: "screen",
     name: { ru: "Картинка", en: "Image" },
-    syntax: ["image \"<ns>:<путь>.png\" [at <X> <Y>] [size <W>x<H>] [texture <W>x<H>] [anchor <точка>] [color #AARRGGBB]"],
+    syntax: ["image \"<ns>:<путь>.png\" [at <X> <Y>] [size <W>x<H>] [texture <W>x<H>] [anchor <точка>] [color #AARRGGBB] [run \"/<команда>\" | run <Функция>(<аргументы>) | close]"],
     desc: {
-      ru: "Рисует текстуру. `texture` — реальный размер файла, `color` — оттенок. `run` или `close` — хитбокс ЛКМ по `size` (без размера это 16x16) на `open screen`. Картинки из `scriptcraft/resources/assets/<ns>/textures/gui/` сервер отправляет игрокам сам, они показываются сразу.",
-      en: "Draws a texture. `texture` is the real file size, `color` tints it. `run` or `close` is a left-click hitbox on `size` (16x16 when size is omitted) in `open screen`. Images from `scriptcraft/resources/assets/<ns>/textures/gui/` are sent to players by the server and show up immediately."
+      ru: "Рисует текстуру. `texture` — реальный размер файла, `color` — оттенок. `run` (команда или функция) или `close` — хитбокс ЛКМ по `size` (без размера это 16x16) на `open screen`. Картинки из `scriptcraft/resources/assets/<ns>/textures/gui/` сервер отправляет игрокам сам, они показываются сразу.",
+      en: "Draws a texture. `texture` is the real file size, `color` tints it. `run` (command or function) or `close` is a left-click hitbox on `size` (16x16 when size is omitted) in `open screen`. Images from `scriptcraft/resources/assets/<ns>/textures/gui/` are sent to players by the server and show up immediately."
     },
     example: `image "example:textures/gui/menu_banner.png" at 0, -85 size 128x32 texture 128x32`,
-    since: "0.1.0", related: ["eff-open-screen", "cmd-reload"]
+    since: "0.1.0", related: ["eff-open-screen", "cmd-reload", "struct-function"]
   },
   {
     id: "screen-layout", category: "screen",
@@ -1865,14 +1872,14 @@ slot example:ruby 4 at 60, -15`,
   {
     id: "screen-click", category: "screen",
     name: { ru: "Хитбокс клика", en: "Click hitbox" },
-    syntax: ["text \"<текст>\" run \"/<команда>\"", "image \"<путь>\" size <W>x<H> run \"/<команда>\"", "slot <предмет> close"],
+    syntax: ["text \"<текст>\" run \"/<команда>\"", "text \"<текст>\" run <Функция>(<аргументы>)", "image \"<путь>\" size <W>x<H> run <Функция>(<аргументы>)", "slot <предмет> close"],
     desc: {
-      ru: "ЛКМ по нарисованному элементу на `open screen`. Работает у `text`, `image` и `slot`: `run \"/команда\"` выполняет команду от игрока и закрывает экран, `close` только закрывает. Без `run` и `close` клика нет. Если у текста задан `size`, хитбокс — этот прямоугольник, иначе ширина надписи и высота строки. У картинки и слота — `size`, иначе 16x16 и 18x18. Попадает верхний `layer`. Кнопка по-прежнему виджет. На HUD клики не приходят.",
-      en: "Left click on a drawn element in `open screen`. Works on `text`, `image` and `slot`: `run \"/command\"` runs the command as the player and closes the screen, `close` only closes it. Without `run` and `close` there is no click. If a text has `size`, that rectangle is the hitbox, otherwise the label width and the line height. An image or a slot uses `size`, or 16x16 and 18x18. The higher `layer` wins. A button is still a widget. HUD elements do not receive clicks."
+      ru: "ЛКМ по нарисованному элементу на `open screen`. Работает у `text`, `image` и `slot`: `run \"/команда\"` выполняет команду от игрока, `run MyFunc(player)` (или `function MyFunc(player)`) вызывает функцию скрипта на сервере, `close` только закрывает экран. Без `run`, `function` и `close` клика нет. Если у текста задан `size`, хитбокс — этот прямоугольник, иначе ширина надписи и высота строки. У картинки и слота — `size`, иначе 16x16 и 18x18. Попадает верхний `layer`. Кнопка по-прежнему виджет. На HUD клики не приходят.",
+      en: "Left click on a drawn element in `open screen`. Works on `text`, `image` and `slot`: `run \"/command\"` runs the command as the player, `run MyFunc(player)` (or `function MyFunc(player)`) calls a script function on the server, `close` only closes the screen. Without `run`, `function` and `close` there is no click. If a text has `size`, that rectangle is the hitbox, otherwise the label width and the line height. An image or a slot uses `size`, or 16x16 and 18x18. The higher `layer` wins. A button is still a widget. HUD elements do not receive clicks."
     },
-    example: `image "minecraft:textures/item/diamond.png" at -40, -20 size 32x32 texture 16x16 run "/hand diamond"
-text "Взять алмаз" at -40, 16 run "/hand diamond"`,
-    since: "0.3.7", related: ["screen-text", "screen-image", "screen-slot", "screen-list", "eff-open-screen"]
+    example: `image "minecraft:textures/item/diamond.png" at -40, -20 size 32x32 texture 16x16 run GiveReward(player, "diamond")
+text "Взять алмаз" at -40, 16 run GiveReward(player, "diamond")`,
+    since: "0.3.7", related: ["screen-text", "screen-image", "screen-slot", "screen-list", "eff-open-screen", "struct-function"]
   },
   {
     id: "screen-list", category: "screen",
@@ -1882,16 +1889,17 @@ text "Взять алмаз" at -40, 16 run "/hand diamond"`,
       "list horizontal [at <X> <Y>] [size <W>x<H>] [header \"<текст>\"] [select]:",
       "list from {<имя>::*} vertical [at <X> <Y>] [size <W>x<H>] [header \"<текст>\"] [select]:",
       "row \"<текст>\" run \"/<команда>\"",
+      "row \"<текст>\" run <Функция>(<аргументы>)",
       "row \"<текст>\" close",
       "row \"<текст>\""
     ],
     desc: {
-      ru: "Панель строк. `vertical` — столбец, `horizontal` — ряд. `header` — строка над списком. `select` подсвечивает строку под курсором. Клик по строке с `run` выполняет команду и закрывает экран. `list from {имя::*}` в момент открытия строит строку на каждый прямой индекс: одна `row` — шаблон с `%loop-index%` и `%loop-value%`. Пустой список рисует только заголовок. Колёсико листает, если строк больше, чем влезает в `size`. На HUD список только рисуется и тоже снимок.",
-      en: "A panel of rows. `vertical` is a column, `horizontal` is a row. `header` is a line above the list. `select` highlights the row under the cursor. A click on a row with `run` runs the command and closes the screen. `list from {name::*}` builds one row per direct index when the screen opens: the single `row` is a template with `%loop-index%` and `%loop-value%`. An empty list draws only the header. The wheel scrolls when the rows do not fit in `size`. On a HUD the list is display only, and it is a snapshot too."
+      ru: "Панель строк. `vertical` — столбец, `horizontal` — ряд. `header` — строка над списком. `select` подсвечивает строку под курсором. Клик по строке с `run` выполняет команду или вызывает функцию скрипта и закрывает экран. `list from {имя::*}` в момент открытия строит строку на каждый прямой индекс: одна `row` — шаблон с `%loop-index%` и `%loop-value%`. Пустой список рисует только заголовок. Колёсико листает, если строк больше, чем влезает в `size`. На HUD список только рисуется и тоже снимок.",
+      en: "A panel of rows. `vertical` is a column, `horizontal` is a row. `header` is a line above the list. `select` highlights the row under the cursor. A click on a row with `run` runs the command or calls a script function and closes the screen. `list from {name::*}` builds one row per direct index when the screen opens: the single `row` is a template with `%loop-index%` and `%loop-value%`. An empty list draws only the header. The wheel scrolls when the rows do not fit in `size`. On a HUD the list is display only, and it is a snapshot too."
     },
     example: `list from {bag::%player%::*} vertical at 0, 0 size 180x160 header "&7Предмет" select:
-	row "&f%loop-index% &8x%loop-value%" run "/bag take %loop-index%"`,
-    since: "0.3.7", related: ["screen-click", "eff-open-screen", "event-open", "expr-variable", "ph-loop-index"]
+	row "&f%loop-index% &8x%loop-value%" run TakeFromBag(player, "%loop-index%")`,
+    since: "0.3.7", related: ["screen-click", "eff-open-screen", "event-open", "expr-variable", "ph-loop-index", "struct-function"]
   },
 
   // ================================================================== UI / HUD

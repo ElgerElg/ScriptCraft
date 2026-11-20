@@ -285,6 +285,7 @@ public final class Actions {
             }
             ScreenDescription screen = new ScreenDescription(ctx.format(title), formatted);
             for (ServerPlayer player : players) {
+                com.scriptcraft.script.InputSync.allowScreenElements(player, formatted);
                 ModNetwork.sendTo(player, new OpenScreenPacket(screen));
             }
         }
