@@ -20,7 +20,8 @@ public final class ModNetwork {
     // 9: удаление скрипта из студии.
     // 10: клик по тексту/картинке/слоту, элемент list, пакеты клавиш и меню.
     // 11: у предмета в таблице привязок тип, еда и инструмент; у блока — трение, скорость, прыжок, падение, горение.
-    private static final String PROTOCOL_VERSION = "11";
+    // 12: студия — ревизия сохранения, живая правка, право scriptcraft.studio.
+    private static final String PROTOCOL_VERSION = "12";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(ScriptCraft.MODID, "main"),
@@ -134,6 +135,16 @@ public final class ModNetwork {
                 .encoder(InputPacket::encode)
                 .decoder(InputPacket::decode)
                 .consumerMainThread(InputPacket::handle)
+                .add();
+        CHANNEL.messageBuilder(StudioLivePacket.Edit.class, id++, NetworkDirection.PLAY_TO_SERVER)
+                .encoder(StudioLivePacket.Edit::encode)
+                .decoder(StudioLivePacket.Edit::decode)
+                .consumerMainThread(StudioLivePacket.Edit::handle)
+                .add();
+        CHANNEL.messageBuilder(StudioLivePacket.View.class, id++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(StudioLivePacket.View::encode)
+                .decoder(StudioLivePacket.View::decode)
+                .consumerMainThread(StudioLivePacket.View::handle)
                 .add();
     }
 

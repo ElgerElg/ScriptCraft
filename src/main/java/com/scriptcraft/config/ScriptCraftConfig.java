@@ -1,11 +1,17 @@
 package com.scriptcraft.config;
 
 import com.electronwill.nightconfig.core.file.CommentedFileConfig;
+import com.scriptcraft.ModPaths;
 import com.scriptcraft.ScriptCraft;
+import com.scriptcraft.studio.StudioRooms;
+import net.minecraft.server.MinecraftServer;
 import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraftforge.fml.config.ConfigTracker;
 import net.minecraftforge.fml.config.ModConfig;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Supplier;
@@ -35,6 +41,8 @@ public final class ScriptCraftConfig {
     private static final ForgeConfigSpec.BooleanValue ENABLE_EFFECT_COMMANDS;
     private static final ForgeConfigSpec.ConfigValue<String> EFFECT_COMMAND_TOKEN;
     private static final ForgeConfigSpec.BooleanValue EFFECT_COMMANDS_REQUIRE_OP;
+    private static final ForgeConfigSpec.BooleanValue STUDIO_LIVE_EDIT;
+    private static final ForgeConfigSpec.BooleanValue STUDIO_REQUIRE_OP;
 
     static {
         ForgeConfigSpec.Builder b = new ForgeConfigSpec.Builder();
@@ -114,6 +122,28 @@ public final class ScriptCraftConfig {
                 .define("effectCommandsRequireOp", true);
 
         b.pop();
+
+        // --- Студия: совместная правка и кто может её открыть.
+        b.comment("Studio: shared editing and who may open it",
+                "Студия: совместная правка и кто может её открыть").push("studio");
+
+        STUDIO_LIVE_EDIT = b.comment(
+                        "When true, people in the same script see each other's caret, selection and typing.",
+                        "Off by default. A save is accepted only if it is based on the latest copy: the last save or the last accepted edit wins.",
+                        "Когда true, в одном скрипте видны чужой курсор, выделение и набор.",
+                        "По умолчанию выключено. Сохранение принимается только от последней копии: побеждает последнее сохранение или последняя принятая правка.")
+                .define("liveEdit", false);
+
+        STUDIO_REQUIRE_OP = b.comment(
+                        "Who may open and edit the studio. The permission node is scriptcraft.studio.",
+                        "true (default): operators, and anyone granted scriptcraft.studio (Forge Permission API or LuckPerms, mod or plugin).",
+                        "false: every player.",
+                        "Кто может открывать и править студию. Узел права: scriptcraft.studio.",
+                        "true (по умолчанию): операторы и те, кому выдано scriptcraft.studio (Forge или LuckPerms, мод или плагин).",
+                        "false: любой игрок.")
+                .define("requireOp", true);
+
+        b.pop();
         SPEC = b.build();
     }
 
@@ -173,6 +203,16 @@ public final class ScriptCraftConfig {
         return safe(EFFECT_COMMANDS_REQUIRE_OP::get, true);
     }
 
+    /** Совместная правка студии. Пока ключа нет в старом файле, остаётся выключенной. */
+    public static boolean studioLiveEdit() {
+        return safe(STUDIO_LIVE_EDIT::get, false);
+    }
+
+    /** true: студия у операторов и у тех, кому выдано scriptcraft.studio. */
+    public static boolean studioRequireOp() {
+        return safe(STUDIO_REQUIRE_OP::get, true);
+    }
+
     public static int variableBackups() {
         return safe(VARIABLE_BACKUPS::get, 5);
     }
@@ -189,10 +229,12 @@ public final class ScriptCraftConfig {
         return safe(RESOURCE_CHUNK_KB::get, 256);
     }
 
+    private static long lastConfigModified = -1L;
+    private static int watchTicks;
+
     /**
      * Перечитать scriptcraft/config.toml с диска в уже загруженный конфиг.
-     * Геттеры читают файл при каждом вызове, поэтому язык, лимиты и токен эффект-команд
-     * применяются сразу. Копии variables.json по-прежнему делаются только при старте сервера.
+     * Вызывает SPEC.afterReload(), чтобы сбросить кэш ForgeConfigSpec.ConfigValue без перезапуска сервера.
      *
      * @return null, если получилось, иначе короткий текст ошибки
      */
@@ -210,6 +252,8 @@ public final class ScriptCraftConfig {
             }
             try {
                 file.load();
+                SPEC.afterReload();
+                lastConfigModified = configModified();
                 return null;
             } catch (RuntimeException e) {
                 String message = e.getMessage();
@@ -217,5 +261,39 @@ public final class ScriptCraftConfig {
             }
         }
         return "scriptcraft config is not registered";
+    }
+
+    /** Проверяет раз в секунду, не изменился ли scriptcraft/config.toml на диске, и применяет без перезапуска. */
+    public static void tick(MinecraftServer server) {
+        if (server == null || ++watchTicks < 20) {
+            return;
+        }
+        watchTicks = 0;
+        long modified = configModified();
+        if (modified <= 0L) {
+            return;
+        }
+        if (lastConfigModified < 0L) {
+            lastConfigModified = modified;
+            return;
+        }
+        if (modified != lastConfigModified) {
+            lastConfigModified = modified;
+            String err = reloadFromDisk();
+            if (err == null) {
+                StudioRooms.onConfigChange(server);
+            } else {
+                ScriptCraft.LOGGER.warn("[ScriptCraft] Не удалось автоматически перечитать config.toml: {}", err);
+            }
+        }
+    }
+
+    private static long configModified() {
+        Path path = ModPaths.root().resolve("config.toml");
+        try {
+            return Files.exists(path) ? Files.getLastModifiedTime(path).toMillis() : 0L;
+        } catch (IOException e) {
+            return 0L;
+        }
     }
 }

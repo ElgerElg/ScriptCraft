@@ -38,12 +38,14 @@ import org.jetbrains.annotations.Nullable;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.network.chat.Component;
 
+import java.lang.reflect.Field;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
@@ -54,10 +56,11 @@ import java.util.stream.Stream;
  * Почему три одинаковых дерева, а не redirect: у Brigadier redirect не переносит executes() корневого узла,
  * поэтому "/sc" без аргументов не показал бы справку. Одна функция строит дерево трижды — поведение идентично.
  *
- * Ограничения горячей перезагрузки команд (Brigadier не умеет удалять узлы):
- * - НОВЫЕ команды при reload/enable добавляются в дерево, и дерево заново отправляется игрокам;
- * - УДАЛЁННЫЕ и ВЫКЛЮЧЕННЫЕ команды остаются в дереве до перезапуска, но при вызове пишут "выключена";
- * - изменённые действия и permission применяются сразу (обработчик и requires читают актуальную программу).
+ * Горячая перезагрузка:
+ * - новая команда добавляется в дерево, и дерево заново отправляется игрокам;
+ * - аргументы уже существующей команды скрипта собираются заново (старый узел снимается);
+ * - удалённая или выключенная команда остаётся в дереве до перезапуска и при вызове пишет «выключена»;
+ * - изменённые действия и permission применяются сразу.
  */
 public final class ScriptCommands {
     /** Корневые команды мода. Первая — основная, остальные — синонимы. */
@@ -229,6 +232,7 @@ public final class ScriptCommands {
             Feedback.fail(source, "config.reload_failed", error);
             return 0;
         }
+        com.scriptcraft.studio.StudioRooms.onConfigChange(source.getServer());
         Feedback.ok(source, "config.reloaded", ScriptCraftConfig.language());
         return 1;
     }
@@ -260,13 +264,19 @@ public final class ScriptCommands {
         return 1;
     }
 
-    /** Регистрирует команды из текущих скриптов, которых ещё нет в дереве. */
+    /**
+     * Команды текущих скриптов. Уже нашу команду снимаем и ставим снова:
+     * так новый список аргументов виден после /sc reload, без перезапуска сервера.
+     * Чужую команду с тем же именем не трогаем.
+     */
     public static void registerScriptCommands(CommandDispatcher<CommandSourceStack> dispatcher) {
         for (String name : ScriptLoader.getProgram().commandNames()) {
             if (REGISTERED.contains(name)) {
-                continue; // уже есть: обработчик сам возьмёт свежие действия
-            }
-            if (dispatcher.getRoot().getChild(name) != null) {
+                if (dispatcher.getRoot().getChild(name) != null && !removeChild(dispatcher.getRoot(), name)) {
+                    continue;
+                }
+                REGISTERED.remove(name);
+            } else if (dispatcher.getRoot().getChild(name) != null) {
                 ScriptCraft.LOGGER.warn("[ScriptCraft] Команда /{} уже существует (ваниль или другой мод) — пропущена", name);
                 continue;
             }
@@ -283,6 +293,23 @@ public final class ScriptCommands {
             }
             dispatcher.register(root);
             REGISTERED.add(name);
+        }
+    }
+
+    /** Снимает узел, который поставили мы. Brigadier сам узлы не удаляет, карты детей у него закрытые. */
+    private static boolean removeChild(com.mojang.brigadier.tree.CommandNode<?> node, String name) {
+        try {
+            for (String fieldName : List.of("children", "literals", "arguments")) {
+                Field field = com.mojang.brigadier.tree.CommandNode.class.getDeclaredField(fieldName);
+                field.setAccessible(true);
+                @SuppressWarnings("unchecked")
+                Map<String, ?> map = (Map<String, ?>) field.get(node);
+                map.remove(name);
+            }
+            return node.getChild(name) == null;
+        } catch (ReflectiveOperationException e) {
+            ScriptCraft.LOGGER.warn("[ScriptCraft] Не удалось заменить команду /{}: {}", name, e.toString());
+            return false;
         }
     }
 

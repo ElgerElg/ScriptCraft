@@ -14,6 +14,10 @@ public final class ScriptDocument {
     public final List<String> lines = new ArrayList<>();
     public boolean loaded;
     public String saved = "";
+    /** Номер копии, которую сервер считает последней. */
+    public long revision;
+    /** Сервер включил совместную правку этого скрипта. */
+    public boolean live;
     public int line;
     public int col;
     public int anchorLine = -1;
@@ -63,6 +67,91 @@ public final class ScriptDocument {
         horiz = 0;
         undo.clear();
         redo.clear();
+    }
+
+    /** Подмена текста с сервера. Прокрутка и курсор остаются, если документ уже был открыт. */
+    public void replaceFromServer(String raw, boolean disk) {
+        List<String> prevLines = new ArrayList<>(lines);
+        int keepLine = line;
+        int keepCol = col;
+        int keepAnchorLine = anchorLine;
+        int keepAnchorCol = anchorCol;
+        boolean keepBox = box;
+        int keepScroll = scroll;
+        int keepHoriz = horiz;
+        String keepSaved = saved;
+        boolean wasLoaded = loaded;
+        load(raw);
+        scroll = keepScroll;
+        horiz = keepHoriz;
+        if (!disk) {
+            saved = wasLoaded ? keepSaved : "";
+        }
+        if (!wasLoaded) {
+            return;
+        }
+        int delta = lineDelta(prevLines, lines, keepLine);
+        keepLine += delta;
+        line = Math.max(0, Math.min(keepLine, lines.size() - 1));
+        col = Math.max(0, Math.min(keepCol, lines.get(line).length()));
+        if (keepAnchorLine >= 0) {
+            int anchorDelta = lineDelta(prevLines, lines, keepAnchorLine);
+            anchorLine = Math.max(0, Math.min(keepAnchorLine + anchorDelta, lines.size() - 1));
+            anchorCol = Math.max(0, Math.min(keepAnchorCol, lines.get(anchorLine).length()));
+            box = keepBox;
+        }
+    }
+
+    /** Сдвиг строки курсора, если выше вставили или удалили строки. */
+    private static int lineDelta(List<String> oldLines, List<String> newLines, int targetLine) {
+        int diff = newLines.size() - oldLines.size();
+        if (diff == 0) {
+            return 0;
+        }
+        int prefix = 0;
+        int limit = Math.min(oldLines.size(), newLines.size());
+        while (prefix < limit && oldLines.get(prefix).equals(newLines.get(prefix))) {
+            prefix++;
+        }
+        if (targetLine < prefix) {
+            return 0;
+        }
+        int suffix = 0;
+        while (suffix < limit - prefix
+                && oldLines.get(oldLines.size() - 1 - suffix).equals(newLines.get(newLines.size() - 1 - suffix))) {
+            suffix++;
+        }
+        if (targetLine >= oldLines.size() - suffix) {
+            return diff;
+        }
+        return 0;
+    }
+
+    /** Перевод строки с сохранением отступа (пробелы и TAB) текущей строки. */
+    public void insertNewLine() {
+        if (!loaded) {
+            return;
+        }
+        if (box && anchorLine >= 0) {
+            insert("\n");
+            return;
+        }
+        followCaret = true;
+        snapshot();
+        deleteSelection();
+        String current = lines.get(line);
+        int limit = Math.min(col, current.length());
+        int indentEnd = 0;
+        while (indentEnd < limit && isGap(current.charAt(indentEnd))) {
+            indentEnd++;
+        }
+        String indent = current.substring(0, indentEnd);
+        String left = current.substring(0, col);
+        String right = current.substring(col);
+        lines.set(line, left);
+        line++;
+        lines.add(line, indent + right);
+        col = indent.length();
     }
 
     public void insert(String value) {

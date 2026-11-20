@@ -1,5 +1,8 @@
 package com.scriptcraft.client;
 
+import com.scriptcraft.lang.Messages;
+import com.scriptcraft.network.ScriptDataPacket;
+import com.scriptcraft.network.StudioLivePacket;
 import com.scriptcraft.script.ScriptLog;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
@@ -52,6 +55,7 @@ public final class StudioSession {
         }
     }
     public static final Map<String, ScriptDocument> docs = new LinkedHashMap<>();
+    private static final Map<String, List<StudioLivePacket.Peer>> peers = new LinkedHashMap<>();
 
     private StudioSession() {
     }
@@ -67,6 +71,8 @@ public final class StudioSession {
         slices = List.of();
         history.clear();
         docs.clear();
+        peers.clear();
+        StudioSync.reset();
     }
 
     public static void journal(List<ScriptLog.Issue> nextIssues, List<ScriptLog.Slice> nextSlices) {
@@ -115,12 +121,47 @@ public final class StudioSession {
         return created;
     }
 
-    public static void acceptText(String name, String text) {
+    public static void acceptText(String name, String text, long revision, int flags) {
         ScriptDocument doc = docs.get(name);
-        if (doc == null || doc.dirty()) {
+        if (doc == null) {
             return;
         }
-        doc.load(text);
+        boolean live = (flags & ScriptDataPacket.LIVE) != 0;
+        boolean force = (flags & ScriptDataPacket.FORCE) != 0;
+        boolean disk = (flags & ScriptDataPacket.DISK) != 0;
+        boolean stale = (flags & ScriptDataPacket.STALE) != 0;
+        doc.live = live;
+        if (!force && doc.loaded && doc.dirty()) {
+            return;
+        }
+        boolean changed = !doc.loaded || !text.equals(doc.text());
+        if (changed) {
+            doc.replaceFromServer(text, disk);
+            if (stale) {
+                ClientToasts.push(Messages.toast("studio.stale"));
+            }
+        } else if (disk) {
+            doc.saved = doc.text();
+        }
+        doc.revision = revision;
+        doc.live = live;
+        StudioSync.arm(doc);
+    }
+
+    public static void setPeers(String file, List<StudioLivePacket.Peer> list) {
+        if (list == null || list.isEmpty()) {
+            peers.remove(file);
+            return;
+        }
+        peers.put(file, List.copyOf(list));
+    }
+
+    public static List<StudioLivePacket.Peer> peers(String file) {
+        return peers.getOrDefault(file, List.of());
+    }
+
+    public static void clearPeers() {
+        peers.clear();
     }
 
     public static void catalog(List<String> names) {

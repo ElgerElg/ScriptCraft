@@ -94,6 +94,7 @@ public final class ServerEvents {
             ScriptLoader.fireEvent(ScriptEvent.QUIT, player);
             InventoryWatch.forget(player);
             ResourceSync.onLogout(player);
+            com.scriptcraft.studio.StudioRooms.onQuit(player);
         }
     }
 
@@ -146,6 +147,7 @@ public final class ServerEvents {
         InventoryWatch.clear();
         SlotMigration.onServerStopped();
         BindingStore.onServerStopped();
+        com.scriptcraft.studio.StudioRooms.clear();
     }
 
     /** Периодическое автосохранение (интервал — variablesSaveIntervalSeconds в конфиге). */
@@ -153,6 +155,7 @@ public final class ServerEvents {
     public static void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase == TickEvent.Phase.END) {
             VariableStore.tick();
+            com.scriptcraft.config.ScriptCraftConfig.tick(event.getServer());
             ResourceSync.tick(event.getServer());
             SlotMigration.tick(event.getServer());
             ScriptLoader.tick(event.getServer());

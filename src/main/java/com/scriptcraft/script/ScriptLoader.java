@@ -316,10 +316,11 @@ public final class ScriptLoader {
         LuckPermsLink.publishNodes(commandNodes());
     }
 
-    /** Узлы permission: из команд плюс право эффект-команд. */
+    /** Узлы permission: из команд, эффект-команды и студия. */
     private static java.util.Set<String> commandNodes() {
         java.util.Set<String> nodes = new java.util.LinkedHashSet<>();
         nodes.add("scriptcraft.effectcommands");
+        nodes.add("scriptcraft.studio");
         for (String name : program.commandNames()) {
             com.scriptcraft.script.parser.CommandDefinition def = program.command(name);
             if (def != null && def.permissionNode() != null) {

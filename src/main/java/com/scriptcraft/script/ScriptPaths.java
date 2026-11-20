@@ -203,6 +203,19 @@ public final class ScriptPaths {
         return path.startsWith(root);
     }
 
+    /** Время последней записи файла, миллисекунды. Нет файла — 0. */
+    public static long modified(String rel) {
+        try {
+            Path path = resolve(rel);
+            if (!Files.exists(path)) {
+                return 0L;
+            }
+            return Files.getLastModifiedTime(path).toMillis();
+        } catch (IOException e) {
+            return 0L;
+        }
+    }
+
     /** Записывает скрипт в UTF-8. Папки по пути создаются. */
     public static void write(String rel, String text) throws IOException {
         if (!contained(rel)) {

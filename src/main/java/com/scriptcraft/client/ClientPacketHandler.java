@@ -1,5 +1,6 @@
 package com.scriptcraft.client;
 
+import com.scriptcraft.network.StudioLivePacket;
 import com.scriptcraft.screen.ScreenDescription;
 import com.scriptcraft.script.ScriptLog;
 import net.minecraft.client.Minecraft;
@@ -33,8 +34,12 @@ public final class ClientPacketHandler {
         StudioSession.catalog(names);
     }
 
-    public static void studioText(String name, String text) {
-        StudioSession.acceptText(name, text);
+    public static void studioText(String name, String text, long revision, int flags) {
+        StudioSession.acceptText(name, text, revision, flags);
+    }
+
+    public static void studioLive(StudioLivePacket.View view) {
+        StudioSync.onView(view);
     }
 
     public static void toast(String text) {

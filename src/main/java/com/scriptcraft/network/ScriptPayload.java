@@ -6,8 +6,8 @@ import net.minecraft.network.FriendlyByteBuf;
 import java.nio.charset.StandardCharsets;
 
 /** Текст скрипта длиннее лимита writeUtf (32 КБ). */
-final class ScriptPayload {
-    static final int MAX_BYTES = 262144;
+public final class ScriptPayload {
+    public static final int MAX_BYTES = 262144;
 
     private ScriptPayload() {
     }

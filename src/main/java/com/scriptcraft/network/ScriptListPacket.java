@@ -1,6 +1,7 @@
 package com.scriptcraft.network;
 
 import com.scriptcraft.script.ScriptPaths;
+import com.scriptcraft.studio.StudioAccess;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.api.distmarker.Dist;
@@ -47,7 +48,7 @@ public record ScriptListPacket(List<String> names) {
         ctx.get().setPacketHandled(true);
     }
 
-    /** Клиент просит свежий список. Не оператору — тишина. */
+    /** Клиент просит свежий список. Без права студии — уведомление. */
     public record Request() {
         public static void encode(Request packet, FriendlyByteBuf buf) {
         }
@@ -59,7 +60,7 @@ public record ScriptListPacket(List<String> names) {
         public static void handle(Request packet, Supplier<NetworkEvent.Context> ctx) {
             ServerPlayer player = ctx.get().getSender();
             ctx.get().enqueueWork(() -> {
-                if (player != null && player.hasPermissions(2)) {
+                if (StudioAccess.allow(player)) {
                     ModNetwork.sendTo(player, ScriptListPacket.ofServer());
                 }
             });

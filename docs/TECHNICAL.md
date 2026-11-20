@@ -316,8 +316,8 @@ command /heal <player> [integer]:
 Внутри команды: `%arg-1%` (и `arg-1`, `argument 1`), `%args%` — все аргументы через пробел,
 `player-argument` — первый аргумент этого типа, `script` и `%script%` — имя файла без `.sc`.
 Если список аргументов не задан, всё после команды по-прежнему одно `%args%`.
-Форма аргументов запоминается при запуске сервера: смена списка у уже существующей команды
-начинает работать после перезапуска (сами действия и `permission` — сразу после `/sc reload`).
+`/sc reload` заново собирает аргументы своих команд и рассылает дерево игрокам.
+Перезапуск сервера для смены `<player>` на `[player]` не нужен. Действия и `permission` тоже применяются сразу.
 
 ### Действия (белый список)
 
@@ -797,7 +797,8 @@ src/main/java/com/scriptcraft/
                                (модели слотов и недостающие модели настоящих id), RewritingDataPack (id скриптов -> id
                                слотов в data/), AssetBindings, DefineCache (клиент: id define серверов)
   event/ServerEvents           Forge-события -> события скриптов, переменные, раздача ресурсов
-  network/                     ModNetwork (протокол 10), OpenScreenPacket, HudPacket, BindingsPacket, ResourceManifest/Request/ChunkPacket, LogPacket, ScriptList/Data/Reload/DeletePacket, InputSyncPacket, InputPacket
+  network/                     ModNetwork (протокол 12), OpenScreenPacket, HudPacket, BindingsPacket, ResourceManifest/Request/ChunkPacket, LogPacket, ScriptList/Data/Reload/DeletePacket, StudioLivePacket, InputSyncPacket, InputPacket
+  studio/                      StudioAccess (право scriptcraft.studio), StudioRooms (живая правка и свежесть сохранения)
   screen/, client/             Screen API; client/ClientResources — кэш; StudioScreen — окно мода на сессию (главная, журнал, редактор)
   hud/                         HUD поверх игры: HudManager (сервер), HudOp/HudEntry (диффы); client/ClientHud — рендер
 ```
@@ -807,7 +808,7 @@ src/main/java/com/scriptcraft/
 Пока в языке нет циклов, но лимит уже стоит на будущее.
 
 **Горячая перезагрузка.** `reload` компилирует скрипты заново и подменяет программу целиком, одной операцией.
-Новые команды добавляются в дерево Brigadier, после чего дерево команд заново рассылается игрокам.
+Новые команды добавляются в дерево Brigadier. Уже существующая команда скрипта снимается и ставится снова, поэтому новый список аргументов виден без перезапуска. Затем дерево заново рассылается игрокам.
 Затем у затронутых скриптов срабатывает `on load` (до пересборки — `on unload` старой версии).
 Затем `define` заново привязываются к слотам пула и таблица рассылается игрокам (новые блоки — без перезапуска).
 Удалённые команды остаются в дереве до перезапуска. При вызове они пишут «выключена», потому что Brigadier не умеет удалять узлы.

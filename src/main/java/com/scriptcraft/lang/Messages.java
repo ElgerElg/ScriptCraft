@@ -157,7 +157,7 @@ public final class Messages {
         add("studio.home", "Home", "Главная");
         add("studio.journal", "Journal", "Журнал");
         add("studio.patches", "Patches and versions", "Патчи и версии");
-        add("studio.p1", "0.4.6 — LuckPerms plugin — command permissions — ? commands", "0.4.6 — LuckPerms плагин — права команд — команды ?");
+        add("studio.p1", "0.4.7 — shared studio — studio permission — command arguments", "0.4.7 — совместная студия — право студии — аргументы команд");
         add("studio.copy", "Copy", "Копия");
         add("studio.copy_all", "All", "Все");
         add("studio.copy_hint", "Copy this error", "Копировать эту ошибку");
@@ -215,6 +215,8 @@ public final class Messages {
         add("studio.save_failed", "&cSave failed: %s", "&cНе удалось сохранить: %s");
         add("studio.saved_disabled", "&eSaved %s (the script is disabled, so it was not reloaded)", "&eСохранено %s (скрипт выключен, поэтому не перезагружался)");
         add("studio.reload_disabled", "&eScript %s is disabled", "&eСкрипт %s выключен");
+        add("studio.denied", "&cThe studio needs operator level or the scriptcraft.studio permission", "&cСтудия доступна оператору или с правом scriptcraft.studio");
+        add("studio.stale", "&eA newer copy of the script was kept", "&eОставлена более свежая копия скрипта");
         add("studio.new_name", "name.sc", "имя.sc");
         add("studio.m.file", "File", "Файл");
         add("studio.m.edit", "Edit", "Правка");

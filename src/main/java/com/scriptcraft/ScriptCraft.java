@@ -11,6 +11,7 @@ import com.scriptcraft.resources.DefineCache;
 import com.scriptcraft.resources.ResourcePacks;
 import com.scriptcraft.script.ScriptLoader;
 import com.scriptcraft.script.ScriptPaths;
+import com.scriptcraft.studio.StudioAccess;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.ModLoadingContext;
@@ -91,6 +92,7 @@ public class ScriptCraft {
         // 6. Игровые события (вход игрока, команды, тики) и эффект-команды в чате — на общей шине Forge.
         MinecraftForge.EVENT_BUS.register(ServerEvents.class);
         MinecraftForge.EVENT_BUS.register(EffectCommands.class);
+        MinecraftForge.EVENT_BUS.register(StudioAccess.class);
 
         LOGGER.info("[ScriptCraft] Мод загружен. Папка скриптов: {}", ScriptPaths.scriptsDir());
     }

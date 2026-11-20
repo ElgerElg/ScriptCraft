@@ -3,6 +3,7 @@ package com.scriptcraft.network;
 import com.scriptcraft.lang.Feedback;
 import com.scriptcraft.script.ScriptLoader;
 import com.scriptcraft.script.ScriptPaths;
+import com.scriptcraft.studio.StudioAccess;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkEvent;
@@ -22,7 +23,7 @@ public record ScriptReloadPacket(String name) {
     public static void handle(ScriptReloadPacket packet, Supplier<NetworkEvent.Context> ctx) {
         ServerPlayer player = ctx.get().getSender();
         ctx.get().enqueueWork(() -> {
-            if (player == null || !player.hasPermissions(2) || !ScriptPaths.contained(packet.name)) {
+            if (player == null || !StudioAccess.allow(player) || !ScriptPaths.contained(packet.name)) {
                 return;
             }
             if (ScriptPaths.isDisabled(packet.name)) {
