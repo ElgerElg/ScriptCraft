@@ -21,7 +21,8 @@ public final class ModNetwork {
     // 10: клик по тексту/картинке/слоту, элемент list, пакеты клавиш и меню.
     // 11: у предмета в таблице привязок тип, еда и инструмент; у блока — трение, скорость, прыжок, падение, горение.
     // 12: студия — ревизия сохранения, живая правка, право scriptcraft.studio.
-    private static final String PROTOCOL_VERSION = "12";
+    // 13: студия — проводник по scriptcraft/, картинки, загрузка файлов, активные редакторы.
+    private static final String PROTOCOL_VERSION = "13";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(ScriptCraft.MODID, "main"),
@@ -145,6 +146,21 @@ public final class ModNetwork {
                 .encoder(StudioLivePacket.View::encode)
                 .decoder(StudioLivePacket.View::decode)
                 .consumerMainThread(StudioLivePacket.View::handle)
+                .add();
+        CHANNEL.messageBuilder(StudioExplorerPacket.Action.class, id++, NetworkDirection.PLAY_TO_SERVER)
+                .encoder(StudioExplorerPacket.Action::encode)
+                .decoder(StudioExplorerPacket.Action::decode)
+                .consumerMainThread(StudioExplorerPacket.Action::handle)
+                .add();
+        CHANNEL.messageBuilder(StudioExplorerPacket.DirView.class, id++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(StudioExplorerPacket.DirView::encode)
+                .decoder(StudioExplorerPacket.DirView::decode)
+                .consumerMainThread(StudioExplorerPacket.DirView::handle)
+                .add();
+        CHANNEL.messageBuilder(StudioExplorerPacket.FileView.class, id++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(StudioExplorerPacket.FileView::encode)
+                .decoder(StudioExplorerPacket.FileView::decode)
+                .consumerMainThread(StudioExplorerPacket.FileView::handle)
                 .add();
     }
 

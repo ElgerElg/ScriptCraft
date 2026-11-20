@@ -29,8 +29,8 @@ public record ScriptDeletePacket(String name) {
             if (ScriptLoader.removeScript(player.createCommandSourceStack(), packet.name) != 0) {
                 StudioRooms.forget(player.getServer(), packet.name, player.getUUID());
             }
-            ModNetwork.sendTo(player, ScriptListPacket.ofServer());
-            ModNetwork.sendTo(player, LogPacket.from(ScriptLoader.journal(), false));
+            com.scriptcraft.studio.StudioExplorer.broadcastScriptsAndLog(player.getServer());
+            com.scriptcraft.studio.StudioExplorer.broadcastDirs(player.getServer());
         });
         ctx.get().setPacketHandled(true);
     }

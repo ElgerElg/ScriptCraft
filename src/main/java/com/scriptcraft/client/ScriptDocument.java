@@ -1,5 +1,6 @@
 package com.scriptcraft.client;
 
+import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 
@@ -7,10 +8,17 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Текст одного скрипта в студии: курсор, выделение, отмена и возврат. */
+/** Текст одного скрипта или файла в студии (или просмотр картинки): курсор, выделение, отмена и возврат. */
 @OnlyIn(Dist.CLIENT)
 public final class ScriptDocument {
-    public final String name;
+    public String name;
+    /** true — файл вне scripts/ (сохраняется через StudioExplorerPacket.Action.WRITE_FILE). */
+    public boolean genericFile;
+    /** true — открыт файл картинки (.png/.jpg) для просмотра. */
+    public boolean isImage;
+    public ResourceLocation imageId;
+    public int imageW;
+    public int imageH;
     public final List<String> lines = new ArrayList<>();
     public boolean loaded;
     public String saved = "";
@@ -102,7 +110,7 @@ public final class ScriptDocument {
         }
     }
 
-    /** Сдвиг строки курсора, если выше вставили или удалили строки. */
+    /** Сдвиг строки курсора, если выше (или прямо рядом) вставили или удалили строки. */
     private static int lineDelta(List<String> oldLines, List<String> newLines, int targetLine) {
         int diff = newLines.size() - oldLines.size();
         if (diff == 0) {
@@ -116,6 +124,13 @@ public final class ScriptDocument {
         if (targetLine < prefix) {
             return 0;
         }
+        if (diff > 0 && targetLine == prefix && prefix + diff < newLines.size()
+                && oldLines.get(prefix).equals(newLines.get(prefix + diff))) {
+            return diff;
+        }
+        if (targetLine > prefix) {
+            return diff;
+        }
         int suffix = 0;
         while (suffix < limit - prefix
                 && oldLines.get(oldLines.size() - 1 - suffix).equals(newLines.get(newLines.size() - 1 - suffix))) {
@@ -125,6 +140,66 @@ public final class ScriptDocument {
             return diff;
         }
         return 0;
+    }
+
+    /** Заменить ведущие пробелы (по 4 пробела) на TAB во всём документе. */
+    public int spacesToTabs() {
+        if (!loaded || isImage) return 0;
+        snapshot();
+        int changed = 0;
+        for (int i = 0; i < lines.size(); i++) {
+            String s = lines.get(i);
+            int lead = 0;
+            while (lead < s.length() && (s.charAt(lead) == ' ' || s.charAt(lead) == '\t')) lead++;
+            if (lead == 0) continue;
+            String prefix = s.substring(0, lead);
+            StringBuilder out = new StringBuilder();
+            int sp = 0;
+            for (int k = 0; k < prefix.length(); k++) {
+                char c = prefix.charAt(k);
+                if (c == ' ') {
+                    sp++;
+                    if (sp == 4) {
+                        out.append('\t');
+                        sp = 0;
+                    }
+                } else {
+                    if (sp > 0) {
+                        out.append('\t');
+                        sp = 0;
+                    }
+                    out.append('\t');
+                }
+            }
+            while (sp-- > 0) out.append(' ');
+            String next = out + s.substring(lead);
+            if (!next.equals(s)) {
+                lines.set(i, next);
+                changed++;
+            }
+        }
+        col = Math.min(col, lines.get(line).length());
+        return changed;
+    }
+
+    /** Заменить ведущие TAB на 4 пробела во всём документе. */
+    public int tabsToSpaces() {
+        if (!loaded || isImage) return 0;
+        snapshot();
+        int changed = 0;
+        for (int i = 0; i < lines.size(); i++) {
+            String s = lines.get(i);
+            int lead = 0;
+            while (lead < s.length() && (s.charAt(lead) == ' ' || s.charAt(lead) == '\t')) lead++;
+            if (lead == 0) continue;
+            String next = s.substring(0, lead).replace("\t", "    ") + s.substring(lead);
+            if (!next.equals(s)) {
+                lines.set(i, next);
+                changed++;
+            }
+        }
+        col = Math.min(col, lines.get(line).length());
+        return changed;
     }
 
     /** Перевод строки с сохранением отступа (пробелы и TAB) текущей строки. */

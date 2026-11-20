@@ -10,6 +10,7 @@ import com.scriptcraft.network.ScriptDeletePacket;
 import com.scriptcraft.network.ScriptReloadPacket;
 import com.scriptcraft.network.LogRequestPacket;
 import com.scriptcraft.network.ScriptListPacket;
+import com.scriptcraft.network.StudioExplorerPacket;
 import com.scriptcraft.network.StudioLivePacket;
 import com.scriptcraft.script.ScriptLog;
 import net.minecraft.Util;
@@ -24,6 +25,9 @@ import net.minecraftforge.api.distmarker.OnlyIn;
 import org.lwjgl.glfw.GLFW;
 
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -88,16 +92,24 @@ public class StudioScreen extends Screen {
     private int sidebarScroll;
     private int sidebarMaxScroll;
     private int sbX, sbY, sbW, sbH;
-    private int sbToggleX, sbToggleY, sbNewX, sbRefX;
+    private int sbToggleX, sbToggleY, sbBackX, sbFwdX, sbNewX, sbMkdirX, sbRenX, sbDelX, sbBarY;
+    /** Режим диалога ввода имени: "file", "mkdir", "rename". */
+    private String namingMode = "file";
+    private String renameTarget = "";
+    private boolean explorerFocused;
     private StudioAutocomplete.Match acMatch;
     private int acSel;
     private int acX, acY, acW, acH;
     private final List<SidebarHit> sidebarHits = new ArrayList<>();
+    private final List<PeerHeadHit> peerHeadHits = new ArrayList<>();
     private final List<HotkeyHit> hotkeyHits = new ArrayList<>();
     private int hkResetX, hkResetY, hkResetW;
     private int setAcX, setAcY, setAutoX, setAutoY, setSbLeftX, setSbRightX, setSbY;
 
-    private record SidebarHit(int y, int h, String name) {
+    private record SidebarHit(int y, int h, String fullPath, boolean dir, boolean parent, int toggleX) {
+    }
+
+    private record PeerHeadHit(int x, int y, int w, int h, int line, int col) {
     }
 
     private record HotkeyHit(int x, int y, int w, int h, String id) {
@@ -148,6 +160,31 @@ public class StudioScreen extends Screen {
     public void onClose() {
         StudioSync.leave();
         super.onClose();
+    }
+
+    /** Перетаскивание файлов с рабочего стола прямо в окно Майнкрафта -> загрузка на сервер в текущую папку проводника. */
+    @Override
+    public void onFilesDrop(List<Path> paths) {
+        if (paths == null || paths.isEmpty() || this.minecraft == null || this.minecraft.getConnection() == null) {
+            return;
+        }
+        String dir = StudioSession.explorerDir == null ? "" : StudioSession.explorerDir;
+        for (Path p : paths) {
+            try {
+                if (!Files.isRegularFile(p)) continue;
+                byte[] bytes = Files.readAllBytes(p);
+                if (bytes.length > com.scriptcraft.studio.StudioExplorer.MAX_FILE_BYTES) {
+                    ClientToasts.push(p.getFileName() + " > 900KB");
+                    continue;
+                }
+                String fileName = p.getFileName().toString();
+                String rel = dir.isEmpty() ? fileName : dir + "/" + fileName;
+                ModNetwork.sendToServer(new StudioExplorerPacket.Action(StudioExplorerPacket.Kind.WRITE_FILE, rel, "", bytes));
+                ClientToasts.push(Messages.toast("studio.exp.uploaded", fileName));
+            } catch (Exception e) {
+                ClientToasts.push("Upload error: " + e.getMessage());
+            }
+        }
     }
 
     private float easeOutCubic(float t) {
@@ -282,6 +319,7 @@ public class StudioScreen extends Screen {
         if (!catalogRequested && this.minecraft != null && this.minecraft.getConnection() != null) {
             catalogRequested = true;
             ModNetwork.sendToServer(new ScriptListPacket.Request());
+            ModNetwork.sendToServer(new StudioExplorerPacket.Action(StudioExplorerPacket.Kind.LIST, StudioSession.explorerDir, ""));
         }
         List<String> names = new ArrayList<>(StudioSession.docs.keySet());
         for (String name : names) {
@@ -419,7 +457,8 @@ public class StudioScreen extends Screen {
         x += 8;
         tool(g, mx, my, x, y, "find", Messages.get("studio.find_replace"));
 
-        // Аватары участников совместной правки в правой части тулбара
+        // Аватары участников совместной правки в правой части тулбара (клик -> переход на их строку)
+        peerHeadHits.clear();
         ScriptDocument doc = script();
         if (doc != null && doc.live) {
             List<StudioLivePacket.Peer> roomPeers = StudioSession.peers(doc.name);
@@ -438,6 +477,7 @@ public class StudioScreen extends Screen {
                 int hy = y + 6;
                 g.fill(rx - 1, hy - 1, rx + 11, hy + 11, pc);
                 blitHead(g, peer.id(), rx, hy, 10);
+                peerHeadHits.add(new PeerHeadHit(rx - 1, hy - 1, 12, 12, peer.line(), peer.col()));
                 if (hover(mx, my, rx - 1, hy - 1, 12, 12)) {
                     tip = peer.name() + " (Ln " + (peer.line() + 1) + ")";
                     tipX = mx - this.font.width(tip) - 6;
@@ -1020,6 +1060,19 @@ public class StudioScreen extends Screen {
         border(g, editorX, editorY, editorW, editorH, 0xFF212B3C);
         if (!doc.loaded) {
             g.drawString(this.font, Messages.get("studio.loading"), editorX + 10, editorY + 10, MUTED, false);
+        } else if (doc.isImage && doc.imageId != null) {
+            int maxW = Math.max(32, editorW - 32);
+            int maxH = Math.max(32, editorH - 40);
+            float scale = Math.min(4f, Math.min(maxW / (float) Math.max(1, doc.imageW), maxH / (float) Math.max(1, doc.imageH)));
+            int dw = Math.max(1, Math.round(doc.imageW * scale));
+            int dh = Math.max(1, Math.round(doc.imageH * scale));
+            int ix = editorX + (editorW - dw) / 2;
+            int iy = editorY + (editorH - dh - 14) / 2;
+            g.fill(ix - 3, iy - 3, ix + dw + 3, iy + dh + 3, 0xFF1A2232);
+            border(g, ix - 3, iy - 3, dw + 6, dh + 6, EDGE_HOT);
+            g.blit(doc.imageId, ix, iy, dw, dh, 0, 0, doc.imageW, doc.imageH, doc.imageW, doc.imageH);
+            String dim = doc.imageW + " × " + doc.imageH + " px";
+            g.drawString(this.font, dim, editorX + (editorW - this.font.width(dim)) / 2, iy + dh + 8, MUTED, false);
         } else {
             int textW = Math.max(40, editorW - gw - 8 - BAR_W);
             horizMax = 0;
@@ -1326,8 +1379,8 @@ public class StudioScreen extends Screen {
     private void renderSidebar(GuiGraphics g, int mx, int my, boolean open, boolean right) {
         sidebarHits.clear();
         g.fill(sbX, sbY, sbX + sbW, sbY + sbH, SURFACE);
-        border(g, sbX, sbY, sbW, sbH, EDGE);
-        // Подсветка перетаскиваемого края сайдбара
+        border(g, sbX, sbY, sbW, sbH, explorerFocused ? ACCENT : EDGE);
+        // Подсветка перетаскиваемого края проводника
         int resizeEdgeX = right ? sbX : sbX + sbW - 2;
         boolean edgeHot = open && (drag == Drag.SIDEBAR_RESIZE || (Math.abs(mx - resizeEdgeX) <= 3 && my >= sbY && my <= sbY + sbH));
         if (edgeHot) {
@@ -1340,73 +1393,181 @@ public class StudioScreen extends Screen {
             boolean hot = hover(mx, my, sbToggleX, sbToggleY, 14, 14);
             if (hot) g.fill(sbToggleX, sbToggleY, sbToggleX + 14, sbToggleY + 14, ROW_HOT);
             g.drawString(this.font, right ? "«" : "»", sbToggleX + 4, sbToggleY + 3, hot ? GOLD : MUTED, false);
-            sbNewX = -1000;
-            sbRefX = -1000;
+            sbBackX = sbFwdX = sbNewX = sbMkdirX = sbRenX = sbDelX = -1000;
             return;
         }
-        g.fill(sbX + 1, sbY + 1, sbX + sbW - 1, sbY + 20, BAR);
-        g.fill(sbX + 1, sbY + 20, sbX + sbW - 1, sbY + 21, EDGE);
-        g.drawString(this.font, trim(Messages.get("studio.sidebar.files"), sbW - 56), sbX + 7, sbY + 6, GOLD, false);
 
+        // Заголовок: Проводник + кнопка сворачивания
+        g.fill(sbX + 1, sbY + 1, sbX + sbW - 1, sbY + 19, BAR);
+        g.drawString(this.font, trim(Messages.get("studio.sidebar.files"), sbW - 26), sbX + 7, sbY + 6, GOLD, false);
         sbToggleX = sbX + sbW - 17;
-        sbRefX = sbToggleX - 16;
-        sbNewX = sbRefX - 16;
         boolean tHot = hover(mx, my, sbToggleX, sbToggleY, 14, 14);
-        boolean rHot = hover(mx, my, sbRefX, sbToggleY, 14, 14);
-        boolean nHot = hover(mx, my, sbNewX, sbToggleY, 14, 14);
-        if (nHot) g.fill(sbNewX, sbToggleY, sbNewX + 14, sbToggleY + 14, ROW_HOT);
-        if (rHot) g.fill(sbRefX, sbToggleY, sbRefX + 14, sbToggleY + 14, ROW_HOT);
         if (tHot) g.fill(sbToggleX, sbToggleY, sbToggleX + 14, sbToggleY + 14, ROW_HOT);
-        g.drawString(this.font, "+", sbNewX + 4, sbToggleY + 3, nHot ? GOLD : TEXT, false);
-        g.drawString(this.font, "↻", sbRefX + 4, sbToggleY + 3, rHot ? ACCENT : MUTED, false);
         g.drawString(this.font, right ? "»" : "«", sbToggleX + 4, sbToggleY + 3, tHot ? GOLD : MUTED, false);
 
-        int listTop = sbY + 23;
-        int listH = Math.max(10, sbH - 25);
-        int totalH = Math.max(1, StudioSession.catalog.size()) * 16 + 4;
+        // Панель действий проводника: ← → + папка ✎ − (без кнопки обновить — авто-синхрон!)
+        sbBarY = sbY + 20;
+        g.fill(sbX + 1, sbBarY, sbX + sbW - 1, sbBarY + 17, 0xFF131924);
+        g.fill(sbX + 1, sbBarY + 17, sbX + sbW - 1, sbBarY + 18, EDGE);
+        int bx = sbX + 4;
+        sbBackX = bx; bx += 16;
+        sbFwdX = bx; bx += 18;
+        sbNewX = bx; bx += 16;
+        sbMkdirX = bx; bx += 16;
+        sbRenX = bx; bx += 16;
+        sbDelX = bx;
+        paintExpBtn(g, mx, my, sbBackX, sbBarY + 2, "←", !StudioSession.dirBack.isEmpty(), null);
+        paintExpBtn(g, mx, my, sbFwdX, sbBarY + 2, "→", !StudioSession.dirForward.isEmpty(), null);
+        paintExpBtn(g, mx, my, sbNewX, sbBarY + 2, "+", true, Messages.get("studio.m.new"));
+        paintExpBtn(g, mx, my, sbMkdirX, sbBarY + 2, "D", true, Messages.get("studio.exp.mkdir"));
+        paintExpBtn(g, mx, my, sbRenX, sbBarY + 2, "✎", StudioSession.selectedExplorerPath != null, Messages.get("studio.exp.rename"));
+        paintExpBtn(g, mx, my, sbDelX, sbBarY + 2, "-", StudioSession.selectedExplorerPath != null, Messages.get("studio.exp.delete"));
+
+        // Текущий путь
+        int pathY = sbBarY + 19;
+        String curDir = StudioSession.explorerDir == null ? "" : StudioSession.explorerDir;
+        String shownPath = curDir.isEmpty() ? "scriptcraft/" : "scriptcraft/" + curDir + "/";
+        g.fill(sbX + 1, pathY, sbX + sbW - 1, pathY + 14, 0xFF0F141D);
+        g.drawString(this.font, trim(shownPath, sbW - 10), sbX + 5, pathY + 3, MUTED, false);
+
+        int listTop = pathY + 15;
+        int listH = Math.max(10, sbY + sbH - listTop - 2);
+        boolean hasParent = !curDir.isEmpty();
+        int rowCount = (hasParent ? 1 : 0) + StudioSession.explorerEntries.size();
+        int totalH = Math.max(1, rowCount) * 16 + 4;
         sidebarMaxScroll = Math.max(0, totalH - listH);
         sidebarScroll = Math.max(0, Math.min(sidebarScroll, sidebarMaxScroll));
 
+        UUID selfId = this.minecraft != null && this.minecraft.player != null ? this.minecraft.player.getUUID() : null;
         g.enableScissor(sbX + 1, listTop, sbX + sbW - 1, sbY + sbH - 1);
-        if (StudioSession.catalog.isEmpty()) {
-            g.drawString(this.font, trim(Messages.get("studio.empty"), sbW - 12), sbX + 6, listTop + 4, MUTED, false);
-        } else {
-            int ry = listTop + 2 - sidebarScroll;
-            for (String name : StudioSession.catalog) {
-                if (ry + 16 >= listTop && ry <= sbY + sbH) {
-                    boolean active = name.equals(StudioSession.active);
-                    boolean hot = hover(mx, my, sbX + 2, ry, sbW - 4, 15);
-                    if (active) {
-                        g.fill(sbX + 2, ry, sbX + sbW - 2, ry + 15, ROW_HOT);
-                        g.fill(sbX + 2, ry, sbX + 4, ry + 15, GOLD);
-                    } else if (hot) {
-                        g.fill(sbX + 2, ry, sbX + sbW - 2, ry + 15, ROW);
+        int ry = listTop + 2 - sidebarScroll;
+        if (hasParent) {
+            if (ry + 16 >= listTop && ry <= sbY + sbH) {
+                boolean hot = hover(mx, my, sbX + 2, ry, sbW - 4, 15);
+                if (hot) g.fill(sbX + 2, ry, sbX + sbW - 2, ry + 15, ROW);
+                g.drawString(this.font, "..", sbX + 8, ry + 4, GOLD, false);
+                sidebarHits.add(new SidebarHit(ry, 15, parentOf(curDir), true, true, -1));
+            }
+            ry += 16;
+        }
+        for (StudioExplorerPacket.Entry entry : StudioSession.explorerEntries) {
+            if (ry + 16 >= listTop && ry <= sbY + sbH) {
+                String full = curDir.isEmpty() ? entry.name() : curDir + "/" + entry.name();
+                String tabKey = full.startsWith("scripts/") && full.endsWith(".sc")
+                        ? full.substring("scripts/".length()) : "@" + full;
+                boolean active = tabKey.equals(StudioSession.active);
+                boolean selected = full.equals(StudioSession.selectedExplorerPath);
+                boolean hot = hover(mx, my, sbX + 2, ry, sbW - 4, 15);
+                if (active || selected) {
+                    g.fill(sbX + 2, ry, sbX + sbW - 2, ry + 15, active ? ROW_HOT : 0xFF202B3D);
+                    g.fill(sbX + 2, ry, sbX + 4, ry + 15, active ? GOLD : ACCENT);
+                } else if (hot) {
+                    g.fill(sbX + 2, ry, sbX + sbW - 2, ry + 15, ROW);
+                }
+
+                // Справа: переключатель вкл/выкл для .sc скриптов + головы редакторов в этом файле
+                int rightLim = sbX + sbW - 5;
+                int toggleX = -1;
+                boolean isScript = !entry.dir() && full.startsWith("scripts/") && entry.name().endsWith(".sc");
+                if (isScript) {
+                    boolean disabled = entry.name().startsWith("-");
+                    toggleX = rightLim - 11;
+                    boolean togHot = hover(mx, my, toggleX, ry + 2, 11, 11);
+                    g.fill(toggleX + 2, ry + 5, toggleX + 8, ry + 10, disabled ? 0xFF475264 : GREEN);
+                    if (togHot) {
+                        border(g, toggleX, ry + 2, 11, 11, GOLD);
+                        tip = Messages.get("studio.exp.toggle");
+                        tipX = mx + 8;
+                        tipY = my + 12;
                     }
+                    rightLim = toggleX - 3;
+                }
+                // Головы редакторов, сидящих в этом файле
+                for (StudioExplorerPacket.ActiveEditor ed : StudioSession.activeEditors) {
+                    if (selfId != null && selfId.equals(ed.id())) continue;
+                    if (!ed.path().equals(full)) continue;
+                    if (rightLim - 11 < sbX + 26) break;
+                    rightLim -= 10;
+                    int pc = peerColor(ed.name());
+                    g.fill(rightLim - 1, ry + 2, rightLim + 9, ry + 12, pc);
+                    blitHead(g, ed.id(), rightLim, ry + 3, 8);
+                    if (hover(mx, my, rightLim - 1, ry + 2, 10, 10)) {
+                        tip = ed.name();
+                        tipX = mx + 8;
+                        tipY = my + 12;
+                    }
+                    rightLim -= 2;
+                }
+
+                int tx = sbX + 7;
+                if (entry.dir()) {
+                    // Маленькая иконка папки
+                    g.fill(tx, ry + 5, tx + 8, ry + 11, GOLD);
+                    g.fill(tx, ry + 4, tx + 4, ry + 5, GOLD);
+                    tx += 11;
+                } else {
                     boolean hasErr = false;
-                    for (ScriptLog.Issue issue : StudioSession.issues) {
-                        if (issue.file().equals(name)) {
-                            hasErr = true;
-                            break;
+                    if (isScript) {
+                        for (ScriptLog.Issue issue : StudioSession.issues) {
+                            if (issue.file().equals(tabKey)) {
+                                hasErr = true;
+                                break;
+                            }
                         }
                     }
-                    boolean isDirty = dirty(name);
-                    int tx = sbX + 7;
                     if (hasErr) {
                         g.fill(tx, ry + 5, tx + 4, ry + 9, RED);
                         tx += 7;
-                    } else if (isDirty) {
+                    } else if (dirty(tabKey)) {
                         g.fill(tx, ry + 5, tx + 4, ry + 9, GOLD);
                         tx += 7;
+                    } else if (com.scriptcraft.studio.StudioExplorer.isImageName(entry.name())) {
+                        g.fill(tx, ry + 4, tx + 6, ry + 10, ACCENT);
+                        tx += 9;
                     }
-                    boolean disabled = name.startsWith("-") || name.contains("/-");
-                    int color = active ? TEXT : (disabled ? 0xFF636E80 : (hot ? TEXT : MUTED));
-                    g.drawString(this.font, trim(name, sbW - (tx - sbX) - 6), tx, ry + 4, color, false);
-                    sidebarHits.add(new SidebarHit(ry, 15, name));
                 }
-                ry += 16;
+                boolean disabled = isScript && entry.name().startsWith("-");
+                int color = entry.dir() ? GOLD : (active ? TEXT : (disabled ? 0xFF636E80 : (hot ? TEXT : MUTED)));
+                int maxW = Math.max(12, rightLim - tx);
+                g.drawString(this.font, trim(entry.name(), maxW), tx, ry + 4, color, false);
+                sidebarHits.add(new SidebarHit(ry, 15, full, entry.dir(), false, toggleX));
             }
+            ry += 16;
         }
         g.disableScissor();
+    }
+
+    private void paintExpBtn(GuiGraphics g, int mx, int my, int x, int y, String sym, boolean enabled, String hint) {
+        boolean hot = enabled && hover(mx, my, x, y, 14, 13);
+        if (hot) {
+            g.fill(x, y, x + 14, y + 13, ROW_HOT);
+            if (hint != null) {
+                tip = hint;
+                tipX = mx + 6;
+                tipY = my + 14;
+            }
+        }
+        int col = !enabled ? 0xFF424D60 : (hot ? GOLD : TEXT);
+        g.drawString(this.font, sym, x + (14 - this.font.width(sym)) / 2, y + 3, col, false);
+    }
+
+    private static String parentOf(String dir) {
+        if (dir == null || dir.isEmpty()) return "";
+        int slash = dir.lastIndexOf('/');
+        return slash < 0 ? "" : dir.substring(0, slash);
+    }
+
+    private void navigateDir(String next, boolean recordHistory) {
+        String cur = StudioSession.explorerDir == null ? "" : StudioSession.explorerDir;
+        String norm = com.scriptcraft.studio.StudioExplorer.normalizeRel(next);
+        if (recordHistory && !norm.equals(cur)) {
+            StudioSession.dirBack.push(cur);
+            StudioSession.dirForward.clear();
+        }
+        StudioSession.explorerDir = norm;
+        StudioSession.selectedExplorerPath = null;
+        sidebarScroll = 0;
+        ModNetwork.sendToServer(new StudioExplorerPacket.Action(StudioExplorerPacket.Kind.LIST, norm, ""));
     }
 
     private void renderAutocomplete(GuiGraphics g, int mx, int my, ScriptDocument doc) {
@@ -1676,7 +1837,9 @@ public class StudioScreen extends Screen {
         g.fill(x + 2, y + 2, x + 194, y + 38, 0x55000000);
         g.fill(x, y, x + 192, y + 36, 0xF7121824);
         border(g, x, y, 192, 36, GOLD);
-        g.drawString(this.font, nameBuf.isEmpty() ? Messages.get("studio.new_name") : nameBuf + "_", x + 10, y + 14, nameBuf.isEmpty() ? MUTED : TEXT, false);
+        String hint = "mkdir".equals(namingMode) ? Messages.get("studio.exp.folder_name")
+                : ("rename".equals(namingMode) ? Messages.get("studio.exp.rename") : Messages.get("studio.new_name"));
+        g.drawString(this.font, nameBuf.isEmpty() ? hint : nameBuf + "_", x + 10, y + 14, nameBuf.isEmpty() ? MUTED : TEXT, false);
     }
 
     private void layoutToolPanel() {
@@ -2147,6 +2310,16 @@ public class StudioScreen extends Screen {
             return true;
         }
         if (script() != null && my >= py + TITLE + MENU_H && my < py + TITLE + MENU_H + TOOL_H) {
+            for (PeerHeadHit hit : peerHeadHits) {
+                if (hover(mx, my, hit.x, hit.y, hit.w, hit.h)) {
+                    ScriptDocument d = script();
+                    if (d != null && d.loaded && !d.isImage) {
+                        d.move(hit.line, hit.col, false);
+                        d.followCaret = true;
+                    }
+                    return true;
+                }
+            }
             toolClick(mx);
             return true;
         }
@@ -2166,27 +2339,68 @@ public class StudioScreen extends Screen {
                 return true;
             }
             if (hover(mx, my, sbX, sbY, sbW, sbH)) {
+                explorerFocused = true;
                 if (hover(mx, my, sbToggleX, sbToggleY, 14, 14)) {
                     ClientUiSettings.setSidebarOpen(!ClientUiSettings.sidebarOpen());
                     return true;
                 }
-                if (sbNewX >= 0 && hover(mx, my, sbNewX, sbToggleY, 14, 14)) {
+                if (sbBackX >= 0 && hover(mx, my, sbBackX, sbBarY + 2, 14, 13)) {
+                    if (!StudioSession.dirBack.isEmpty()) {
+                        StudioSession.dirForward.push(StudioSession.explorerDir == null ? "" : StudioSession.explorerDir);
+                        navigateDir(StudioSession.dirBack.pop(), false);
+                    }
+                    return true;
+                }
+                if (sbFwdX >= 0 && hover(mx, my, sbFwdX, sbBarY + 2, 14, 13)) {
+                    if (!StudioSession.dirForward.isEmpty()) {
+                        StudioSession.dirBack.push(StudioSession.explorerDir == null ? "" : StudioSession.explorerDir);
+                        navigateDir(StudioSession.dirForward.pop(), false);
+                    }
+                    return true;
+                }
+                if (sbNewX >= 0 && hover(mx, my, sbNewX, sbBarY + 2, 14, 13)) {
                     naming = true;
+                    namingMode = "file";
                     nameBuf = "";
                     return true;
                 }
-                if (sbRefX >= 0 && hover(mx, my, sbRefX, sbToggleY, 14, 14)) {
-                    ModNetwork.sendToServer(new ScriptListPacket.Request());
+                if (sbMkdirX >= 0 && hover(mx, my, sbMkdirX, sbBarY + 2, 14, 13)) {
+                    naming = true;
+                    namingMode = "mkdir";
+                    nameBuf = "";
+                    return true;
+                }
+                if (sbRenX >= 0 && hover(mx, my, sbRenX, sbBarY + 2, 14, 13) && StudioSession.selectedExplorerPath != null) {
+                    startRenameSelected();
+                    return true;
+                }
+                if (sbDelX >= 0 && hover(mx, my, sbDelX, sbBarY + 2, 14, 13) && StudioSession.selectedExplorerPath != null) {
+                    ask = "delete_exp";
+                    askName = StudioSession.selectedExplorerPath;
                     return true;
                 }
                 for (SidebarHit hit : sidebarHits) {
                     if (my >= hit.y && my < hit.y + hit.h) {
-                        openScript(hit.name);
+                        if (hit.parent) {
+                            navigateDir(hit.fullPath, true);
+                            return true;
+                        }
+                        if (hit.toggleX >= 0 && mx >= hit.toggleX && mx < hit.toggleX + 12) {
+                            ModNetwork.sendToServer(new StudioExplorerPacket.Action(StudioExplorerPacket.Kind.TOGGLE_SCRIPT, hit.fullPath, ""));
+                            return true;
+                        }
+                        StudioSession.selectedExplorerPath = hit.fullPath;
+                        if (hit.dir) {
+                            navigateDir(hit.fullPath, true);
+                        } else {
+                            openExplorerFile(hit.fullPath);
+                        }
                         return true;
                     }
                 }
                 return true;
             }
+            explorerFocused = false;
         }
         if (doc != null && doc.loaded && hover(mx, my, editorX, editorY, editorW, editorH)) {
             panelFocus = 0;
@@ -2526,7 +2740,18 @@ public class StudioScreen extends Screen {
                 return true;
             }
         }
-        if (doc == null || !doc.loaded || settings) {
+        if (explorerFocused && StudioSession.selectedExplorerPath != null && !settings) {
+            if (key == GLFW.GLFW_KEY_DELETE) {
+                ask = "delete_exp";
+                askName = StudioSession.selectedExplorerPath;
+                return true;
+            }
+            if (key == GLFW.GLFW_KEY_F2) {
+                startRenameSelected();
+                return true;
+            }
+        }
+        if (doc == null || !doc.loaded || doc.isImage || settings) {
             return true;
         }
         if (acMatch != null && !acMatch.items().isEmpty()) {
@@ -2788,8 +3013,38 @@ public class StudioScreen extends Screen {
         }
     }
 
+    private void openExplorerFile(String relPath) {
+        if (relPath.startsWith("scripts/") && relPath.endsWith(".sc")) {
+            openScript(relPath.substring("scripts/".length()));
+            return;
+        }
+        ScriptDocument doc = StudioSession.openGenericFile(relPath);
+        catalog = false;
+        settings = false;
+        if (!doc.loaded) {
+            ModNetwork.sendToServer(new StudioExplorerPacket.Action(StudioExplorerPacket.Kind.READ_FILE, relPath, ""));
+        }
+    }
+
+    private void startRenameSelected() {
+        String sel = StudioSession.selectedExplorerPath;
+        if (sel == null || sel.isEmpty()) return;
+        int slash = sel.lastIndexOf('/');
+        renameTarget = sel;
+        nameBuf = slash < 0 ? sel : sel.substring(slash + 1);
+        namingMode = "rename";
+        naming = true;
+    }
+
     private void save(ScriptDocument doc) {
-        if (doc == null || !doc.loaded) {
+        if (doc == null || !doc.loaded || doc.isImage) {
+            return;
+        }
+        if (doc.genericFile) {
+            String rel = doc.name.startsWith("@") ? doc.name.substring(1) : doc.name;
+            byte[] bytes = doc.text().getBytes(StandardCharsets.UTF_8);
+            ModNetwork.sendToServer(new StudioExplorerPacket.Action(StudioExplorerPacket.Kind.WRITE_FILE, rel, "", bytes));
+            doc.saved = doc.text();
             return;
         }
         StudioSync.flushText(doc);
@@ -2818,16 +3073,38 @@ public class StudioScreen extends Screen {
     }
 
     private void createScript() {
-        String name = nameBuf.strip();
-        if (!name.endsWith(".sc")) {
-            name = name + ".sc";
-        }
+        String raw = nameBuf.strip();
         naming = false;
         nameBuf = "";
-        String body = "# \n\non load:\n    \n";
-        ScriptDocument doc = StudioSession.openScript(name);
-        doc.load(body);
-        ModNetwork.sendToServer(new ScriptDataPacket.Save(name, body, doc.revision));
+        if (raw.isEmpty()) {
+            return;
+        }
+        String dir = StudioSession.explorerDir == null ? "" : StudioSession.explorerDir;
+        if ("mkdir".equals(namingMode)) {
+            String rel = dir.isEmpty() ? raw : dir + "/" + raw;
+            ModNetwork.sendToServer(new StudioExplorerPacket.Action(StudioExplorerPacket.Kind.MKDIR, rel, ""));
+            return;
+        }
+        if ("rename".equals(namingMode)) {
+            String parent = parentOf(renameTarget);
+            String dst = parent.isEmpty() ? raw : parent + "/" + raw;
+            ModNetwork.sendToServer(new StudioExplorerPacket.Action(StudioExplorerPacket.Kind.RENAME, renameTarget, dst));
+            StudioSession.selectedExplorerPath = dst;
+            return;
+        }
+        if (dir.equals("scripts") || dir.startsWith("scripts/")) {
+            String file = raw.endsWith(".sc") ? raw : raw + ".sc";
+            String sub = dir.equals("scripts") ? "" : dir.substring("scripts/".length()) + "/";
+            String name = sub + file;
+            String body = "# \n\non load:\n\t\n";
+            ScriptDocument doc = StudioSession.openScript(name);
+            doc.load(body);
+            ModNetwork.sendToServer(new ScriptDataPacket.Save(name, body, doc.revision));
+            return;
+        }
+        String rel = dir.isEmpty() ? raw : dir + "/" + raw;
+        ModNetwork.sendToServer(new StudioExplorerPacket.Action(StudioExplorerPacket.Kind.WRITE_FILE, rel, "", new byte[0]));
+        openExplorerFile(rel);
     }
 
     private void placeJournalCaret(int mx, int my, boolean extend) {
@@ -3293,7 +3570,8 @@ public class StudioScreen extends Screen {
                     Messages.get("studio.m.save_all"), Messages.get("studio.m.delete"), Messages.get("studio.m.close"),
                     Messages.get("studio.m.exit"));
             case "edit" -> List.of(Messages.get("studio.m.undo"), Messages.get("studio.m.redo"), Messages.get("studio.m.cut"),
-                    Messages.get("studio.m.copy"), Messages.get("studio.m.paste"), Messages.get("studio.m.all"));
+                    Messages.get("studio.m.copy"), Messages.get("studio.m.paste"), Messages.get("studio.m.all"),
+                    Messages.get("studio.m.spaces_to_tabs"), Messages.get("studio.m.tabs_to_spaces"));
             case "search" -> List.of(Messages.get("studio.find_replace"));
             case "view" -> List.of(StudioSession.maximized ? Messages.get("studio.m.window") : Messages.get("studio.m.full"),
                     Messages.get("studio.journal"), Messages.get("studio.m.tools"));
@@ -3328,11 +3606,13 @@ public class StudioScreen extends Screen {
                 }
             }
             case "edit" -> {
+                ScriptDocument doc = script();
                 if (index == 5) {
-                    ScriptDocument doc = script();
-                    if (doc != null) {
-                        doc.selectAll();
-                    }
+                    if (doc != null) doc.selectAll();
+                } else if (index == 6) {
+                    if (doc != null) ClientToasts.push(Messages.toast("studio.converted_indent", doc.spacesToTabs()));
+                } else if (index == 7) {
+                    if (doc != null) ClientToasts.push(Messages.toast("studio.converted_indent", doc.tabsToSpaces()));
                 } else {
                     runTool(switch (index) {
                         case 0 -> "undo";
@@ -3610,8 +3890,9 @@ public class StudioScreen extends Screen {
     }
 
     private String shortName(String name) {
-        int slash = name.lastIndexOf('/');
-        String file = slash < 0 ? name : name.substring(slash + 1);
+        String clean = name.startsWith("@") ? name.substring(1) : name;
+        int slash = clean.lastIndexOf('/');
+        String file = slash < 0 ? clean : clean.substring(slash + 1);
         return file.endsWith(".sc") ? file.substring(0, file.length() - 3) : file;
     }
 
@@ -3640,6 +3921,9 @@ public class StudioScreen extends Screen {
         if ("delete".equals(ask)) {
             ModNetwork.sendToServer(new ScriptDeletePacket(askName));
             dropTab(askName);
+        } else if ("delete_exp".equals(ask)) {
+            ModNetwork.sendToServer(new StudioExplorerPacket.Action(StudioExplorerPacket.Kind.DELETE, askName, ""));
+            StudioSession.selectedExplorerPath = null;
         } else if ("close".equals(ask)) {
             dropTab(askName);
         }
@@ -3655,7 +3939,9 @@ public class StudioScreen extends Screen {
     }
 
     private void renderAsk(GuiGraphics g, int mx, int my) {
-        String text = Messages.get("delete".equals(ask) ? "studio.ask.delete" : "studio.ask.close", askName);
+        String key = "delete".equals(ask) ? "studio.ask.delete"
+                : ("delete_exp".equals(ask) ? "studio.exp.ask_delete" : "studio.ask.close");
+        String text = Messages.get(key, askName);
         int w = Math.max(200, this.font.width(text) + 24);
         int x = px + (pw - w) / 2;
         int y = py + ph / 2 - 28;

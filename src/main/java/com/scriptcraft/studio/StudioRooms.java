@@ -5,6 +5,7 @@ import com.scriptcraft.lang.Feedback;
 import com.scriptcraft.network.ModNetwork;
 import com.scriptcraft.network.ScriptDataPacket;
 import com.scriptcraft.network.ScriptPayload;
+import com.scriptcraft.network.StudioExplorerPacket;
 import com.scriptcraft.network.StudioLivePacket;
 import com.scriptcraft.script.ScriptPaths;
 import net.minecraft.server.MinecraftServer;
@@ -14,6 +15,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -36,6 +38,27 @@ public final class StudioRooms {
     public static void clear() {
         ROOMS.clear();
         lastLive = null;
+        StudioExplorer.clear();
+    }
+
+    /** Все активные редакторы по комнатам (путь относительно scriptcraft/, напр. "scripts/welcome.sc"). */
+    public static List<StudioExplorerPacket.ActiveEditor> activeEditors() {
+        List<StudioExplorerPacket.ActiveEditor> out = new ArrayList<>();
+        for (Map.Entry<String, Room> entry : ROOMS.entrySet()) {
+            String fullPath = "scripts/" + entry.getKey();
+            for (Seat seat : entry.getValue().peers.values()) {
+                out.add(new StudioExplorerPacket.ActiveEditor(seat.id, seat.name, fullPath));
+            }
+        }
+        return out;
+    }
+
+    /** Перенос комнаты при переименовании или включении/выключении скрипта. */
+    public static void renameRoom(String oldName, String newName) {
+        Room room = ROOMS.remove(oldName);
+        if (room != null) {
+            ROOMS.put(newName, room);
+        }
     }
 
     /** При изменении config.toml (вручную или через /sc reload config) уведомляет открытые студии без перезапуска. */
@@ -74,14 +97,16 @@ public final class StudioRooms {
             }
         }
         MinecraftServer server = player.getServer();
-        if (server != null) {
+        if (server != null && !touched.isEmpty()) {
             for (String name : touched) {
                 Room room = ROOMS.get(name);
                 if (room != null) {
                     broadcastPeers(server, name, room);
                 }
             }
+            StudioExplorer.broadcastDirs(server);
         }
+        StudioExplorer.onQuit(player);
         sweep();
     }
 
@@ -181,6 +206,7 @@ public final class StudioRooms {
                 room.saved = text;
                 room.lastEditor = player.getUUID();
                 room.revision = room.revision + 1;
+                room.rememberRevision();
                 now = room.revision;
                 tell(player.getServer(), name, room, player.getUUID(), text, now, true);
             } else {
@@ -202,10 +228,13 @@ public final class StudioRooms {
             if (room == null) {
                 return;
             }
-            room.peers.remove(player.getUUID());
+            boolean removed = room.peers.remove(player.getUUID()) != null;
             MinecraftServer server = player.getServer();
             if (server != null) {
                 broadcastPeers(server, edit.file(), room);
+                if (removed) {
+                    StudioExplorer.broadcastDirs(server);
+                }
             }
             sweep();
             return;
@@ -220,9 +249,13 @@ public final class StudioRooms {
                 return;
             }
         }
+        boolean joined = !room.peers.containsKey(player.getUUID());
         seat(room, player, edit);
+        MinecraftServer server = player.getServer();
+        if (joined && server != null) {
+            StudioExplorer.broadcastDirs(server);
+        }
         if (!edit.text()) {
-            MinecraftServer server = player.getServer();
             if (server != null) {
                 boolean behind = edit.revision() != room.revision;
                 for (UUID id : listeners(room, player.getUUID())) {
@@ -239,21 +272,29 @@ public final class StudioRooms {
         if (body.getBytes(StandardCharsets.UTF_8).length > ScriptPayload.MAX_BYTES) {
             return;
         }
+        String nextText = body;
+        boolean mergedDiffered = false;
         if (!fresh(room, room.revision, player, edit.revision())) {
-            sendView(player, edit.file(), room, true, true, true);
-            MinecraftServer server = player.getServer();
-            if (server != null) {
-                broadcastPeers(server, edit.file(), room);
+            String base = room.revTexts.get(edit.revision());
+            if (base != null) {
+                nextText = merge3Way(base, room.text, body);
+                mergedDiffered = !nextText.equals(body);
+            } else {
+                sendView(player, edit.file(), room, true, true, true);
+                if (server != null) {
+                    broadcastPeers(server, edit.file(), room);
+                }
+                return;
             }
-            return;
         }
-        boolean changed = !body.equals(room.text);
+        boolean changed = !nextText.equals(room.text);
         if (changed) {
-            room.text = body;
+            shiftOtherSeats(room, player.getUUID(), room.text, nextText);
+            room.text = nextText;
             room.lastEditor = player.getUUID();
             room.revision = room.revision + 1;
+            room.rememberRevision();
         }
-        MinecraftServer server = player.getServer();
         if (server == null) {
             return;
         }
@@ -263,7 +304,8 @@ public final class StudioRooms {
                 continue;
             }
             boolean self = other.getUUID().equals(player.getUUID());
-            sendView(other, edit.file(), room, changed && !self, false, self);
+            boolean replace = changed && (!self || mergedDiffered);
+            sendView(other, edit.file(), room, replace, false, self);
         }
     }
 
@@ -353,8 +395,77 @@ public final class StudioRooms {
         created.text = disk;
         created.saved = disk;
         created.revision = stamp;
+        created.rememberRevision();
         ROOMS.put(name, created);
         return created;
+    }
+
+    /** Трёхстороннее построчное слияние: позволяет двум редакторам печатать одновременно. */
+    private static String merge3Way(String base, String current, String incoming) {
+        if (base.equals(incoming)) return current;
+        if (base.equals(current)) return incoming;
+        List<String> b = Arrays.asList(base.split("\n", -1));
+        List<String> c = new ArrayList<>(Arrays.asList(current.split("\n", -1)));
+        List<String> inc = Arrays.asList(incoming.split("\n", -1));
+
+        // Находим диапазон изменённых строк в incoming относительно base
+        int p = 0;
+        int minBI = Math.min(b.size(), inc.size());
+        while (p < minBI && b.get(p).equals(inc.get(p))) p++;
+        int s = 0;
+        while (s < minBI - p && b.get(b.size() - 1 - s).equals(inc.get(inc.size() - 1 - s))) s++;
+
+        int bFrom = p, bTo = b.size() - s;
+        int iFrom = p, iTo = inc.size() - s;
+
+        // Находим, где этот же диапазон [bFrom..bTo) оказался в current
+        int cp = 0;
+        int minBC = Math.min(b.size(), c.size());
+        while (cp < minBC && b.get(cp).equals(c.get(cp))) cp++;
+        int cs = 0;
+        while (cs < minBC - cp && b.get(b.size() - 1 - cs).equals(c.get(c.size() - 1 - cs))) cs++;
+        int cDiff = c.size() - b.size();
+
+        int targetFrom, targetTo;
+        if (bTo <= cp) {
+            // Правка incoming строго выше правки current
+            targetFrom = bFrom;
+            targetTo = bTo;
+        } else if (bFrom >= b.size() - cs) {
+            // Правка incoming строго ниже правки current
+            targetFrom = bFrom + cDiff;
+            targetTo = bTo + cDiff;
+        } else {
+            // Обе правки в одной и той же строке — сохраняем входящую, если не совпадает
+            return incoming;
+        }
+        targetFrom = Math.max(0, Math.min(targetFrom, c.size()));
+        targetTo = Math.max(targetFrom, Math.min(targetTo, c.size()));
+        List<String> out = new ArrayList<>(c.size() + (iTo - iFrom));
+        out.addAll(c.subList(0, targetFrom));
+        out.addAll(inc.subList(iFrom, iTo));
+        out.addAll(c.subList(targetTo, c.size()));
+        return String.join("\n", out);
+    }
+
+    /** Сдвигает сохранённую строку курсора остальных участников при вставке/удалении строк. */
+    private static void shiftOtherSeats(Room room, UUID editor, String oldText, String newText) {
+        String[] oldL = oldText.split("\n", -1);
+        String[] newL = newText.split("\n", -1);
+        int diff = newL.length - oldL.length;
+        if (diff == 0) return;
+        int prefix = 0;
+        int limit = Math.min(oldL.length, newL.length);
+        while (prefix < limit && oldL[prefix].equals(newL[prefix])) prefix++;
+        for (Seat s : room.peers.values()) {
+            if (s.id.equals(editor)) continue;
+            if (s.line > prefix || (diff > 0 && s.line == prefix && prefix + diff < newL.length && oldL[prefix].equals(newL[prefix + diff]))) {
+                s.line = Math.max(0, Math.min(newL.length - 1, s.line + diff));
+            }
+            if (s.anchorLine >= 0 && (s.anchorLine > prefix || (diff > 0 && s.anchorLine == prefix))) {
+                s.anchorLine = Math.max(0, Math.min(newL.length - 1, s.anchorLine + diff));
+            }
+        }
     }
 
     private static void sweep() {
@@ -389,6 +500,16 @@ public final class StudioRooms {
         private long revision;
         private UUID lastEditor;
         private final Map<UUID, Seat> peers = new LinkedHashMap<>();
+        private final LinkedHashMap<Long, String> revTexts = new LinkedHashMap<>() {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<Long, String> eldest) {
+                return size() > 40;
+            }
+        };
+
+        private void rememberRevision() {
+            revTexts.put(revision, text);
+        }
     }
 
     private static final class Seat {

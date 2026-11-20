@@ -87,8 +87,8 @@ public record ScriptDataPacket(String name, String text, long revision, int flag
                 } else {
                     ScriptLoader.reloadOne(player.createCommandSourceStack(), packet.name);
                 }
-                ModNetwork.sendTo(player, ScriptListPacket.ofServer());
-                ModNetwork.sendTo(player, LogPacket.from(ScriptLoader.journal(), false));
+                com.scriptcraft.studio.StudioExplorer.broadcastScriptsAndLog(player.getServer());
+                com.scriptcraft.studio.StudioExplorer.broadcastDirs(player.getServer());
             });
             ctx.get().setPacketHandled(true);
         }

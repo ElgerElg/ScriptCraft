@@ -1,13 +1,23 @@
 package com.scriptcraft.client;
 
+import com.mojang.blaze3d.platform.NativeImage;
+import com.scriptcraft.ScriptCraft;
 import com.scriptcraft.lang.Messages;
 import com.scriptcraft.network.ScriptDataPacket;
+import com.scriptcraft.network.StudioExplorerPacket;
 import com.scriptcraft.network.StudioLivePacket;
 import com.scriptcraft.script.ScriptLog;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.texture.DynamicTexture;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -72,6 +82,14 @@ public final class StudioSession {
     }
     public static final Map<String, ScriptDocument> docs = new LinkedHashMap<>();
     private static final Map<String, List<StudioLivePacket.Peer>> peers = new LinkedHashMap<>();
+    /** Состояние проводника scriptcraft/. */
+    public static String explorerDir = "scripts";
+    public static List<StudioExplorerPacket.Entry> explorerEntries = List.of();
+    public static List<StudioExplorerPacket.ActiveEditor> activeEditors = List.of();
+    public static final Deque<String> dirBack = new ArrayDeque<>();
+    public static final Deque<String> dirForward = new ArrayDeque<>();
+    public static String selectedExplorerPath;
+    private static int imageSeq;
 
     private StudioSession() {
     }
@@ -88,6 +106,12 @@ public final class StudioSession {
         history.clear();
         docs.clear();
         peers.clear();
+        explorerDir = "scripts";
+        explorerEntries = List.of();
+        activeEditors = List.of();
+        dirBack.clear();
+        dirForward.clear();
+        selectedExplorerPath = null;
         StudioSync.reset();
     }
 
@@ -182,6 +206,98 @@ public final class StudioSession {
 
     public static void catalog(List<String> names) {
         catalog = new ArrayList<>(names);
+    }
+
+    public static void acceptExplorerDir(StudioExplorerPacket.DirView view) {
+        explorerDir = view.dir() == null ? "" : view.dir();
+        explorerEntries = List.copyOf(view.entries());
+        activeEditors = List.copyOf(view.editors());
+    }
+
+    public static ScriptDocument openGenericFile(String relPath) {
+        String key = "@" + relPath;
+        ScriptDocument existing = docs.get(key);
+        if (existing != null) {
+            active = key;
+            return existing;
+        }
+        ScriptDocument created = new ScriptDocument(key);
+        created.genericFile = true;
+        docs.put(key, created);
+        active = key;
+        return created;
+    }
+
+    public static void acceptExplorerFile(StudioExplorerPacket.FileView view) {
+        // Уведомление о переименовании / включении-выключении / удалении файла
+        if (view.renamedFrom() != null && !view.renamedFrom().isEmpty()) {
+            handleRemoteRename(view.renamedFrom(), view.path());
+            return;
+        }
+        String key = "@" + view.path();
+        ScriptDocument doc = docs.get(key);
+        if (doc == null) {
+            return;
+        }
+        if (view.binary()) {
+            try {
+                NativeImage img = NativeImage.read(new ByteArrayInputStream(view.data()));
+                DynamicTexture tex = new DynamicTexture(img);
+                ResourceLocation id = new ResourceLocation(ScriptCraft.MODID, "explorer_img/" + (++imageSeq));
+                Minecraft.getInstance().getTextureManager().register(id, tex);
+                doc.isImage = true;
+                doc.imageId = id;
+                doc.imageW = img.getWidth();
+                doc.imageH = img.getHeight();
+                doc.loaded = true;
+                doc.saved = "";
+            } catch (Exception e) {
+                ClientToasts.push("Image error: " + e.getMessage());
+            }
+            return;
+        }
+        String text = new String(view.data(), StandardCharsets.UTF_8);
+        doc.load(text);
+    }
+
+    private static void handleRemoteRename(String oldRel, String newRel) {
+        String oldKey = oldRel.startsWith("scripts/") && oldRel.endsWith(".sc")
+                ? oldRel.substring("scripts/".length()) : "@" + oldRel;
+        String newKey = newRel == null || newRel.isEmpty() ? null
+                : (newRel.startsWith("scripts/") && newRel.endsWith(".sc")
+                ? newRel.substring("scripts/".length()) : "@" + newRel);
+
+        ScriptDocument doc = docs.get(oldKey);
+        if (doc == null) {
+            return;
+        }
+        if (newKey == null) {
+            // Файл удалён: оставляем как черновик, если есть несохранённые правки, иначе закрываем
+            if (!doc.dirty()) {
+                docs.remove(oldKey);
+                if (oldKey.equals(active)) active = HOME;
+            }
+            return;
+        }
+        // Переименовываем вкладку в реальном времени с сохранением порядка вкладок и текста
+        Map<String, ScriptDocument> rebuilt = new LinkedHashMap<>();
+        for (Map.Entry<String, ScriptDocument> entry : docs.entrySet()) {
+            if (entry.getKey().equals(oldKey)) {
+                doc.name = newKey;
+                rebuilt.put(newKey, doc);
+            } else {
+                rebuilt.put(entry.getKey(), entry.getValue());
+            }
+        }
+        docs.clear();
+        docs.putAll(rebuilt);
+        if (oldKey.equals(active)) {
+            active = newKey;
+        }
+        List<StudioLivePacket.Peer> oldPeers = peers.remove(oldKey);
+        if (oldPeers != null) {
+            peers.put(newKey, oldPeers);
+        }
     }
 
     /** Одна строка истории. Повтор подряд не копится. */

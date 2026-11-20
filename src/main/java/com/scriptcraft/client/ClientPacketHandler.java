@@ -42,6 +42,14 @@ public final class ClientPacketHandler {
         StudioSync.onView(view);
     }
 
+    public static void studioExplorerDir(com.scriptcraft.network.StudioExplorerPacket.DirView view) {
+        StudioSession.acceptExplorerDir(view);
+    }
+
+    public static void studioExplorerFile(com.scriptcraft.network.StudioExplorerPacket.FileView view) {
+        StudioSession.acceptExplorerFile(view);
+    }
+
     public static void toast(String text) {
         ClientToasts.push(text);
     }

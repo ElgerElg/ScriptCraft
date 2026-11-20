@@ -42,7 +42,7 @@ public final class StudioSync {
     }
 
     public static void watch(ScriptDocument doc) {
-        if (doc == null || !doc.loaded) {
+        if (doc == null || !doc.loaded || doc.genericFile || doc.isImage) {
             leave();
             return;
         }

@@ -193,6 +193,9 @@ public final class ScriptLoader {
         }
         try {
             ScriptPaths.rename(name, disabled);
+            com.scriptcraft.studio.StudioRooms.renameRoom(name, disabled);
+            com.scriptcraft.studio.StudioExplorer.broadcastRename(source.getServer(), "scripts/" + name, "scripts/" + disabled);
+            com.scriptcraft.studio.StudioExplorer.broadcastDirs(source.getServer());
         } catch (IOException e) {
             Feedback.fail(source, "script.rename_failed", e.getMessage());
             return 0;
@@ -255,6 +258,9 @@ public final class ScriptLoader {
         }
         try {
             ScriptPaths.rename(disabled, name);
+            com.scriptcraft.studio.StudioRooms.renameRoom(disabled, name);
+            com.scriptcraft.studio.StudioExplorer.broadcastRename(source.getServer(), "scripts/" + disabled, "scripts/" + name);
+            com.scriptcraft.studio.StudioExplorer.broadcastDirs(source.getServer());
         } catch (IOException e) {
             Feedback.fail(source, "script.rename_failed", e.getMessage());
             return 0;
