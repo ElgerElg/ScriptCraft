@@ -182,6 +182,126 @@ function SnakeGameOver(p: player, reason: text):
 	show screen "status_banner" for p
 	play sound entity.villager.no to p with volume 0.8 pitch 0.9
 
+function SnakeAddSeg(p: player, id: integer, x: integer, y: integer):
+	set {-sx::%p%::%id%} to x
+	set {-sy::%p%::%id%} to y
+	if id is 4:
+		update screen "Змейка" for p:
+			slot lime_concrete 1 at 0, 0 size 12x12 no frame layer 3 id seg_4
+	else if id is 5:
+		update screen "Змейка" for p:
+			slot lime_concrete 1 at 0, 0 size 12x12 no frame layer 3 id seg_5
+	else if id is 6:
+		update screen "Змейка" for p:
+			slot lime_concrete 1 at 0, 0 size 12x12 no frame layer 3 id seg_6
+	else if id is 7:
+		update screen "Змейка" for p:
+			slot lime_concrete 1 at 0, 0 size 12x12 no frame layer 3 id seg_7
+	else if id is 8:
+		update screen "Змейка" for p:
+			slot lime_concrete 1 at 0, 0 size 12x12 no frame layer 3 id seg_8
+	else if id is 9:
+		update screen "Змейка" for p:
+			slot lime_concrete 1 at 0, 0 size 12x12 no frame layer 3 id seg_9
+	else if id is 10:
+		update screen "Змейка" for p:
+			slot lime_concrete 1 at 0, 0 size 12x12 no frame layer 3 id seg_10
+	else if id is 11:
+		update screen "Змейка" for p:
+			slot lime_concrete 1 at 0, 0 size 12x12 no frame layer 3 id seg_11
+	else if id is 12:
+		update screen "Змейка" for p:
+			slot lime_concrete 1 at 0, 0 size 12x12 no frame layer 3 id seg_12
+	else if id is 13:
+		update screen "Змейка" for p:
+			slot lime_concrete 1 at 0, 0 size 12x12 no frame layer 3 id seg_13
+	else if id is 14:
+		update screen "Змейка" for p:
+			slot lime_concrete 1 at 0, 0 size 12x12 no frame layer 3 id seg_14
+	else if id is 15:
+		update screen "Змейка" for p:
+			slot lime_concrete 1 at 0, 0 size 12x12 no frame layer 3 id seg_15
+	else if id is 16:
+		update screen "Змейка" for p:
+			slot lime_concrete 1 at 0, 0 size 12x12 no frame layer 3 id seg_16
+	else if id is 17:
+		update screen "Змейка" for p:
+			slot lime_concrete 1 at 0, 0 size 12x12 no frame layer 3 id seg_17
+	else if id is 18:
+		update screen "Змейка" for p:
+			slot lime_concrete 1 at 0, 0 size 12x12 no frame layer 3 id seg_18
+	else if id is 19:
+		update screen "Змейка" for p:
+			slot lime_concrete 1 at 0, 0 size 12x12 no frame layer 3 id seg_19
+	else if id is 20:
+		update screen "Змейка" for p:
+			slot lime_concrete 1 at 0, 0 size 12x12 no frame layer 3 id seg_20
+	else if id is 21:
+		update screen "Змейка" for p:
+			slot lime_concrete 1 at 0, 0 size 12x12 no frame layer 3 id seg_21
+	else if id is 22:
+		update screen "Змейка" for p:
+			slot lime_concrete 1 at 0, 0 size 12x12 no frame layer 3 id seg_22
+	else if id is 23:
+		update screen "Змейка" for p:
+			slot lime_concrete 1 at 0, 0 size 12x12 no frame layer 3 id seg_23
+	else if id is 24:
+		update screen "Змейка" for p:
+			slot lime_concrete 1 at 0, 0 size 12x12 no frame layer 3 id seg_24
+	SnakeMoveSeg(p, id, x, y)
+
+function SnakeMoveSeg(p: player, id: integer, x: integer, y: integer):
+	set {-sx::%p%::%id%} to x
+	set {-sy::%p%::%id%} to y
+	if id is 1:
+		move screen "seg_1" for p to x, y
+	else if id is 2:
+		move screen "seg_2" for p to x, y
+	else if id is 3:
+		move screen "seg_3" for p to x, y
+	else if id is 4:
+		move screen "seg_4" for p to x, y
+	else if id is 5:
+		move screen "seg_5" for p to x, y
+	else if id is 6:
+		move screen "seg_6" for p to x, y
+	else if id is 7:
+		move screen "seg_7" for p to x, y
+	else if id is 8:
+		move screen "seg_8" for p to x, y
+	else if id is 9:
+		move screen "seg_9" for p to x, y
+	else if id is 10:
+		move screen "seg_10" for p to x, y
+	else if id is 11:
+		move screen "seg_11" for p to x, y
+	else if id is 12:
+		move screen "seg_12" for p to x, y
+	else if id is 13:
+		move screen "seg_13" for p to x, y
+	else if id is 14:
+		move screen "seg_14" for p to x, y
+	else if id is 15:
+		move screen "seg_15" for p to x, y
+	else if id is 16:
+		move screen "seg_16" for p to x, y
+	else if id is 17:
+		move screen "seg_17" for p to x, y
+	else if id is 18:
+		move screen "seg_18" for p to x, y
+	else if id is 19:
+		move screen "seg_19" for p to x, y
+	else if id is 20:
+		move screen "seg_20" for p to x, y
+	else if id is 21:
+		move screen "seg_21" for p to x, y
+	else if id is 22:
+		move screen "seg_22" for p to x, y
+	else if id is 23:
+		move screen "seg_23" for p to x, y
+	else if id is 24:
+		move screen "seg_24" for p to x, y
+
 function SnakeStep(p: player):
 	set {-snake_dir::%p%} to {-snake_next::%p%}
 	set {-ox} to {-hx::%p%}
@@ -247,13 +367,14 @@ function SnakeStep(p: player):
 		add 10 to {-snake_score::%p%}
 		if {-snake_score::%p%} > {snake_best::%p%}:
 			set {snake_best::%p%} to {-snake_score::%p%}
-		add 1 to {-snake_len::%p%}
-		set {-new_id} to {-snake_len::%p%}
-		set {-sx::%p%::%{-new_id}%} to {-ox}
-		set {-sy::%p%::%{-new_id}%} to {-oy}
-		update screen "Змейка" for p:
-			slot lime_concrete 1 at 0, 0 size 12x12 no frame layer 3 id seg_%{-new_id}%
-		move screen "seg_%{-new_id}%" for p to {-ox}, {-oy}
+		if {-snake_len::%p%} < 24:
+			add 1 to {-snake_len::%p%}
+			SnakeAddSeg(p, {-snake_len::%p%}, {-ox}, {-oy})
+		else:
+			SnakeMoveSeg(p, {-snake_ring::%p%}, {-ox}, {-oy})
+			add 1 to {-snake_ring::%p%}
+			if {-snake_ring::%p%} > {-snake_len::%p%}:
+				set {-snake_ring::%p%} to 1
 		SnakeSpawnApple(p)
 		SnakeUpdateHud(p)
 		play sound entity.experience_orb.pickup to p with volume 0.7 pitch 1.3
@@ -263,10 +384,7 @@ function SnakeStep(p: player):
 		stop
 
 	# Обычный шаг без роста: переставляем только один сегмент кольцевого буфера на место старой головы!
-	set {-idx} to {-snake_ring::%p%}
-	set {-sx::%p%::%{-idx}%} to {-ox}
-	set {-sy::%p%::%{-idx}%} to {-oy}
-	move screen "seg_%{-idx}%" for p to {-ox}, {-oy}
+	SnakeMoveSeg(p, {-snake_ring::%p%}, {-ox}, {-oy})
 	add 1 to {-snake_ring::%p%}
 	if {-snake_ring::%p%} > {-snake_len::%p%}:
 		set {-snake_ring::%p%} to 1
