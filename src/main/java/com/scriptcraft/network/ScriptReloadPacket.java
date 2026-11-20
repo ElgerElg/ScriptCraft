@@ -23,7 +23,26 @@ public record ScriptReloadPacket(String name) {
     public static void handle(ScriptReloadPacket packet, Supplier<NetworkEvent.Context> ctx) {
         ServerPlayer player = ctx.get().getSender();
         ctx.get().enqueueWork(() -> {
-            if (player == null || !StudioAccess.allow(player) || !ScriptPaths.contained(packet.name)) {
+            if (player == null || !StudioAccess.allow(player)) {
+                return;
+            }
+            if ("$scripts".equals(packet.name) || "$all".equals(packet.name)) {
+                ScriptLoader.reloadAll(player.createCommandSourceStack());
+                com.scriptcraft.studio.StudioExplorer.broadcastScriptsAndLog(player.getServer());
+                com.scriptcraft.studio.StudioExplorer.broadcastDirs(player.getServer());
+                return;
+            }
+            if ("$resources".equals(packet.name)) {
+                com.scriptcraft.command.ScriptCommands.reloadResources(player.createCommandSourceStack());
+                com.scriptcraft.studio.StudioExplorer.broadcastScriptsAndLog(player.getServer());
+                return;
+            }
+            if ("$config".equals(packet.name)) {
+                com.scriptcraft.command.ScriptCommands.reloadConfig(player.createCommandSourceStack());
+                com.scriptcraft.studio.StudioExplorer.broadcastScriptsAndLog(player.getServer());
+                return;
+            }
+            if (!ScriptPaths.contained(packet.name)) {
                 return;
             }
             if (ScriptPaths.isDisabled(packet.name)) {
@@ -31,7 +50,7 @@ public record ScriptReloadPacket(String name) {
                 return;
             }
             ScriptLoader.reloadOne(player.createCommandSourceStack(), packet.name);
-            ModNetwork.sendTo(player, LogPacket.from(ScriptLoader.journal(), false));
+            com.scriptcraft.studio.StudioExplorer.broadcastScriptsAndLog(player.getServer());
         });
         ctx.get().setPacketHandled(true);
     }

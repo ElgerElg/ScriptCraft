@@ -34,6 +34,7 @@ public final class ModPaths {
             "scripts/menu.sc",
             "scripts/hud.sc",
             "scripts/bag.sc",
+            "scripts/snake.sc",
             "resources/assets/example/blockstates/ruby_block.json",
             "resources/assets/example/models/block/ruby_block.json",
             "resources/assets/example/models/item/ruby_block.json",
@@ -55,7 +56,7 @@ public final class ModPaths {
      * Включить: /sc enable welcome (и ruby, menu, hud, bag).
      */
     private static final java.util.Set<String> DISABLED_DEFAULTS = java.util.Set.of(
-            "scripts/welcome.sc", "scripts/ruby.sc", "scripts/menu.sc", "scripts/hud.sc", "scripts/bag.sc");
+            "scripts/welcome.sc", "scripts/ruby.sc", "scripts/menu.sc", "scripts/hud.sc", "scripts/bag.sc", "scripts/snake.sc");
 
     private ModPaths() {
     }

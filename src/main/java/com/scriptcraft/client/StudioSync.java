@@ -158,6 +158,9 @@ public final class StudioSync {
             return;
         }
         StudioSession.setPeers(view.file(), view.peers());
+        if (view.replace()) {
+            StudioSession.setLiveText(view.file(), view.text());
+        }
         ScriptDocument doc = StudioSession.docs.get(view.file());
         if (doc == null) {
             return;

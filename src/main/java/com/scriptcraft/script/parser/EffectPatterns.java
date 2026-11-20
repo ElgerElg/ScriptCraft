@@ -43,7 +43,7 @@ final class EffectPatterns {
 
     private static final List<Rule> RULES = new ArrayList<>();
     private static final Pattern ID = Pattern.compile("(?:%[a-z0-9_-]+%|[a-z0-9_.-])+(?::(?:%[a-z0-9_-]+%|[a-z0-9_./-])+)?");
-    private static final Pattern HUD_NAME = Pattern.compile("[A-Za-z0-9_.-]{1,64}");
+    private static final Pattern HUD_NAME = Pattern.compile("[A-Za-z0-9_.:%{}-]{1,64}");
     private static final String SECONDS = "seconds|second|secs|sec";
 
     static {
@@ -298,6 +298,8 @@ final class EffectPatterns {
         rule("set weather to rain", c -> new Effects.SetWeather("rain", null));
         rule("drop %num% %id% at %target%", c -> new Effects.DropItem(c.target(2), c.id(1), c.num(0)));
         rule("drop %id% at %target%", c -> new Effects.DropItem(c.target(1), c.id(0), null));
+        rule("drop %num% %id% at %expr%", c -> new Effects.DropExpr(new Expression.Text(c.id(1)), c.num(0), null, c.expr(2)));
+        rule("drop %id% at %expr%", c -> new Effects.DropExpr(new Expression.Text(c.id(0)), null, null, c.expr(1)));
         rule("drop %num% %piece% at %target%", c -> new Effects.DropExpr(c.exprValue(1), c.num(0), c.target(2), null));
         rule("drop %piece% at %target%", c -> new Effects.DropExpr(c.exprValue(0), null, c.target(1), null));
         rule("drop %num% %piece% at %expr%", c -> new Effects.DropExpr(c.exprValue(1), c.num(0), null, c.expr(2)));
@@ -308,6 +310,12 @@ final class EffectPatterns {
         rule("set spawn of %target%", c -> new Effects.SetSpawn(c.target(0), null, null, null));
         rule("set velocity of %target% to %num% %num% %num%",
                 c -> new Effects.SetVelocity(c.target(0), c.num(1), c.num(2), c.num(3)));
+        rule("set velocity of %target% to %expr%",
+                c -> new Effects.SetVelocityVec(c.target(0), c.expr(1)));
+        rule("set player's velocity to %num% %num% %num%",
+                c -> new Effects.SetVelocity(new Target.Self(), c.num(0), c.num(1), c.num(2)));
+        rule("set player's velocity to %expr%",
+                c -> new Effects.SetVelocityVec(new Target.Self(), c.expr(0)));
         rule("launch %target% forwards|forward by|with speed|force %expr%", c -> new Effects.Launch(c.target(0), true, c.expr(1)));
         rule("launch %target% forwards|forward by|with %expr%", c -> new Effects.Launch(c.target(0), true, c.expr(1)));
         rule("launch %target% upwards|up by|with speed|force %expr%", c -> new Effects.Launch(c.target(0), false, c.expr(1)));

@@ -8,14 +8,47 @@ import org.jetbrains.annotations.Nullable;
  */
 public record ScriptLocation(String world, double x, double y, double z, float yaw, float pitch) {
     public static final String PREFIX = "loc ";
+    public static final String VEC_PREFIX = "vec ";
 
     public String encode() {
         return PREFIX + world + " " + x + " " + y + " " + z + " " + yaw + " " + pitch;
     }
 
+    public ScriptLocation offset(double dx, double dy, double dz) {
+        return new ScriptLocation(world, x + dx, y + dy, z + dz, yaw, pitch);
+    }
+
     /** Короткий вид для чата и сравнения: мир и три координаты. */
     public String display() {
         return world + " " + trim(x) + " " + trim(y) + " " + trim(z);
+    }
+
+    public static String encodeVec(double x, double y, double z) {
+        return VEC_PREFIX + x + " " + y + " " + z;
+    }
+
+    public static String displayVec(double[] v) {
+        return "vector(" + trim(v[0]) + ", " + trim(v[1]) + ", " + trim(v[2]) + ")";
+    }
+
+    @Nullable
+    public static double[] decodeVec(@Nullable Object value) {
+        if (!(value instanceof String text) || !text.startsWith(VEC_PREFIX)) {
+            return null;
+        }
+        String[] parts = text.substring(VEC_PREFIX.length()).split(" ");
+        if (parts.length < 3) {
+            return null;
+        }
+        try {
+            return new double[]{
+                    Double.parseDouble(parts[0]),
+                    Double.parseDouble(parts[1]),
+                    Double.parseDouble(parts[2])
+            };
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     @Nullable

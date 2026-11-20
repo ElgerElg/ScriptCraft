@@ -226,7 +226,7 @@ public final class ScriptCommands {
     }
 
     /** Перечитать scriptcraft/config.toml. */
-    private static int reloadConfig(CommandSourceStack source) {
+    public static int reloadConfig(CommandSourceStack source) {
         String error = ScriptCraftConfig.reloadFromDisk();
         if (error != null) {
             Feedback.fail(source, "config.reload_failed", error);
@@ -238,12 +238,13 @@ public final class ScriptCommands {
     }
 
     /** /sc reload resources: перечитать scriptcraft/resources/assets и разослать изменения игрокам онлайн. */
-    private static int reloadResources(CommandSourceStack source) {
+    public static int reloadResources(CommandSourceStack source) {
         String error = ResourceSync.reloadAndPush(source.getServer());
         if (error != null) {
             Feedback.fail(source, "resources.reload_failed", error);
             return 0;
         }
+        com.scriptcraft.studio.StudioExplorer.clearResourcesDirty(source.getServer());
         int files = ResourceIndex.entries().size();
         long kb = ResourceIndex.totalBytes() / 1024;
         if (ScriptCraftConfig.syncResourcesToClients()) {

@@ -160,8 +160,16 @@ public interface Expression {
         }
     }
 
-    /** location at x, y, z — в мире игрока из контекста, иначе в обычном мире. */
-    record LocationAt(Expression x, Expression y, Expression z) implements Expression {
+    /**
+     * location(x, y, z [, [world] "мир"] [, yaw, pitch]) и location at x, y, z [in [world] "мир"].
+     * Если мир или углы не переданы — берутся у игрока из контекста (или overworld / 0, 0).
+     */
+    record LocationAt(Expression x, Expression y, Expression z,
+                      @Nullable Expression world, @Nullable Expression yaw, @Nullable Expression pitch) implements Expression {
+        public LocationAt(Expression x, Expression y, Expression z) {
+            this(x, y, z, null, null, null);
+        }
+
         @Override
         public Object evaluate(ExecutionContext ctx) {
             Double tx = toNumber(x.evaluate(ctx));
@@ -171,12 +179,113 @@ public interface Expression {
                 return null;
             }
             ServerPlayer player = ctx.player();
-            String world = player == null
-                    ? "minecraft:overworld"
-                    : player.level().dimension().location().toString();
-            float yaw = player == null ? 0f : player.getYRot();
-            float pitch = player == null ? 0f : player.getXRot();
-            return new ScriptLocation(world, tx, ty, tz, yaw, pitch).encode();
+            String worldName;
+            if (world != null) {
+                Object rawW = world.evaluate(ctx);
+                String wText = rawW == null ? "" : toText(rawW).strip();
+                worldName = wText.isEmpty() || wText.equals("<none>")
+                        ? (player == null ? "minecraft:overworld" : player.level().dimension().location().toString())
+                        : worldId(wText);
+            } else {
+                worldName = player == null
+                        ? "minecraft:overworld"
+                        : player.level().dimension().location().toString();
+            }
+            Double yw = yaw == null ? null : toNumber(yaw.evaluate(ctx));
+            Double pt = pitch == null ? null : toNumber(pitch.evaluate(ctx));
+            float fYaw = yw != null ? yw.floatValue() : (player == null ? 0f : player.getYRot());
+            float fPitch = pt != null ? pt.floatValue() : (player == null ? 0f : player.getXRot());
+            return new ScriptLocation(worldName, tx, ty, tz, fYaw, fPitch).encode();
+        }
+    }
+
+    /** vector(x, y, z) — 3D-вектор смещения или скорости. */
+    record Vec3Expr(Expression x, Expression y, Expression z) implements Expression {
+        @Override
+        public Object evaluate(ExecutionContext ctx) {
+            Double vx = toNumber(x.evaluate(ctx));
+            Double vy = toNumber(y.evaluate(ctx));
+            Double vz = toNumber(z.evaluate(ctx));
+            if (vx == null || vy == null || vz == null) {
+                return null;
+            }
+            return ScriptLocation.encodeVec(vx, vy, vz);
+        }
+    }
+
+    /**
+     * Смещение локации на вектор: {@code <локация> ~~vector(dx, dy, dz)}, {@code <локация> ~vector(dx, dy, dz)}
+     * или {@code ~~vector(dx, dy, dz)} (без базовой локации берётся локация игрока из контекста).
+     */
+    record LocationOffset(@Nullable Expression base, Expression vector, boolean subtract) implements Expression {
+        public LocationOffset(@Nullable Expression base, Expression vector) {
+            this(base, vector, false);
+        }
+
+        @Override
+        public Object evaluate(ExecutionContext ctx) {
+            double[] vec = ScriptLocation.decodeVec(vector.evaluate(ctx));
+            if (vec == null) {
+                return null;
+            }
+            double dx = subtract ? -vec[0] : vec[0];
+            double dy = subtract ? -vec[1] : vec[1];
+            double dz = subtract ? -vec[2] : vec[2];
+            ScriptLocation loc = resolveBaseLocation(base, ctx);
+            if (loc == null) {
+                return null;
+            }
+            return loc.offset(dx, dy, dz).encode();
+        }
+
+        @Nullable
+        private static ScriptLocation resolveBaseLocation(@Nullable Expression base, ExecutionContext ctx) {
+            if (base == null) {
+                ServerPlayer self = ctx.player();
+                return self == null
+                        ? new ScriptLocation("minecraft:overworld", 0, 0, 0, 0f, 0f)
+                        : ScriptLocation.decode(Places.ofPlayer(self));
+            }
+            if (base instanceof Look look) {
+                ServerPlayer viewer = ctx.player();
+                if (viewer == null) return null;
+                String enc = switch (look.kind()) {
+                    case "block", "loc-block" -> Places.blockLocation(viewer);
+                    case "entity", "loc-entity" -> Places.entityLocation(viewer);
+                    case "player", "loc-player" -> {
+                        ServerPlayer looked = Target.Targeted.lookedAt(viewer);
+                        yield looked == null ? null : Places.ofPlayer(looked);
+                    }
+                    default -> Places.targetedLocation(viewer);
+                };
+                return ScriptLocation.decode(enc);
+            }
+            Object evaluated = base.evaluate(ctx);
+            ScriptLocation decoded = ScriptLocation.decode(evaluated);
+            if (decoded != null) {
+                return decoded;
+            }
+            if (evaluated instanceof ServerPlayer sp) {
+                return ScriptLocation.decode(Places.ofPlayer(sp));
+            }
+            if (evaluated instanceof String name && !name.isBlank() && ctx.server() != null) {
+                ServerPlayer byName = ctx.server().getPlayerList().getPlayerByName(name.strip());
+                if (byName != null) {
+                    return ScriptLocation.decode(Places.ofPlayer(byName));
+                }
+            }
+            return null;
+        }
+    }
+
+    /** world "lobby" — идентификатор мира (minecraft:lobby). */
+    record WorldRef(Expression name) implements Expression {
+        @Override
+        public Object evaluate(ExecutionContext ctx) {
+            Object raw = name.evaluate(ctx);
+            if (raw == null) return null;
+            String text = toText(raw).strip();
+            return text.isEmpty() || text.equals("<none>") ? null : worldId(text);
         }
     }
 
@@ -311,12 +420,34 @@ public interface Expression {
         }
     }
 
-    /** Арифметика: +, -, *, /, %, ^. Если операнды не числа — возвращает null (или конкатенацию для + со строками). */
+    /** Арифметика: +, -, *, /, %, ^. Поддерживает также смещение локации на vector(...) и сложение векторов. */
     record MathBinary(Expression left, String op, Expression right) implements Expression {
         @Override
         public Object evaluate(ExecutionContext ctx) {
             Object lv = left.evaluate(ctx);
             Object rv = right.evaluate(ctx);
+            if ("+".equals(op) || "-".equals(op)) {
+                double[] rVec = ScriptLocation.decodeVec(rv);
+                if (rVec != null) {
+                    ScriptLocation loc = ScriptLocation.decode(lv);
+                    if (loc != null) {
+                        double s = "-".equals(op) ? -1.0 : 1.0;
+                        return loc.offset(rVec[0] * s, rVec[1] * s, rVec[2] * s).encode();
+                    }
+                    double[] lVec = ScriptLocation.decodeVec(lv);
+                    if (lVec != null) {
+                        double s = "-".equals(op) ? -1.0 : 1.0;
+                        return ScriptLocation.encodeVec(lVec[0] + rVec[0] * s, lVec[1] + rVec[1] * s, lVec[2] + rVec[2] * s);
+                    }
+                }
+            }
+            if ("*".equals(op)) {
+                double[] lVec = ScriptLocation.decodeVec(lv);
+                Double scale = toNumber(rv);
+                if (lVec != null && scale != null) {
+                    return ScriptLocation.encodeVec(lVec[0] * scale, lVec[1] * scale, lVec[2] * scale);
+                }
+            }
             Double a = toNumber(lv);
             Double b = toNumber(rv);
             if (a == null || b == null) {
@@ -403,6 +534,10 @@ public interface Expression {
         ScriptLocation location = ScriptLocation.decode(value);
         if (location != null) {
             return location.display();
+        }
+        double[] vec = ScriptLocation.decodeVec(value);
+        if (vec != null) {
+            return ScriptLocation.displayVec(vec);
         }
         if (value instanceof Double d) {
             if (d == Math.rint(d) && !Double.isInfinite(d) && Math.abs(d) < 1e15) {

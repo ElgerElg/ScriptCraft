@@ -1190,14 +1190,15 @@ set block at targeted block to glass`,
   },
   {
     id: "eff-velocity", category: "effects",
-    name: { ru: "Скорость", en: "Velocity" },
-    syntax: ["set velocity of <цель> to <x> <y> <z>"],
+    name: { ru: "Скорость (вектор движения)", en: "Velocity" },
+    syntax: ["set velocity of <цель> to <x> <y> <z>", "set velocity of <цель> to vector(<x>, <y>, <z>)", "set player's velocity to vector(<x>, <y>, <z>)"],
     desc: {
-      ru: "Задаёт скорость игрока по трём осям.",
-      en: "Sets the player's velocity on the three axes."
+      ru: "Задаёт скорость игрока по трём осям — тремя числами или через `vector(x, y, z)`.",
+      en: "Sets the player's velocity on the three axes — either as three numbers or via `vector(x, y, z)`."
     },
-    example: `set velocity of player to 0 1 0`,
-    since: "0.2.0", related: ["eff-launch", "eff-teleport"]
+    example: `set velocity of player to 0 1 0
+set velocity of player to vector(0.0, 1.2, 0.0)`,
+    since: "0.2.0", related: ["eff-launch", "eff-teleport", "expr-location"]
   },
   {
     id: "eff-launch", category: "effects",
@@ -1633,15 +1634,32 @@ send "%nbt Damage of slot 0 of player%" to player`,
   },
   {
     id: "expr-location", category: "expressions",
-    name: { ru: "Локация", en: "Location" },
-    syntax: ["player's location", "location of <цель>", "location at <x> <y> <z>", "spawn of <цель>", "world spawn", "%location%"],
+    name: { ru: "Локация и вектор смещения", en: "Location & vector offset" },
+    syntax: [
+      "location(<x>, <y>, <z>)",
+      "location(<x>, <y>, <z>, world \"<мир>\")",
+      "location(<x>, <y>, <z>, world \"<мир>\", <yaw>, <pitch>)",
+      "location(<x>, <y>, <z>, <yaw>, <pitch>)",
+      "location at <x> <y> <z> [in world \"<мир>\"]",
+      "player's location",
+      "location of <цель>",
+      "<локация> ~~vector(<dx>, <dy>, <dz>)",
+      "<локация> ~vector(<dx>, <dy>, <dz>)",
+      "~~vector(<dx>, <dy>, <dz>)",
+      "vector(<x>, <y>, <z>)",
+      "spawn of <цель>",
+      "world spawn",
+      "%location%"
+    ],
     desc: {
-      ru: "Мир, координаты и поворот. Её можно записать в переменную и подставить в `teleport`, `set spawn`, `drop`, `strike lightning` и `explode`. В тексте `%location%` берётся у игрока из контекста. В чат выводится мир и три координаты.",
-      en: "A world, coordinates and rotation. Store it in a variable and pass it to `teleport`, `set spawn`, `drop`, `strike lightning` and `explode`. In text, `%location%` uses the context player. Chat shows the world and the three coordinates."
+      ru: "Мир, координаты и углы поворота (`yaw`, `pitch`). Функция `location(x, y, z, [world \"мир\"], [yaw, pitch])` создаёт точку в любом мире с нужным поворотом камеры. Ко всем локациям (и целям) можно добавить смещение `~~vector(dx, dy, dz)` (или `~vector(...)`, `+ vector(...)`), а запись `~~vector(dx, dy, dz)` без базы смещает текущую точку игрока. Поддерживается везде: в `teleport`, `set block`, `spawn particle`, `spawn entity`, `play sound`, `set spawn`, `drop`, `strike lightning`, `explode` и в `set velocity`.",
+      en: "A world, coordinates and rotation (`yaw`, `pitch`). `location(x, y, z, [world \"name\"], [yaw, pitch])` creates a point in any world with optional camera angles. Any location expression can be offset with `~~vector(dx, dy, dz)` (or `~vector(...)`, `+ vector(...)`), and a standalone `~~vector(dx, dy, dz)` offsets the context player's position. Works everywhere: `teleport`, `set block`, `spawn particle`, `spawn entity`, `play sound`, `set spawn`, `drop`, `strike lightning`, `explode` and `set velocity`."
     },
-    example: `set {home::%player%} to player's location
-teleport player to {home::%player%}`,
-    since: "0.3.10", related: ["eff-teleport", "eff-spawn", "expr-targeted-block", "expr-tool"]
+    example: `teleport player to location(8.651, -58, 51.543, world "lobby", -179.3, 0)
+teleport player to player's location ~~vector(0.0, 5.0, 0.0)
+spawn particle flame at location of targeted block ~~vector(0.0, 1.0, 0.0) count 25 speed 0.02
+set block at ~~vector(0, -1, 0) to gold_block`,
+    since: "0.3.10", related: ["eff-teleport", "eff-spawn", "eff-set-block", "eff-velocity", "expr-targeted-block", "expr-tool"]
   },
   {
     id: "expr-tool", category: "expressions",

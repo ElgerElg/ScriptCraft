@@ -312,9 +312,10 @@ public final class Actions {
     public record ScreenSetText(Target target, String id, Expression text) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
+            String resolvedId = ctx.format(id);
             String val = Expression.toText(text.evaluate(ctx));
             for (ServerPlayer p : target.resolve(ctx)) {
-                com.scriptcraft.screen.ScreenManager.mutateElement(p, id, e -> com.scriptcraft.screen.ScreenMeta.withText(e, val));
+                com.scriptcraft.screen.ScreenManager.mutateElement(p, resolvedId, e -> com.scriptcraft.screen.ScreenMeta.withText(e, val));
             }
         }
     }
@@ -322,9 +323,10 @@ public final class Actions {
     public record ScreenSetTexture(Target target, String id, Expression texture) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
+            String resolvedId = ctx.format(id);
             String val = Expression.toText(texture.evaluate(ctx)).strip();
             for (ServerPlayer p : target.resolve(ctx)) {
-                com.scriptcraft.screen.ScreenManager.mutateElement(p, id, e -> com.scriptcraft.screen.ScreenMeta.withTexture(e, val));
+                com.scriptcraft.screen.ScreenManager.mutateElement(p, resolvedId, e -> com.scriptcraft.screen.ScreenMeta.withTexture(e, val));
             }
         }
     }
@@ -332,10 +334,11 @@ public final class Actions {
     public record ScreenSetPosition(Target target, String id, Expression x, Expression y) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
+            String resolvedId = ctx.format(id);
             int px = (int) Math.round(Effects.number(x, ctx));
             int py = (int) Math.round(Effects.number(y, ctx));
             for (ServerPlayer p : target.resolve(ctx)) {
-                com.scriptcraft.screen.ScreenManager.mutateElement(p, id, e -> com.scriptcraft.screen.ScreenMeta.withPosition(e, px, py));
+                com.scriptcraft.screen.ScreenManager.mutateElement(p, resolvedId, e -> com.scriptcraft.screen.ScreenMeta.withPosition(e, px, py));
             }
         }
     }
@@ -343,8 +346,9 @@ public final class Actions {
     public record ScreenSetVisible(Target target, String id, boolean visible) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
+            String resolvedId = ctx.format(id);
             for (ServerPlayer p : target.resolve(ctx)) {
-                com.scriptcraft.screen.ScreenManager.mutateElement(p, id, e -> com.scriptcraft.screen.ScreenMeta.withHidden(e, !visible));
+                com.scriptcraft.screen.ScreenManager.mutateElement(p, resolvedId, e -> com.scriptcraft.screen.ScreenMeta.withHidden(e, !visible));
             }
         }
     }
@@ -353,10 +357,11 @@ public final class Actions {
                                @org.jetbrains.annotations.Nullable Expression max) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
+            String resolvedId = ctx.format(id);
             String v = value == null ? null : HudActions.barValue(value, ctx);
             String m = max == null ? null : HudActions.barValue(max, ctx);
             for (ServerPlayer p : target.resolve(ctx)) {
-                com.scriptcraft.screen.ScreenManager.setBar(p, id, v, m);
+                com.scriptcraft.screen.ScreenManager.setBar(p, resolvedId, v, m);
             }
         }
     }
@@ -364,10 +369,11 @@ public final class Actions {
     public record ScreenSetSlot(Target target, String id, String item, @org.jetbrains.annotations.Nullable Expression count) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
+            String resolvedId = ctx.format(id);
             int c = count == null ? 1 : Math.max(1, (int) Math.round(Effects.number(count, ctx)));
             String resolvedItem = ctx.format(item);
             for (ServerPlayer p : target.resolve(ctx)) {
-                com.scriptcraft.screen.ScreenManager.mutateElement(p, id, e -> com.scriptcraft.screen.ScreenMeta.withSlotItem(e, resolvedItem, c));
+                com.scriptcraft.screen.ScreenManager.mutateElement(p, resolvedId, e -> com.scriptcraft.screen.ScreenMeta.withSlotItem(e, resolvedItem, c));
             }
         }
     }
@@ -375,8 +381,9 @@ public final class Actions {
     public record ScreenRemove(Target target, String id) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
+            String resolvedId = ctx.format(id);
             for (ServerPlayer p : target.resolve(ctx)) {
-                com.scriptcraft.screen.ScreenManager.removeElement(p, id);
+                com.scriptcraft.screen.ScreenManager.removeElement(p, resolvedId);
             }
         }
     }

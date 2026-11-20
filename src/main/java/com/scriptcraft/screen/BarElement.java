@@ -65,7 +65,7 @@ public record BarElement(Layout layout, String id, String value, String max, Bar
     /** Сервер подставляет {переменные} и %плейсхолдеры% в value/max/text; %value%, %health%... остаются клиенту. */
     @Override
     public ScreenElement format(UnaryOperator<String> formatter) {
-        return new BarElement(layout, id, formatter.apply(value), formatter.apply(max), direction, backgroundColor,
+        return new BarElement(layout, formatter.apply(id), formatter.apply(value), formatter.apply(max), direction, backgroundColor,
                 fillTexture, backgroundTexture, textureWidth, textureHeight, formatter.apply(text), shadow);
     }
 

@@ -53,6 +53,19 @@ public final class StudioRooms {
         return out;
     }
 
+    /** Отправляет состояние всех активных комнат (курсоры и живой текст) игроку при открытии студии. */
+    public static void sendAllViews(ServerPlayer player) {
+        if (player == null || !ScriptCraftConfig.studioLiveEdit()) {
+            return;
+        }
+        for (Map.Entry<String, Room> entry : ROOMS.entrySet()) {
+            Room room = entry.getValue();
+            if (!room.peers.isEmpty() || !room.text.equals(room.saved)) {
+                sendView(player, entry.getKey(), room, true, false, false);
+            }
+        }
+    }
+
     /** Перенос комнаты при переименовании или включении/выключении скрипта. */
     public static void renameRoom(String oldName, String newName) {
         Room room = ROOMS.remove(oldName);
@@ -155,6 +168,7 @@ public final class StudioRooms {
                 flags |= ScriptDataPacket.DISK;
             }
             ModNetwork.sendTo(player, new ScriptDataPacket(name, room.text, room.revision, flags));
+            sendView(player, name, room, false, false, false);
             MinecraftServer server = player.getServer();
             if (server != null) {
                 broadcastPeers(server, name, room);
@@ -265,7 +279,7 @@ public final class StudioRooms {
                     }
                     ModNetwork.sendTo(player, new ScriptDataPacket(edit.file(), room.text, room.revision, flags));
                 }
-                for (UUID id : listeners(room, player.getUUID())) {
+                for (UUID id : studioListeners(server, room, player.getUUID())) {
                     ServerPlayer other = server.getPlayerList().getPlayer(id);
                     if (other != null) {
                         sendView(other, edit.file(), room, false, false, false);
@@ -304,7 +318,7 @@ public final class StudioRooms {
         if (server == null) {
             return;
         }
-        for (UUID id : listeners(room, player.getUUID())) {
+        for (UUID id : studioListeners(server, room, player.getUUID())) {
             ServerPlayer other = server.getPlayerList().getPlayer(id);
             if (other == null) {
                 continue;
@@ -343,7 +357,7 @@ public final class StudioRooms {
     }
 
     private static void broadcastPeers(MinecraftServer server, String file, Room room) {
-        for (UUID id : listeners(room, null)) {
+        for (UUID id : studioListeners(server, room, null)) {
             ServerPlayer other = server.getPlayerList().getPlayer(id);
             if (other != null) {
                 sendView(other, file, room, false, false, false);
@@ -363,13 +377,20 @@ public final class StudioRooms {
         ModNetwork.sendTo(player, new StudioLivePacket.View(file, room.revision, replace, stale, ack, text, peers));
     }
 
-    private static List<UUID> listeners(Room room, UUID extra) {
+    private static List<UUID> studioListeners(MinecraftServer server, Room room, UUID extra) {
         List<UUID> ids = new ArrayList<>();
         for (Seat seat : room.peers.values()) {
             ids.add(seat.id);
         }
         if (extra != null && !ids.contains(extra)) {
             ids.add(extra);
+        }
+        if (server != null) {
+            for (ServerPlayer p : server.getPlayerList().getPlayers()) {
+                if (!ids.contains(p.getUUID()) && StudioAccess.may(p)) {
+                    ids.add(p.getUUID());
+                }
+            }
         }
         return ids;
     }

@@ -294,9 +294,12 @@ public class StudioScreen extends Screen {
         trackPresence();
     }
 
-    /** Курсор уходит на сервер, только пока открыт сам скрипт и сервер включил совместную правку. */
+    /** Курсор уходит на сервер, пока открыт скрипт (или редактор временно заглянул в Журнал/Главную, не закрыв вкладку). */
     private void trackPresence() {
         ScriptDocument doc = settings ? null : script();
+        if (doc == null && !settings && StudioSession.lastScriptTab != null) {
+            doc = StudioSession.docs.get(StudioSession.lastScriptTab);
+        }
         if (doc == null || !doc.loaded) {
             StudioSync.leave();
         } else {
@@ -419,13 +422,23 @@ public class StudioScreen extends Screen {
         x = menuWord(g, mx, my, x, y, "file", Messages.get("studio.m.file"));
         x = menuWord(g, mx, my, x, y, "edit", Messages.get("studio.m.edit"));
         x = menuWord(g, mx, my, x, y, "search", Messages.get("studio.m.search"));
-        menuWord(g, mx, my, x, y, "view", Messages.get("studio.m.view"));
+        x = menuWord(g, mx, my, x, y, "view", Messages.get("studio.m.view"));
+        menuWord(g, mx, my, x, y, "reload", Messages.get("studio.m.reload"));
     }
 
     private int menuWord(GuiGraphics g, int mx, int my, int x, int y, String id, String label) {
         int w = this.font.width(label) + 12;
         boolean on = id.equals(menu) || hover(mx, my, x, y, w, MENU_H);
         float h = animHover("menu:" + id, on);
+        boolean resBlink = "reload".equals(id) && StudioSession.resourcesDirty;
+        if (resBlink) {
+            float pulse = 0.5f + 0.5f * (float) Math.sin(System.currentTimeMillis() / 220.0);
+            g.fill(x + 1, y + 1, x + w - 1, y + MENU_H - 1, withAlpha(GREEN, 0.16f + 0.28f * pulse));
+            g.fill(x + 1, y + MENU_H - 2, x + w - 1, y + MENU_H - 1, withAlpha(0xFF7EE787, 0.5f + 0.5f * pulse));
+            int textCol = lerpColor(0xFF56D364, 0xFFB4FFBF, Math.max(h, pulse));
+            g.drawString(this.font, label, x + 6, y + 4, textCol, false);
+            return x + w;
+        }
         if (h > 0.02f) {
             g.fill(x, y + 1, x + w, y + MENU_H - 1, withAlpha(ROW_HOT, h));
         }
@@ -791,12 +804,33 @@ public class StudioScreen extends Screen {
 
     private void renderJournal(GuiGraphics g, int mx, int my) {
         copyBtnY = -1;
+        openEdX = -1;
         journalTextX = -1;
         int y = contentY();
         int h = contentH();
-        int listW = Math.max(180, (pw - 16) / 2);
-        g.fill(px + 8, y, px + 8 + listW, y + h, 0xF0181E28);
-        g.fill(px + 12 + listW, y, px + pw - 8, y + h, 0xF0181E28);
+
+        boolean sbOpen = ClientUiSettings.sidebarOpen();
+        boolean sbRight = ClientUiSettings.sidebarRight();
+        int sbWidth = sbOpen ? Math.min(ClientUiSettings.sidebarWidth(), Math.max(110, pw / 3)) : 20;
+        sbY = y + 4;
+        sbH = Math.max(24, h - 8);
+        sbW = sbWidth;
+        int areaX, areaW;
+        if (sbRight) {
+            areaX = px + 6;
+            areaW = Math.max(160, pw - 12 - sbWidth - 4);
+            sbX = areaX + areaW + 4;
+        } else {
+            sbX = px + 6;
+            areaX = sbX + sbWidth + 4;
+            areaW = Math.max(160, pw - 12 - sbWidth - 4);
+        }
+        renderSidebar(g, mx, my, sbOpen, sbRight);
+
+        int listW = Math.max(140, Math.min(240, (areaW - 6) * 2 / 5));
+        journalListX = areaX;
+        g.fill(areaX, y, areaX + listW, y + h, 0xF0181E28);
+        g.fill(areaX + 4 + listW, y, areaX + areaW, y + h, 0xF0181E28);
         int content = 4 + 16 + (StudioSession.issues.isEmpty() ? 16 : StudioSession.issues.size() * 24)
                 + 6 + 14 + Math.max(1, StudioSession.history.size()) * 22 + 8;
         listMax = Math.max(0, content - h);
@@ -805,12 +839,13 @@ public class StudioScreen extends Screen {
             journal = Math.max(0, Math.min(StudioSession.issues.size() - 1, journal));
         }
         journalHits.clear();
-        g.enableScissor(px + 8, y, px + 8 + listW, y + h);
+        UUID selfId = this.minecraft != null && this.minecraft.player != null ? this.minecraft.player.getUUID() : null;
+        g.enableScissor(areaX, y, areaX + listW, y + h);
         int row = y + 4 - listScroll;
-        g.drawString(this.font, Messages.get("studio.active"), px + 16, row, GOLD, false);
+        g.drawString(this.font, Messages.get("studio.active"), areaX + 8, row, GOLD, false);
         row += 16;
         if (StudioSession.issues.isEmpty()) {
-            g.drawString(this.font, Messages.get("log.empty"), px + 16, row, MUTED, false);
+            g.drawString(this.font, Messages.get("log.empty"), areaX + 8, row, MUTED, false);
             row += 16;
         }
         for (int i = 0; i < StudioSession.issues.size(); i++) {
@@ -818,30 +853,50 @@ public class StudioScreen extends Screen {
             if (row + 24 >= y && row <= y + h) {
                 journalHits.add(new JournalHit(row, 22, 0, i));
                 boolean on = historySel < 0 && i == journal;
-                g.fill(px + 12, row, px + 4 + listW, row + 22, on ? 0xFF2E3A4E : ROW);
+                g.fill(areaX + 4, row, areaX + listW - 4, row + 22, on ? 0xFF2E3A4E : ROW);
                 String where = issue.file().isEmpty() ? "—" : issue.file();
                 if (issue.line() > 0) {
                     where = where + ":" + issue.line();
                 }
-                g.drawString(this.font, trim(where, listW - 20), px + 16, row + 2, on ? GOLD : TEXT, false);
-                g.drawString(this.font, trim(com.scriptcraft.lang.Phrase.forClient(issue.reason()), listW - 20), px + 16, row + 12, MUTED, false);
+                // Головы редакторов, сидящих в этом проблемном скрипте
+                int headRight = areaX + listW - 6;
+                if (!issue.file().isEmpty()) {
+                    String fullPath = "scripts/" + issue.file();
+                    for (StudioExplorerPacket.ActiveEditor ed : StudioSession.activeEditors) {
+                        if (!ed.path().equals(fullPath)) continue;
+                        if (headRight - 11 < areaX + 48) break;
+                        headRight -= 10;
+                        int pc = peerColor(ed.name());
+                        g.fill(headRight - 1, row + 2, headRight + 9, row + 12, pc);
+                        blitHead(g, ed.id(), headRight, row + 3, 8);
+                        if (hover(mx, my, headRight - 1, row + 2, 10, 10)) {
+                            tip = ed.name();
+                            tipX = mx + 8;
+                            tipY = my + 12;
+                        }
+                        headRight -= 2;
+                    }
+                }
+                int titleMaxW = Math.max(24, headRight - (areaX + 8));
+                g.drawString(this.font, trim(where, titleMaxW), areaX + 8, row + 2, on ? GOLD : TEXT, false);
+                g.drawString(this.font, trim(com.scriptcraft.lang.Phrase.forClient(issue.reason()), listW - 18), areaX + 8, row + 12, MUTED, false);
             }
             row += 24;
         }
         row += 6;
-        g.drawString(this.font, Messages.get("studio.history"), px + 16, row, GOLD, false);
+        g.drawString(this.font, Messages.get("studio.history"), areaX + 8, row, GOLD, false);
         row += 14;
         if (StudioSession.history.isEmpty()) {
-            g.drawString(this.font, "—", px + 16, row, MUTED, false);
+            g.drawString(this.font, "—", areaX + 8, row, MUTED, false);
         }
         for (int i = StudioSession.history.size() - 1; i >= 0; i--) {
             if (row + 22 >= y && row <= y + h) {
                 journalHits.add(new JournalHit(row, 22, 1, i));
                 boolean on = i == historySel;
                 if (on) {
-                    g.fill(px + 12, row, px + 4 + listW, row + 20, 0xFF2E3A4E);
+                    g.fill(areaX + 4, row, areaX + listW - 4, row + 20, 0xFF2E3A4E);
                 }
-                g.drawString(this.font, trim(com.scriptcraft.lang.Phrase.forClient(StudioSession.history.get(i).title), listW - 20), px + 16, row + 4, on ? GOLD : MUTED, false);
+                g.drawString(this.font, trim(com.scriptcraft.lang.Phrase.forClient(StudioSession.history.get(i).title), listW - 18), areaX + 8, row + 4, on ? GOLD : MUTED, false);
             }
             row += 22;
         }
@@ -854,39 +909,44 @@ public class StudioScreen extends Screen {
             boolean code = !note.lines.isEmpty();
             String locBody = com.scriptcraft.lang.Phrase.forClient(note.body);
             List<String> rows = code ? note.lines : noteBody(locBody);
-            drawJournalDetail(g, mx, my, y, h, listW, rows, code ? note.firstLine : 0,
+            drawJournalDetail(g, mx, my, y, h, areaX, areaW, listW, note.file, rows, code ? note.firstLine : 0,
                     code ? note.line : -1, code ? locBody : "", code, historySel + 1);
             return;
         }
         if (StudioSession.issues.isEmpty()) {
-            g.drawString(this.font, Messages.get("log.empty"), px + 16 + listW, y + 8, MUTED, false);
+            g.drawString(this.font, Messages.get("log.empty"), areaX + 8 + listW, y + 8, MUTED, false);
             codeMax = 0;
             return;
         }
         ScriptLog.Issue current = StudioSession.issues.get(journal);
+        List<String> live = current.file().isEmpty() ? null : StudioSession.liveLines(current.file());
         ScriptLog.Slice slice = slice(current.file());
-        List<String> rows = slice == null ? List.of() : slice.lines();
-        drawJournalDetail(g, mx, my, y, h, listW, rows, slice == null ? 0 : slice.firstLine(), current.line(),
-                com.scriptcraft.lang.Phrase.forClient(current.reason()), slice != null && !slice.lines().isEmpty(), -journal - 1);
+        List<String> rows = live != null && !live.isEmpty() ? live : (slice == null ? List.of() : slice.lines());
+        int firstLine = live != null && !live.isEmpty() ? 1 : (slice == null ? 0 : slice.firstLine());
+        drawJournalDetail(g, mx, my, y, h, areaX, areaW, listW, current.file(), rows, firstLine, current.line(),
+                com.scriptcraft.lang.Phrase.forClient(current.reason()), !rows.isEmpty(), -journal - 1);
     }
 
-    private void drawJournalDetail(GuiGraphics g, int mx, int my, int y, int h, int listW, List<String> rows,
+    private void drawJournalDetail(GuiGraphics g, int mx, int my, int y, int h, int areaX, int areaW, int listW,
+                                   String file, List<String> rows,
                                    int firstNumber, int highlight, String reason, boolean numbers, int stamp) {
         if (journalStamp != stamp) {
             journalStamp = stamp;
             clearJournalSelection();
         }
         journalLines.clear();
-        int codeX = px + 16 + listW;
-        int codeW = Math.max(40, pw - listW - 28);
+        int codeX = areaX + 8 + listW;
+        int codeW = Math.max(40, areaW - listW - 12);
         journalTextX = codeX;
         journalTextW = codeW;
-        drawCopyButtons(g, mx, my, codeX, y, codeW);
+        drawCopyButtons(g, mx, my, codeX, y, codeW, file, highlight);
         journalViewTop = y + 18;
         journalViewBottom = Math.max(journalViewTop + LINE_H, y + h - 22);
         int viewH = journalViewBottom - journalViewTop;
         codeMax = Math.max(0, rows.size() * LINE_H - viewH);
         codeScroll = Math.max(0, Math.min(codeScroll, codeMax));
+        List<StudioLivePacket.Peer> filePeers = (file == null || file.isEmpty()) ? List.of() : StudioSession.peers(file);
+        UUID selfId = this.minecraft != null && this.minecraft.player != null ? this.minecraft.player.getUUID() : null;
         g.enableScissor(codeX, journalViewTop, codeX + codeW, journalViewBottom);
         if (rows.isEmpty()) {
             journalLine(g, journalViewTop + 4, codeX + 6, Messages.get("log.no_file"), MUTED, true, true, false);
@@ -894,16 +954,52 @@ public class StudioScreen extends Screen {
             int ly = journalViewTop - codeScroll;
             for (int i = 0; i < rows.size(); i++) {
                 int number = firstNumber + i;
+                int zeroLine = number - 1;
                 boolean visible = ly + LINE_H > journalViewTop && ly < journalViewBottom;
+                String lineStr = rows.get(i);
                 if (visible && numbers && number == highlight) {
-                    g.fill(codeX, ly - 1, codeX + codeW, ly + LINE_H - 1, 0xAAD25A5A);
+                    g.fill(codeX, ly - 1, codeX + codeW, ly + LINE_H - 1, 0x66D25A5A);
+                }
+                int textX = codeX + (numbers ? 38 : 6);
+                // Живое выделение других редакторов в этой строке
+                if (visible && numbers && !filePeers.isEmpty()) {
+                    for (StudioLivePacket.Peer peer : filePeers) {
+                        if (selfId != null && selfId.equals(peer.id())) continue;
+                        int[] span = peerSpan(peer, zeroLine, lineStr.length());
+                        if (span != null && span[1] > span[0]) {
+                            int x0 = textX + journalWidth(lineStr, span[0], false);
+                            int x1 = textX + journalWidth(lineStr, span[1], false);
+                            g.fill(x0, ly - 1, Math.max(x1, x0 + 2), ly + LINE_H - 1, (peerColor(peer.name()) & 0xFFFFFF) | 0x55000000);
+                        }
+                    }
                 }
                 if (visible && numbers) {
                     String num = Integer.toString(number);
-                    g.drawString(this.font, num, codeX + 28 - this.font.width(num), ly, MUTED, false);
+                    g.drawString(this.font, num, codeX + 32 - this.font.width(num), ly, number == highlight ? RED : MUTED, false);
+                    for (StudioLivePacket.Peer peer : filePeers) {
+                        if (peer.line() != zeroLine) continue;
+                        int pc = peerColor(peer.name());
+                        g.fill(codeX + 1, ly, codeX + 11, ly + 10, pc);
+                        blitHead(g, peer.id(), codeX + 2, ly + 1, 8);
+                        if (hover(mx, my, codeX + 1, ly, 10, 10)) {
+                            tip = peer.name() + " (Ln " + number + ")";
+                            tipX = mx + 8;
+                            tipY = my + 12;
+                        }
+                        break;
+                    }
                 }
-                int textX = codeX + (numbers ? 34 : 6);
-                journalLine(g, ly, textX, rows.get(i), TEXT, !numbers, visible, false);
+                journalLine(g, ly, textX, lineStr, TEXT, !numbers, visible, false);
+                // Живые курсоры редакторов в строке
+                if (visible && numbers && !filePeers.isEmpty()) {
+                    for (StudioLivePacket.Peer peer : filePeers) {
+                        if (peer.line() != zeroLine) continue;
+                        int pc = peerColor(peer.name());
+                        int cx = textX + journalWidth(lineStr, Math.min(Math.max(0, peer.col()), lineStr.length()), false);
+                        g.fill(cx, ly - 1, cx + 2, ly + LINE_H - 1, pc);
+                        g.fill(cx - 1, ly - 2, cx + 3, ly, pc);
+                    }
+                }
                 ly += LINE_H;
             }
         }
@@ -914,7 +1010,7 @@ public class StudioScreen extends Screen {
         }
     }
 
-    private void drawCopyButtons(GuiGraphics g, int mx, int my, int x, int y, int width) {
+    private void drawCopyButtons(GuiGraphics g, int mx, int my, int x, int y, int width, String file, int highlightLine) {
         String copy = Messages.get("studio.copy");
         String all = Messages.get("studio.copy_all");
         copyBtnW = this.font.width(copy) + 10;
@@ -926,8 +1022,37 @@ public class StudioScreen extends Screen {
         if (next + copyAllW <= x + width) {
             copyAllX = next;
             paintJournalButton(g, mx, my, copyAllX, copyBtnY, copyAllW, all, Messages.get("studio.copy_all_hint"));
+            next += copyAllW + 4;
         } else {
             copyAllX = -1;
+        }
+        openEdX = -1;
+        openEdFile = file;
+        openEdLine = highlightLine;
+        if (file != null && !file.isEmpty()) {
+            String editLbl = "✎ " + Messages.get("studio.open_in_editor");
+            openEdW = this.font.width(editLbl) + 10;
+            if (next + openEdW <= x + width) {
+                openEdX = next;
+                paintJournalButton(g, mx, my, openEdX, copyBtnY, openEdW, editLbl, Messages.get("studio.open_in_editor_hint"));
+                next += openEdW + 6;
+            }
+            // Головы редакторов справа сверху над кодом в Журнале
+            int rx = x + width - 2;
+            String fullPath = "scripts/" + file;
+            for (StudioExplorerPacket.ActiveEditor ed : StudioSession.activeEditors) {
+                if (!ed.path().equals(fullPath)) continue;
+                rx -= 13;
+                if (rx < next + 4) break;
+                int pc = peerColor(ed.name());
+                g.fill(rx - 1, copyBtnY, rx + 11, copyBtnY + 12, pc);
+                blitHead(g, ed.id(), rx, copyBtnY + 1, 10);
+                if (hover(mx, my, rx - 1, copyBtnY, 12, 12)) {
+                    tip = ed.name();
+                    tipX = mx - this.font.width(tip) - 6;
+                    tipY = my + 14;
+                }
+            }
         }
     }
 
@@ -1009,6 +1134,13 @@ public class StudioScreen extends Screen {
     private int copyBtnW;
     private int copyAllX = -1;
     private int copyAllW;
+    private int openEdX = -1;
+    private int openEdW;
+    private String openEdFile;
+    private int openEdLine;
+    private int journalListX;
+    private long lastJournalClickAt;
+    private int lastJournalClickIdx = -1;
     private int journalTextX = -1;
     private int journalTextW;
     private int journalViewTop;
@@ -1254,17 +1386,19 @@ public class StudioScreen extends Screen {
                     int numCol = lineErrors.containsKey(i) ? RED : (i == doc.line ? GOLD : MUTED);
                     g.drawString(this.font, num, editorX + gw - 8 - this.font.width(num), ly, numCol, false);
                 }
-                if (lineErrors.containsKey(i)) {
-                    g.drawString(this.font, "!", editorX + 4, ly, RED, false);
-                }
+                boolean drewPeer = false;
                 for (StudioLivePacket.Peer peer : roomPeers) {
                     if ((selfId != null && selfId.equals(peer.id())) || peer.line() != i) {
                         continue;
                     }
                     int pc = peerColor(peer.name());
-                    g.fill(editorX + 3, ly, editorX + 13, ly + 10, pc);
-                    blitHead(g, peer.id(), editorX + 4, ly + 1, 8);
+                    g.fill(editorX + 2, ly, editorX + 12, ly + 10, pc);
+                    blitHead(g, peer.id(), editorX + 3, ly + 1, 8);
+                    drewPeer = true;
                     break;
+                }
+                if (lineErrors.containsKey(i)) {
+                    g.drawString(this.font, "!", editorX + (drewPeer ? 13 : 4), ly, RED, false);
                 }
             }
             g.disableScissor();
@@ -1280,7 +1414,7 @@ public class StudioScreen extends Screen {
             if (peerHover != null && !inToolPanel(mx, my)) {
                 int tw = this.font.width(peerHover) + (hoveredPeer != null ? 14 : 0);
                 int nameX = Math.min(mx + 10, px + pw - tw - 10);
-                int nameY = Math.max(py + 2, my - 15);
+                int nameY = Math.max(py + 2, errorHover != null ? my - 31 : my - 15);
                 int accent = hoveredPeer != null ? peerColor(hoveredPeer.name()) : ACCENT;
                 g.fill(nameX - 4, nameY - 2, nameX + tw + 4, nameY + 11, 0xF5111722);
                 border(g, nameX - 4, nameY - 2, tw + 8, 13, accent);
@@ -1842,6 +1976,14 @@ public class StudioScreen extends Screen {
             int iy = y + 3 + i * 15;
             boolean hot = hover(mx, my, x + 1, iy, w - 2, 15);
             float ht = animHover("drop:" + menu + ":" + i, hot);
+            boolean resItemBlink = "reload".equals(menu) && i == 1 && StudioSession.resourcesDirty;
+            if (resItemBlink) {
+                float pulse = 0.5f + 0.5f * (float) Math.sin(System.currentTimeMillis() / 220.0);
+                g.fill(x + 2, iy, x + w - 2, iy + 15, withAlpha(GREEN, 0.20f + 0.30f * pulse));
+                g.fill(x + 2, iy + 2, x + 4, iy + 13, withAlpha(0xFF7EE787, 0.55f + 0.45f * pulse));
+                g.drawString(this.font, items.get(i), x + 8, iy + 4, lerpColor(0xFF56D364, 0xFFC2FFD0, Math.max(ht, pulse)), false);
+                continue;
+            }
             if (ht > 0.02f) {
                 g.fill(x + 2, iy, x + w - 2, iy + 15, withAlpha(ROW_HOT, ht));
                 g.fill(x + 2, iy + 2, x + 4, iy + 13, withAlpha(GOLD, ht));
@@ -2335,6 +2477,9 @@ public class StudioScreen extends Screen {
                     requestClose(tab.substring(2));
                 } else {
                     StudioSession.active = tab;
+                    if (!StudioSession.HOME.equals(tab) && !StudioSession.JOURNAL.equals(tab)) {
+                        StudioSession.lastScriptTab = tab;
+                    }
                     settings = false;
                 }
                 return true;
@@ -2374,12 +2519,10 @@ public class StudioScreen extends Screen {
             toolClick(mx);
             return true;
         }
-        if (StudioSession.JOURNAL.equals(StudioSession.active)) {
-            journalClick(mx, my);
-            return true;
-        }
         ScriptDocument doc = script();
-        boolean hasSidebar = !settings && (doc != null || StudioSession.HOME.equals(StudioSession.active));
+        boolean hasSidebar = !settings && (doc != null
+                || StudioSession.HOME.equals(StudioSession.active)
+                || StudioSession.JOURNAL.equals(StudioSession.active));
         if (hasSidebar) {
             // Сайдбар файлов: перетаскивание границы и клики по файлам
             int resizeEdgeX = ClientUiSettings.sidebarRight() ? sbX : sbX + sbW - 2;
@@ -2452,6 +2595,10 @@ public class StudioScreen extends Screen {
                 return true;
             }
             explorerFocused = false;
+        }
+        if (StudioSession.JOURNAL.equals(StudioSession.active)) {
+            journalClick(mx, my);
+            return true;
         }
         if (doc != null && doc.loaded && hover(mx, my, editorX, editorY, editorW, editorH)) {
             panelFocus = 0;
@@ -2613,7 +2760,7 @@ public class StudioScreen extends Screen {
             return true;
         }
         ScriptDocument doc = script();
-        if (!settings && (doc != null || StudioSession.HOME.equals(StudioSession.active))
+        if (!settings && (doc != null || StudioSession.HOME.equals(StudioSession.active) || StudioSession.JOURNAL.equals(StudioSession.active))
                 && hover((int) mouseX, (int) mouseY, sbX, sbY, sbW, sbH)) {
             sidebarScroll = Math.max(0, Math.min(sidebarMaxScroll, sidebarScroll + step * 10));
             return true;
@@ -2626,7 +2773,7 @@ public class StudioScreen extends Screen {
             }
             doc.followCaret = false;
         } else if (StudioSession.JOURNAL.equals(StudioSession.active)) {
-            if (mouseX < px + 8 + journalListW) {
+            if (mouseX < journalListX + journalListW) {
                 listScroll = Math.max(0, Math.min(listMax, listScroll + step * 8));
             } else {
                 codeScroll = Math.max(0, Math.min(codeMax, codeScroll + step * LINE_H));
@@ -3626,6 +3773,10 @@ public class StudioScreen extends Screen {
             case "search" -> List.of(Messages.get("studio.find_replace"));
             case "view" -> List.of(StudioSession.maximized ? Messages.get("studio.m.window") : Messages.get("studio.m.full"),
                     Messages.get("studio.journal"), Messages.get("studio.m.tools"));
+            case "reload" -> List.of(
+                    Messages.get("studio.m.reload_scripts"),
+                    Messages.get("studio.m.reload_resources"),
+                    Messages.get("studio.m.reload_config"));
             default -> List.of();
         };
     }
@@ -3693,6 +3844,16 @@ public class StudioScreen extends Screen {
                     }
                 }
             }
+            case "reload" -> {
+                if (index == 0) {
+                    ModNetwork.sendToServer(new ScriptReloadPacket("$scripts"));
+                } else if (index == 1) {
+                    StudioSession.resourcesDirty = false;
+                    ModNetwork.sendToServer(new ScriptReloadPacket("$resources"));
+                } else if (index == 2) {
+                    ModNetwork.sendToServer(new ScriptReloadPacket("$config"));
+                }
+            }
             default -> {
             }
         }
@@ -3700,9 +3861,9 @@ public class StudioScreen extends Screen {
 
     private int menuX() {
         int x = px + 6;
-        String[] ids = {"file", "edit", "search", "view"};
+        String[] ids = {"file", "edit", "search", "view", "reload"};
         String[] labels = {Messages.get("studio.m.file"), Messages.get("studio.m.edit"), Messages.get("studio.m.search"),
-                Messages.get("studio.m.view")};
+                Messages.get("studio.m.view"), Messages.get("studio.m.reload")};
         for (int i = 0; i < ids.length; i++) {
             int w = this.font.width(labels[i]) + 12;
             if (ids[i].equals(menu)) {
@@ -3715,9 +3876,9 @@ public class StudioScreen extends Screen {
 
     private String menuAt(int mx) {
         int x = px + 6;
-        String[] ids = {"file", "edit", "search", "view"};
+        String[] ids = {"file", "edit", "search", "view", "reload"};
         String[] labels = {Messages.get("studio.m.file"), Messages.get("studio.m.edit"), Messages.get("studio.m.search"),
-                Messages.get("studio.m.view")};
+                Messages.get("studio.m.view"), Messages.get("studio.m.reload")};
         for (int i = 0; i < ids.length; i++) {
             int w = this.font.width(labels[i]) + 12;
             if (mx >= x && mx < x + w) {
@@ -3778,29 +3939,44 @@ public class StudioScreen extends Screen {
             copyJournalText(allIssuesText());
             return;
         }
+        if (openEdX >= 0 && openEdFile != null && !openEdFile.isEmpty()
+                && hover(mx, my, openEdX, copyBtnY, openEdW, 12)) {
+            openScriptAtLine(openEdFile, openEdLine);
+            return;
+        }
         if (journalTextX >= 0 && mx >= journalTextX && mx < journalTextX + journalTextW
                 && my >= journalViewTop - 2 && my < journalY + journalH) {
             placeJournalCaret(mx, my, false);
             drag = Drag.JOURNAL;
             return;
         }
-        if (mx < px + 8 || mx >= px + 8 + journalListW || my < journalY || my >= journalY + journalH) {
+        if (mx < journalListX || mx >= journalListX + journalListW || my < journalY || my >= journalY + journalH) {
             return;
         }
         clearJournalSelection();
+        long now = System.currentTimeMillis();
         for (JournalHit hit : journalHits) {
             if (my < hit.y || my >= hit.y + hit.h) {
                 continue;
             }
             if (hit.kind == 0) {
+                boolean dbl = lastJournalClickIdx == hit.index && (now - lastJournalClickAt) < 380L;
+                lastJournalClickIdx = hit.index;
+                lastJournalClickAt = now;
                 historySel = -1;
                 journal = hit.index;
                 ScriptLog.Issue issue = StudioSession.issues.get(hit.index);
-                ScriptLog.Slice slice = slice(issue.file());
-                if (slice != null && issue.line() > 0) {
-                    codeScroll = Math.max(0, (issue.line() - slice.firstLine()) * LINE_H - 20);
+                if (dbl && !issue.file().isEmpty()) {
+                    openScriptAtLine(issue.file(), issue.line());
+                    return;
+                }
+                List<String> live = issue.file().isEmpty() ? null : StudioSession.liveLines(issue.file());
+                int first = live != null && !live.isEmpty() ? 1 : (slice(issue.file()) == null ? 1 : slice(issue.file()).firstLine());
+                if (issue.line() > 0) {
+                    codeScroll = Math.max(0, (issue.line() - first) * LINE_H - 20);
                 }
             } else {
+                lastJournalClickIdx = -1;
                 historySel = hit.index;
                 StudioSession.Note note = StudioSession.history.get(hit.index);
                 if (note.line > 0) {
@@ -3810,6 +3986,18 @@ public class StudioScreen extends Screen {
                 }
             }
             return;
+        }
+    }
+
+    private void openScriptAtLine(String file, int line1Based) {
+        if (file == null || file.isEmpty()) {
+            return;
+        }
+        openScript(file);
+        ScriptDocument doc = StudioSession.docs.get(file);
+        if (doc != null && line1Based > 0) {
+            doc.move(Math.max(0, line1Based - 1), 0, false);
+            doc.followCaret = true;
         }
     }
 
@@ -3992,6 +4180,9 @@ public class StudioScreen extends Screen {
     private void dropTab(String name) {
         StudioSync.leaveFile(name);
         StudioSession.docs.remove(name);
+        if (name.equals(StudioSession.lastScriptTab)) {
+            StudioSession.lastScriptTab = StudioSession.docs.keySet().stream().findFirst().orElse(null);
+        }
         if (name.equals(StudioSession.active)) {
             StudioSession.active = StudioSession.HOME;
         }

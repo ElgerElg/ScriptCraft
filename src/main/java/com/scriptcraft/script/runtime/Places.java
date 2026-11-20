@@ -138,6 +138,11 @@ public final class Places {
                     return level;
                 }
             }
+            for (ServerLevel level : server.getAllLevels()) {
+                if (level.dimension().location().getPath().equalsIgnoreCase(id.getPath())) {
+                    return level;
+                }
+            }
         }
         throw new ScriptRuntimeException(Messages.get("var.unknown_world", loc.world()));
     }

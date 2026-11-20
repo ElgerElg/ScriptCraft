@@ -82,6 +82,12 @@ public final class StudioSession {
     }
     public static final Map<String, ScriptDocument> docs = new LinkedHashMap<>();
     private static final Map<String, List<StudioLivePacket.Peer>> peers = new LinkedHashMap<>();
+    /** Живые тексты комнат с сервера (чтобы в Журнале видеть правки других редакторов в реальном времени). */
+    private static final Map<String, List<String>> liveLines = new LinkedHashMap<>();
+    /** Напоминание: ресурсы в scriptcraft/resources/ были изменены и ждут перезагрузки. */
+    public static boolean resourcesDirty = false;
+    /** Последний открытый скрипт (чтобы при переходе в Журнал редактор не выпадал из комнаты). */
+    public static String lastScriptTab;
     /** Состояние проводника scriptcraft/. */
     public static String explorerDir = "scripts";
     public static List<StudioExplorerPacket.Entry> explorerEntries = List.of();
@@ -106,6 +112,9 @@ public final class StudioSession {
         history.clear();
         docs.clear();
         peers.clear();
+        liveLines.clear();
+        resourcesDirty = false;
+        lastScriptTab = null;
         explorerDir = "scripts";
         explorerEntries = List.of();
         activeEditors = List.of();
@@ -150,6 +159,7 @@ public final class StudioSession {
     }
 
     public static ScriptDocument openScript(String name) {
+        lastScriptTab = name;
         ScriptDocument existing = docs.get(name);
         if (existing != null) {
             active = name;
@@ -202,6 +212,23 @@ public final class StudioSession {
 
     public static void clearPeers() {
         peers.clear();
+        liveLines.clear();
+    }
+
+    public static void setLiveText(String file, String text) {
+        if (file == null || file.isEmpty() || text == null) {
+            return;
+        }
+        String norm = text.replace("\r\n", "\n").replace('\r', '\n');
+        liveLines.put(file, List.of(norm.split("\n", -1)));
+    }
+
+    public static List<String> liveLines(String file) {
+        ScriptDocument doc = docs.get(file);
+        if (doc != null && doc.loaded && !doc.lines.isEmpty()) {
+            return doc.lines;
+        }
+        return liveLines.get(file);
     }
 
     public static void catalog(List<String> names) {
@@ -229,6 +256,15 @@ public final class StudioSession {
     }
 
     public static void acceptExplorerFile(StudioExplorerPacket.FileView view) {
+        if ("$res_dirty".equals(view.renamedFrom())) {
+            boolean nextDirty = "1".equals(view.path());
+            boolean becameDirty = nextDirty && !resourcesDirty;
+            resourcesDirty = nextDirty;
+            if (becameDirty) {
+                ClientToasts.push(Messages.toast("studio.res_changed_hint"));
+            }
+            return;
+        }
         // Уведомление о переименовании / включении-выключении / удалении файла
         if (view.renamedFrom() != null && !view.renamedFrom().isEmpty()) {
             handleRemoteRename(view.renamedFrom(), view.path());

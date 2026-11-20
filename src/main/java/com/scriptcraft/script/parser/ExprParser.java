@@ -75,6 +75,22 @@ final class ExprParser {
         Parsed left = parseMul(t, i);
         while (left.end() < t.size()) {
             String op = word(t, left.end());
+            if (op.equals("~~vector") || op.equals("~vector")) {
+                Parsed vec = parseVectorCall(t, left.end() + 1);
+                left = new Parsed(new Expression.LocationOffset(left.expression(), vec.expression()), vec.end());
+                continue;
+            }
+            if (op.equals("~~") || op.equals("~")) {
+                int next = left.end() + 1;
+                if (word(t, next).equals("vector")) {
+                    Parsed vec = parseVectorCall(t, next + 1);
+                    left = new Parsed(new Expression.LocationOffset(left.expression(), vec.expression()), vec.end());
+                    continue;
+                }
+                Parsed right = parseMul(t, next);
+                left = new Parsed(new Expression.LocationOffset(left.expression(), right.expression()), right.end());
+                continue;
+            }
             if (!op.equals("+") && !op.equals("-")) {
                 break;
             }
@@ -82,6 +98,77 @@ final class ExprParser {
             left = new Parsed(new Expression.MathBinary(left.expression(), op, right.expression()), right.end());
         }
         return left;
+    }
+
+    /** Разбирает (x, y, z) после слова vector / ~vector / ~~vector. */
+    private static Parsed parseVectorCall(List<Token> t, int openIdx) throws ParseException {
+        if (!word(t, openIdx).equals("(")) {
+            throw new ParseException("нужно: vector(x, y, z) или ~~vector(x, y, z)");
+        }
+        Parsed x = parseAdd(t, openIdx + 1);
+        Parsed y = parseAdd(t, x.end());
+        Parsed z = parseAdd(t, y.end());
+        if (!word(t, z.end()).equals(")")) {
+            throw new ParseException("ожидается ')' после vector(x, y, z)");
+        }
+        return new Parsed(new Expression.Vec3Expr(x.expression(), y.expression(), z.expression()), z.end() + 1);
+    }
+
+    /**
+     * Разбирает location(x, y, z [, [world] "мир"] [, yaw, pitch]).
+     * Поддерживает 3 аргумента (x, y, z), 4 аргумента (x, y, z, world),
+     * 5 аргументов (x, y, z, yaw, pitch) и 6 аргументов (x, y, z, world, yaw, pitch).
+     */
+    private static Parsed parseLocationCall(List<Token> t, int openIdx) throws ParseException {
+        Parsed x = parseAdd(t, openIdx + 1);
+        Parsed y = parseAdd(t, x.end());
+        Parsed z = parseAdd(t, y.end());
+        int cur = z.end();
+        if (word(t, cur).equals(")")) {
+            return new Parsed(new Expression.LocationAt(x.expression(), y.expression(), z.expression()), cur + 1);
+        }
+        Expression worldExpr = null;
+        Expression yawExpr = null;
+        Expression pitchExpr = null;
+        if (word(t, cur).equals("in")) {
+            cur++;
+        }
+        if (word(t, cur).equals("world")) {
+            Parsed w = parseAdd(t, cur + 1);
+            worldExpr = w.expression();
+            cur = w.end();
+            if (!word(t, cur).equals(")")) {
+                Parsed yw = parseAdd(t, cur);
+                Parsed pt = parseAdd(t, yw.end());
+                yawExpr = yw.expression();
+                pitchExpr = pt.expression();
+                cur = pt.end();
+            }
+        } else {
+            Parsed arg4 = parseAdd(t, cur);
+            cur = arg4.end();
+            if (word(t, cur).equals(")")) {
+                worldExpr = arg4.expression();
+            } else {
+                Parsed arg5 = parseAdd(t, cur);
+                cur = arg5.end();
+                if (word(t, cur).equals(")")) {
+                    yawExpr = arg4.expression();
+                    pitchExpr = arg5.expression();
+                } else {
+                    Parsed arg6 = parseAdd(t, cur);
+                    worldExpr = arg4.expression();
+                    yawExpr = arg5.expression();
+                    pitchExpr = arg6.expression();
+                    cur = arg6.end();
+                }
+            }
+        }
+        if (!word(t, cur).equals(")")) {
+            throw new ParseException("ожидается ')' в location(x, y, z, [world \"мир\"], [yaw, pitch])");
+        }
+        return new Parsed(new Expression.LocationAt(
+                x.expression(), y.expression(), z.expression(), worldExpr, yawExpr, pitchExpr), cur + 1);
     }
 
     private static Parsed parseMul(List<Token> t, int i) throws ParseException {
@@ -259,14 +346,47 @@ final class ExprParser {
                 return new Parsed(new Expression.Look("loc-" + kind), i + 4);
             }
         }
+        if (w.equals("location") && word(t, i + 1).equals("(")) {
+            return parseLocationCall(t, i + 1);
+        }
+        if (w.equals("vector") && word(t, i + 1).equals("(")) {
+            return parseVectorCall(t, i + 1);
+        }
+        if (w.equals("~~vector") || w.equals("~vector")) {
+            Parsed vec = parseVectorCall(t, i + 1);
+            return new Parsed(new Expression.LocationOffset(null, vec.expression()), vec.end());
+        }
+        if ((w.equals("~~") || w.equals("~")) && word(t, i + 1).equals("vector")) {
+            Parsed vec = parseVectorCall(t, i + 2);
+            return new Parsed(new Expression.LocationOffset(null, vec.expression()), vec.end());
+        }
         if (w.equals("location") && word(t, i + 1).equals("at")) {
-            Parsed x = parse(t, i + 2);
-            Parsed y = parse(t, x.end());
-            Parsed z = parse(t, y.end());
-            return new Parsed(new Expression.LocationAt(x.expression(), y.expression(), z.expression()), z.end());
+            Parsed x = parseMul(t, i + 2);
+            Parsed y = parseMul(t, x.end());
+            Parsed z = parseMul(t, y.end());
+            int cur = z.end();
+            Expression worldExpr = null;
+            if (word(t, cur).equals("in")) {
+                cur++;
+                if (word(t, cur).equals("world")) {
+                    cur++;
+                }
+                Parsed wExp = parseMul(t, cur);
+                worldExpr = wExp.expression();
+                cur = wExp.end();
+            } else if (word(t, cur).equals("world")) {
+                Parsed wExp = parseMul(t, cur + 1);
+                worldExpr = wExp.expression();
+                cur = wExp.end();
+            }
+            return new Parsed(new Expression.LocationAt(x.expression(), y.expression(), z.expression(), worldExpr, null, null), cur);
         }
         if (w.equals("world") && word(t, i + 1).equals("spawn")) {
             return new Parsed(new Expression.Spawn(null, true), i + 2);
+        }
+        if (w.equals("world") && i + 1 < t.size() && !word(t, i + 1).equals("of") && !STOP.contains(word(t, i + 1))) {
+            Parsed wName = parseAtom(t, i + 1);
+            return new Parsed(new Expression.WorldRef(wName.expression()), wName.end());
         }
         if (w.equals("spawn") && word(t, i + 1).equals("of")) {
             TargetParser.Parsed target = TargetParser.parse(t, i + 2);

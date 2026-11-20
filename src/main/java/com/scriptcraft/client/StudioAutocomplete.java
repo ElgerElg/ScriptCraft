@@ -59,7 +59,8 @@ public final class StudioAutocomplete {
             "player has screen open", "player is in screen \"Menu\"", "screen of player",
             "clicked entity is set", "clicked player is set", "clicked block is set",
             "targeted block", "targeted entity", "targeted player", "location of player",
-            "location of targeted block", "location at ", "health of player", "food of player",
+            "location of targeted block", "location(0, 64, 0, world \"overworld\", 0, 0)", "location at ",
+            "vector(0.0, 0.0, 0.0)", "~~vector(0.0, 0.0, 0.0)", "health of player", "food of player",
             "random integer between 1 and 10", "random number between 0 and 1",
             "random element out of {}", "round(", "floor(", "ceil(", "abs(", "sqrt(", "min(", "max(", "clamp("
     );

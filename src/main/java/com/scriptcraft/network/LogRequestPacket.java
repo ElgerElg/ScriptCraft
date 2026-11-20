@@ -25,6 +25,7 @@ public record LogRequestPacket() {
             }
             ModNetwork.sendTo(player, LogPacket.from(ScriptLoader.journal(), true));
             ModNetwork.sendTo(player, ScriptListPacket.ofServer());
+            com.scriptcraft.studio.StudioRooms.sendAllViews(player);
         });
         ctx.get().setPacketHandled(true);
     }

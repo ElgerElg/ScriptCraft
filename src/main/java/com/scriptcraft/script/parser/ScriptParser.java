@@ -2392,7 +2392,9 @@ public final class ScriptParser {
             idx += 3;
         } else {
             TargetParser.Parsed tp = TargetParser.parse(t, idx);
-            if (tp != null) {
+            String afterTarget = tp == null ? "" : word(t, tp.end());
+            if (tp != null && (tp.end() == t.size() || afterTarget.equals("named")
+                    || afterTarget.equals("name") || afterTarget.equals("with"))) {
                 target = tp.target();
                 idx = tp.end();
             } else {

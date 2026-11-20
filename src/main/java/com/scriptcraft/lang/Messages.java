@@ -273,6 +273,14 @@ public final class Messages {
         add("studio.m.edit", "Edit", "Правка");
         add("studio.m.search", "Search", "Поиск");
         add("studio.m.view", "View", "Вид");
+        add("studio.m.reload", "Reload", "Перезагрузка");
+        add("studio.m.reload_scripts", "All scripts", "Все скрипты");
+        add("studio.m.reload_resources", "Resources", "Ресурсы");
+        add("studio.m.reload_config", "Config", "Конфиг");
+        add("studio.res_changed_hint", "&eResources modified — open Reload -> Resources to push to all players",
+                "&eРесурсы изменены — нажмите «Перезагрузка -> Ресурсы» для отправки всем игрокам");
+        add("studio.open_in_editor", "Edit", "В редактор");
+        add("studio.open_in_editor_hint", "Open this script in the live editor", "Открыть этот скрипт в редакторе");
         add("studio.m.enc", "Encoding", "Кодировки");
         add("studio.m.new", "New script", "Новый скрипт");
         add("studio.m.open", "Open", "Открыть");

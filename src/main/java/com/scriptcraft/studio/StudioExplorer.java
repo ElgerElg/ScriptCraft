@@ -35,6 +35,8 @@ public final class StudioExplorer {
     public static final int MAX_FILE_BYTES = 900 * 1024;
     /** Какую папку сейчас просматривает каждый редактор (для авто-рассылки обновлений). */
     private static final Map<UUID, String> WATCHING_DIR = new ConcurrentHashMap<>();
+    /** Изменялись ли файлы в resources/ через студию с момента последней перезагрузки ресурсов. */
+    private static volatile boolean resourcesDirty = false;
 
     private StudioExplorer() {
     }
@@ -47,6 +49,28 @@ public final class StudioExplorer {
 
     public static void clear() {
         WATCHING_DIR.clear();
+        resourcesDirty = false;
+    }
+
+    public static void markResourcesDirty(MinecraftServer server) {
+        resourcesDirty = true;
+        broadcastResourcesDirty(server);
+    }
+
+    public static void clearResourcesDirty(MinecraftServer server) {
+        resourcesDirty = false;
+        broadcastResourcesDirty(server);
+    }
+
+    private static void broadcastResourcesDirty(MinecraftServer server) {
+        if (server == null) return;
+        StudioExplorerPacket.FileView notice = new StudioExplorerPacket.FileView(
+                resourcesDirty ? "1" : "0", false, new byte[0], "$res_dirty");
+        for (ServerPlayer p : server.getPlayerList().getPlayers()) {
+            if (StudioAccess.may(p)) {
+                ModNetwork.sendTo(p, notice);
+            }
+        }
     }
 
     public static String normalizeRel(String raw) {
@@ -109,6 +133,8 @@ public final class StudioExplorer {
                         StudioRooms.forget(server, scriptRel, player.getUUID());
                         ScriptLoader.reloadAll(player.createCommandSourceStack());
                         broadcastScriptsAndLog(server);
+                    } else if (path.startsWith("resources/")) {
+                        markResourcesDirty(server);
                     }
                     broadcastRename(server, path, "");
                     broadcastDirs(server);
@@ -198,8 +224,8 @@ public final class StudioExplorer {
                             ScriptLoader.reloadOne(player.createCommandSourceStack(), scriptName);
                         }
                         broadcastScriptsAndLog(server);
-                    } else if (path.startsWith("resources/assets/") && server != null) {
-                        ResourceSync.reloadAndPush(server);
+                    } else if (path.startsWith("resources/") && server != null) {
+                        markResourcesDirty(server);
                     }
                     broadcastDirs(server);
                 } catch (IOException e) {
@@ -216,6 +242,8 @@ public final class StudioExplorer {
             StudioRooms.renameRoom(oldSc, newSc);
             ScriptLoader.reloadAll(player.createCommandSourceStack());
             broadcastScriptsAndLog(server);
+        } else if (oldPath.startsWith("resources/") || newPath.startsWith("resources/")) {
+            markResourcesDirty(server);
         }
         broadcastRename(server, oldPath, newPath);
         broadcastDirs(server);
@@ -244,6 +272,9 @@ public final class StudioExplorer {
         } catch (IOException ignored) {
         }
         ModNetwork.sendTo(player, new StudioExplorerPacket.DirView(norm, entries, StudioRooms.activeEditors()));
+        if (resourcesDirty) {
+            ModNetwork.sendTo(player, new StudioExplorerPacket.FileView("1", false, new byte[0], "$res_dirty"));
+        }
     }
 
     /** Рассылает свежее содержимое открытых папок и активных редакторов всем студийцам онлайн. */

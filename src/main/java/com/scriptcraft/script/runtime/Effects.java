@@ -1126,6 +1126,21 @@ public final class Effects {
         }
     }
 
+    /** set velocity of player to vector(x, y, z) */
+    public record SetVelocityVec(Target target, Expression vector) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            Object raw = vector.evaluate(ctx);
+            double[] vec = ScriptLocation.decodeVec(raw);
+            if (vec == null) {
+                throw new ScriptRuntimeException("ожидается vector(x, y, z), а не '" + Expression.toText(raw) + "'");
+            }
+            for (ServerPlayer p : target.resolve(ctx)) {
+                motion(p, vec[0], vec[1], vec[2]);
+            }
+        }
+    }
+
     /** launch player upwards|forwards [by N] */
     public record Launch(Target target, boolean forwards, @Nullable Expression speed) implements Action {
         @Override
