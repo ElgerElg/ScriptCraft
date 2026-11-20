@@ -20,19 +20,27 @@ public final class ScriptColors {
     }
 
     public static int width(Font font, String line, int count) {
+        return width(font, line, count, true);
+    }
+
+    public static int width(Font font, String line, int count, boolean quoteColors) {
         int end = Math.max(0, Math.min(count, line.length()));
         int width = 0;
         int tab = font.width("    ");
-        for (Piece piece : pieces(line, end, 0xE7E9EF)) {
+        for (Piece piece : pieces(line, end, 0xE7E9EF, quoteColors)) {
             width += piece.tab ? tab : font.width(styled(piece.text, piece.run));
         }
         return width;
     }
 
     public static void draw(GuiGraphics g, Font font, String line, int x, int y, int baseRgb, int max) {
+        draw(g, font, line, x, y, baseRgb, max, true);
+    }
+
+    public static void draw(GuiGraphics g, Font font, String line, int x, int y, int baseRgb, int max, boolean quoteColors) {
         int drawn = 0;
         int tab = font.width("    ");
-        for (Piece piece : pieces(line, line.length(), baseRgb)) {
+        for (Piece piece : pieces(line, line.length(), baseRgb, quoteColors)) {
             if (drawn >= max) {
                 return;
             }
@@ -48,7 +56,7 @@ public final class ScriptColors {
     }
 
     /** Куски строки с одним стилем. Цветовые коды читаются только внутри кавычек. */
-    private static java.util.List<Piece> pieces(String line, int end, int baseRgb) {
+    private static java.util.List<Piece> pieces(String line, int end, int baseRgb, boolean quoteColors) {
         java.util.List<Piece> out = new java.util.ArrayList<>();
         boolean inside = false;
         Run run = Run.base(baseRgb);
@@ -82,7 +90,7 @@ public final class ScriptColors {
                 i++;
                 continue;
             }
-            int code = inside ? codeAt(line, i) : -1;
+            int code = (quoteColors && inside) ? codeAt(line, i) : -1;
             if (code >= 0 && i + 1 < end) {
                 flush(out, cur, run);
                 run = run.apply((char) code, baseRgb);

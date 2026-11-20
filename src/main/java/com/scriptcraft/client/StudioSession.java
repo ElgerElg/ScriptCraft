@@ -28,6 +28,22 @@ public final class StudioSession {
     public static int y;
     public static int w = 780;
     public static int h = 460;
+    /** Настройки редактора (переключатели в плавающей панели). */
+    public static boolean optSyntax = true;
+    public static boolean optQuoteColors = true;
+    public static boolean optAutoIndent = true;
+    public static boolean optLineNumbers = true;
+    public static boolean optActiveLine = true;
+    public static boolean optTexturePreview = true;
+    public static boolean optMatchCase = false;
+    public static boolean optWholeWord = false;
+    /** Плавающая панель «Найти и заменить / Синтаксис»: позиция и размер. */
+    public static boolean toolPanelOpen = false;
+    public static boolean toolPanelPlaced = false;
+    public static int toolPanelX = 40;
+    public static int toolPanelY = 72;
+    public static int toolPanelW = 248;
+    public static int toolPanelH = 224;
     public static String active = HOME;
     public static boolean opened;
     public static List<String> catalog = List.of();

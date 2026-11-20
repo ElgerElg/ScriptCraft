@@ -64,6 +64,45 @@ final class ExprParser {
     }
 
     static Parsed parse(List<Token> t, int i) throws ParseException {
+        return parseAdd(t, i);
+    }
+
+    private static Parsed parseAdd(List<Token> t, int i) throws ParseException {
+        Parsed left = parseMul(t, i);
+        while (left.end() < t.size()) {
+            String op = word(t, left.end());
+            if (!op.equals("+") && !op.equals("-")) {
+                break;
+            }
+            Parsed right = parseMul(t, left.end() + 1);
+            left = new Parsed(new Expression.MathBinary(left.expression(), op, right.expression()), right.end());
+        }
+        return left;
+    }
+
+    private static Parsed parseMul(List<Token> t, int i) throws ParseException {
+        Parsed left = parsePow(t, i);
+        while (left.end() < t.size()) {
+            String op = word(t, left.end());
+            if (!op.equals("*") && !op.equals("/") && !op.equals("%")) {
+                break;
+            }
+            Parsed right = parsePow(t, left.end() + 1);
+            left = new Parsed(new Expression.MathBinary(left.expression(), op, right.expression()), right.end());
+        }
+        return left;
+    }
+
+    private static Parsed parsePow(List<Token> t, int i) throws ParseException {
+        Parsed left = parseAtom(t, i);
+        if (left.end() < t.size() && word(t, left.end()).equals("^")) {
+            Parsed right = parsePow(t, left.end() + 1);
+            return new Parsed(new Expression.MathBinary(left.expression(), "^", right.expression()), right.end());
+        }
+        return left;
+    }
+
+    private static Parsed parseAtom(List<Token> t, int i) throws ParseException {
         if (i >= t.size()) {
             throw new ParseException("ожидается значение");
         }
@@ -73,6 +112,30 @@ final class ExprParser {
             return new Parsed(ScriptParser.expression(t.get(i)), i + 1);
         }
         String w = word(t, i);
+        if (w.equals("(")) {
+            Parsed inner = parseAdd(t, i + 1);
+            if (!word(t, inner.end()).equals(")")) {
+                throw new ParseException("ожидается закрывающая скобка ')'");
+            }
+            return new Parsed(inner.expression(), inner.end() + 1);
+        }
+        if (w.equals("round") || w.equals("floor") || w.equals("ceil") || w.equals("abs")
+                || w.equals("sqrt") || w.equals("sin") || w.equals("cos") || w.equals("tan")) {
+            Parsed arg = parseAtom(t, i + 1);
+            return new Parsed(new Expression.MathUnary(w, arg.expression()), arg.end());
+        }
+        if (w.equals("min") || w.equals("max") || w.equals("pow")) {
+            Parsed a = parseAtom(t, i + 1);
+            int next = word(t, a.end()).equals("and") ? a.end() + 1 : a.end();
+            Parsed b = parseAtom(t, next);
+            return new Parsed(new Expression.MathBinary(a.expression(), w, b.expression()), b.end());
+        }
+        if (w.equals("clamp")) {
+            Parsed v = parseAtom(t, i + 1);
+            Parsed lo = parseAtom(t, v.end());
+            Parsed hi = parseAtom(t, lo.end());
+            return new Parsed(new Expression.MathClamp(v.expression(), lo.expression(), hi.expression()), hi.end());
+        }
         if (w.equals("random")) {
             return parseRandom(t, i);
         }
@@ -105,19 +168,29 @@ final class ExprParser {
 
     private static Parsed parseRandom(List<Token> t, int i) throws ParseException {
         String kind = word(t, i + 1);
+        if (kind.equals("element")) {
+            int at = i + 2;
+            if (word(t, at).equals("out")) at++;
+            if (word(t, at).equals("of") || word(t, at).equals("from")) at++;
+            if (at >= t.size() || !t.get(at).value().startsWith("{") || !t.get(at).value().endsWith("::*}")) {
+                throw new ParseException("нужно: random element out of {список::*}");
+            }
+            String raw = t.get(at).value();
+            return new Parsed(new Expression.RandomElement(raw.substring(1, raw.length() - 1)), at + 1);
+        }
         boolean integer = kind.equals("integer") || kind.equals("int");
         boolean number = kind.equals("number");
         if (!integer && !number) {
-            throw new ParseException("нужно: random integer between 1 and 10  или  random number between 0 and 1");
+            throw new ParseException("нужно: random integer between 1 and 10  или  random number between 0 and 1  или  random element out of {list::*}");
         }
         if (!word(t, i + 2).equals("between")) {
             throw new ParseException("нужно: random " + kind + " between <число> and <число>");
         }
-        Parsed a = parse(t, i + 3);
+        Parsed a = parseAtom(t, i + 3);
         if (!word(t, a.end()).equals("and")) {
             throw new ParseException("нужно: random " + kind + " between <число> and <число>");
         }
-        Parsed b = parse(t, a.end() + 1);
+        Parsed b = parseAtom(t, a.end() + 1);
         Expression value = integer
                 ? new Expression.RandomInt(a.expression(), b.expression())
                 : new Expression.RandomNum(a.expression(), b.expression());
@@ -154,6 +227,18 @@ final class ExprParser {
         }
         if (w.equals("loop-player")) {
             return new Parsed(new Expression.Property(Expression.Prop.NAME, new Target.LoopPlayer()), i + 1);
+        }
+        if (w.equals("clicked")) {
+            String kind = word(t, i + 1);
+            if (kind.equals("entity")) {
+                return new Parsed(new Expression.EventValue("clicked_entity"), i + 2);
+            }
+            if (kind.equals("player")) {
+                return new Parsed(new Expression.EventValue("clicked_player"), i + 2);
+            }
+            if (kind.equals("block")) {
+                return new Parsed(new Expression.EventValue("block"), i + 2);
+            }
         }
         if (w.equals("targeted")) {
             String kind = word(t, i + 1);

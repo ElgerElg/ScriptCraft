@@ -301,6 +301,99 @@ public interface Expression {
         }
     }
 
+    /** Значение плейсхолдера события (clicked_entity, clicked_player, block и т.д.). Пусто -> null, чтобы работал is set. */
+    record EventValue(String key) implements Expression {
+        @Override
+        public Object evaluate(ExecutionContext ctx) {
+            String value = ctx.placeholder(key);
+            return value == null || value.isEmpty() ? null : value;
+        }
+    }
+
+    /** Арифметика: +, -, *, /, %, ^. Если операнды не числа — возвращает null (или конкатенацию для + со строками). */
+    record MathBinary(Expression left, String op, Expression right) implements Expression {
+        @Override
+        public Object evaluate(ExecutionContext ctx) {
+            Object lv = left.evaluate(ctx);
+            Object rv = right.evaluate(ctx);
+            Double a = toNumber(lv);
+            Double b = toNumber(rv);
+            if (a == null || b == null) {
+                if ("+".equals(op) && (lv != null || rv != null)) {
+                    return toText(lv) + toText(rv);
+                }
+                return null;
+            }
+            return switch (op) {
+                case "+" -> a + b;
+                case "-" -> a - b;
+                case "*" -> a * b;
+                case "/" -> b == 0.0 ? 0.0 : a / b;
+                case "%" -> b == 0.0 ? 0.0 : a % b;
+                case "^", "pow" -> Math.pow(a, b);
+                case "min" -> Math.min(a, b);
+                case "max" -> Math.max(a, b);
+                default -> null;
+            };
+        }
+    }
+
+    /** Унарные математические функции: round, floor, ceil, abs, sqrt, sin, cos, tan, neg. */
+    record MathUnary(String op, Expression value) implements Expression {
+        @Override
+        public Object evaluate(ExecutionContext ctx) {
+            Double a = toNumber(value.evaluate(ctx));
+            if (a == null) {
+                return null;
+            }
+            return switch (op) {
+                case "round" -> (double) Math.round(a);
+                case "floor" -> Math.floor(a);
+                case "ceil" -> Math.ceil(a);
+                case "abs" -> Math.abs(a);
+                case "sqrt" -> a < 0 ? 0.0 : Math.sqrt(a);
+                case "sin" -> Math.sin(a);
+                case "cos" -> Math.cos(a);
+                case "tan" -> Math.tan(a);
+                case "neg" -> -a;
+                default -> a;
+            };
+        }
+    }
+
+    /** clamp(v, lo, hi) — ограничить число диапазоном. */
+    record MathClamp(Expression value, Expression min, Expression max) implements Expression {
+        @Override
+        public Object evaluate(ExecutionContext ctx) {
+            Double v = toNumber(value.evaluate(ctx));
+            Double lo = toNumber(min.evaluate(ctx));
+            Double hi = toNumber(max.evaluate(ctx));
+            if (v == null || lo == null || hi == null) {
+                return null;
+            }
+            return Math.max(Math.min(lo, hi), Math.min(Math.max(lo, hi), v));
+        }
+    }
+
+    /** random element out of {list::*} — случайный элемент списка. */
+    record RandomElement(String rawList) implements Expression {
+        @Override
+        public Object evaluate(ExecutionContext ctx) {
+            String resolved = ctx.variableName(rawList);
+            if (!resolved.endsWith("::*")) {
+                return null;
+            }
+            String prefix = resolved.substring(0, resolved.length() - 3);
+            java.util.List<java.util.Map.Entry<String, Object>> entries =
+                    com.scriptcraft.script.variables.VariableStore.children(prefix);
+            if (entries.isEmpty()) {
+                return null;
+            }
+            int idx = ctx.server().overworld().getRandom().nextInt(entries.size());
+            return entries.get(idx).getValue();
+        }
+    }
+
     /** Значение -> текст для вывода: 5.0 -> "5", null -> "<none>" (как в Skript). */
     static String toText(@Nullable Object value) {
         if (value == null) {

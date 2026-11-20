@@ -219,6 +219,38 @@ public final class Actions {
 
     // ------------------------------------------------------------------ игрок и чат
 
+    /** loop <N> times: — повторяет блок N раз, задавая %loop-number% от 1 до N. */
+    public record LoopTimes(Expression count, List<Action> body) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            int n = (int) Math.max(0, Math.min(10000, Math.round(Effects.number(count, ctx))));
+            String prev = ctx.placeholder("loop-number");
+            try {
+                for (int i = 1; i <= n; i++) {
+                    if (ctx.isStopped()) {
+                        return;
+                    }
+                    ctx.step();
+                    ctx.setPlaceholder("loop-number", Integer.toString(i));
+                    runAll(body, ctx);
+                }
+            } finally {
+                ctx.setPlaceholder("loop-number", prev);
+            }
+        }
+    }
+
+    /** while <условие>: — повторяет блок, пока условие истинно (ограничено бюджетом шагов). */
+    public record While(Condition condition, List<Action> body) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            while (!ctx.isStopped() && condition.test(ctx)) {
+                ctx.step();
+                runAll(body, ctx);
+            }
+        }
+    }
+
     /** broadcast "текст" — сообщение всем игрокам. */
     public record Broadcast(String text) implements Action {
         @Override

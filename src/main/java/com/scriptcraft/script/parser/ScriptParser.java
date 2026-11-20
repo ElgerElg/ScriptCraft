@@ -885,8 +885,19 @@ public final class ScriptParser {
                 } catch (ParseException e) {
                     error(line, e.getMessage());
                 }
+            } else if (lower.startsWith("while ") && lower.endsWith(":")) {
+                openIf = -1;
+                try {
+                    if (children.isEmpty()) {
+                        throw new ParseException("у 'while' нет вложенных действий");
+                    }
+                    Condition cond = parseCondition(line.text().substring(6, line.text().length() - 1).strip());
+                    actions.add(new Actions.While(cond, parseActions(children)));
+                } catch (ParseException e) {
+                    error(line, e.getMessage());
+                }
             } else if (lower.startsWith("loop ") && lower.endsWith(":")) {
-                // loop <цель>: или loop {имя::*}:
+                // loop <N> times: | loop <цель>: | loop {имя::*}:
                 openIf = -1;
                 try {
                     String inner = line.text().substring(5, line.text().length() - 1).strip();
@@ -899,6 +910,19 @@ public final class ScriptParser {
                         continue;
                     }
                     List<Token> t = Tokenizer.tokenize(inner);
+                    if (t.size() >= 2 && (word(t, t.size() - 1).equals("times") || word(t, t.size() - 1).equals("time"))) {
+                        if (children.isEmpty()) {
+                            throw new ParseException("у 'loop' нет вложенных действий");
+                        }
+                        List<Token> countTokens = t.subList(0, t.size() - 1);
+                        ExprParser.Parsed count = ExprParser.parse(countTokens, 0);
+                        if (count.end() != countTokens.size()) {
+                            throw new ParseException("нужно: loop <число> times:");
+                        }
+                        actions.add(new Actions.LoopTimes(count.expression(), parseActions(children)));
+                        i = end;
+                        continue;
+                    }
                     Target target = TargetParser.parseWhole(t, 0, "loop all players:");
                     if (children.isEmpty()) {
                         throw new ParseException("у 'loop' нет вложенных действий");
@@ -1332,6 +1356,9 @@ public final class ScriptParser {
             throw new ParseException("у этого действия не может быть вложенных строк");
         }
 
+        if (head.equals("spawn") && word(t, 1).equals("entity")) {
+            return parseSpawnEntity(t);
+        }
         // Сначала таблица эффектов (set gamemode of player..., heal player by 2, send title ...).
         Action effect = EffectPatterns.tryParse(t);
         if (effect != null) {
@@ -2048,6 +2075,122 @@ public final class ScriptParser {
                     "обязательный аргумент не может стоять после необязательного");
         } else {
             arguments.add(new ArgSpec(type, optional));
+        }
+    }
+
+    /**
+     * spawn entity "<id>" at <x y z | target | expr> [named "..."] [with health N] [with nbt "..."]
+     * [with weapon/helmet/chestplate/leggings/boots <item>]
+     */
+    private Action parseSpawnEntity(List<Token> t) throws ParseException {
+        if (t.size() < 5) {
+            throw new ParseException("нужно: spawn entity \"minecraft:zombie\" at <локация> [named \"...\"] [with health N] [with nbt \"{...}\"]");
+        }
+        String entityId = t.get(2).value();
+        expectWord(t, 3, "at");
+        int idx = 4;
+        Target target = null;
+        Expression place = null;
+        Expression x = null, y = null, z = null;
+
+        // Вариант 1: три числа (x y z)
+        if (idx + 2 < t.size() && looksNumericOrVar(t.get(idx)) && looksNumericOrVar(t.get(idx + 1)) && looksNumericOrVar(t.get(idx + 2))) {
+            x = expression(t.get(idx));
+            y = expression(t.get(idx + 1));
+            z = expression(t.get(idx + 2));
+            idx += 3;
+        } else {
+            TargetParser.Parsed tp = TargetParser.parse(t, idx);
+            if (tp != null) {
+                target = tp.target();
+                idx = tp.end();
+            } else {
+                ExprParser.Parsed ep = ExprParser.parse(t, idx);
+                place = ep.expression();
+                idx = ep.end();
+            }
+        }
+
+        String customName = null;
+        Expression health = null;
+        String snbt = null;
+        java.util.Map<net.minecraft.world.entity.EquipmentSlot, String> equip = new java.util.EnumMap<>(net.minecraft.world.entity.EquipmentSlot.class);
+
+        while (idx < t.size()) {
+            String w = word(t, idx);
+            if (w.equals("named") || w.equals("name")) {
+                customName = quoted(t, idx + 1);
+                idx += 2;
+                continue;
+            }
+            if (w.equals("with")) {
+                idx++;
+                w = word(t, idx);
+            }
+            switch (w) {
+                case "name", "named" -> {
+                    customName = quoted(t, idx + 1);
+                    idx += 2;
+                }
+                case "health", "hp" -> {
+                    ExprParser.Parsed hp = ExprParser.parse(t, idx + 1);
+                    health = hp.expression();
+                    idx = hp.end();
+                }
+                case "nbt" -> {
+                    if (idx + 1 >= t.size()) {
+                        throw new ParseException("нужно: with nbt \"{...}\"");
+                    }
+                    snbt = t.get(idx + 1).value();
+                    idx += 2;
+                }
+                case "weapon", "hand", "mainhand" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("укажите предмет для weapon");
+                    equip.put(net.minecraft.world.entity.EquipmentSlot.MAINHAND, t.get(idx + 1).value());
+                    idx += 2;
+                }
+                case "offhand" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("укажите предмет для offhand");
+                    equip.put(net.minecraft.world.entity.EquipmentSlot.OFFHAND, t.get(idx + 1).value());
+                    idx += 2;
+                }
+                case "helmet", "head" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("укажите предмет для helmet");
+                    equip.put(net.minecraft.world.entity.EquipmentSlot.HEAD, t.get(idx + 1).value());
+                    idx += 2;
+                }
+                case "chestplate", "chest" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("укажите предмет для chestplate");
+                    equip.put(net.minecraft.world.entity.EquipmentSlot.CHEST, t.get(idx + 1).value());
+                    idx += 2;
+                }
+                case "leggings", "legs" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("укажите предмет для leggings");
+                    equip.put(net.minecraft.world.entity.EquipmentSlot.LEGS, t.get(idx + 1).value());
+                    idx += 2;
+                }
+                case "boots", "feet" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("укажите предмет для boots");
+                    equip.put(net.minecraft.world.entity.EquipmentSlot.FEET, t.get(idx + 1).value());
+                    idx += 2;
+                }
+                default -> throw new ParseException("неизвестный параметр spawn entity: '" + t.get(idx).value()
+                        + "' (named, with health, with nbt, with weapon/helmet/chestplate/leggings/boots)");
+            }
+        }
+        return new com.scriptcraft.script.runtime.Effects.SpawnEntity(
+                entityId, target, place, x, y, z, customName, health, snbt, equip.isEmpty() ? null : equip);
+    }
+
+    private static boolean looksNumericOrVar(Token tok) {
+        if (tok.quoted()) return false;
+        String v = tok.value();
+        if (v.startsWith("{") && v.endsWith("}")) return true;
+        try {
+            Double.parseDouble(v);
+            return true;
+        } catch (NumberFormatException e) {
+            return false;
         }
     }
 

@@ -13,6 +13,7 @@ import com.scriptcraft.script.runtime.ScriptEvent;
 import com.scriptcraft.script.variables.VariableStore;
 import com.scriptcraft.script.runtime.ExecutionContext;
 import com.scriptcraft.script.runtime.Expression;
+import com.scriptcraft.script.runtime.ScoreboardManager;
 import com.scriptcraft.script.runtime.ScriptScheduler;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
@@ -25,14 +26,24 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.world.phys.HitResult;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.ServerChatEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
+import net.minecraftforge.event.entity.ProjectileImpactEvent;
 import net.minecraftforge.event.entity.item.ItemTossEvent;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
+import net.minecraftforge.event.entity.living.LivingEntityUseItemEvent;
+import net.minecraftforge.event.entity.living.LivingEvent;
 import net.minecraftforge.event.entity.living.LivingHurtEvent;
+import net.minecraftforge.event.entity.player.ArrowLooseEvent;
+import net.minecraftforge.event.entity.player.AttackEntityEvent;
 import net.minecraftforge.event.entity.player.EntityItemPickupEvent;
+import net.minecraftforge.event.entity.player.ItemFishedEvent;
+import net.minecraftforge.event.entity.player.PlayerDestroyItemEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.level.BlockEvent;
 import net.minecraftforge.event.level.ChunkEvent;
@@ -46,13 +57,18 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.registries.MissingMappingsEvent;
 
+import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Мост между событиями Forge и событиями скриптов.
  * Регистрируется в конструкторе мода: MinecraftForge.EVENT_BUS.register(ServerEvents.class) — поэтому методы static.
  */
 public final class ServerEvents {
+    private static final Map<UUID, Boolean> SNEAK_STATE = new HashMap<>();
+    private static final Map<UUID, Boolean> SPRINT_STATE = new HashMap<>();
+
     private ServerEvents() {
     }
 
@@ -95,6 +111,9 @@ public final class ServerEvents {
             InventoryWatch.forget(player);
             ResourceSync.onLogout(player);
             com.scriptcraft.studio.StudioRooms.onQuit(player);
+            ScoreboardManager.onQuit(player);
+            SNEAK_STATE.remove(player.getUUID());
+            SPRINT_STATE.remove(player.getUUID());
         }
     }
 
@@ -116,6 +135,19 @@ public final class ServerEvents {
     @SubscribeEvent
     public static void onCommand(net.minecraftforge.event.CommandEvent event) {
         BindingSync.onCommand(event);
+        if (event.isCanceled()) {
+            return;
+        }
+        if (event.getParseResults().getContext().getSource().getEntity() instanceof ServerPlayer player) {
+            String raw = event.getParseResults().getReader().getString().strip();
+            if (raw.startsWith("/")) {
+                raw = raw.substring(1);
+            }
+            int sp = raw.indexOf(' ');
+            String cmd = sp < 0 ? raw : raw.substring(0, sp);
+            String args = sp < 0 ? "" : raw.substring(sp + 1).strip();
+            run(ScriptEvent.COMMAND, player, event, Map.of("command", cmd, "args", args));
+        }
     }
 
     /** Мир из старой версии мода: блоки под id скриптов (example:ruby_block) переназначаются на слоты пула. */
@@ -148,6 +180,9 @@ public final class ServerEvents {
         SlotMigration.onServerStopped();
         BindingStore.onServerStopped();
         com.scriptcraft.studio.StudioRooms.clear();
+        ScoreboardManager.onServerStopped();
+        SNEAK_STATE.clear();
+        SPRINT_STATE.clear();
     }
 
     /** Периодическое автосохранение (интервал — variablesSaveIntervalSeconds в конфиге). */
@@ -190,6 +225,14 @@ public final class ServerEvents {
                     "attacker", attackerName(event.getSource().getEntity()),
                     "cause", event.getSource().getMsgId()));
         }
+        if (!event.isCanceled() && event.getSource().getEntity() instanceof ServerPlayer killer) {
+            Entity victim = event.getEntity();
+            String vName = victim instanceof Player p ? p.getGameProfile().getName() : entityId(victim);
+            ScriptLoader.fireEvent(ScriptEvent.KILL, killer, Map.of(
+                    "victim", vName,
+                    "attacker", killer.getGameProfile().getName(),
+                    "cause", event.getSource().getMsgId()));
+        }
     }
 
     @SubscribeEvent
@@ -225,6 +268,128 @@ public final class ServerEvents {
         }
         BlockState state = event.getLevel().getBlockState(event.getPos());
         run(ScriptEvent.RIGHT_CLICK, player, event, blockPlaceholders(state, event.getPos()));
+    }
+
+    @SubscribeEvent
+    public static void onRightClickEntity(PlayerInteractEvent.EntityInteract event) {
+        if (event.getHand() != InteractionHand.MAIN_HAND || !(event.getEntity() instanceof ServerPlayer player)) {
+            return;
+        }
+        Entity target = event.getTarget();
+        Map<String, String> ph = new HashMap<>();
+        ph.put("clicked_entity", entityId(target));
+        ph.put("clicked_entity_name", target.getName().getString());
+        if (target instanceof Player targetPlayer) {
+            ph.put("clicked_player", targetPlayer.getGameProfile().getName());
+        }
+        BlockPos pos = target.blockPosition();
+        ph.put("x", Integer.toString(pos.getX()));
+        ph.put("y", Integer.toString(pos.getY()));
+        ph.put("z", Integer.toString(pos.getZ()));
+        run(ScriptEvent.RIGHT_CLICK, player, event, ph);
+    }
+
+    @SubscribeEvent
+    public static void onAttack(AttackEntityEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            Entity target = event.getTarget();
+            String vName = target instanceof Player p ? p.getGameProfile().getName() : entityId(target);
+            run(ScriptEvent.ATTACK, player, event, Map.of(
+                    "victim", vName,
+                    "attacker", player.getGameProfile().getName()));
+        }
+    }
+
+    @SubscribeEvent
+    public static void onShoot(ArrowLooseEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            run(ScriptEvent.SHOOT, player, event, Map.of("projectile", "minecraft:arrow"));
+        }
+    }
+
+    @SubscribeEvent
+    public static void onProjectileHit(ProjectileImpactEvent event) {
+        if (!(event.getProjectile().getOwner() instanceof ServerPlayer shooter)) {
+            return;
+        }
+        Map<String, String> ph = new HashMap<>();
+        ph.put("projectile", entityId(event.getProjectile()));
+        HitResult hit = event.getRayTraceResult();
+        if (hit instanceof EntityHitResult ehr) {
+            Entity v = ehr.getEntity();
+            ph.put("victim", v instanceof Player p ? p.getGameProfile().getName() : entityId(v));
+            BlockPos pos = v.blockPosition();
+            ph.put("x", Integer.toString(pos.getX()));
+            ph.put("y", Integer.toString(pos.getY()));
+            ph.put("z", Integer.toString(pos.getZ()));
+        } else if (hit instanceof BlockHitResult bhr) {
+            BlockPos pos = bhr.getBlockPos();
+            BlockState st = event.getProjectile().level().getBlockState(pos);
+            ph.putAll(blockPlaceholders(st, pos));
+        }
+        run(ScriptEvent.PROJECTILE_HIT, shooter, event, ph);
+    }
+
+    @SubscribeEvent
+    public static void onConsume(LivingEntityUseItemEvent.Finish event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            ScriptLoader.fireEvent(ScriptEvent.CONSUME, player, Map.of("item", itemId(event.getItem())));
+        }
+    }
+
+    @SubscribeEvent
+    public static void onCraft(PlayerEvent.ItemCraftedEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            ItemStack stack = event.getCrafting();
+            ScriptLoader.fireEvent(ScriptEvent.CRAFT, player, Map.of(
+                    "item", itemId(stack),
+                    "amount", Integer.toString(stack.getCount())));
+        }
+    }
+
+    @SubscribeEvent
+    public static void onFish(ItemFishedEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            String item = event.getDrops().isEmpty() ? "minecraft:air" : itemId(event.getDrops().get(0));
+            run(ScriptEvent.FISH, player, event, Map.of("item", item));
+        }
+    }
+
+    @SubscribeEvent
+    public static void onJump(LivingEvent.LivingJumpEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            ScriptLoader.fireEvent(ScriptEvent.JUMP, player);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onItemBreak(PlayerDestroyItemEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            ScriptLoader.fireEvent(ScriptEvent.ITEM_BREAK, player, Map.of("item", itemId(event.getOriginal())));
+        }
+    }
+
+    @SubscribeEvent
+    public static void onPlayerTick(TickEvent.PlayerTickEvent event) {
+        if (event.phase != TickEvent.Phase.END || !(event.player instanceof ServerPlayer player)) {
+            return;
+        }
+        UUID id = player.getUUID();
+        boolean sneaking = player.isShiftKeyDown();
+        Boolean prevSneak = SNEAK_STATE.put(id, sneaking);
+        if (prevSneak != null && prevSneak != sneaking) {
+            ScriptLoader.fireEvent(ScriptEvent.SNEAK, player, Map.of("sneaking", Boolean.toString(sneaking)));
+        }
+        boolean sprinting = player.isSprinting();
+        Boolean prevSprint = SPRINT_STATE.put(id, sprinting);
+        if (prevSprint != null && prevSprint != sprinting) {
+            ScriptLoader.fireEvent(ScriptEvent.SPRINT, player, Map.of("sprinting", Boolean.toString(sprinting)));
+        }
+    }
+
+    private static String entityId(Entity entity) {
+        ResourceLocation id = ForgeRegistries.ENTITY_TYPES.getKey(entity.getType());
+        return id == null ? entity.getName().getString() : id.toString();
     }
 
     @SubscribeEvent

@@ -61,17 +61,47 @@ public class StudioScreen extends Screen {
     private static final int MENU_H = 17;
     private static final int TOOL_H = 22;
 
-    private enum Drag { NONE, MOVE, N, S, E, W, NE, NW, SE, SW, TEXT, JOURNAL, VSCROLL, HSCROLL }
+    private enum Drag { NONE, MOVE, N, S, E, W, NE, NW, SE, SW, TEXT, JOURNAL, VSCROLL, HSCROLL,
+        SIDEBAR_RESIZE,
+        PANEL_MOVE, PANEL_N, PANEL_S, PANEL_E, PANEL_W, PANEL_NE, PANEL_NW, PANEL_SE, PANEL_SW }
 
     private String menu;
     private boolean catalog;
+    private boolean catalogRequested;
     private boolean naming;
     private String nameBuf = "";
-    private boolean findOn;
-    private boolean findFocus;
+    private boolean gotoOpen;
+    private String gotoBuf = "";
     private String find = "";
+    private String replace = "";
+    /** 0 — нет фокуса, 1 — поле "Найти", 2 — поле "Заменить". */
+    private int panelFocus;
+    private long panelOpenedAt;
+    private boolean ctxOpen;
+    private int ctxX, ctxY;
+    private long ctxOpenedAt;
     private boolean settings;
     private boolean listening;
+    private String listeningBind;
+    private int hotkeyScroll;
+    private int hotkeyMaxScroll;
+    private int sidebarScroll;
+    private int sidebarMaxScroll;
+    private int sbX, sbY, sbW, sbH;
+    private int sbToggleX, sbToggleY, sbNewX, sbRefX;
+    private StudioAutocomplete.Match acMatch;
+    private int acSel;
+    private int acX, acY, acW, acH;
+    private final List<SidebarHit> sidebarHits = new ArrayList<>();
+    private final List<HotkeyHit> hotkeyHits = new ArrayList<>();
+    private int hkResetX, hkResetY, hkResetW;
+    private int setAcX, setAcY, setAutoX, setAutoY, setSbLeftX, setSbRightX, setSbY;
+
+    private record SidebarHit(int y, int h, String name) {
+    }
+
+    private record HotkeyHit(int x, int y, int w, int h, String id) {
+    }
     private Drag drag = Drag.NONE;
     private int grabX, grabY, originX, originY, originW, originH;
     private int journal = 0;
@@ -86,8 +116,16 @@ public class StudioScreen extends Screen {
     private int askYesX, askNoX, askY;
     /** Ссылки главной, собранные в последнем кадре. */
     private final List<HomeLink> homeLinks = new ArrayList<>();
+    private final List<PanelCheck> panelChecks = new ArrayList<>();
+    private int pFindX, pFindY, pFindW, pRepX, pRepY, pRepW;
+    private int pPrevX, pNextX, pNavY;
+    private int pRepBtnX, pRepBtnW, pAllBtnX, pAllBtnW, pActY;
+    private int pCloseX, pCloseY;
     private TexturePreview.Image preview;
     private int previewX, previewY;
+
+    private record PanelCheck(int x, int y, int w, int h, String id) {
+    }
 
     // --- Анимации UI ---
     private final long openedAt = System.currentTimeMillis();
@@ -192,6 +230,12 @@ public class StudioScreen extends Screen {
             renderJournal(g, mouseX, mouseY - slideY);
         } else if (script() != null) {
             renderEditor(g, mouseX, mouseY - slideY);
+            if (StudioSession.toolPanelOpen) {
+                renderToolPanel(g, mouseX, mouseY - slideY);
+            }
+            if (ctxOpen) {
+                renderCtxMenu(g, mouseX, mouseY - slideY);
+            }
         }
         if (menu != null) {
             renderMenu(g, mouseX, mouseY - slideY);
@@ -201,6 +245,9 @@ public class StudioScreen extends Screen {
         }
         if (naming) {
             renderNameBox(g);
+        }
+        if (gotoOpen) {
+            renderGotoBox(g);
         }
         if (ask != null) {
             renderAsk(g, mouseX, mouseY - slideY);
@@ -232,6 +279,10 @@ public class StudioScreen extends Screen {
             journalLabel = journalLabel + " " + StudioSession.issues.size();
         }
         x = tab(g, mx, my, x, journalLabel, StudioSession.JOURNAL, false);
+        if (!catalogRequested && this.minecraft != null && this.minecraft.getConnection() != null) {
+            catalogRequested = true;
+            ModNetwork.sendToServer(new ScriptListPacket.Request());
+        }
         List<String> names = new ArrayList<>(StudioSession.docs.keySet());
         for (String name : names) {
             if (x > limit - 70) {
@@ -239,13 +290,7 @@ public class StudioScreen extends Screen {
             }
             x = tab(g, mx, my, x, shortName(name), name, true);
         }
-        boolean plusHot = hover(mx, my, x, py + 4, 16, 16);
-        float plusT = animHover("tab:plus", plusHot || catalog);
-        int plusBg = lerpColor(0xFF1D2534, 0xFF2D3B52, plusT);
-        g.fill(x, py + 4, x + 16, py + 20, plusBg);
-        border(g, x, py + 4, 16, 16, lerpColor(EDGE, GOLD, plusT * 0.7f));
-        g.drawString(this.font, "+", x + 5, py + 8, lerpColor(MUTED, GOLD, plusT), false);
-        plusX = x;
+        plusX = -1000;
         int by = py + 5;
         windowButton(g, mx, my, px + pw - 70, by, "gear");
         windowButton(g, mx, my, px + pw - 52, by, "min");
@@ -304,10 +349,8 @@ public class StudioScreen extends Screen {
         }
         int color = "close".equals(kind) ? lerpColor(MUTED, RED, h) : lerpColor(MUTED, GOLD, h);
         if ("gear".equals(kind)) {
-            if (settings || hot) {
-                gearAngle = (gearAngle + dt * 95f) % 360f;
-            }
-            drawGear(g, x + 7, y + 7, color, gearAngle);
+            int bg = h > 0.02f ? lerpColor(BAR, 0xFF33435E, h * 0.8f) : BAR;
+            drawGear(g, x + 2, y + 2, color, bg);
             return;
         }
         if ("min".equals(kind)) {
@@ -371,7 +414,10 @@ public class StudioScreen extends Screen {
         g.fill(x + 2, y + 4, x + 3, y + TOOL_H - 4, EDGE);
         x += 8;
         x = tool(g, mx, my, x, y, "undo", Messages.get("studio.m.undo"));
-        tool(g, mx, my, x, y, "redo", Messages.get("studio.m.redo"));
+        x = tool(g, mx, my, x, y, "redo", Messages.get("studio.m.redo"));
+        g.fill(x + 2, y + 4, x + 3, y + TOOL_H - 4, EDGE);
+        x += 8;
+        tool(g, mx, my, x, y, "find", Messages.get("studio.find_replace"));
 
         // Аватары участников совместной правки в правой части тулбара
         ScriptDocument doc = script();
@@ -476,6 +522,14 @@ public class StudioScreen extends Screen {
                 g.fill(x + 2, y + 4, x + 8, y + 6, c);
                 g.fill(x + 2, y + 4, x + 4, y + 8, c);
                 g.fill(x + 1, y + 2, x + 5, y + 4, c);
+            }
+            case "find" -> {
+                g.fill(x + 2, y + 1, x + 7, y + 2, c);
+                g.fill(x + 2, y + 6, x + 7, y + 7, c);
+                g.fill(x + 1, y + 2, x + 2, y + 6, c);
+                g.fill(x + 7, y + 2, x + 8, y + 6, c);
+                g.fill(x + 7, y + 7, x + 9, y + 9, c);
+                g.fill(x + 9, y + 9, x + 11, y + 11, c);
             }
             default -> {
                 g.fill(x + 4, y + 4, x + 10, y + 6, c);
@@ -916,22 +970,40 @@ public class StudioScreen extends Screen {
 
     private int journalListW, journalY, journalH, listMax, codeMax;
 
+    private int gutterW() {
+        return StudioSession.optLineNumbers ? GUTTER_W : 18;
+    }
+
     private void renderEditor(GuiGraphics g, int mx, int my) {
         ScriptDocument doc = script();
         int y = contentY() + TOOL_H;
         int status = 18;
-        int findH = findOn ? 18 : 0;
-        int h = py + ph - y - status - findH;
-        editorX = px + 6;
+        int h = py + ph - y - status;
+        int gw = gutterW();
+        boolean sbOpen = ClientUiSettings.sidebarOpen();
+        boolean sbRight = ClientUiSettings.sidebarRight();
+        int sbWidth = sbOpen ? Math.min(ClientUiSettings.sidebarWidth(), Math.max(110, pw / 2)) : 20;
+        sbY = y + 2;
+        sbH = Math.max(24, h - 4);
+        sbW = sbWidth;
+        if (sbRight) {
+            editorX = px + 6;
+            editorW = Math.max(80, pw - 12 - sbWidth - 4);
+            sbX = editorX + editorW + 4;
+        } else {
+            sbX = px + 6;
+            editorX = sbX + sbWidth + 4;
+            editorW = Math.max(80, pw - 12 - sbWidth - 4);
+        }
         editorY = y + 2;
-        editorW = pw - 12;
         editorH = Math.max(24, h - 4);
+        renderSidebar(g, mx, my, sbOpen, sbRight);
         g.fill(editorX, editorY, editorX + editorW, editorY + editorH, 0xF50C1018);
         border(g, editorX, editorY, editorW, editorH, 0xFF212B3C);
         if (!doc.loaded) {
             g.drawString(this.font, Messages.get("studio.loading"), editorX + 10, editorY + 10, MUTED, false);
         } else {
-            int textW = Math.max(40, editorW - GUTTER_W - 8 - BAR_W);
+            int textW = Math.max(40, editorW - gw - 8 - BAR_W);
             horizMax = 0;
             for (String row : doc.lines) {
                 horizMax = Math.max(horizMax, spanWidth(row, row.length()) - textW + 8);
@@ -956,24 +1028,42 @@ public class StudioScreen extends Screen {
             int textBottom = editorY + editorH - (wide ? BAR_W : 0);
 
             // Фон левой полосы номеров строк (gutter) и разделитель
-            g.fill(editorX + 1, editorY + 1, editorX + GUTTER_W - 4, textBottom, 0xFF111722);
-            g.fill(editorX + GUTTER_W - 4, editorY + 1, editorX + GUTTER_W - 3, textBottom, 0xFF222C3E);
+            g.fill(editorX + 1, editorY + 1, editorX + gw - 4, textBottom, 0xFF111722);
+            g.fill(editorX + gw - 4, editorY + 1, editorX + gw - 3, textBottom, 0xFF222C3E);
+
+            // Собираем ошибки текущего скрипта по номеру строки (0-based)
+            Map<Integer, String> lineErrors = new HashMap<>();
+            for (ScriptLog.Issue issue : StudioSession.issues) {
+                if (issue.file().equals(doc.name) && issue.line() > 0) {
+                    lineErrors.putIfAbsent(issue.line() - 1, issue.reason());
+                }
+            }
+            int[] pairMatch = ClientUiSettings.autoClose() ? doc.matchingBracket() : null;
+            String errorHover = null;
 
             for (int i = doc.scroll; i < doc.lines.size(); i++) {
                 int ly = editorY + (i - doc.scroll) * LINE_H + 2;
                 if (ly > textBottom) {
                     break;
                 }
-                if (i == doc.line) {
+                if (lineErrors.containsKey(i)) {
+                    g.fill(editorX + 1, ly - 1, textRight, ly + LINE_H - 1, 0x33E55050);
+                } else if (i == doc.line && StudioSession.optActiveLine) {
                     g.fill(editorX + 1, ly - 1, textRight, ly + LINE_H - 1, 0xFF162031);
                     g.fill(editorX + 1, ly - 1, editorX + 3, ly + LINE_H - 1, GOLD);
                 }
+                if (lineErrors.containsKey(i) && my >= ly - 1 && my < ly + LINE_H - 1 && mx >= editorX && mx < textRight) {
+                    errorHover = lineErrors.get(i);
+                }
             }
+            List<int[]> searchMatches = (StudioSession.toolPanelOpen && !find.isEmpty())
+                    ? doc.findAllMatches(find, StudioSession.optMatchCase, StudioSession.optWholeWord)
+                    : List.of();
             List<StudioLivePacket.Peer> roomPeers = StudioSession.peers(doc.name);
             UUID selfId = this.minecraft.player == null ? null : this.minecraft.player.getUUID();
             StudioLivePacket.Peer hoveredPeer = null;
             String peerHover = null;
-            g.enableScissor(editorX + GUTTER_W - 2, editorY + 1, textRight, textBottom);
+            g.enableScissor(editorX + gw - 2, editorY + 1, textRight, textBottom);
             for (int i = doc.scroll; i < doc.lines.size(); i++) {
                 int ly = editorY + (i - doc.scroll) * LINE_H + 2;
                 if (ly > textBottom) {
@@ -1002,32 +1092,66 @@ public class StudioScreen extends Screen {
                         g.fill(x0, ly - 1, Math.max(x1, x0 + 2), ly + LINE_H - 1, (peerColor(peer.name()) & 0xFFFFFF) | 0x55000000);
                     }
                 }
+                if (!searchMatches.isEmpty()) {
+                    for (int[] m : searchMatches) {
+                        if (m[0] == i) {
+                            int x0 = textX(line, m[1]);
+                            int x1 = textX(line, m[2]);
+                            g.fill(x0, ly - 1, Math.max(x1, x0 + 2), ly + LINE_H - 1, 0x66F0B85B);
+                        }
+                    }
+                }
                 int[] sel = doc.selectionOn(i);
                 if (sel != null) {
                     int x0 = textX(line, sel[0]);
                     int x1 = textX(line, sel[1]);
                     g.fill(x0, ly - 1, Math.max(x1, x0 + 2), ly + LINE_H - 1, 0x883A6EA5);
                 }
-                for (ScriptMarkup.Mark mark : ScriptMarkup.of(line)) {
-                    int x0 = textX(line, mark.from());
-                    int x1 = textX(line, mark.to());
-                    int color = switch (mark.kind()) {
-                        case EVENT -> YELLOW;
-                        case QUOTE -> QUOTE;
-                        default -> BLUE;
-                    };
-                    g.fill(x0, ly - 1, Math.max(x1, x0 + 1), ly + LINE_H - 1, color);
-                    if (mark.kind() == ScriptMarkup.Kind.RESOURCE
-                            && hover(mx, my, x0, ly - 1, Math.max(1, x1 - x0), LINE_H)) {
-                        TexturePreview.Image image = TexturePreview.lookup(mark.token());
-                        if (image != null) {
-                            preview = image;
-                            previewX = mx + 12;
-                            previewY = my + 12;
+                if (StudioSession.optSyntax) {
+                    for (ScriptMarkup.Mark mark : ScriptMarkup.of(line)) {
+                        int x0 = textX(line, mark.from());
+                        int x1 = textX(line, mark.to());
+                        int color = switch (mark.kind()) {
+                            case EVENT -> YELLOW;
+                            case QUOTE -> QUOTE;
+                            default -> BLUE;
+                        };
+                        g.fill(x0, ly - 1, Math.max(x1, x0 + 1), ly + LINE_H - 1, color);
+                        if (StudioSession.optTexturePreview && mark.kind() == ScriptMarkup.Kind.RESOURCE
+                                && hover(mx, my, x0, ly - 1, Math.max(1, x1 - x0), LINE_H)) {
+                            TexturePreview.Image image = TexturePreview.lookup(mark.token());
+                            if (image != null) {
+                                preview = image;
+                                previewX = mx + 12;
+                                previewY = my + 12;
+                            }
                         }
                     }
                 }
-                ScriptColors.draw(g, this.font, line, editorX + GUTTER_W - doc.horiz, ly, TEXT, doc.horiz + textW);
+                ScriptColors.draw(g, this.font, line, editorX + gw - doc.horiz, ly, TEXT, doc.horiz + textW, StudioSession.optQuoteColors);
+                // Подсветка парных скобок и кавычек
+                if (pairMatch != null) {
+                    if (pairMatch[0] == i && pairMatch[1] < line.length()) {
+                        int bx0 = textX(line, pairMatch[1]);
+                        int bx1 = textX(line, pairMatch[1] + 1);
+                        g.fill(bx0, ly - 1, Math.max(bx1, bx0 + 5), ly + LINE_H - 1, 0x44F0B85B);
+                        border(g, bx0, ly - 1, Math.max(5, bx1 - bx0), LINE_H, 0xAAF0B85B);
+                    }
+                    if (pairMatch[2] == i && pairMatch[3] < line.length()) {
+                        int bx0 = textX(line, pairMatch[3]);
+                        int bx1 = textX(line, pairMatch[3] + 1);
+                        g.fill(bx0, ly - 1, Math.max(bx1, bx0 + 5), ly + LINE_H - 1, 0x4458A6FF);
+                        border(g, bx0, ly - 1, Math.max(5, bx1 - bx0), LINE_H, 0xAA58A6FF);
+                    }
+                }
+                // Красное подчёркивание строки с ошибкой
+                if (lineErrors.containsKey(i)) {
+                    int lead = 0;
+                    while (lead < line.length() && (line.charAt(lead) == ' ' || line.charAt(lead) == '\t')) lead++;
+                    int ux0 = textX(line, lead);
+                    int ux1 = Math.max(ux0 + 18, textX(line, line.length()));
+                    g.fill(ux0, ly + LINE_H - 2, ux1, ly + LINE_H - 1, RED);
+                }
                 if (i == doc.line) {
                     float pulse = 0.25f + 0.75f * (0.5f + 0.5f * (float) Math.sin(System.currentTimeMillis() / 180.0));
                     int cx = textX(line, Math.min(doc.col, line.length()));
@@ -1047,14 +1171,20 @@ public class StudioScreen extends Screen {
             g.disableScissor();
 
             // Номера строк и головы участников в левом gutter (никогда не перекрывают код)
-            g.enableScissor(editorX + 1, editorY + 1, editorX + GUTTER_W - 4, textBottom);
+            g.enableScissor(editorX + 1, editorY + 1, editorX + gw - 4, textBottom);
             for (int i = doc.scroll; i < doc.lines.size(); i++) {
                 int ly = editorY + (i - doc.scroll) * LINE_H + 2;
                 if (ly > textBottom) {
                     break;
                 }
-                String num = Integer.toString(i + 1);
-                g.drawString(this.font, num, editorX + GUTTER_W - 8 - this.font.width(num), ly, i == doc.line ? GOLD : MUTED, false);
+                if (StudioSession.optLineNumbers) {
+                    String num = Integer.toString(i + 1);
+                    int numCol = lineErrors.containsKey(i) ? RED : (i == doc.line ? GOLD : MUTED);
+                    g.drawString(this.font, num, editorX + gw - 8 - this.font.width(num), ly, numCol, false);
+                }
+                if (lineErrors.containsKey(i)) {
+                    g.drawString(this.font, "!", editorX + 4, ly, RED, false);
+                }
                 for (StudioLivePacket.Peer peer : roomPeers) {
                     if ((selfId != null && selfId.equals(peer.id())) || peer.line() != i) {
                         continue;
@@ -1067,7 +1197,15 @@ public class StudioScreen extends Screen {
             }
             g.disableScissor();
 
-            if (peerHover != null) {
+            if (errorHover != null && !inToolPanel(mx, my)) {
+                tip = errorHover;
+                tipX = mx + 10;
+                tipY = my - 4;
+            }
+            if (acMatch != null && !acMatch.items().isEmpty()) {
+                renderAutocomplete(g, mx, my, doc);
+            }
+            if (peerHover != null && !inToolPanel(mx, my)) {
                 int tw = this.font.width(peerHover) + (hoveredPeer != null ? 14 : 0);
                 int nameX = Math.min(mx + 10, px + pw - tw - 10);
                 int nameY = Math.max(py + 2, my - 15);
@@ -1106,12 +1244,6 @@ public class StudioScreen extends Screen {
                 g.fill(hBarX, hBarY, hBarX + hBarW, hBarY + BAR_W, 0xFF10151F);
                 g.fill(hThumbX, hBarY + 1, Math.min(hBarX + hBarW, hThumbX + hThumbW), hBarY + BAR_W - 1, lerpColor(0xFF3A4860, 0xFF637A9E, hT));
             }
-        }
-        int sy = editorY + editorH + 2;
-        if (findOn) {
-            g.fill(editorX, sy, editorX + editorW, sy + 16, BAR);
-            border(g, editorX, sy, editorW, 16, findFocus ? ACCENT : EDGE);
-            g.drawString(this.font, Messages.get("studio.find") + ": " + find + (findFocus ? "_" : ""), editorX + 6, sy + 4, TEXT, false);
         }
         String statusText = statusText(doc);
         int stY = py + ph - status;
@@ -1173,32 +1305,281 @@ public class StudioScreen extends Screen {
         return Messages.get("studio.parser");
     }
 
+    private void renderSidebar(GuiGraphics g, int mx, int my, boolean open, boolean right) {
+        sidebarHits.clear();
+        g.fill(sbX, sbY, sbX + sbW, sbY + sbH, SURFACE);
+        border(g, sbX, sbY, sbW, sbH, EDGE);
+        // Подсветка перетаскиваемого края сайдбара
+        int resizeEdgeX = right ? sbX : sbX + sbW - 2;
+        boolean edgeHot = open && (drag == Drag.SIDEBAR_RESIZE || (Math.abs(mx - resizeEdgeX) <= 3 && my >= sbY && my <= sbY + sbH));
+        if (edgeHot) {
+            g.fill(resizeEdgeX, sbY + 1, resizeEdgeX + 2, sbY + sbH - 1, GOLD);
+        }
+
+        sbToggleY = sbY + 3;
+        if (!open) {
+            sbToggleX = sbX + 3;
+            boolean hot = hover(mx, my, sbToggleX, sbToggleY, 14, 14);
+            if (hot) g.fill(sbToggleX, sbToggleY, sbToggleX + 14, sbToggleY + 14, ROW_HOT);
+            g.drawString(this.font, right ? "«" : "»", sbToggleX + 4, sbToggleY + 3, hot ? GOLD : MUTED, false);
+            sbNewX = -1000;
+            sbRefX = -1000;
+            return;
+        }
+        g.fill(sbX + 1, sbY + 1, sbX + sbW - 1, sbY + 20, BAR);
+        g.fill(sbX + 1, sbY + 20, sbX + sbW - 1, sbY + 21, EDGE);
+        g.drawString(this.font, trim(Messages.get("studio.sidebar.files"), sbW - 56), sbX + 7, sbY + 6, GOLD, false);
+
+        sbToggleX = sbX + sbW - 17;
+        sbRefX = sbToggleX - 16;
+        sbNewX = sbRefX - 16;
+        boolean tHot = hover(mx, my, sbToggleX, sbToggleY, 14, 14);
+        boolean rHot = hover(mx, my, sbRefX, sbToggleY, 14, 14);
+        boolean nHot = hover(mx, my, sbNewX, sbToggleY, 14, 14);
+        if (nHot) g.fill(sbNewX, sbToggleY, sbNewX + 14, sbToggleY + 14, ROW_HOT);
+        if (rHot) g.fill(sbRefX, sbToggleY, sbRefX + 14, sbToggleY + 14, ROW_HOT);
+        if (tHot) g.fill(sbToggleX, sbToggleY, sbToggleX + 14, sbToggleY + 14, ROW_HOT);
+        g.drawString(this.font, "+", sbNewX + 4, sbToggleY + 3, nHot ? GOLD : TEXT, false);
+        g.drawString(this.font, "↻", sbRefX + 4, sbToggleY + 3, rHot ? ACCENT : MUTED, false);
+        g.drawString(this.font, right ? "»" : "«", sbToggleX + 4, sbToggleY + 3, tHot ? GOLD : MUTED, false);
+
+        int listTop = sbY + 23;
+        int listH = Math.max(10, sbH - 25);
+        int totalH = Math.max(1, StudioSession.catalog.size()) * 16 + 4;
+        sidebarMaxScroll = Math.max(0, totalH - listH);
+        sidebarScroll = Math.max(0, Math.min(sidebarScroll, sidebarMaxScroll));
+
+        g.enableScissor(sbX + 1, listTop, sbX + sbW - 1, sbY + sbH - 1);
+        if (StudioSession.catalog.isEmpty()) {
+            g.drawString(this.font, trim(Messages.get("studio.empty"), sbW - 12), sbX + 6, listTop + 4, MUTED, false);
+        } else {
+            int ry = listTop + 2 - sidebarScroll;
+            for (String name : StudioSession.catalog) {
+                if (ry + 16 >= listTop && ry <= sbY + sbH) {
+                    boolean active = name.equals(StudioSession.active);
+                    boolean hot = hover(mx, my, sbX + 2, ry, sbW - 4, 15);
+                    if (active) {
+                        g.fill(sbX + 2, ry, sbX + sbW - 2, ry + 15, ROW_HOT);
+                        g.fill(sbX + 2, ry, sbX + 4, ry + 15, GOLD);
+                    } else if (hot) {
+                        g.fill(sbX + 2, ry, sbX + sbW - 2, ry + 15, ROW);
+                    }
+                    boolean hasErr = false;
+                    for (ScriptLog.Issue issue : StudioSession.issues) {
+                        if (issue.file().equals(name)) {
+                            hasErr = true;
+                            break;
+                        }
+                    }
+                    boolean isDirty = dirty(name);
+                    int tx = sbX + 7;
+                    if (hasErr) {
+                        g.fill(tx, ry + 5, tx + 4, ry + 9, RED);
+                        tx += 7;
+                    } else if (isDirty) {
+                        g.fill(tx, ry + 5, tx + 4, ry + 9, GOLD);
+                        tx += 7;
+                    }
+                    boolean disabled = name.startsWith("-") || name.contains("/-");
+                    int color = active ? TEXT : (disabled ? 0xFF636E80 : (hot ? TEXT : MUTED));
+                    g.drawString(this.font, trim(name, sbW - (tx - sbX) - 6), tx, ry + 4, color, false);
+                    sidebarHits.add(new SidebarHit(ry, 15, name));
+                }
+                ry += 16;
+            }
+        }
+        g.disableScissor();
+    }
+
+    private void renderAutocomplete(GuiGraphics g, int mx, int my, ScriptDocument doc) {
+        List<String> items = acMatch.items();
+        int maxW = 120;
+        for (String item : items) {
+            maxW = Math.max(maxW, this.font.width(item) + 16);
+        }
+        acW = Math.min(260, maxW);
+        acH = items.size() * 14 + 6;
+        String row = doc.lines.get(Math.max(0, Math.min(doc.lines.size() - 1, doc.line)));
+        int cx = textX(row, Math.min(doc.col, row.length()));
+        int cy = editorY + (doc.line - doc.scroll) * LINE_H + LINE_H + 3;
+        if (cy + acH > editorY + editorH) {
+            cy = Math.max(editorY + 2, cy - acH - LINE_H - 4);
+        }
+        acX = Math.max(editorX + 4, Math.min(cx, editorX + editorW - acW - 10));
+        acY = cy;
+        acSel = Math.max(0, Math.min(acSel, items.size() - 1));
+
+        g.fill(acX + 2, acY + 2, acX + acW + 2, acY + acH + 2, 0x66000000);
+        g.fill(acX, acY, acX + acW, acY + acH, 0xF8121824);
+        border(g, acX, acY, acW, acH, ACCENT);
+        for (int i = 0; i < items.size(); i++) {
+            int iy = acY + 3 + i * 14;
+            boolean sel = i == acSel;
+            boolean hot = hover(mx, my, acX + 1, iy, acW - 2, 14);
+            if (sel || hot) {
+                g.fill(acX + 2, iy, acX + acW - 2, iy + 14, sel ? ROW_HOT : ROW);
+                if (sel) g.fill(acX + 2, iy + 1, acX + 4, iy + 13, GOLD);
+            }
+            g.drawString(this.font, trim(items.get(i), acW - 12), acX + 7, iy + 3, sel ? GOLD : TEXT, false);
+        }
+    }
+
+    private void refreshAutocomplete(ScriptDocument doc, boolean manual) {
+        if (doc == null || !doc.loaded || (!manual && !ClientUiSettings.autocomplete())) {
+            acMatch = null;
+            return;
+        }
+        String row = doc.lines.get(Math.max(0, Math.min(doc.lines.size() - 1, doc.line)));
+        acMatch = StudioAutocomplete.suggest(row, doc.col, manual);
+        acSel = 0;
+    }
+
+    private void applyAutocomplete(ScriptDocument doc) {
+        if (doc == null || acMatch == null || acMatch.items().isEmpty()) {
+            acMatch = null;
+            return;
+        }
+        String pick = acMatch.items().get(Math.max(0, Math.min(acSel, acMatch.items().size() - 1)));
+        String row = doc.lines.get(doc.line);
+        int curCol = Math.max(0, Math.min(row.length(), doc.col));
+        int from = Math.max(0, Math.min(acMatch.replaceFrom(), curCol));
+        doc.box = false;
+        doc.anchorLine = doc.line;
+        doc.anchorCol = from;
+        doc.col = curCol;
+        doc.insert(pick);
+        acMatch = null;
+    }
+
+    private void renderGotoBox(GuiGraphics g) {
+        int x = px + pw / 2 - 84;
+        int y = py + ph / 2 - 18;
+        g.fill(x + 2, y + 2, x + 170, y + 38, 0x55000000);
+        g.fill(x, y, x + 168, y + 36, 0xF7121824);
+        border(g, x, y, 168, 36, ACCENT);
+        String shown = gotoBuf.isEmpty() ? Messages.get("studio.goto") + "..." : gotoBuf + "_";
+        g.drawString(this.font, shown, x + 10, y + 14, gotoBuf.isEmpty() ? MUTED : TEXT, false);
+    }
+
     private void renderSettings(GuiGraphics g, int mx, int my) {
-        int x = px + 16;
-        int y = contentY() + 8;
+        hotkeyHits.clear();
+        int y0 = contentY() + 8;
+        int availH = Math.max(120, contentH() - 12);
+        int midX = px + Math.max(255, Math.min(315, pw / 2));
+
+        // --- Левая колонка: Уведомления + Настройки редактора ---
+        int x = px + 14;
+        int y = y0;
         g.drawString(this.font, Messages.get("log.settings"), x, y, GOLD, false);
-        y += 18;
-        g.drawString(this.font, Messages.get("log.key"), x, y, MUTED, false);
-        g.fill(x + 110, y - 2, x + 280, y + 12, listening ? 0xFF2E3A4E : ROW);
-        g.drawString(this.font, listening ? Messages.get("log.key_wait") : ClientUiSettings.keyLabel(), x + 116, y, TEXT, false);
-        keyBoxX = x + 110;
-        keyBoxY = y - 2;
-        y += 22;
+        y += 16;
+        g.drawString(this.font, Messages.get("log.key"), x, y + 2, MUTED, false);
+        int kbW = Math.max(100, midX - x - 120);
+        g.fill(x + 96, y, x + 96 + kbW, y + 14, listening ? ROW_HOT : ROW);
+        border(g, x + 96, y, kbW, 14, listening ? GOLD : EDGE);
+        g.drawString(this.font, trim(listening ? Messages.get("log.key_wait") : ClientUiSettings.keyLabel(), kbW - 8), x + 101, y + 3, listening ? GOLD : TEXT, false);
+        keyBoxX = x + 96;
+        keyBoxY = y;
+        y += 20;
         slider1Y = y + 12;
         g.drawString(this.font, Messages.get("log.time") + "  " + String.format(Locale.ROOT, "%.1f s", ClientUiSettings.seconds()), x, y, MUTED, false);
         drawSlider(g, x, slider1Y, (ClientUiSettings.seconds() - 1.5f) / 8.5f);
-        y += 28;
+        y += 24;
         slider2Y = y + 12;
         g.drawString(this.font, Messages.get("log.size") + "  " + Math.round(ClientUiSettings.scale() * 100) + "%", x, y, MUTED, false);
         drawSlider(g, x, slider2Y, (ClientUiSettings.scale() - 0.7f) / 0.8f);
-        y += 28;
+        y += 24;
         g.drawString(this.font, Messages.get("log.place"), x, y, MUTED, false);
-        y += 14;
+        y += 12;
         place(g, mx, my, x, y, ClientUiSettings.Place.CHAT, Messages.get("log.place.chat"));
-        place(g, mx, my, x + 120, y, ClientUiSettings.Place.TOP_LEFT, Messages.get("log.place.tl"));
-        place(g, mx, my, x, y + 20, ClientUiSettings.Place.TOP_RIGHT, Messages.get("log.place.tr"));
-        place(g, mx, my, x + 120, y + 20, ClientUiSettings.Place.BOTTOM_RIGHT, Messages.get("log.place.br"));
+        place(g, mx, my, x + 116, y, ClientUiSettings.Place.TOP_LEFT, Messages.get("log.place.tl"));
+        place(g, mx, my, x, y + 18, ClientUiSettings.Place.TOP_RIGHT, Messages.get("log.place.tr"));
+        place(g, mx, my, x + 116, y + 18, ClientUiSettings.Place.BOTTOM_RIGHT, Messages.get("log.place.br"));
         sliderX = x;
+
+        y += 44;
+        g.fill(x, y, midX - 14, y + 1, EDGE);
+        y += 8;
+        g.drawString(this.font, Messages.get("studio.set.editor"), x, y, GOLD, false);
+        y += 16;
+
+        setAcX = x;
+        setAcY = y;
+        drawSettingsCheck(g, mx, my, x, y, midX - x - 18, "set:ac", Messages.get("studio.set.autocomplete"), ClientUiSettings.autocomplete());
+        y += 17;
+        setAutoX = x;
+        setAutoY = y;
+        drawSettingsCheck(g, mx, my, x, y, midX - x - 18, "set:auto", Messages.get("studio.set.autoclose"), ClientUiSettings.autoClose());
+        y += 20;
+        g.drawString(this.font, Messages.get("studio.sidebar.side"), x, y + 3, MUTED, false);
+        setSbY = y;
+        setSbLeftX = x + 104;
+        setSbRightX = x + 166;
+        drawSideBtn(g, mx, my, setSbLeftX, setSbY, 58, Messages.get("studio.sidebar.left"), !ClientUiSettings.sidebarRight());
+        drawSideBtn(g, mx, my, setSbRightX, setSbY, 58, Messages.get("studio.sidebar.right"), ClientUiSettings.sidebarRight());
+
+        // --- Правая колонка: Все горячие клавиши клиента ---
+        int rx = midX + 6;
+        int rw = Math.max(160, px + pw - rx - 14);
+        int rh = availH;
+        g.fill(rx, y0 - 2, rx + rw, y0 + rh, SURFACE);
+        border(g, rx, y0 - 2, rw, rh + 2, EDGE);
+        g.drawString(this.font, Messages.get("studio.set.hotkeys"), rx + 10, y0 + 5, GOLD, false);
+
+        String resetLbl = Messages.get("studio.set.reset_keys");
+        hkResetW = this.font.width(resetLbl) + 12;
+        hkResetX = rx + rw - hkResetW - 8;
+        hkResetY = y0 + 2;
+        paintMiniBtn(g, mx, my, hkResetX, hkResetY, hkResetW, 14, resetLbl, "set:reset");
+        g.fill(rx + 1, y0 + 19, rx + rw - 1, y0 + 20, EDGE);
+
+        int listTop = y0 + 23;
+        int listH = Math.max(30, rh - 26);
+        Map<String, ClientUiSettings.KeyBind> binds = ClientUiSettings.keyBinds();
+        int totalH = binds.size() * 18 + 4;
+        hotkeyMaxScroll = Math.max(0, totalH - listH);
+        hotkeyScroll = Math.max(0, Math.min(hotkeyScroll, hotkeyMaxScroll));
+
+        g.enableScissor(rx + 1, listTop, rx + rw - 1, y0 + rh - 1);
+        int hy = listTop + 2 - hotkeyScroll;
+        int keyW = Math.min(106, Math.max(76, rw / 3));
+        for (var entry : binds.entrySet()) {
+            String id = entry.getKey();
+            ClientUiSettings.KeyBind bind = entry.getValue();
+            if (hy + 17 >= listTop && hy <= y0 + rh) {
+                boolean active = id.equals(listeningBind);
+                int bx = rx + rw - keyW - 8;
+                boolean hot = hover(mx, my, bx, hy, keyW, 15);
+                g.drawString(this.font, trim(Messages.get("studio.hk." + id), bx - rx - 14), rx + 10, hy + 4, TEXT, false);
+                g.fill(bx, hy, bx + keyW, hy + 15, active || hot ? ROW_HOT : ROW);
+                border(g, bx, hy, keyW, 15, active ? GOLD : (hot ? ACCENT : EDGE));
+                String lbl = active ? Messages.get("studio.set.press_key") : bind.label();
+                g.drawString(this.font, trim(lbl, keyW - 8), bx + 5, hy + 4, active ? GOLD : (hot ? TEXT : MUTED), false);
+                hotkeyHits.add(new HotkeyHit(bx, hy, keyW, 15, id));
+            }
+            hy += 18;
+        }
+        g.disableScissor();
+    }
+
+    private void drawSettingsCheck(GuiGraphics g, int mx, int my, int x, int y, int w, String key, String label, boolean on) {
+        boolean hot = hover(mx, my, x, y, w, 14);
+        float t = animHover(key, hot);
+        g.fill(x, y + 1, x + 12, y + 13, on ? 0xFF1F382E : lerpColor(0xFF0E131D, ROW, t));
+        border(g, x, y + 1, 12, 12, on ? GREEN : lerpColor(EDGE, ACCENT, t));
+        if (on) {
+            g.fill(x + 2, y + 6, x + 4, y + 8, GREEN);
+            g.fill(x + 4, y + 7, x + 6, y + 9, GREEN);
+            g.fill(x + 5, y + 5, x + 7, y + 7, GREEN);
+            g.fill(x + 7, y + 3, x + 9, y + 5, GREEN);
+        }
+        g.drawString(this.font, trim(label, Math.max(20, w - 18)), x + 17, y + 3, on ? TEXT : lerpColor(MUTED, TEXT, t), false);
+    }
+
+    private void drawSideBtn(GuiGraphics g, int mx, int my, int x, int y, int w, String label, boolean on) {
+        boolean hot = hover(mx, my, x, y, w, 15);
+        g.fill(x, y, x + w, y + 15, on || hot ? ROW_HOT : ROW);
+        border(g, x, y, w, 15, on ? GOLD : (hot ? ACCENT : EDGE));
+        g.drawString(this.font, label, x + (w - this.font.width(label)) / 2, y + 4, on ? GOLD : TEXT, false);
     }
 
     private int keyBoxX, keyBoxY, slider1Y, slider2Y, sliderX;
@@ -1280,6 +1661,273 @@ public class StudioScreen extends Screen {
         g.drawString(this.font, nameBuf.isEmpty() ? Messages.get("studio.new_name") : nameBuf + "_", x + 10, y + 14, nameBuf.isEmpty() ? MUTED : TEXT, false);
     }
 
+    private void layoutToolPanel() {
+        int minW = 210, minH = 176;
+        int maxW = Math.max(minW, pw - 20);
+        int maxH = Math.max(minH, ph - 50);
+        StudioSession.toolPanelW = Math.max(minW, Math.min(maxW, StudioSession.toolPanelW));
+        StudioSession.toolPanelH = Math.max(minH, Math.min(maxH, StudioSession.toolPanelH));
+        if (!StudioSession.toolPanelPlaced) {
+            StudioSession.toolPanelX = px + pw - StudioSession.toolPanelW - 18;
+            StudioSession.toolPanelY = editorY + 8;
+            StudioSession.toolPanelPlaced = true;
+        }
+        StudioSession.toolPanelX = Math.max(px + 4, Math.min(StudioSession.toolPanelX, px + pw - StudioSession.toolPanelW - 4));
+        StudioSession.toolPanelY = Math.max(py + TITLE, Math.min(StudioSession.toolPanelY, py + ph - StudioSession.toolPanelH - 4));
+    }
+
+    private boolean inToolPanel(int mx, int my) {
+        return StudioSession.toolPanelOpen && script() != null && !settings
+                && hover(mx, my, StudioSession.toolPanelX, StudioSession.toolPanelY, StudioSession.toolPanelW, StudioSession.toolPanelH);
+    }
+
+    private Drag panelEdgeAt(int mx, int my) {
+        if (!StudioSession.toolPanelOpen || script() == null || settings) {
+            return Drag.NONE;
+        }
+        int x = StudioSession.toolPanelX;
+        int y = StudioSession.toolPanelY;
+        int w = StudioSession.toolPanelW;
+        int h = StudioSession.toolPanelH;
+        // Уголок ресайза справа-снизу 10×10
+        if (mx >= x + w - 10 && mx <= x + w + 3 && my >= y + h - 10 && my <= y + h + 3) {
+            return Drag.PANEL_SE;
+        }
+        boolean left = Math.abs(mx - x) <= 4 && my >= y && my <= y + h;
+        boolean right = Math.abs(mx - (x + w)) <= 4 && my >= y && my <= y + h;
+        boolean top = Math.abs(my - y) <= 4 && mx >= x && mx <= x + w;
+        boolean bottom = Math.abs(my - (y + h)) <= 4 && mx >= x && mx <= x + w;
+        if (top && left) return Drag.PANEL_NW;
+        if (top && right) return Drag.PANEL_NE;
+        if (bottom && left) return Drag.PANEL_SW;
+        if (bottom && right) return Drag.PANEL_SE;
+        if (left) return Drag.PANEL_W;
+        if (right) return Drag.PANEL_E;
+        if (top) return Drag.PANEL_N;
+        if (bottom) return Drag.PANEL_S;
+        return Drag.NONE;
+    }
+
+    private void openToolPanel(int focus) {
+        StudioSession.toolPanelOpen = true;
+        panelFocus = focus;
+        panelOpenedAt = System.currentTimeMillis();
+        ctxOpen = false;
+    }
+
+    private void renderToolPanel(GuiGraphics g, int mx, int my) {
+        layoutToolPanel();
+        panelChecks.clear();
+        int x = StudioSession.toolPanelX;
+        int y = StudioSession.toolPanelY;
+        int w = StudioSession.toolPanelW;
+        int h = StudioSession.toolPanelH;
+        float t = easeOutCubic((System.currentTimeMillis() - panelOpenedAt) / 140f);
+        int dy = Math.round((1f - t) * 6f);
+        y += dy;
+
+        g.fill(x + 3, y + 3, x + w + 3, y + h + 3, withAlpha(0x66000000, t));
+        g.fill(x, y, x + w, y + h, 0xF7131A26);
+        g.fillGradient(x + 1, y + 1, x + w - 1, y + 2, withAlpha(GOLD, 0.8f), withAlpha(ACCENT, 0.7f));
+        border(g, x, y, w, h, EDGE_HOT);
+
+        // Заголовок панели (перетаскиваемый)
+        int hdrH = 18;
+        g.fill(x + 1, y + 2, x + w - 1, y + hdrH, BAR);
+        g.fill(x + 1, y + hdrH, x + w - 1, y + hdrH + 1, EDGE);
+        g.drawString(this.font, Messages.get("studio.panel.title"), x + 8, y + 6, GOLD, false);
+        pCloseX = x + w - 16;
+        pCloseY = y + 3;
+        boolean closeHot = hover(mx, my, pCloseX, pCloseY, 13, 13);
+        if (closeHot) {
+            g.fill(pCloseX, pCloseY, pCloseX + 13, pCloseY + 13, withAlpha(RED, 0.3f));
+        }
+        g.drawString(this.font, "x", pCloseX + 4, pCloseY + 2, closeHot ? RED : MUTED, false);
+
+        g.enableScissor(x + 1, y + hdrH + 1, x + w - 1, y + h - 1);
+        int innerX = x + 8;
+        int innerW = w - 16;
+        int cy = y + hdrH + 7;
+
+        // Поле "Найти" + счётчик совпадений + кнопки ↑ ↓
+        ScriptDocument doc = script();
+        List<int[]> matches = doc != null && !find.isEmpty()
+                ? doc.findAllMatches(find, StudioSession.optMatchCase, StudioSession.optWholeWord)
+                : List.of();
+        String countText = find.isEmpty() ? "" : (matches.isEmpty() ? "0" : Integer.toString(matches.size()));
+        int navW = 36;
+        pFindX = innerX;
+        pFindY = cy;
+        pFindW = Math.max(60, innerW - navW - 4);
+        g.fill(pFindX, pFindY, pFindX + pFindW, pFindY + 15, 0xFF0D121B);
+        border(g, pFindX, pFindY, pFindW, 15, panelFocus == 1 ? ACCENT : EDGE);
+        String findShown = find.isEmpty() ? Messages.get("studio.find") : find + (panelFocus == 1 ? "_" : "");
+        int cntW = countText.isEmpty() ? 0 : this.font.width(countText) + 6;
+        g.drawString(this.font, trim(findShown, Math.max(20, pFindW - 8 - cntW)), pFindX + 4, pFindY + 4,
+                find.isEmpty() ? MUTED : TEXT, false);
+        if (!countText.isEmpty()) {
+            g.drawString(this.font, countText, pFindX + pFindW - cntW + 2, pFindY + 4, matches.isEmpty() ? RED : GOLD, false);
+        }
+        pPrevX = pFindX + pFindW + 4;
+        pNextX = pPrevX + 18;
+        pNavY = pFindY;
+        paintMiniBtn(g, mx, my, pPrevX, pNavY, 16, 15, "↑", "p:prev");
+        paintMiniBtn(g, mx, my, pNextX, pNavY, 16, 15, "↓", "p:next");
+        cy += 19;
+
+        // Поле "Заменить"
+        pRepX = innerX;
+        pRepY = cy;
+        pRepW = innerW;
+        g.fill(pRepX, pRepY, pRepX + pRepW, pRepY + 15, 0xFF0D121B);
+        border(g, pRepX, pRepY, pRepW, 15, panelFocus == 2 ? ACCENT : EDGE);
+        String repShown = replace.isEmpty() && panelFocus != 2 ? Messages.get("studio.replace") : replace + (panelFocus == 2 ? "_" : "");
+        g.drawString(this.font, trim(repShown, Math.max(20, pRepW - 8)), pRepX + 4, pRepY + 4,
+                replace.isEmpty() && panelFocus != 2 ? MUTED : TEXT, false);
+        cy += 19;
+
+        // Кнопки "Заменить" и "Все"
+        pActY = cy;
+        String repLabel = Messages.get("studio.replace");
+        String allLabel = Messages.get("studio.replace_all");
+        pRepBtnX = innerX;
+        pRepBtnW = Math.max(60, (innerW - 6) / 2);
+        pAllBtnX = pRepBtnX + pRepBtnW + 6;
+        pAllBtnW = innerW - pRepBtnW - 6;
+        paintMiniBtn(g, mx, my, pRepBtnX, pActY, pRepBtnW, 15, repLabel, "p:rep");
+        paintMiniBtn(g, mx, my, pAllBtnX, pActY, pAllBtnW, 15, allLabel, "p:all");
+        cy += 21;
+
+        // Разделитель и галочки поиска + синтаксиса/редактора
+        g.fill(innerX, cy, innerX + innerW, cy + 1, EDGE);
+        cy += 6;
+
+        boolean twoCols = innerW >= 220;
+        int colW = twoCols ? (innerW - 6) / 2 : innerW;
+        Object[][] opts = {
+                {"case", Messages.get("studio.opt.case"), StudioSession.optMatchCase},
+                {"word", Messages.get("studio.opt.word"), StudioSession.optWholeWord},
+                {"syntax", Messages.get("studio.opt.syntax"), StudioSession.optSyntax},
+                {"colors", Messages.get("studio.opt.colors"), StudioSession.optQuoteColors},
+                {"indent", Messages.get("studio.opt.indent"), StudioSession.optAutoIndent},
+                {"lines", Messages.get("studio.opt.lines"), StudioSession.optLineNumbers},
+                {"curline", Messages.get("studio.opt.curline"), StudioSession.optActiveLine},
+                {"preview", Messages.get("studio.opt.preview"), StudioSession.optTexturePreview}
+        };
+        for (int i = 0; i < opts.length; i++) {
+            int cx = twoCols && (i % 2 == 1) ? innerX + colW + 6 : innerX;
+            int rowY = twoCols ? cy + (i / 2) * 16 : cy + i * 15;
+            String id = (String) opts[i][0];
+            String label = (String) opts[i][1];
+            boolean on = (Boolean) opts[i][2];
+            drawCheck(g, mx, my, cx, rowY, colW, id, label, on);
+        }
+        g.disableScissor();
+
+        // Индикатор уголка изменения размера (правый нижний угол)
+        g.fill(x + w - 7, y + h - 3, x + w - 3, y + h - 2, MUTED);
+        g.fill(x + w - 3, y + h - 7, x + w - 2, y + h - 3, MUTED);
+        g.fill(x + w - 5, y + h - 5, x + w - 3, y + h - 4, GOLD);
+    }
+
+    private void paintMiniBtn(GuiGraphics g, int mx, int my, int x, int y, int w, int h, String label, String key) {
+        boolean hot = hover(mx, my, x, y, w, h);
+        float t = animHover(key, hot);
+        g.fill(x, y, x + w, y + h, lerpColor(ROW, ROW_HOT, t));
+        border(g, x, y, w, h, lerpColor(EDGE, GOLD, t * 0.8f));
+        String shown = trim(label, w - 4);
+        g.drawString(this.font, shown, x + (w - this.font.width(shown)) / 2, y + 4, lerpColor(TEXT, GOLD, t), false);
+    }
+
+    private void drawCheck(GuiGraphics g, int mx, int my, int x, int y, int w, String id, String label, boolean on) {
+        boolean hot = hover(mx, my, x, y, w, 13);
+        float t = animHover("chk:" + id, hot);
+        g.fill(x, y + 1, x + 11, y + 12, on ? 0xFF1F382E : lerpColor(0xFF0E131D, ROW, t));
+        border(g, x, y + 1, 11, 11, on ? GREEN : lerpColor(EDGE, ACCENT, t));
+        if (on) {
+            g.fill(x + 2, y + 6, x + 4, y + 8, GREEN);
+            g.fill(x + 4, y + 7, x + 6, y + 9, GREEN);
+            g.fill(x + 5, y + 5, x + 7, y + 7, GREEN);
+            g.fill(x + 7, y + 3, x + 9, y + 5, GREEN);
+        }
+        g.drawString(this.font, trim(label, Math.max(16, w - 16)), x + 15, y + 3, on ? TEXT : lerpColor(MUTED, TEXT, t), false);
+        panelChecks.add(new PanelCheck(x, y, w, 13, id));
+    }
+
+    private void togglePanelCheck(String id) {
+        switch (id) {
+            case "case" -> StudioSession.optMatchCase = !StudioSession.optMatchCase;
+            case "word" -> StudioSession.optWholeWord = !StudioSession.optWholeWord;
+            case "syntax" -> StudioSession.optSyntax = !StudioSession.optSyntax;
+            case "colors" -> StudioSession.optQuoteColors = !StudioSession.optQuoteColors;
+            case "indent" -> StudioSession.optAutoIndent = !StudioSession.optAutoIndent;
+            case "lines" -> StudioSession.optLineNumbers = !StudioSession.optLineNumbers;
+            case "curline" -> StudioSession.optActiveLine = !StudioSession.optActiveLine;
+            case "preview" -> StudioSession.optTexturePreview = !StudioSession.optTexturePreview;
+            default -> {
+            }
+        }
+    }
+
+    private List<String> ctxItems() {
+        return List.of(
+                Messages.get("studio.m.cut"),
+                Messages.get("studio.m.copy"),
+                Messages.get("studio.m.paste"),
+                Messages.get("studio.m.all"),
+                Messages.get("studio.find_replace"),
+                Messages.get("studio.m.tools")
+        );
+    }
+
+    private void renderCtxMenu(GuiGraphics g, int mx, int my) {
+        List<String> items = ctxItems();
+        int w = 152;
+        int fullH = items.size() * 15 + 6;
+        int x = Math.max(px + 4, Math.min(ctxX, px + pw - w - 4));
+        int y = Math.max(py + TITLE, Math.min(ctxY, py + ph - fullH - 4));
+        ctxX = x;
+        ctxY = y;
+        float t = easeOutCubic((System.currentTimeMillis() - ctxOpenedAt) / 110f);
+        int h = Math.max(8, Math.round(fullH * t));
+        g.fill(x + 2, y + 2, x + w + 2, y + h + 2, 0x55000000);
+        g.fill(x, y, x + w, y + h, 0xF7121824);
+        border(g, x, y, w, h, EDGE_HOT);
+        g.enableScissor(x, y, x + w, y + h);
+        for (int i = 0; i < items.size(); i++) {
+            int iy = y + 3 + i * 15;
+            boolean hot = hover(mx, my, x + 1, iy, w - 2, 15);
+            float ht = animHover("ctx:" + i, hot);
+            if (ht > 0.02f) {
+                g.fill(x + 2, iy, x + w - 2, iy + 15, withAlpha(ROW_HOT, ht));
+                g.fill(x + 2, iy + 2, x + 4, iy + 13, withAlpha(GOLD, ht));
+            }
+            g.drawString(this.font, items.get(i), x + 8, iy + 4, lerpColor(TEXT, 0xFFFFFFFF, ht), false);
+        }
+        g.disableScissor();
+    }
+
+    private void runCtx(int index) {
+        ScriptDocument doc = script();
+        switch (index) {
+            case 0 -> runTool("cut");
+            case 1 -> runTool("copy");
+            case 2 -> runTool("paste");
+            case 3 -> {
+                if (doc != null) doc.selectAll();
+            }
+            case 4 -> openToolPanel(1);
+            case 5 -> {
+                StudioSession.toolPanelOpen = !StudioSession.toolPanelOpen;
+                if (StudioSession.toolPanelOpen) {
+                    panelOpenedAt = System.currentTimeMillis();
+                }
+            }
+            default -> {
+            }
+        }
+    }
+
     private void drawTip(GuiGraphics g) {
         if (tip == null) {
             return;
@@ -1324,8 +1972,89 @@ public class StudioScreen extends Screen {
             originH = StudioSession.h;
             return true;
         }
-        if (naming) {
+        if (naming || gotoOpen) {
             return true;
+        }
+        if (acMatch != null && !acMatch.items().isEmpty() && hover(mx, my, acX, acY, acW, acH)) {
+            int idx = (my - (acY + 3)) / 14;
+            if (idx >= 0 && idx < acMatch.items().size()) {
+                acSel = idx;
+                applyAutocomplete(script());
+            }
+            return true;
+        }
+        acMatch = null;
+        if (ctxOpen) {
+            List<String> items = ctxItems();
+            int cw = 152;
+            int ch = items.size() * 15 + 6;
+            if (mx >= ctxX && mx < ctxX + cw && my >= ctxY && my < ctxY + ch) {
+                int idx = (my - (ctxY + 3)) / 15;
+                ctxOpen = false;
+                if (idx >= 0 && idx < items.size()) {
+                    runCtx(idx);
+                }
+                return true;
+            }
+            ctxOpen = false;
+        }
+        if (StudioSession.toolPanelOpen && script() != null && !settings) {
+            Drag pEdge = panelEdgeAt(mx, my);
+            if (pEdge != Drag.NONE) {
+                drag = pEdge;
+                grabX = mx;
+                grabY = my;
+                originX = StudioSession.toolPanelX;
+                originY = StudioSession.toolPanelY;
+                originW = StudioSession.toolPanelW;
+                originH = StudioSession.toolPanelH;
+                return true;
+            }
+            if (inToolPanel(mx, my)) {
+                if (hover(mx, my, pCloseX, pCloseY, 13, 13)) {
+                    StudioSession.toolPanelOpen = false;
+                    panelFocus = 0;
+                    return true;
+                }
+                if (my < StudioSession.toolPanelY + 19) {
+                    drag = Drag.PANEL_MOVE;
+                    grabX = mx - StudioSession.toolPanelX;
+                    grabY = my - StudioSession.toolPanelY;
+                    return true;
+                }
+                if (hover(mx, my, pFindX, pFindY, pFindW, 15)) {
+                    panelFocus = 1;
+                    return true;
+                }
+                if (hover(mx, my, pRepX, pRepY, pRepW, 15)) {
+                    panelFocus = 2;
+                    return true;
+                }
+                if (hover(mx, my, pPrevX, pNavY, 16, 15)) {
+                    findPrev(script());
+                    return true;
+                }
+                if (hover(mx, my, pNextX, pNavY, 16, 15)) {
+                    findNext(script());
+                    return true;
+                }
+                if (hover(mx, my, pRepBtnX, pActY, pRepBtnW, 15)) {
+                    replaceOne(script());
+                    return true;
+                }
+                if (hover(mx, my, pAllBtnX, pActY, pAllBtnW, 15)) {
+                    replaceAll(script());
+                    return true;
+                }
+                for (PanelCheck chk : panelChecks) {
+                    if (hover(mx, my, chk.x, chk.y, chk.w, chk.h)) {
+                        togglePanelCheck(chk.id);
+                        return true;
+                    }
+                }
+                panelFocus = 0;
+                return true;
+            }
         }
         if (menu != null && my >= py + TITLE + MENU_H && my < py + TITLE + MENU_H + menuItems().size() * 15 + 6
                 && mx >= menuX() && mx < menuX() + 156) {
@@ -1408,8 +2137,47 @@ public class StudioScreen extends Screen {
             return true;
         }
         ScriptDocument doc = script();
+        if (doc != null && !settings) {
+            // Сайдбар файлов: перетаскивание границы и клики по файлам
+            int resizeEdgeX = ClientUiSettings.sidebarRight() ? sbX : sbX + sbW - 2;
+            if (ClientUiSettings.sidebarOpen() && Math.abs(mx - resizeEdgeX) <= 3 && my >= sbY && my <= sbY + sbH) {
+                drag = Drag.SIDEBAR_RESIZE;
+                grabX = mx;
+                originW = ClientUiSettings.sidebarWidth();
+                return true;
+            }
+            if (hover(mx, my, sbX, sbY, sbW, sbH)) {
+                if (hover(mx, my, sbToggleX, sbToggleY, 14, 14)) {
+                    ClientUiSettings.setSidebarOpen(!ClientUiSettings.sidebarOpen());
+                    return true;
+                }
+                if (sbNewX >= 0 && hover(mx, my, sbNewX, sbToggleY, 14, 14)) {
+                    naming = true;
+                    nameBuf = "";
+                    return true;
+                }
+                if (sbRefX >= 0 && hover(mx, my, sbRefX, sbToggleY, 14, 14)) {
+                    ModNetwork.sendToServer(new ScriptListPacket.Request());
+                    return true;
+                }
+                for (SidebarHit hit : sidebarHits) {
+                    if (my >= hit.y && my < hit.y + hit.h) {
+                        openScript(hit.name);
+                        return true;
+                    }
+                }
+                return true;
+            }
+        }
         if (doc != null && doc.loaded && hover(mx, my, editorX, editorY, editorW, editorH)) {
-            findFocus = false;
+            panelFocus = 0;
+            if (button == 1) {
+                ctxOpen = true;
+                ctxX = mx;
+                ctxY = my;
+                ctxOpenedAt = System.currentTimeMillis();
+                return true;
+            }
             if (mx >= vBarX && mx < vBarX + BAR_W && my >= vBarY && my < vBarY + vBarH) {
                 drag = Drag.VSCROLL;
                 scrollGrab = my >= thumbY && my < thumbY + thumbH ? my - thumbY : thumbH / 2;
@@ -1465,6 +2233,45 @@ public class StudioScreen extends Screen {
             }
             return true;
         }
+        if (drag == Drag.SIDEBAR_RESIZE) {
+            int delta = mx - grabX;
+            int nextW = ClientUiSettings.sidebarRight() ? originW - delta : originW + delta;
+            ClientUiSettings.setSidebarWidth(nextW);
+            return true;
+        }
+        if (drag == Drag.PANEL_MOVE) {
+            StudioSession.toolPanelX = mx - grabX;
+            StudioSession.toolPanelY = my - grabY;
+            StudioSession.toolPanelPlaced = true;
+            layoutToolPanel();
+            return true;
+        }
+        if (drag == Drag.PANEL_N || drag == Drag.PANEL_S || drag == Drag.PANEL_E || drag == Drag.PANEL_W
+                || drag == Drag.PANEL_NE || drag == Drag.PANEL_NW || drag == Drag.PANEL_SE || drag == Drag.PANEL_SW) {
+            int ddx = mx - grabX;
+            int ddy = my - grabY;
+            int x = originX;
+            int y = originY;
+            int w = originW;
+            int h = originH;
+            if (drag == Drag.PANEL_E || drag == Drag.PANEL_NE || drag == Drag.PANEL_SE) w = originW + ddx;
+            if (drag == Drag.PANEL_S || drag == Drag.PANEL_SE || drag == Drag.PANEL_SW) h = originH + ddy;
+            if (drag == Drag.PANEL_W || drag == Drag.PANEL_NW || drag == Drag.PANEL_SW) {
+                x = originX + ddx;
+                w = originW - ddx;
+            }
+            if (drag == Drag.PANEL_N || drag == Drag.PANEL_NE || drag == Drag.PANEL_NW) {
+                y = originY + ddy;
+                h = originH - ddy;
+            }
+            StudioSession.toolPanelX = x;
+            StudioSession.toolPanelY = y;
+            StudioSession.toolPanelW = w;
+            StudioSession.toolPanelH = h;
+            StudioSession.toolPanelPlaced = true;
+            layoutToolPanel();
+            return true;
+        }
         if (drag == Drag.MOVE) {
             StudioSession.maximized = false;
             StudioSession.x = mx - grabX;
@@ -1517,8 +2324,16 @@ public class StudioScreen extends Screen {
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
         int step = (int) Math.signum(delta) * -3;
+        if (settings) {
+            hotkeyScroll = Math.max(0, Math.min(hotkeyMaxScroll, hotkeyScroll + step * 12));
+            return true;
+        }
         ScriptDocument doc = script();
         if (doc != null && !settings) {
+            if (hover((int) mouseX, (int) mouseY, sbX, sbY, sbW, sbH)) {
+                sidebarScroll = Math.max(0, Math.min(sidebarMaxScroll, sidebarScroll + step * 10));
+                return true;
+            }
             if (hasShiftDown()) {
                 doc.horiz = Math.max(0, Math.min(horizMax, doc.horiz + step * 12));
             } else {
@@ -1537,6 +2352,20 @@ public class StudioScreen extends Screen {
 
     @Override
     public boolean keyPressed(int key, int scan, int modifiers) {
+        if (listeningBind != null) {
+            if (key == GLFW.GLFW_KEY_ESCAPE) {
+                listeningBind = null;
+                return true;
+            }
+            if (key != GLFW.GLFW_KEY_LEFT_CONTROL && key != GLFW.GLFW_KEY_RIGHT_CONTROL
+                    && key != GLFW.GLFW_KEY_LEFT_SHIFT && key != GLFW.GLFW_KEY_RIGHT_SHIFT
+                    && key != GLFW.GLFW_KEY_LEFT_ALT && key != GLFW.GLFW_KEY_RIGHT_ALT) {
+                ClientUiSettings.setKeyBind(listeningBind,
+                        new ClientUiSettings.KeyBind(key, hasControlDown(), hasShiftDown(), hasAltDown()));
+                listeningBind = null;
+            }
+            return true;
+        }
         if (listening) {
             if (key == GLFW.GLFW_KEY_ESCAPE) {
                 listening = false;
@@ -1547,6 +2376,26 @@ public class StudioScreen extends Screen {
                 boolean f3 = window != 0L && GLFW.glfwGetKey(window, GLFW.GLFW_KEY_F3) == GLFW.GLFW_PRESS;
                 ClientUiSettings.setOpenKey(key, f3);
                 listening = false;
+            }
+            return true;
+        }
+        if (gotoOpen) {
+            if (key == GLFW.GLFW_KEY_ESCAPE) {
+                gotoOpen = false;
+                gotoBuf = "";
+            } else if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
+                ScriptDocument d = script();
+                if (d != null && !gotoBuf.isEmpty()) {
+                    try {
+                        int target = Math.max(1, Integer.parseInt(gotoBuf)) - 1;
+                        d.move(target, 0, false);
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+                gotoOpen = false;
+                gotoBuf = "";
+            } else if (key == GLFW.GLFW_KEY_BACKSPACE && !gotoBuf.isEmpty()) {
+                gotoBuf = gotoBuf.substring(0, gotoBuf.length() - 1);
             }
             return true;
         }
@@ -1569,39 +2418,80 @@ public class StudioScreen extends Screen {
             return true;
         }
         if (key == GLFW.GLFW_KEY_ESCAPE) {
-            if (menu != null || catalog || findFocus) {
+            if (acMatch != null) {
+                acMatch = null;
+                return true;
+            }
+            if (menu != null || catalog || ctxOpen || StudioSession.toolPanelOpen) {
                 menu = null;
                 catalog = false;
-                findFocus = false;
+                ctxOpen = false;
+                StudioSession.toolPanelOpen = false;
+                panelFocus = 0;
                 return true;
             }
             onClose();
             return true;
         }
         boolean ctrl = hasControlDown();
+        boolean shift = hasShiftDown();
+        boolean alt = hasAltDown();
         ScriptDocument doc = script();
-        if (ctrl && key == GLFW.GLFW_KEY_S) {
-            if (hasShiftDown()) {
-                saveAll();
-            } else {
-                save(doc);
-            }
+        if (ClientUiSettings.matches("saveAll", key, ctrl, shift, alt)) {
+            saveAll();
             return true;
         }
-        if (ctrl && key == GLFW.GLFW_KEY_R) {
+        if (ClientUiSettings.matches("save", key, ctrl, shift, alt)) {
+            save(doc);
+            return true;
+        }
+        if (ClientUiSettings.matches("reload", key, ctrl, shift, alt)) {
             reload(doc);
             return true;
         }
-        if (ctrl && key == GLFW.GLFW_KEY_F) {
-            findOn = true;
-            findFocus = true;
+        if (ClientUiSettings.matches("find", key, ctrl, shift, alt) && doc != null && !settings) {
+            openToolPanel(1);
             return true;
         }
-        if (findFocus) {
-            if (key == GLFW.GLFW_KEY_ENTER) {
-                findNext(doc);
-            } else if (key == GLFW.GLFW_KEY_BACKSPACE && !find.isEmpty()) {
-                find = find.substring(0, find.length() - 1);
+        if (ClientUiSettings.matches("replace", key, ctrl, shift, alt) && doc != null && !settings) {
+            openToolPanel(2);
+            return true;
+        }
+        if (ClientUiSettings.matches("toggleSidebar", key, ctrl, shift, alt) && doc != null && !settings) {
+            ClientUiSettings.setSidebarOpen(!ClientUiSettings.sidebarOpen());
+            return true;
+        }
+        if (StudioSession.toolPanelOpen && panelFocus != 0 && doc != null && !settings) {
+            if (key == GLFW.GLFW_KEY_TAB) {
+                panelFocus = panelFocus == 1 ? 2 : 1;
+                return true;
+            }
+            if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
+                if (panelFocus == 2) {
+                    replaceOne(doc);
+                } else if (hasShiftDown()) {
+                    findPrev(doc);
+                } else {
+                    findNext(doc);
+                }
+                return true;
+            }
+            if (key == GLFW.GLFW_KEY_BACKSPACE) {
+                if (panelFocus == 1 && !find.isEmpty()) {
+                    find = ctrl ? "" : find.substring(0, find.length() - 1);
+                } else if (panelFocus == 2 && !replace.isEmpty()) {
+                    replace = ctrl ? "" : replace.substring(0, replace.length() - 1);
+                }
+                return true;
+            }
+            if (ctrl && key == GLFW.GLFW_KEY_V) {
+                String clip = clipboard().replace("\r", "").replace("\n", "");
+                if (panelFocus == 1) {
+                    find += clip;
+                } else {
+                    replace += clip;
+                }
+                return true;
             }
             return true;
         }
@@ -1618,17 +2508,63 @@ public class StudioScreen extends Screen {
         if (doc == null || !doc.loaded || settings) {
             return true;
         }
-        boolean shift = hasShiftDown();
-        if (ctrl && key == GLFW.GLFW_KEY_Z) {
-            doc.undo();
+        if (acMatch != null && !acMatch.items().isEmpty()) {
+            if (key == GLFW.GLFW_KEY_DOWN) {
+                acSel = (acSel + 1) % acMatch.items().size();
+                return true;
+            }
+            if (key == GLFW.GLFW_KEY_UP) {
+                acSel = (acSel - 1 + acMatch.items().size()) % acMatch.items().size();
+                return true;
+            }
+            if (key == GLFW.GLFW_KEY_TAB || key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
+                applyAutocomplete(doc);
+                return true;
+            }
+        }
+        if (ClientUiSettings.matches("autocomplete", key, ctrl, shift, alt)) {
+            refreshAutocomplete(doc, true);
             return true;
         }
-        if (ctrl && key == GLFW.GLFW_KEY_Y) {
+        if (ClientUiSettings.matches("undo", key, ctrl, shift, alt)) {
+            doc.undo();
+            acMatch = null;
+            return true;
+        }
+        if (ClientUiSettings.matches("redo", key, ctrl, shift, alt)) {
             doc.redo();
+            acMatch = null;
+            return true;
+        }
+        if (ClientUiSettings.matches("comment", key, ctrl, shift, alt)) {
+            doc.toggleComment();
+            acMatch = null;
+            return true;
+        }
+        if (ClientUiSettings.matches("duplicate", key, ctrl, shift, alt)) {
+            doc.duplicateLine();
+            acMatch = null;
+            return true;
+        }
+        if (ClientUiSettings.matches("gotoLine", key, ctrl, shift, alt)) {
+            gotoOpen = true;
+            gotoBuf = "";
+            acMatch = null;
+            return true;
+        }
+        if (ClientUiSettings.matches("moveUp", key, ctrl, shift, alt)) {
+            doc.moveLines(-1);
+            acMatch = null;
+            return true;
+        }
+        if (ClientUiSettings.matches("moveDown", key, ctrl, shift, alt)) {
+            doc.moveLines(1);
+            acMatch = null;
             return true;
         }
         if (ctrl && key == GLFW.GLFW_KEY_A) {
             doc.selectAll();
+            acMatch = null;
             return true;
         }
         if (ctrl && key == GLFW.GLFW_KEY_C) {
@@ -1638,18 +2574,21 @@ public class StudioScreen extends Screen {
         if (ctrl && key == GLFW.GLFW_KEY_X) {
             copy(doc);
             doc.backspace();
+            acMatch = null;
             return true;
         }
         if (ctrl && key == GLFW.GLFW_KEY_V) {
             doc.insert(clipboard());
+            acMatch = null;
             return true;
         }
         if (key == GLFW.GLFW_KEY_BACKSPACE) {
             if (ctrl) {
                 doc.deleteWord();
-            } else {
+            } else if (!ClientUiSettings.autoClose() || !doc.backspaceEmptyPair()) {
                 doc.backspace();
             }
+            refreshAutocomplete(doc, false);
             return true;
         }
         if (key == GLFW.GLFW_KEY_DELETE) {
@@ -1658,14 +2597,19 @@ public class StudioScreen extends Screen {
             } else {
                 doc.deleteForward();
             }
+            acMatch = null;
             return true;
         }
         if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
-            doc.insertNewLine();
+            doc.insertNewLine(StudioSession.optAutoIndent);
+            acMatch = null;
             return true;
         }
         if (key == GLFW.GLFW_KEY_TAB) {
-            doc.insert("\t");
+            if (!doc.indentSelection(shift)) {
+                doc.insert("\t");
+            }
+            acMatch = null;
             return true;
         }
         if (key == GLFW.GLFW_KEY_LEFT) {
@@ -1725,7 +2669,13 @@ public class StudioScreen extends Screen {
 
     @Override
     public boolean charTyped(char ch, int modifiers) {
-        if (listening) {
+        if (listening || listeningBind != null) {
+            return true;
+        }
+        if (gotoOpen) {
+            if (ch >= '0' && ch <= '9' && gotoBuf.length() < 6) {
+                gotoBuf += ch;
+            }
             return true;
         }
         if (naming) {
@@ -1734,15 +2684,22 @@ public class StudioScreen extends Screen {
             }
             return true;
         }
-        if (findFocus) {
-            if (ch >= 32) {
-                find += ch;
+        if (StudioSession.toolPanelOpen && panelFocus != 0) {
+            if (ch >= 32 && !hasControlDown()) {
+                if (panelFocus == 1) {
+                    find += ch;
+                } else {
+                    replace += ch;
+                }
             }
             return true;
         }
         ScriptDocument doc = script();
         if (doc != null && doc.loaded && !settings && !hasControlDown() && ch >= 32) {
-            doc.insert(String.valueOf(ch));
+            if (!ClientUiSettings.autoClose() || !doc.typeWithAutoClose(ch)) {
+                doc.insert(String.valueOf(ch));
+            }
+            refreshAutocomplete(doc, false);
         }
         return true;
     }
@@ -2036,21 +2993,67 @@ public class StudioScreen extends Screen {
         if (doc == null || find.isEmpty()) {
             return;
         }
-        String needle = find.toLowerCase(Locale.ROOT);
-        int line = doc.line;
-        int col = doc.col;
-        for (int step = 0; step < doc.lines.size() + 1; step++) {
-            String text = doc.lines.get(line).toLowerCase(Locale.ROOT);
-            int at = text.indexOf(needle, col);
-            if (at >= 0) {
-                doc.move(line, at, false);
-                doc.move(line, at + needle.length(), true);
-                return;
-            }
-            line = (line + 1) % doc.lines.size();
-            col = 0;
+        List<int[]> matches = doc.findAllMatches(find, StudioSession.optMatchCase, StudioSession.optWholeWord);
+        if (matches.isEmpty()) {
+            ClientToasts.push(Messages.toast("studio.none"));
+            return;
         }
-        ClientToasts.push(Messages.toast("studio.none"));
+        int[] target = matches.get(0);
+        for (int[] m : matches) {
+            if (m[0] > doc.line || (m[0] == doc.line && m[1] >= doc.col)) {
+                target = m;
+                break;
+            }
+        }
+        doc.move(target[0], target[1], false);
+        doc.move(target[0], target[2], true);
+    }
+
+    private void findPrev(ScriptDocument doc) {
+        if (doc == null || find.isEmpty()) {
+            return;
+        }
+        List<int[]> matches = doc.findAllMatches(find, StudioSession.optMatchCase, StudioSession.optWholeWord);
+        if (matches.isEmpty()) {
+            ClientToasts.push(Messages.toast("studio.none"));
+            return;
+        }
+        int curLine = doc.anchorLine >= 0 ? Math.min(doc.anchorLine, doc.line) : doc.line;
+        int curCol = doc.anchorLine >= 0 && doc.anchorLine == doc.line ? Math.min(doc.anchorCol, doc.col) : doc.col;
+        int[] target = matches.get(matches.size() - 1);
+        for (int i = matches.size() - 1; i >= 0; i--) {
+            int[] m = matches.get(i);
+            if (m[0] < curLine || (m[0] == curLine && m[1] < curCol)) {
+                target = m;
+                break;
+            }
+        }
+        doc.move(target[0], target[1], false);
+        doc.move(target[0], target[2], true);
+    }
+
+    private void replaceOne(ScriptDocument doc) {
+        if (doc == null || find.isEmpty()) {
+            return;
+        }
+        if (doc.replaceCurrent(find, replace, StudioSession.optMatchCase, StudioSession.optWholeWord)) {
+            findNext(doc);
+            return;
+        }
+        findNext(doc);
+        doc.replaceCurrent(find, replace, StudioSession.optMatchCase, StudioSession.optWholeWord);
+    }
+
+    private void replaceAll(ScriptDocument doc) {
+        if (doc == null || find.isEmpty()) {
+            return;
+        }
+        int count = doc.replaceAll(find, replace, StudioSession.optMatchCase, StudioSession.optWholeWord);
+        if (count == 0) {
+            ClientToasts.push(Messages.toast("studio.none"));
+        } else {
+            ClientToasts.push(Messages.toast("studio.replaced", count));
+        }
     }
 
     private void placeCursor(ScriptDocument doc, int mx, int my, boolean keep) {
@@ -2058,7 +3061,7 @@ public class StudioScreen extends Screen {
         int row = doc.scroll + (rel <= 0 ? 0 : rel / LINE_H);
         row = Math.max(0, Math.min(doc.lines.size() - 1, row));
         String line = doc.lines.get(row);
-        int local = mx - editorX - GUTTER_W + doc.horiz;
+        int local = mx - editorX - gutterW() + doc.horiz;
         int col = 0;
         int best = Integer.MAX_VALUE;
         for (int i = 0; i <= line.length(); i++) {
@@ -2169,7 +3172,7 @@ public class StudioScreen extends Screen {
     private int textX(String line, int col) {
         ScriptDocument doc = script();
         int horiz = doc == null ? 0 : doc.horiz;
-        return editorX + GUTTER_W + spanWidth(line, col) - horiz;
+        return editorX + gutterW() + spanWidth(line, col) - horiz;
     }
 
     /** Подкручивает строку вбок, чтобы каретка была в видимой части. */
@@ -2185,7 +3188,7 @@ public class StudioScreen extends Screen {
 
     private void toolClick(int mx) {
         int x = px + 8;
-        String[] ids = {"new", "open", "save", "saveall", "closetab", "delete", "", "cut", "copy", "paste", "", "undo", "redo"};
+        String[] ids = {"new", "open", "save", "saveall", "closetab", "delete", "", "cut", "copy", "paste", "", "undo", "redo", "", "find"};
         for (String id : ids) {
             if (id.isEmpty()) {
                 x += 8;
@@ -2250,6 +3253,14 @@ public class StudioScreen extends Screen {
                     doc.redo();
                 }
             }
+            case "find" -> {
+                if (StudioSession.toolPanelOpen) {
+                    StudioSession.toolPanelOpen = false;
+                    panelFocus = 0;
+                } else {
+                    openToolPanel(1);
+                }
+            }
             default -> {
             }
         }
@@ -2262,9 +3273,9 @@ public class StudioScreen extends Screen {
                     Messages.get("studio.m.exit"));
             case "edit" -> List.of(Messages.get("studio.m.undo"), Messages.get("studio.m.redo"), Messages.get("studio.m.cut"),
                     Messages.get("studio.m.copy"), Messages.get("studio.m.paste"), Messages.get("studio.m.all"));
-            case "search" -> List.of(Messages.get("studio.m.find"));
+            case "search" -> List.of(Messages.get("studio.find_replace"));
             case "view" -> List.of(StudioSession.maximized ? Messages.get("studio.m.window") : Messages.get("studio.m.full"),
-                    Messages.get("studio.journal"));
+                    Messages.get("studio.journal"), Messages.get("studio.m.tools"));
             default -> List.of();
         };
     }
@@ -2312,14 +3323,22 @@ public class StudioScreen extends Screen {
                 }
             }
             case "search" -> {
-                findOn = true;
-                findFocus = true;
+                if (script() != null) {
+                    openToolPanel(1);
+                }
             }
             case "view" -> {
                 if (index == 0) {
                     toggleMax();
-                } else {
+                } else if (index == 1) {
                     StudioSession.active = StudioSession.JOURNAL;
+                } else if (index == 2 && script() != null) {
+                    if (StudioSession.toolPanelOpen) {
+                        StudioSession.toolPanelOpen = false;
+                        panelFocus = 0;
+                    } else {
+                        openToolPanel(0);
+                    }
                 }
             }
             default -> {
@@ -2443,10 +3462,12 @@ public class StudioScreen extends Screen {
     }
 
     private void settingsClick(int mx, int my) {
+        listeningBind = null;
         if (hover(mx, my, keyBoxX, keyBoxY, 170, 14)) {
             listening = true;
             return;
         }
+        listening = false;
         if (hover(mx, my, sliderX, slider1Y - 4, 180, 12)) {
             slider = 1;
             applySlider(mx);
@@ -2457,11 +3478,38 @@ public class StudioScreen extends Screen {
             applySlider(mx);
             return;
         }
-        int y = slider2Y + 16 + 14;
+        int y = slider2Y + 12 + 12;
         clickPlace(mx, my, sliderX, y, ClientUiSettings.Place.CHAT);
-        clickPlace(mx, my, sliderX + 120, y, ClientUiSettings.Place.TOP_LEFT);
-        clickPlace(mx, my, sliderX, y + 20, ClientUiSettings.Place.TOP_RIGHT);
-        clickPlace(mx, my, sliderX + 120, y + 20, ClientUiSettings.Place.BOTTOM_RIGHT);
+        clickPlace(mx, my, sliderX + 116, y, ClientUiSettings.Place.TOP_LEFT);
+        clickPlace(mx, my, sliderX, y + 18, ClientUiSettings.Place.TOP_RIGHT);
+        clickPlace(mx, my, sliderX + 116, y + 18, ClientUiSettings.Place.BOTTOM_RIGHT);
+
+        if (hover(mx, my, setAcX, setAcY, 220, 14)) {
+            ClientUiSettings.setAutocomplete(!ClientUiSettings.autocomplete());
+            return;
+        }
+        if (hover(mx, my, setAutoX, setAutoY, 220, 14)) {
+            ClientUiSettings.setAutoClose(!ClientUiSettings.autoClose());
+            return;
+        }
+        if (hover(mx, my, setSbLeftX, setSbY, 58, 15)) {
+            ClientUiSettings.setSidebarRight(false);
+            return;
+        }
+        if (hover(mx, my, setSbRightX, setSbY, 58, 15)) {
+            ClientUiSettings.setSidebarRight(true);
+            return;
+        }
+        if (hover(mx, my, hkResetX, hkResetY, hkResetW, 14)) {
+            ClientUiSettings.resetKeyBinds();
+            return;
+        }
+        for (HotkeyHit hit : hotkeyHits) {
+            if (hover(mx, my, hit.x, hit.y, hit.w, hit.h)) {
+                listeningBind = hit.id;
+                return;
+            }
+        }
     }
 
     private void clickPlace(int mx, int my, int x, int y, ClientUiSettings.Place place) {
@@ -2611,7 +3659,7 @@ public class StudioScreen extends Screen {
     }
 
     private int spanWidth(String line, int count) {
-        return ScriptColors.width(this.font, line, count);
+        return ScriptColors.width(this.font, line, count, StudioSession.optQuoteColors);
     }
 
     private static boolean hover(int mx, int my, int x, int y, int w, int h) {
@@ -2625,18 +3673,21 @@ public class StudioScreen extends Screen {
         g.fill(x + w - 1, y, x + w, y + h, color);
     }
 
-    private static void drawGear(GuiGraphics g, int cx, int cy, int color, float angle) {
-        PoseStack pose = g.pose();
-        pose.pushPose();
-        pose.translate(cx, cy, 0);
-        pose.mulPose(Axis.ZP.rotationDegrees(angle));
-        for (int i = 0; i < 8; i++) {
-            pose.pushPose();
-            pose.mulPose(Axis.ZP.rotationDegrees(i * 45f));
-            g.fill(-1, -6, 1, -3, color);
-            pose.popPose();
-        }
-        g.fill(-2, -2, 2, 2, color);
-        pose.popPose();
+    /** Пиксельная шестерёнка 10×10 без искажений от поворота на 45°. */
+    private static void drawGear(GuiGraphics g, int x, int y, int color, int holeBg) {
+        // Кольцо
+        g.fill(x + 2, y + 2, x + 8, y + 8, color);
+        // Кардинальные зубцы
+        g.fill(x + 4, y, x + 6, y + 2, color);
+        g.fill(x + 4, y + 8, x + 6, y + 10, color);
+        g.fill(x, y + 4, x + 2, y + 6, color);
+        g.fill(x + 8, y + 4, x + 10, y + 6, color);
+        // Диагональные зубцы
+        g.fill(x + 1, y + 1, x + 3, y + 3, color);
+        g.fill(x + 7, y + 1, x + 9, y + 3, color);
+        g.fill(x + 1, y + 7, x + 3, y + 9, color);
+        g.fill(x + 7, y + 7, x + 9, y + 9, color);
+        // Внутреннее отверстие
+        g.fill(x + 4, y + 4, x + 6, y + 6, holeBg);
     }
 }

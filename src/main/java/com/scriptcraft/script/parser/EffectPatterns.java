@@ -116,6 +116,38 @@ final class EffectPatterns {
         rule("show vanilla %part%", c -> new HudActions.Vanilla(new Target.Self(), vanillaPart(c.raw(0)), false));
 
         // --- звук, титры, опыт
+        rule("play sound %id% at %num% %num% %num% for|to %target% with volume %num% pitch %expr%",
+                c -> new Effects.PlaySoundAt(c.id(0), null, null, c.num(1), c.num(2), c.num(3), c.target(4), c.num(5), c.expr(6)));
+        rule("play sound %id% at %num% %num% %num% for|to %target% with volume %expr%",
+                c -> new Effects.PlaySoundAt(c.id(0), null, null, c.num(1), c.num(2), c.num(3), c.target(4), c.expr(5), null));
+        rule("play sound %id% at %num% %num% %num% for|to %target%",
+                c -> new Effects.PlaySoundAt(c.id(0), null, null, c.num(1), c.num(2), c.num(3), c.target(4), null, null));
+        rule("play sound %id% at %num% %num% %num% with volume %num% pitch %expr%",
+                c -> new Effects.PlaySoundAt(c.id(0), null, null, c.num(1), c.num(2), c.num(3), null, c.num(4), c.expr(5)));
+        rule("play sound %id% at %num% %num% %num% with volume %expr%",
+                c -> new Effects.PlaySoundAt(c.id(0), null, null, c.num(1), c.num(2), c.num(3), null, c.expr(4), null));
+        rule("play sound %id% at %num% %num% %num%",
+                c -> new Effects.PlaySoundAt(c.id(0), null, null, c.num(1), c.num(2), c.num(3), null, null, null));
+        rule("play sound %id% at %target% for|to %target% with volume %num% pitch %expr%",
+                c -> new Effects.PlaySoundAt(c.id(0), c.target(1), null, null, null, null, c.target(2), c.num(3), c.expr(4)));
+        rule("play sound %id% at %target% for|to %target% with volume %expr%",
+                c -> new Effects.PlaySoundAt(c.id(0), c.target(1), null, null, null, null, c.target(2), c.expr(3), null));
+        rule("play sound %id% at %target% for|to %target%",
+                c -> new Effects.PlaySoundAt(c.id(0), c.target(1), null, null, null, null, c.target(2), null, null));
+        rule("play sound %id% at %target% with volume %num% pitch %expr%",
+                c -> new Effects.PlaySoundAt(c.id(0), c.target(1), null, null, null, null, null, c.num(2), c.expr(3)));
+        rule("play sound %id% at %target% with volume %expr%",
+                c -> new Effects.PlaySoundAt(c.id(0), c.target(1), null, null, null, null, null, c.expr(2), null));
+        rule("play sound %id% at %target%",
+                c -> new Effects.PlaySoundAt(c.id(0), c.target(1), null, null, null, null, null, null, null));
+        rule("play sound %id% at %piece% for|to %target% with volume %num% pitch %expr%",
+                c -> new Effects.PlaySoundAt(c.id(0), null, c.exprValue(1), null, null, null, c.target(2), c.num(3), c.expr(4)));
+        rule("play sound %id% at %piece% for|to %target%",
+                c -> new Effects.PlaySoundAt(c.id(0), null, c.exprValue(1), null, null, null, c.target(2), null, null));
+        rule("play sound %id% at %piece% with volume %num% pitch %expr%",
+                c -> new Effects.PlaySoundAt(c.id(0), null, c.exprValue(1), null, null, null, null, c.num(2), c.expr(3)));
+        rule("play sound %id% at %expr%",
+                c -> new Effects.PlaySoundAt(c.id(0), null, c.expr(1), null, null, null, null, null, null));
         rule("play sound %id% to %target% with volume %num% pitch %expr%",
                 c -> new Effects.PlaySound(c.target(1), c.id(0), c.num(2), c.expr(3)));
         rule("play sound %id% to %target% with volume %expr%",
@@ -165,9 +197,15 @@ final class EffectPatterns {
         rule("close inventory of %target%", c -> new Effects.CloseInventory(c.target(0)));
         rule("wake up %target%", c -> new Effects.Wake(c.target(0)));
         rule("wake %target% up", c -> new Effects.Wake(c.target(0)));
-        rule("strike lightning at %num% %num% %num%", c -> new Effects.Lightning(null, c.num(0), c.num(1), c.num(2)));
-        rule("strike lightning at %target%", c -> new Effects.Lightning(c.target(0), null, null, null));
-        rule("strike lightning at %expr%", c -> new Effects.LightningAt(c.expr(0)));
+        rule("strike fake|effect|visual lightning at %num% %num% %num%", c -> new Effects.Lightning(null, c.num(0), c.num(1), c.num(2), true));
+        rule("strike fake|effect|visual lightning at %target%", c -> new Effects.Lightning(c.target(0), null, null, null, true));
+        rule("strike fake|effect|visual lightning at %expr%", c -> new Effects.LightningAt(c.expr(0), true));
+        rule("strike lightning effect at %num% %num% %num%", c -> new Effects.Lightning(null, c.num(0), c.num(1), c.num(2), true));
+        rule("strike lightning effect at %target%", c -> new Effects.Lightning(c.target(0), null, null, null, true));
+        rule("strike lightning effect at %expr%", c -> new Effects.LightningAt(c.expr(0), true));
+        rule("strike lightning at %num% %num% %num%", c -> new Effects.Lightning(null, c.num(0), c.num(1), c.num(2), false));
+        rule("strike lightning at %target%", c -> new Effects.Lightning(c.target(0), null, null, null, false));
+        rule("strike lightning at %expr%", c -> new Effects.LightningAt(c.expr(0), false));
         rule("set time to %expr%", c -> new Effects.SetTime(c.expr(0)));
         rule("set weather to clear|sun", c -> new Effects.SetWeather("clear", null));
         rule("set weather to thunder|storm for %expr% " + SECONDS, c -> new Effects.SetWeather("thunder", c.expr(0)));
@@ -192,13 +230,58 @@ final class EffectPatterns {
         rule("launch %target% upwards|up by|with %expr%", c -> new Effects.Launch(c.target(0), false, c.expr(1)));
         rule("launch %target% forwards|forward", c -> new Effects.Launch(c.target(0), true, null));
         rule("launch %target% upwards|up", c -> new Effects.Launch(c.target(0), false, null));
+        rule("push %target% %dir% with force|speed %expr%", c -> new Effects.Push(c.target(0), c.raw(1).value(), c.expr(2)));
+        rule("push %target% %dir% by|with %expr%", c -> new Effects.Push(c.target(0), c.raw(1).value(), c.expr(2)));
+        rule("push %target% %dir%", c -> new Effects.Push(c.target(0), c.raw(1).value(), null));
+        rule("create safe explosion at %num% %num% %num% with force|power %expr%",
+                c -> new Effects.Explode(null, c.num(0), c.num(1), c.num(2), c.expr(3), true));
+        rule("create safe explosion at %num% %num% %num%", c -> new Effects.Explode(null, c.num(0), c.num(1), c.num(2), null, true));
+        rule("create safe explosion at %target% with force|power %expr%", c -> new Effects.Explode(c.target(0), null, null, null, c.expr(1), true));
+        rule("create safe explosion at %target%", c -> new Effects.Explode(c.target(0), null, null, null, null, true));
+        rule("create safe explosion at %piece% with force|power %expr%", c -> new Effects.ExplodeAt(c.exprValue(0), c.expr(1), true));
+        rule("create safe explosion at %expr%", c -> new Effects.ExplodeAt(c.expr(0), null, true));
+        rule("create explosion at %num% %num% %num% with force|power %expr%",
+                c -> new Effects.Explode(null, c.num(0), c.num(1), c.num(2), c.expr(3), false));
+        rule("create explosion at %num% %num% %num%", c -> new Effects.Explode(null, c.num(0), c.num(1), c.num(2), null, false));
+        rule("create explosion at %target% with force|power %expr%", c -> new Effects.Explode(c.target(0), null, null, null, c.expr(1), false));
+        rule("create explosion at %target%", c -> new Effects.Explode(c.target(0), null, null, null, null, false));
+        rule("create explosion at %piece% with force|power %expr%", c -> new Effects.ExplodeAt(c.exprValue(0), c.expr(1), false));
+        rule("create explosion at %expr%", c -> new Effects.ExplodeAt(c.expr(0), null, false));
         rule("explode at %num% %num% %num% with force|power %expr%",
-                c -> new Effects.Explode(null, c.num(0), c.num(1), c.num(2), c.expr(3)));
-        rule("explode at %num% %num% %num%", c -> new Effects.Explode(null, c.num(0), c.num(1), c.num(2), null));
-        rule("explode at %target% with force|power %expr%", c -> new Effects.Explode(c.target(0), null, null, null, c.expr(1)));
-        rule("explode at %target%", c -> new Effects.Explode(c.target(0), null, null, null, null));
-        rule("explode at %piece% with force|power %expr%", c -> new Effects.ExplodeAt(c.exprValue(0), c.expr(1)));
-        rule("explode at %expr%", c -> new Effects.ExplodeAt(c.expr(0), null));
+                c -> new Effects.Explode(null, c.num(0), c.num(1), c.num(2), c.expr(3), false));
+        rule("explode at %num% %num% %num%", c -> new Effects.Explode(null, c.num(0), c.num(1), c.num(2), null, false));
+        rule("explode at %target% with force|power %expr%", c -> new Effects.Explode(c.target(0), null, null, null, c.expr(1), false));
+        rule("explode at %target%", c -> new Effects.Explode(c.target(0), null, null, null, null, false));
+        rule("explode at %piece% with force|power %expr%", c -> new Effects.ExplodeAt(c.exprValue(0), c.expr(1), false));
+        rule("explode at %expr%", c -> new Effects.ExplodeAt(c.expr(0), null, false));
+
+        // --- частицы
+        rule("spawn particle %id% at %num% %num% %num% count %num% speed %expr%",
+                c -> new Effects.SpawnParticle(c.id(0), null, null, c.num(1), c.num(2), c.num(3), c.num(4), c.expr(5)));
+        rule("spawn particle %id% at %num% %num% %num% count %expr%",
+                c -> new Effects.SpawnParticle(c.id(0), null, null, c.num(1), c.num(2), c.num(3), c.expr(4), null));
+        rule("spawn particle %id% at %num% %num% %num%",
+                c -> new Effects.SpawnParticle(c.id(0), null, null, c.num(1), c.num(2), c.num(3), null, null));
+        rule("spawn particle %id% at %target% count %num% speed %expr%",
+                c -> new Effects.SpawnParticle(c.id(0), c.target(1), null, null, null, null, c.num(2), c.expr(3)));
+        rule("spawn particle %id% at %target% count %expr%",
+                c -> new Effects.SpawnParticle(c.id(0), c.target(1), null, null, null, null, c.expr(2), null));
+        rule("spawn particle %id% at %target%",
+                c -> new Effects.SpawnParticle(c.id(0), c.target(1), null, null, null, null, null, null));
+        rule("spawn particle %id% at %piece% count %num% speed %expr%",
+                c -> new Effects.SpawnParticle(c.id(0), null, c.exprValue(1), null, null, null, c.num(2), c.expr(3)));
+        rule("spawn particle %id% at %piece% count %expr%",
+                c -> new Effects.SpawnParticle(c.id(0), null, c.exprValue(1), null, null, null, c.expr(2), null));
+        rule("spawn particle %id% at %expr%",
+                c -> new Effects.SpawnParticle(c.id(0), null, c.expr(1), null, null, null, null, null));
+
+        // --- скорборд
+        rule("set scoreboard title %text% for|to|of %target%", c -> new Effects.ScoreboardTitle(c.target(1), c.text(0)));
+        rule("set scoreboard title %text%", c -> new Effects.ScoreboardTitle(new Target.Self(), c.text(0)));
+        rule("set scoreboard line %num% to %text% for|to|of %target%", c -> new Effects.ScoreboardLine(c.target(2), c.num(0), c.text(1)));
+        rule("set scoreboard line %num% to %text%", c -> new Effects.ScoreboardLine(new Target.Self(), c.num(0), c.text(1)));
+        rule("clear|remove|hide scoreboard of|for|from %target%", c -> new Effects.ScoreboardClear(c.target(0)));
+        rule("clear|remove|hide scoreboard", c -> new Effects.ScoreboardClear(new Target.Self()));
         rule("stop", c -> new Actions.Stop());
         rule("cancel event", c -> new Actions.CancelEvent());
         rule("cancel the event", c -> new Actions.CancelEvent());

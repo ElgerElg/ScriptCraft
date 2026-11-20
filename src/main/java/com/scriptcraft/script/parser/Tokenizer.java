@@ -105,6 +105,9 @@ final class Tokenizer {
             }
             if (Character.isWhitespace(c) || c == ',') {
                 flush(tokens, cur);
+            } else if ((c == '(' || c == ')') && (cur.isEmpty() || cur.charAt(0) != '@')) {
+                flush(tokens, cur);
+                tokens.add(new Token(String.valueOf(c), false));
             } else {
                 cur.append(c);
             }

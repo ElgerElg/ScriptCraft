@@ -145,7 +145,7 @@ public final class ExecutionContext {
     /** Кладёт arg-1, %args% и значения для player-argument и остальных. */
     public void setCommandArguments(List<ArgType> types, List<Object> values) {
         commandArgTypes = List.copyOf(types);
-        commandArgs = List.copyOf(values);
+        commandArgs = java.util.Collections.unmodifiableList(new java.util.ArrayList<>(values));
         StringBuilder all = new StringBuilder();
         for (int i = 0; i < values.size(); i++) {
             Object value = values.get(i);

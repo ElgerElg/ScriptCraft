@@ -129,10 +129,14 @@ public final class ScriptDocument {
 
     /** Перевод строки с сохранением отступа (пробелы и TAB) текущей строки. */
     public void insertNewLine() {
+        insertNewLine(true);
+    }
+
+    public void insertNewLine(boolean autoIndent) {
         if (!loaded) {
             return;
         }
-        if (box && anchorLine >= 0) {
+        if (!autoIndent || (box && anchorLine >= 0)) {
             insert("\n");
             return;
         }
@@ -152,6 +156,391 @@ public final class ScriptDocument {
         line++;
         lines.add(line, indent + right);
         col = indent.length();
+    }
+
+    /** Закомментировать или раскомментировать текущую строку / выделенные строки (#). */
+    public void toggleComment() {
+        if (!loaded || lines.isEmpty()) {
+            return;
+        }
+        followCaret = true;
+        snapshot();
+        Range r = range();
+        int from = r == null ? line : r.fromLine;
+        int to = r == null ? line : r.toLine;
+        boolean allCommented = true;
+        for (int i = from; i <= to; i++) {
+            String trimmed = lines.get(i).stripLeading();
+            if (!trimmed.isEmpty() && !trimmed.startsWith("#")) {
+                allCommented = false;
+                break;
+            }
+        }
+        for (int i = from; i <= to; i++) {
+            String s = lines.get(i);
+            int lead = 0;
+            while (lead < s.length() && isGap(s.charAt(lead))) {
+                lead++;
+            }
+            if (allCommented) {
+                if (lead < s.length() && s.charAt(lead) == '#') {
+                    int drop = (lead + 1 < s.length() && s.charAt(lead + 1) == ' ') ? 2 : 1;
+                    lines.set(i, s.substring(0, lead) + s.substring(lead + drop));
+                    if (i == line) col = Math.max(0, col - drop);
+                }
+            } else {
+                lines.set(i, s.substring(0, lead) + "# " + s.substring(lead));
+                if (i == line) col += 2;
+            }
+        }
+    }
+
+    /** Дублирует текущую строку или выделенный диапазон строк ниже. */
+    public void duplicateLine() {
+        if (!loaded || lines.isEmpty()) {
+            return;
+        }
+        followCaret = true;
+        snapshot();
+        Range r = range();
+        int from = r == null ? line : r.fromLine;
+        int to = r == null ? line : r.toLine;
+        List<String> copy = new ArrayList<>();
+        for (int i = from; i <= to; i++) {
+            copy.add(lines.get(i));
+        }
+        lines.addAll(to + 1, copy);
+        int shift = copy.size();
+        line += shift;
+        if (anchorLine >= 0) {
+            anchorLine += shift;
+        }
+    }
+
+    /** Перемещает текущую строку или выделенные строки вверх (-1) или вниз (+1). */
+    public void moveLines(int dir) {
+        if (!loaded || lines.isEmpty() || dir == 0) {
+            return;
+        }
+        Range r = range();
+        int from = r == null ? line : r.fromLine;
+        int to = r == null ? line : r.toLine;
+        if (dir < 0 && from <= 0) return;
+        if (dir > 0 && to >= lines.size() - 1) return;
+        followCaret = true;
+        snapshot();
+        if (dir < 0) {
+            String moved = lines.remove(from - 1);
+            lines.add(to, moved);
+            line--;
+            if (anchorLine >= 0) anchorLine--;
+        } else {
+            String moved = lines.remove(to + 1);
+            lines.add(from, moved);
+            line++;
+            if (anchorLine >= 0) anchorLine++;
+        }
+    }
+
+    /** Сдвиг отступа выделенных строк (Tab / Shift+Tab). Возвращает true, если обработано. */
+    public boolean indentSelection(boolean unindent) {
+        if (!loaded || lines.isEmpty()) {
+            return false;
+        }
+        Range r = range();
+        if (!unindent && (r == null || r.fromLine == r.toLine)) {
+            return false;
+        }
+        followCaret = true;
+        snapshot();
+        int from = r == null ? line : r.fromLine;
+        int to = r == null ? line : r.toLine;
+        for (int i = from; i <= to; i++) {
+            String s = lines.get(i);
+            if (unindent) {
+                if (s.startsWith("\t")) {
+                    lines.set(i, s.substring(1));
+                    if (i == line) col = Math.max(0, col - 1);
+                    if (i == anchorLine) anchorCol = Math.max(0, anchorCol - 1);
+                } else {
+                    int spaces = 0;
+                    while (spaces < 4 && spaces < s.length() && s.charAt(spaces) == ' ') {
+                        spaces++;
+                    }
+                    if (spaces > 0) {
+                        lines.set(i, s.substring(spaces));
+                        if (i == line) col = Math.max(0, col - spaces);
+                        if (i == anchorLine) anchorCol = Math.max(0, anchorCol - spaces);
+                    }
+                }
+            } else {
+                lines.set(i, "\t" + s);
+                if (i == line) col++;
+                if (i == anchorLine) anchorCol++;
+            }
+        }
+        return true;
+    }
+
+    /** Автозакрытие парных символов ("", {}, (), []) или пропуск закрывающего символа. */
+    public boolean typeWithAutoClose(char ch) {
+        if (!loaded || box) {
+            return false;
+        }
+        String current = lines.get(line);
+        // Если нажимаем закрывающий символ и он уже стоит прямо перед курсором — просто перешагиваем
+        if ((ch == ')' || ch == ']' || ch == '}' || ch == '"') && anchorLine < 0
+                && col < current.length() && current.charAt(col) == ch) {
+            col++;
+            followCaret = true;
+            return true;
+        }
+        char close = switch (ch) {
+            case '(' -> ')';
+            case '[' -> ']';
+            case '{' -> '}';
+            case '"' -> '"';
+            default -> 0;
+        };
+        if (close == 0) {
+            return false;
+        }
+        followCaret = true;
+        snapshot();
+        if (anchorLine >= 0) {
+            String sel = selectedText();
+            deleteSelection();
+            String cur = lines.get(line);
+            String left = cur.substring(0, col);
+            String right = cur.substring(col);
+            lines.set(line, left + ch + sel + close + right);
+            col += 1 + sel.length();
+            return true;
+        }
+        String left = current.substring(0, col);
+        String right = current.substring(col);
+        lines.set(line, left + ch + close + right);
+        col++;
+        return true;
+    }
+
+    /** Backspace удаляет сразу обе пустые парные скобки/кавычки: () -> пусто. */
+    public boolean backspaceEmptyPair() {
+        if (!loaded || box || anchorLine >= 0 || col <= 0) {
+            return false;
+        }
+        String current = lines.get(line);
+        if (col >= current.length()) {
+            return false;
+        }
+        char a = current.charAt(col - 1);
+        char b = current.charAt(col);
+        boolean pair = (a == '(' && b == ')') || (a == '[' && b == ']') || (a == '{' && b == '}') || (a == '"' && b == '"');
+        if (!pair) {
+            return false;
+        }
+        followCaret = true;
+        snapshot();
+        lines.set(line, current.substring(0, col - 1) + current.substring(col + 1));
+        col--;
+        return true;
+    }
+
+    /**
+     * Ищет парную скобку или кавычку рядом с курсором.
+     * Возвращает [line1, col1, line2, col2] или null.
+     */
+    public int[] matchingBracket() {
+        if (!loaded || lines.isEmpty()) {
+            return null;
+        }
+        String row = lines.get(line);
+        int pos = -1;
+        if (col < row.length() && isPairChar(row.charAt(col))) {
+            pos = col;
+        } else if (col > 0 && col - 1 < row.length() && isPairChar(row.charAt(col - 1))) {
+            pos = col - 1;
+        }
+        if (pos < 0) {
+            return null;
+        }
+        char ch = row.charAt(pos);
+        if (ch == '"') {
+            // Парная кавычка в этой же строке
+            int countBefore = 0;
+            for (int i = 0; i < pos; i++) {
+                if (row.charAt(i) == '"' && (i == 0 || row.charAt(i - 1) != '\\')) {
+                    countBefore++;
+                }
+            }
+            if (countBefore % 2 == 0) {
+                for (int i = pos + 1; i < row.length(); i++) {
+                    if (row.charAt(i) == '"' && row.charAt(i - 1) != '\\') {
+                        return new int[]{line, pos, line, i};
+                    }
+                }
+            } else {
+                for (int i = pos - 1; i >= 0; i--) {
+                    if (row.charAt(i) == '"' && (i == 0 || row.charAt(i - 1) != '\\')) {
+                        return new int[]{line, i, line, pos};
+                    }
+                }
+            }
+            return null;
+        }
+        boolean forward = ch == '(' || ch == '[' || ch == '{';
+        char target = switch (ch) {
+            case '(' -> ')';
+            case '[' -> ']';
+            case '{' -> '}';
+            case ')' -> '(';
+            case ']' -> '[';
+            default -> '{';
+        };
+        int depth = 0;
+        if (forward) {
+            for (int r = line; r < lines.size(); r++) {
+                String s = lines.get(r);
+                int start = r == line ? pos : 0;
+                for (int c = start; c < s.length(); c++) {
+                    char d = s.charAt(c);
+                    if (d == ch) depth++;
+                    else if (d == target && --depth == 0) return new int[]{line, pos, r, c};
+                }
+            }
+        } else {
+            for (int r = line; r >= 0; r--) {
+                String s = lines.get(r);
+                int start = r == line ? pos : s.length() - 1;
+                for (int c = start; c >= 0; c--) {
+                    char d = s.charAt(c);
+                    if (d == ch) depth++;
+                    else if (d == target && --depth == 0) return new int[]{r, c, line, pos};
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean isPairChar(char c) {
+        return c == '(' || c == ')' || c == '[' || c == ']' || c == '{' || c == '}' || c == '"';
+    }
+
+    /** Все совпадения в документе: [line, fromCol, toCol]. */
+    public List<int[]> findAllMatches(String needle, boolean matchCase, boolean wholeWord) {
+        List<int[]> out = new ArrayList<>();
+        if (!loaded || needle == null || needle.isEmpty()) {
+            return out;
+        }
+        String q = matchCase ? needle : needle.toLowerCase(java.util.Locale.ROOT);
+        int len = q.length();
+        for (int r = 0; r < lines.size(); r++) {
+            String raw = lines.get(r);
+            String hay = matchCase ? raw : raw.toLowerCase(java.util.Locale.ROOT);
+            int from = 0;
+            while (from <= hay.length() - len) {
+                int at = hay.indexOf(q, from);
+                if (at < 0) {
+                    break;
+                }
+                if (!wholeWord || isWholeWord(raw, at, at + len)) {
+                    out.add(new int[]{r, at, at + len});
+                    from = at + len;
+                } else {
+                    from = at + 1;
+                }
+            }
+        }
+        return out;
+    }
+
+    /** Заменяет текущее выделение, если оно совпадает с needle. */
+    public boolean replaceCurrent(String needle, String replacement, boolean matchCase, boolean wholeWord) {
+        if (!loaded || needle == null || needle.isEmpty()) {
+            return false;
+        }
+        String sel = selectedText();
+        boolean matches = matchCase ? sel.equals(needle) : sel.equalsIgnoreCase(needle);
+        if (!matches) {
+            return false;
+        }
+        if (wholeWord) {
+            Range r = range();
+            if (r == null || r.fromLine != r.toLine || !isWholeWord(lines.get(r.fromLine), r.fromCol, r.toCol)) {
+                return false;
+            }
+        }
+        String rep = replacement == null ? "" : replacement;
+        if (rep.isEmpty()) {
+            backspace();
+        } else {
+            insert(rep);
+        }
+        return true;
+    }
+
+    /** Заменяет все совпадения одним шагом отмены (Ctrl+Z). */
+    public int replaceAll(String needle, String replacement, boolean matchCase, boolean wholeWord) {
+        if (!loaded || needle == null || needle.isEmpty()) {
+            return 0;
+        }
+        String q = matchCase ? needle : needle.toLowerCase(java.util.Locale.ROOT);
+        String rep = replacement == null ? "" : replacement;
+        int len = q.length();
+        int count = 0;
+        List<String> next = new ArrayList<>(lines.size());
+        for (String raw : lines) {
+            String hay = matchCase ? raw : raw.toLowerCase(java.util.Locale.ROOT);
+            StringBuilder sb = null;
+            int pos = 0;
+            while (pos <= hay.length() - len) {
+                int at = hay.indexOf(q, pos);
+                if (at < 0) {
+                    break;
+                }
+                if (!wholeWord || isWholeWord(raw, at, at + len)) {
+                    if (sb == null) {
+                        sb = new StringBuilder(raw.length());
+                    }
+                    sb.append(raw, pos, at).append(rep);
+                    count++;
+                    pos = at + len;
+                } else {
+                    if (sb != null) {
+                        sb.append(raw, pos, at + 1);
+                    }
+                    pos = at + 1;
+                }
+            }
+            if (sb != null) {
+                sb.append(raw, pos, raw.length());
+                next.add(sb.toString());
+            } else {
+                next.add(raw);
+            }
+        }
+        if (count == 0) {
+            return 0;
+        }
+        followCaret = true;
+        snapshot();
+        lines.clear();
+        lines.addAll(next);
+        line = Math.max(0, Math.min(line, lines.size() - 1));
+        col = Math.max(0, Math.min(col, lines.get(line).length()));
+        anchorLine = -1;
+        box = false;
+        return count;
+    }
+
+    private static boolean isWholeWord(String s, int from, int to) {
+        boolean leftOk = from <= 0 || !isWordChar(s.charAt(from - 1));
+        boolean rightOk = to >= s.length() || !isWordChar(s.charAt(to));
+        return leftOk && rightOk;
+    }
+
+    private static boolean isWordChar(char c) {
+        return Character.isLetterOrDigit(c) || c == '_';
     }
 
     public void insert(String value) {

@@ -5,10 +5,17 @@ import com.scriptcraft.lang.Messages;
 import com.scriptcraft.ScriptCraft;
 import com.mojang.authlib.GameProfile;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
+import net.minecraft.core.particles.ParticleOptions;
+import net.minecraft.core.particles.ParticleType;
+import net.minecraft.core.particles.SimpleParticleType;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.TagParser;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
 import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
 import net.minecraft.network.protocol.game.ClientboundSetTitlesAnimationPacket;
+import net.minecraft.network.protocol.game.ClientboundSoundPacket;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
@@ -20,8 +27,13 @@ import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LightningBolt;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.food.FoodData;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.GameType;
@@ -257,17 +269,70 @@ public final class Effects {
     public record PlaySound(Target target, String soundId, @Nullable Expression volume, @Nullable Expression pitch) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            ResourceLocation rl = id(soundId);
-            SoundEvent sound = ForgeRegistries.SOUND_EVENTS.getValue(rl);
-            if (sound == null || !ForgeRegistries.SOUND_EVENTS.containsKey(rl)) {
-                throw new ScriptRuntimeException(Messages.get("effect.unknown_sound", rl));
-            }
+            SoundEvent sound = soundEvent(ctx.format(soundId));
             float vol = volume == null ? 1f : (float) Math.max(0, Math.min(10, number(volume, ctx)));
             float pit = pitch == null ? 1f : (float) Math.max(0.5, Math.min(2, number(pitch, ctx)));
             for (ServerPlayer p : target.resolve(ctx)) {
                 p.playNotifySound(sound, SoundSource.MASTER, vol, pit);
             }
         }
+    }
+
+    /**
+     * play sound <id> at <x y z | target | expr> [for <listeners>] [with volume N] [pitch N].
+     * Если listeners == null, звук слышен всем рядом в мире; иначе только указанным игрокам от этой точки.
+     */
+    public record PlaySoundAt(String soundId, @Nullable Target atTarget, @Nullable Expression atPlace,
+                              @Nullable Expression x, @Nullable Expression y, @Nullable Expression z,
+                              @Nullable Target listeners, @Nullable Expression volume, @Nullable Expression pitch) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            SoundEvent sound = soundEvent(ctx.format(soundId));
+            float vol = volume == null ? 1f : (float) Math.max(0, Math.min(10, number(volume, ctx)));
+            float pit = pitch == null ? 1f : (float) Math.max(0.5, Math.min(2, number(pitch, ctx)));
+            if (x != null && y != null && z != null) {
+                emitSound(ctx, levelOf(ctx), number(x, ctx), number(y, ctx), number(z, ctx), sound, vol, pit, listeners);
+                return;
+            }
+            if (atPlace != null) {
+                ScriptLocation loc = Places.require(atPlace.evaluate(ctx));
+                emitSound(ctx, Places.level(ctx.server(), loc), loc.x(), loc.y(), loc.z(), sound, vol, pit, listeners);
+                return;
+            }
+            if (atTarget != null) {
+                ScriptLocation loc = Places.fromNamed(atTarget, ctx);
+                if (loc != null) {
+                    emitSound(ctx, Places.level(ctx.server(), loc), loc.x(), loc.y(), loc.z(), sound, vol, pit, listeners);
+                    return;
+                }
+                for (ServerPlayer src : atTarget.resolve(ctx)) {
+                    emitSound(ctx, src.serverLevel(), src.getX(), src.getY(), src.getZ(), sound, vol, pit, listeners);
+                }
+            }
+        }
+
+        private static void emitSound(ExecutionContext ctx, ServerLevel level, double sx, double sy, double sz,
+                                      SoundEvent sound, float vol, float pit, @Nullable Target listeners) {
+            if (listeners == null) {
+                level.playSound(null, sx, sy, sz, sound, SoundSource.MASTER, vol, pit);
+                return;
+            }
+            Holder<SoundEvent> holder = Holder.direct(sound);
+            long seed = level.getRandom().nextLong();
+            ClientboundSoundPacket packet = new ClientboundSoundPacket(holder, SoundSource.MASTER, sx, sy, sz, vol, pit, seed);
+            for (ServerPlayer p : listeners.resolve(ctx)) {
+                p.connection.send(packet);
+            }
+        }
+    }
+
+    private static SoundEvent soundEvent(String raw) {
+        ResourceLocation rl = id(raw);
+        SoundEvent sound = ForgeRegistries.SOUND_EVENTS.getValue(rl);
+        if (sound == null || !ForgeRegistries.SOUND_EVENTS.containsKey(rl)) {
+            throw new ScriptRuntimeException(Messages.get("effect.unknown_sound", rl));
+        }
+        return sound;
     }
 
     /** send title "..." [with subtitle "..."] to player */
@@ -861,31 +926,40 @@ public final class Effects {
         }
     }
 
-    /** strike lightning at player / at x y z (в мире игрока из контекста, иначе в обычном мире). */
-    public record Lightning(Target target, @Nullable Expression x, @Nullable Expression y, @Nullable Expression z) implements Action {
+    /** strike [fake|effect] lightning at player / at x y z (в мире игрока из контекста, иначе в обычном мире). */
+    public record Lightning(Target target, @Nullable Expression x, @Nullable Expression y, @Nullable Expression z,
+                            boolean visualOnly) implements Action {
+        public Lightning(Target target, @Nullable Expression x, @Nullable Expression y, @Nullable Expression z) {
+            this(target, x, y, z, false);
+        }
+
         @Override
         public void execute(ExecutionContext ctx) {
             if (x != null && y != null && z != null) {
-                bolt(levelOf(ctx), number(x, ctx), number(y, ctx), number(z, ctx));
+                bolt(levelOf(ctx), number(x, ctx), number(y, ctx), number(z, ctx), visualOnly);
                 return;
             }
             ScriptLocation loc = Places.fromNamed(target, ctx);
             if (loc != null) {
-                bolt(Places.level(ctx.server(), loc), loc.x(), loc.y(), loc.z());
+                bolt(Places.level(ctx.server(), loc), loc.x(), loc.y(), loc.z(), visualOnly);
                 return;
             }
             for (ServerPlayer p : target.resolve(ctx)) {
-                bolt(p.serverLevel(), p.getX(), p.getY(), p.getZ());
+                bolt(p.serverLevel(), p.getX(), p.getY(), p.getZ(), visualOnly);
             }
         }
     }
 
-    /** strike lightning at location of player / at {переменная}. */
-    public record LightningAt(Expression place) implements Action {
+    /** strike [fake|effect] lightning at location of player / at {переменная}. */
+    public record LightningAt(Expression place, boolean visualOnly) implements Action {
+        public LightningAt(Expression place) {
+            this(place, false);
+        }
+
         @Override
         public void execute(ExecutionContext ctx) {
             ScriptLocation loc = Places.require(place.evaluate(ctx));
-            bolt(Places.level(ctx.server(), loc), loc.x(), loc.y(), loc.z());
+            bolt(Places.level(ctx.server(), loc), loc.x(), loc.y(), loc.z(), visualOnly);
         }
     }
 
@@ -1068,34 +1142,217 @@ public final class Effects {
         }
     }
 
-    /** explode at player [with force N] / explode at x y z [with force N]. Сила 0–8, по умолчанию 3. Ломает блоки. */
-    public record Explode(@Nullable Target target, @Nullable Expression x, @Nullable Expression y, @Nullable Expression z,
-                          @Nullable Expression force) implements Action {
+    /** push player upwards|downwards|forwards|backwards|north|south|east|west [with force N] */
+    public record Push(Target target, String direction, @Nullable Expression force) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            float power = force == null ? 3f : (float) Math.max(0, Math.min(8, number(force, ctx)));
-            if (x != null && y != null && z != null) {
-                levelOf(ctx).explode(null, number(x, ctx), number(y, ctx), number(z, ctx), power, Level.ExplosionInteraction.BLOCK);
-                return;
-            }
-            ScriptLocation loc = Places.fromNamed(target, ctx);
-            if (loc != null) {
-                Places.level(ctx.server(), loc).explode(null, loc.x(), loc.y(), loc.z(), power, Level.ExplosionInteraction.BLOCK);
-                return;
-            }
+            double v = force == null ? 1.0 : Math.max(-8, Math.min(8, number(force, ctx)));
+            String dir = direction.toLowerCase(java.util.Locale.ROOT);
             for (ServerPlayer p : target.resolve(ctx)) {
-                p.serverLevel().explode(null, p.getX(), p.getY(), p.getZ(), power, Level.ExplosionInteraction.BLOCK);
+                Vec3 cur = p.getDeltaMovement();
+                Vec3 look = p.getLookAngle();
+                double dx = 0, dy = 0, dz = 0;
+                switch (dir) {
+                    case "up", "upwards" -> dy = v;
+                    case "down", "downwards" -> dy = -v;
+                    case "forward", "forwards" -> { dx = look.x * v; dy = look.y * v; dz = look.z * v; }
+                    case "backward", "backwards" -> { dx = -look.x * v; dy = -look.y * v; dz = -look.z * v; }
+                    case "north" -> dz = -v;
+                    case "south" -> dz = v;
+                    case "east" -> dx = v;
+                    case "west" -> dx = -v;
+                    default -> dy = v;
+                }
+                motion(p, cur.x + dx, cur.y + dy, cur.z + dz);
             }
         }
     }
 
-    /** explode at location of player [with force N]. */
-    public record ExplodeAt(Expression place, @Nullable Expression force) implements Action {
+    /** explode / create [safe] explosion at ... [with force|power N]. */
+    public record Explode(@Nullable Target target, @Nullable Expression x, @Nullable Expression y, @Nullable Expression z,
+                          @Nullable Expression force, boolean safe) implements Action {
+        public Explode(@Nullable Target target, @Nullable Expression x, @Nullable Expression y, @Nullable Expression z,
+                       @Nullable Expression force) {
+            this(target, x, y, z, force, false);
+        }
+
         @Override
         public void execute(ExecutionContext ctx) {
             float power = force == null ? 3f : (float) Math.max(0, Math.min(8, number(force, ctx)));
+            Level.ExplosionInteraction mode = safe ? Level.ExplosionInteraction.NONE : Level.ExplosionInteraction.BLOCK;
+            if (x != null && y != null && z != null) {
+                levelOf(ctx).explode(null, number(x, ctx), number(y, ctx), number(z, ctx), power, mode);
+                return;
+            }
+            ScriptLocation loc = Places.fromNamed(target, ctx);
+            if (loc != null) {
+                Places.level(ctx.server(), loc).explode(null, loc.x(), loc.y(), loc.z(), power, mode);
+                return;
+            }
+            for (ServerPlayer p : target.resolve(ctx)) {
+                p.serverLevel().explode(null, p.getX(), p.getY(), p.getZ(), power, mode);
+            }
+        }
+    }
+
+    /** explode / create [safe] explosion at location of player [with force|power N]. */
+    public record ExplodeAt(Expression place, @Nullable Expression force, boolean safe) implements Action {
+        public ExplodeAt(Expression place, @Nullable Expression force) {
+            this(place, force, false);
+        }
+
+        @Override
+        public void execute(ExecutionContext ctx) {
+            float power = force == null ? 3f : (float) Math.max(0, Math.min(8, number(force, ctx)));
+            Level.ExplosionInteraction mode = safe ? Level.ExplosionInteraction.NONE : Level.ExplosionInteraction.BLOCK;
             ScriptLocation loc = Places.require(place.evaluate(ctx));
-            Places.level(ctx.server(), loc).explode(null, loc.x(), loc.y(), loc.z(), power, Level.ExplosionInteraction.BLOCK);
+            Places.level(ctx.server(), loc).explode(null, loc.x(), loc.y(), loc.z(), power, mode);
+        }
+    }
+
+    /** spawn particle <id> at <x y z | target | expr> [count N] [speed S] */
+    public record SpawnParticle(String particleId, @Nullable Target target, @Nullable Expression place,
+                                @Nullable Expression x, @Nullable Expression y, @Nullable Expression z,
+                                @Nullable Expression count, @Nullable Expression speed) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            ResourceLocation rl = id(ctx.format(particleId));
+            ParticleType<?> type = ForgeRegistries.PARTICLE_TYPES.getValue(rl);
+            if (!(type instanceof SimpleParticleType simple)) {
+                throw new ScriptRuntimeException("неизвестная или неподдерживаемая частица: " + rl);
+            }
+            int cnt = count == null ? 10 : (int) Math.max(1, Math.min(500, number(count, ctx)));
+            double spd = speed == null ? 0.05 : Math.max(0, Math.min(5, number(speed, ctx)));
+            if (x != null && y != null && z != null) {
+                emit(levelOf(ctx), simple, number(x, ctx), number(y, ctx), number(z, ctx), cnt, spd);
+                return;
+            }
+            if (place != null) {
+                ScriptLocation loc = Places.require(place.evaluate(ctx));
+                emit(Places.level(ctx.server(), loc), simple, loc.x(), loc.y(), loc.z(), cnt, spd);
+                return;
+            }
+            if (target != null) {
+                ScriptLocation loc = Places.fromNamed(target, ctx);
+                if (loc != null) {
+                    emit(Places.level(ctx.server(), loc), simple, loc.x(), loc.y(), loc.z(), cnt, spd);
+                    return;
+                }
+                for (ServerPlayer p : target.resolve(ctx)) {
+                    emit(p.serverLevel(), simple, p.getX(), p.getY() + 1.0, p.getZ(), cnt, spd);
+                }
+            }
+        }
+
+        private static void emit(ServerLevel level, ParticleOptions opts, double px, double py, double pz, int cnt, double spd) {
+            level.sendParticles(opts, px, py, pz, cnt, 0.25, 0.25, 0.25, spd);
+        }
+    }
+
+    /** set scoreboard title "..." [for <target>] */
+    public record ScoreboardTitle(Target target, String title) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            String formatted = ctx.format(title);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                ScoreboardManager.setTitle(p, formatted);
+            }
+        }
+    }
+
+    /** set scoreboard line N to "..." [for <target>] */
+    public record ScoreboardLine(Target target, Expression line, String text) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            int num = (int) Math.round(number(line, ctx));
+            String formatted = ctx.format(text);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                ScoreboardManager.setLine(p, num, formatted);
+            }
+        }
+    }
+
+    /** clear scoreboard [of <target>] */
+    public record ScoreboardClear(Target target) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            for (ServerPlayer p : target.resolve(ctx)) {
+                ScoreboardManager.clear(p);
+            }
+        }
+    }
+
+    /** spawn entity <id> at <loc|target|xyz> [named "..."] [with health N] [with nbt "..."] [with weapon/helmet/...] */
+    public record SpawnEntity(String entityId, @Nullable Target target, @Nullable Expression place,
+                              @Nullable Expression x, @Nullable Expression y, @Nullable Expression z,
+                              @Nullable String customName, @Nullable Expression health, @Nullable String snbt,
+                              @Nullable java.util.Map<EquipmentSlot, String> equipment) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            ResourceLocation rl = id(ctx.format(entityId));
+            EntityType<?> type = ForgeRegistries.ENTITY_TYPES.getValue(rl);
+            if (type == null || !ForgeRegistries.ENTITY_TYPES.containsKey(rl)) {
+                throw new ScriptRuntimeException("неизвестная сущность: " + rl);
+            }
+            if (x != null && y != null && z != null) {
+                spawnOne(ctx, levelOf(ctx), type, number(x, ctx), number(y, ctx), number(z, ctx));
+                return;
+            }
+            if (place != null) {
+                ScriptLocation loc = Places.require(place.evaluate(ctx));
+                spawnOne(ctx, Places.level(ctx.server(), loc), type, loc.x(), loc.y(), loc.z());
+                return;
+            }
+            if (target != null) {
+                ScriptLocation loc = Places.fromNamed(target, ctx);
+                if (loc != null) {
+                    spawnOne(ctx, Places.level(ctx.server(), loc), type, loc.x(), loc.y(), loc.z());
+                    return;
+                }
+                for (ServerPlayer p : target.resolve(ctx)) {
+                    spawnOne(ctx, p.serverLevel(), type, p.getX(), p.getY(), p.getZ());
+                }
+            }
+        }
+
+        private void spawnOne(ExecutionContext ctx, ServerLevel level, EntityType<?> type, double sx, double sy, double sz) {
+            Entity entity = type.create(level);
+            if (entity == null) {
+                return;
+            }
+            entity.moveTo(sx, sy, sz, 0f, 0f);
+            if (snbt != null && !snbt.isBlank()) {
+                try {
+                    CompoundTag merged = entity.saveWithoutId(new CompoundTag());
+                    CompoundTag extra = TagParser.parseTag(ctx.format(snbt));
+                    merged.merge(extra);
+                    entity.load(merged);
+                    entity.moveTo(sx, sy, sz, entity.getYRot(), entity.getXRot());
+                } catch (Exception e) {
+                    throw new ScriptRuntimeException("ошибка NBT у spawn entity: " + e.getMessage());
+                }
+            }
+            if (customName != null) {
+                entity.setCustomName(Component.literal(ctx.format(customName)));
+                entity.setCustomNameVisible(true);
+            }
+            if (entity instanceof LivingEntity living) {
+                if (health != null) {
+                    double hp = Math.max(1.0, Math.min(2048.0, number(health, ctx)));
+                    AttributeInstance attr = living.getAttribute(Attributes.MAX_HEALTH);
+                    if (attr != null) {
+                        attr.setBaseValue(hp);
+                    }
+                    living.setHealth((float) hp);
+                }
+                if (equipment != null) {
+                    for (var entry : equipment.entrySet()) {
+                        ItemStack stack = ItemStacks.create(ctx.format(entry.getValue()), 1);
+                        living.setItemSlot(entry.getKey(), stack);
+                    }
+                }
+            }
+            level.addFreshEntity(entity);
         }
     }
 
@@ -1109,12 +1366,13 @@ public final class Effects {
         return ctx.player() != null ? ctx.player().serverLevel() : ctx.server().overworld();
     }
 
-    private static void bolt(ServerLevel level, double x, double y, double z) {
+    private static void bolt(ServerLevel level, double x, double y, double z, boolean visualOnly) {
         LightningBolt bolt = EntityType.LIGHTNING_BOLT.create(level);
         if (bolt == null) {
             return;
         }
         bolt.moveTo(x, y, z);
+        bolt.setVisualOnly(visualOnly);
         level.addFreshEntity(bolt);
     }
 }

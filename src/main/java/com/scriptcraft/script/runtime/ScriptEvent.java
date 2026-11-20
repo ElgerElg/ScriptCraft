@@ -47,6 +47,30 @@ public enum ScriptEvent {
     WORLD_CHANGE("world change", true, "change world", "dimension change", "worldchange"),
     /** Сменил режим игры. Можно отменить. %gamemode% — новый, %from% — старый. */
     GAMEMODE_CHANGE("gamemode change", true, "game mode change", "gamemode"),
+    /** Убил сущность или игрока. %victim%, %attacker%, %cause%. */
+    KILL("kill", true, "entity death", "player kill"),
+    /** Ударил сущность или игрока. Можно отменить. %victim%, %attacker%. */
+    ATTACK("attack", true, "player attack", "hit"),
+    /** Выстрелил из лука. Можно отменить. %projectile%. */
+    SHOOT("shoot", true, "bow shoot"),
+    /** Снаряд попал в блок или сущность. %projectile%, %victim%, %block%, %x%, %y%, %z%. */
+    PROJECTILE_HIT("projectile hit", true, "projectile impact"),
+    /** Съел еду или выпил зелье. %item%. */
+    CONSUME("consume", true, "eat", "drink"),
+    /** Скрафтил предмет. %item%, %amount%. */
+    CRAFT("craft", true, "item craft"),
+    /** Поймал рыбу/предмет удочкой. Можно отменить. %item%. */
+    FISH("fish", true, "fishing"),
+    /** Присел / встал (Shift). %sneaking%. */
+    SNEAK("sneak", true, "toggle sneak"),
+    /** Начал / перестал бежать. %sprinting%. */
+    SPRINT("sprint", true, "toggle sprint"),
+    /** Прыгнул. */
+    JUMP("jump", true, "player jump"),
+    /** Выполнил команду. Можно отменить. %command%, %args%. */
+    COMMAND("command", true, "player command"),
+    /** Сломался инструмент/броня. %item%. */
+    ITEM_BREAK("item break", true, "tool break"),
     /**
      * Скрипт загружен: старт сервера, /sc reload, /sc reload &lt;скрипт&gt;, /sc enable &lt;скрипт&gt;.
      * Срабатывает только у ЭТОГО скрипта (перезагрузка другого файла его не вызывает). Игрока в контексте нет.
