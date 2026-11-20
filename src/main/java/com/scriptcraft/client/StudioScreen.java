@@ -1321,8 +1321,9 @@ public class StudioScreen extends Screen {
         g.fill(px + 1, stY, px + pw - 1, py + ph - 1, BAR);
         g.fill(px + 1, stY, px + pw - 1, stY + 1, EDGE);
 
-        // Правая часть статусбара: позиция курсора и индикатор LIVE
+        // Правая часть статусбара: LIVE, UTF-8, отступы, размер документа, курсор, выделение
         int rightEdge = px + pw - 10;
+        int minRightX = px + (statusBad ? 140 : 12);
         if (doc.live) {
             String liveLabel = "LIVE";
             int lw = this.font.width(liveLabel) + 14;
@@ -1334,15 +1335,56 @@ public class StudioScreen extends Screen {
             g.drawString(this.font, liveLabel, lx + 10, stY + 5, GREEN, false);
             rightEdge = lx - 8;
         }
+
+        // UTF-8 и тип отступов (TAB / SPC)
+        String metaLabel = (doc.usesSpacesIndent() ? "SPC" : "TAB") + "  UTF-8";
+        int metaW = this.font.width(metaLabel);
+        if (rightEdge - metaW > minRightX) {
+            g.drawString(this.font, metaLabel, rightEdge - metaW, stY + 5, 0xFF6B778D, false);
+            rightEdge -= metaW + 8;
+            g.fill(rightEdge, stY + 4, rightEdge + 1, stY + status - 4, EDGE);
+            rightEdge -= 8;
+        }
+
+        // Общее число строк и символов в документе
+        int totalChars = doc.charCount();
+        String charsStr = totalChars >= 10_000 ? String.format(Locale.ROOT, "%.1fk", totalChars / 1000.0) : String.valueOf(totalChars);
+        String docStats = doc.lines.size() + " ln · " + charsStr + " ch";
+        int docStatsW = this.font.width(docStats);
+        if (rightEdge - docStatsW > minRightX) {
+            g.drawString(this.font, docStats, rightEdge - docStatsW, stY + 5, MUTED, false);
+            rightEdge -= docStatsW + 8;
+            g.fill(rightEdge, stY + 4, rightEdge + 1, stY + status - 4, EDGE);
+            rightEdge -= 8;
+        }
+
+        // Позиция курсора
         String posLabel = "Ln " + (doc.line + 1) + ", Col " + (doc.col + 1);
         int posW = this.font.width(posLabel);
-        g.drawString(this.font, posLabel, rightEdge - posW, stY + 5, MUTED, false);
-        rightEdge -= posW + 14;
+        if (rightEdge - posW > minRightX) {
+            g.drawString(this.font, posLabel, rightEdge - posW, stY + 5, TEXT, false);
+            rightEdge -= posW + 8;
+        }
 
-        // Левая часть статусбара: точка статуса и текст
-        g.fill(px + 8, stY + 7, px + 12, stY + 11, statusBad ? RED : GREEN);
-        int maxStatusW = Math.max(40, rightEdge - (px + 18));
-        g.drawString(this.font, trim(statusText, maxStatusW), px + 16, stY + 5, statusBad ? 0xFFF4B8BA : MUTED, false);
+        // Информация о выделении (символы и строки), если есть выделенный текст
+        int[] sel = doc.selectionStats();
+        if (sel != null) {
+            String selLabel = (doc.box ? "Box " : "Sel ") + sel[0] + " ch" + (sel[1] > 1 ? " (" + sel[1] + " ln)" : "");
+            int selW = this.font.width(selLabel);
+            if (rightEdge - selW - 10 > minRightX) {
+                g.fill(rightEdge, stY + 4, rightEdge + 1, stY + status - 4, EDGE);
+                rightEdge -= 8;
+                g.drawString(this.font, selLabel, rightEdge - selW, stY + 5, GOLD, false);
+                rightEdge -= selW + 10;
+            }
+        }
+
+        // Левая часть статусбара: показываем только при ошибке в текущей строке
+        if (statusBad && !statusText.isEmpty()) {
+            g.fill(px + 8, stY + 7, px + 12, stY + 11, RED);
+            int maxStatusW = Math.max(40, rightEdge - (px + 18));
+            g.drawString(this.font, trim(statusText, maxStatusW), px + 16, stY + 5, 0xFFF4B8BA, false);
+        }
         if (preview != null) {
             int w = Math.min(72, preview.width());
             int ph = Math.min(72, preview.height());
@@ -1373,7 +1415,7 @@ public class StudioScreen extends Screen {
             }
         }
         statusBad = false;
-        return Messages.get("studio.parser");
+        return "";
     }
 
     private void renderSidebar(GuiGraphics g, int mx, int my, boolean open, boolean right) {

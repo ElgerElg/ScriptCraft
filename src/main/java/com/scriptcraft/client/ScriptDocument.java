@@ -52,6 +52,69 @@ public final class ScriptDocument {
         return String.join("\n", lines);
     }
 
+    /** Общее количество символов в документе (с учётом переносов строк). */
+    public int charCount() {
+        int total = Math.max(0, lines.size() - 1);
+        for (String s : lines) {
+            total += s.length();
+        }
+        return total;
+    }
+
+    /** true, если в файле преобладают отступы пробелами (иначе TAB). */
+    public boolean usesSpacesIndent() {
+        int tabs = 0;
+        int spaces = 0;
+        for (String s : lines) {
+            if (s.isEmpty()) continue;
+            char c = s.charAt(0);
+            if (c == '\t') tabs++;
+            else if (c == ' ') spaces++;
+        }
+        return spaces > tabs;
+    }
+
+    /**
+     * Статистика выделения: {chars, selectedLines}, либо null если ничего не выделено.
+     */
+    public int[] selectionStats() {
+        if (anchorLine < 0) {
+            return null;
+        }
+        if (box) {
+            int[] span = boxSpan();
+            int rows = span[1] - span[0] + 1;
+            int cols = span[3] - span[2];
+            if (rows <= 1 && cols <= 0) {
+                return null;
+            }
+            int chars = 0;
+            for (int r = span[0]; r <= span[1]; r++) {
+                String s = lines.get(r);
+                int a = Math.min(span[2], s.length());
+                int b = Math.min(span[3], s.length());
+                chars += Math.max(0, b - a);
+            }
+            return new int[]{chars, rows};
+        }
+        Range r = range();
+        if (r == null) {
+            return null;
+        }
+        int selLines = r.toLine - r.fromLine + 1;
+        int chars;
+        if (r.fromLine == r.toLine) {
+            chars = Math.max(0, r.toCol - r.fromCol);
+        } else {
+            chars = Math.max(0, lines.get(r.fromLine).length() - r.fromCol);
+            for (int i = r.fromLine + 1; i < r.toLine; i++) {
+                chars += 1 + lines.get(i).length();
+            }
+            chars += 1 + r.toCol;
+        }
+        return new int[]{chars, selLines};
+    }
+
     public void load(String raw) {
         saved = raw.replace("\r\n", "\n").replace('\r', '\n');
         lines.clear();

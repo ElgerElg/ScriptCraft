@@ -258,11 +258,17 @@ public final class StudioRooms {
         if (!edit.text()) {
             if (server != null) {
                 boolean behind = edit.revision() != room.revision;
+                if (behind) {
+                    int flags = ScriptDataPacket.FORCE | ScriptDataPacket.LIVE;
+                    if (room.text.equals(room.saved)) {
+                        flags |= ScriptDataPacket.DISK;
+                    }
+                    ModNetwork.sendTo(player, new ScriptDataPacket(edit.file(), room.text, room.revision, flags));
+                }
                 for (UUID id : listeners(room, player.getUUID())) {
                     ServerPlayer other = server.getPlayerList().getPlayer(id);
                     if (other != null) {
-                        boolean syncSelf = behind && other.getUUID().equals(player.getUUID());
-                        sendView(other, edit.file(), room, syncSelf, false, false);
+                        sendView(other, edit.file(), room, false, false, false);
                     }
                 }
             }
@@ -327,16 +333,11 @@ public final class StudioRooms {
         if (disk) {
             base |= ScriptDataPacket.DISK;
         }
-        for (UUID id : listeners(room, saver)) {
-            ServerPlayer other = server.getPlayerList().getPlayer(id);
-            if (other == null) {
+        for (ServerPlayer other : server.getPlayerList().getPlayers()) {
+            if (!other.getUUID().equals(saver) && !StudioAccess.may(other)) {
                 continue;
             }
-            int flags = base;
-            if (!other.getUUID().equals(saver)) {
-                flags |= ScriptDataPacket.STALE;
-            }
-            ModNetwork.sendTo(other, new ScriptDataPacket(name, text, revision, flags));
+            ModNetwork.sendTo(other, new ScriptDataPacket(name, text, revision, base));
         }
         broadcastPeers(server, name, room);
     }
