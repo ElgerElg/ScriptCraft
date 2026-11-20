@@ -65,12 +65,12 @@ final class Tokenizer {
                 continue;
             }
             if (c == '{' && cur.isEmpty()) {
-                int close = line.indexOf('}', i);
-                if (close < 0) {
+                int end = scanCompound(line, i);
+                if (end < 0) {
                     throw new ParseException("незакрытая фигурная скобка '{'");
                 }
-                tokens.add(new Token(line.substring(i, close + 1), false));
-                i = close + 1;
+                tokens.add(new Token(line.substring(i, end), false));
+                i = end;
                 continue;
             }
             if (c == '[' && cur.length() == 2 && cur.charAt(0) == '@') {

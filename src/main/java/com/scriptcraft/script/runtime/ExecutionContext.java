@@ -311,9 +311,14 @@ public final class ExecutionContext {
         return cancelled;
     }
 
-    /** Имя переменной из скрипта -> настоящее имя: подставляются плейсхолдеры, {coins::%player%} -> coins::Steve. */
+    /**
+     * Имя переменной из скрипта -> настоящее имя: подставляются плейсхолдеры (%player%, %who%)
+     * и вложенные переменные (%{-rank::%who%}%), например:
+     * {snake::lb::%who%::%{-snake-lb-rank::%who%}%::name} -> snake::lb::Steve::1::name.
+     */
     public String variableName(String rawName) {
-        return expandPlaceholders(rawName.strip());
+        String text = expandPlaceholders0(rawName.strip());
+        return replaceTextVariables(text, name -> Expression.toText(getVariable(name)));
     }
 
     /** Плейсхолдеры %player% и остальные, без подстановки {переменных}. Нужно, чтобы HUD запомнил шаблон. */
@@ -376,13 +381,20 @@ public final class ExecutionContext {
     }
 
     private static String replaceTextVariables(String raw, java.util.function.Function<String, String> values) {
-        Matcher m = TEXT_VARIABLE.matcher(raw);
-        StringBuilder sb = new StringBuilder();
-        while (m.find()) {
-            m.appendReplacement(sb, Matcher.quoteReplacement(values.apply(m.group(1).strip())));
+        String current = raw;
+        for (int depth = 0; depth < 8; depth++) {
+            Matcher m = TEXT_VARIABLE.matcher(current);
+            if (!m.find()) {
+                break;
+            }
+            StringBuilder sb = new StringBuilder();
+            do {
+                m.appendReplacement(sb, Matcher.quoteReplacement(values.apply(m.group(1).strip())));
+            } while (m.find());
+            m.appendTail(sb);
+            current = sb.toString();
         }
-        m.appendTail(sb);
-        return sb.toString();
+        return current;
     }
 
     private String expandPlaceholders0(String raw) {
