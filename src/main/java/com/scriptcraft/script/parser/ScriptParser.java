@@ -1365,10 +1365,17 @@ public final class ScriptParser {
         return named != null ? named : new Expression.Text(v);
     }
 
-    /** script, arg-1, player-argument — одно слово, которое не является текстом. */
+    /** script, arg-1, player-argument, параметр текущей функции — одно слово, которое не является текстом. */
     @Nullable
     static Expression namedWord(String raw) {
         String w = raw.toLowerCase(Locale.ROOT);
+        if (localType(w) != null) {
+            String key = w;
+            if (key.length() > 2 && key.startsWith("%") && key.endsWith("%")) {
+                key = key.substring(1, key.length() - 1);
+            }
+            return new Expression.Local(key);
+        }
         if (w.equals("script")) {
             return new Expression.Script();
         }
