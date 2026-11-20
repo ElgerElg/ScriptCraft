@@ -84,7 +84,12 @@ final class SimpleProgram implements ScriptProgram {
                 continue;
             }
             ctx.setScript(handler.file());
-            runActions(handler.actions(), ctx);
+            try {
+                runActions(handler.actions(), ctx);
+            } catch (RuntimeException e) {
+                ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка в 'on {}' ({}): {}", event.scriptName(), handler.file(), e.getMessage());
+                ScriptLoader.noteRuntime(handler.file(), e.getMessage(), ctx.player(), ctx.server());
+            }
         }
     }
 

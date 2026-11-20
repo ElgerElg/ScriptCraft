@@ -363,8 +363,9 @@ public final class ScriptLoader {
         try {
             program.fireEvent(event, ctx);
         } catch (RuntimeException e) {
-            ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка в 'on {}': {}", event.scriptName(), e.getMessage());
-            noteRuntime("", e.getMessage(), player, server);
+            String file = ctx.script() == null ? "" : ctx.script();
+            ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка в 'on {}' ({}): {}", event.scriptName(), file.isEmpty() ? "?" : file, e.getMessage());
+            noteRuntime(file, e.getMessage(), player, server);
         }
         return ctx;
     }
