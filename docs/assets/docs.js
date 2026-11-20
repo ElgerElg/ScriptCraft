@@ -1,7 +1,7 @@
 /*
  * ScriptCraft Docs — Вариант A: 3-колоночный IDE-справочник.
  * Слева: сворачиваемое дерево категорий + быстрые примеры.
- * По центру: хлебные крошки, активная карточка с табами (Syntax / Notes / Related) + список записей.
+ * По центру: раскрывающиеся на месте карточки (синтаксис, описание, пример, связанные — без прыжка наверх!).
  * Справа: закреплённый редактор «Quick Example & Preview» с нумерацией строк и кнопкой копирования.
  */
 (function () {
@@ -14,7 +14,7 @@
   DATA.categories.forEach(function (c, i) { c.order = i; catById[c.id] = c; });
   DATA.entries.forEach(function (e, i) { e.order = i; byId[e.id] = e; });
 
-  var state = { q: "", cats: {}, onlyNew: false, selected: null, tab: "syntax" };
+  var state = { q: "", cats: {}, onlyNew: false, selected: null, open: {} };
   var els = {};
 
   var CAT_ICONS = {
@@ -107,54 +107,42 @@
     return list.map(function (x) { return x.e; });
   }
 
-  /** Выбранная карточка в стиле макета Variant A: хлебные крошки, код синтаксиса, табы, описание. */
-  function renderFocused(e, ts) {
+  /** Раскрывающаяся на месте карточка: заголовок + основной синтаксис; по клику раскрываются все формы, описание, пример и связи. */
+  function accCard(e, ts) {
     var cat = catById[e.category];
-    var related = (e.related || []).filter(function (r) { return byId[r]; });
-    var tabBody = "";
-    if (state.tab === "syntax") {
-      tabBody = '<div class="ide-syn-list">' + e.syntax.map(function (s, i) {
-        return '<div class="ide-syn-row"><span class="ide-syn-idx">' + (i + 1) + '</span><code>' + mark(s, ts) + '</code>' +
-          '<button class="syntax-copy" type="button" data-copy-syntax="' + SC.esc(s) + '" title="' + SC.esc(SC.t("copy")) + '">⧉</button></div>';
-      }).join("") + '</div><div class="desc ide-focus-desc">' + SC.readable(SC.tr(e.desc)) + "</div>";
-    } else if (state.tab === "desc") {
-      tabBody = '<div class="desc ide-focus-desc">' + SC.readable(SC.tr(e.desc)) + "</div>" +
-        '<div class="ide-meta-row"><span class="badge c-' + e.category + '">' + (CAT_ICONS[e.category] || "") + " " + SC.esc(SC.tr(cat)) + '</span>' +
-        '<span class="since' + (e.since === DATA.version ? " is-new" : "") + '">' + SC.esc(SC.t("card.since", { v: e.since })) + '</span>' +
-        '<a class="ide-perma" href="#' + e.id + '">#' + SC.esc(e.id) + "</a></div>";
-    } else {
-      tabBody = related.length
-        ? '<div class="ide-rel-grid">' + related.map(function (r) {
-            var item = byId[r];
-            return '<a class="ide-rel-card" href="#' + r + '" data-pick="' + r + '"><b>' + SC.esc(SC.tr(item.name)) + '</b><code>' + SC.esc(item.syntax[0]) + "</code></a>";
-          }).join("") + "</div>"
-        : '<p class="preview-empty">—</p>';
-    }
-
-    return '<section class="ide-focus" id="' + e.id + '">' +
-      '<div class="ide-crumb"><span>' + SC.esc(SC.tr(cat)) + '</span><b>/</b><h1>' + mark(SC.tr(e.name), ts) + '</h1>' +
-      '<span class="since' + (e.since === DATA.version ? " is-new" : "") + '">' + SC.esc(SC.t("card.since", { v: e.since })) + '</span></div>' +
-      '<div class="ide-focus-card">' +
-      '<div class="ide-primary-syn"><code>' + mark(e.syntax[0], ts) + '</code></div>' +
-      '<div class="ide-tabs">' +
-      '<button type="button" class="ide-tab' + (state.tab === "syntax" ? " on" : "") + '" data-tab="syntax">' + SC.esc(SC.t("tab.syntax")) + '</button>' +
-      '<button type="button" class="ide-tab' + (state.tab === "desc" ? " on" : "") + '" data-tab="desc">' + SC.esc(SC.t("tab.desc")) + '</button>' +
-      (related.length ? '<button type="button" class="ide-tab' + (state.tab === "related" ? " on" : "") + '" data-tab="related">' + SC.esc(SC.t("tab.related")) + ' <small>' + related.length + '</small></button>' : "") +
-      '<button type="button" class="btn ide-tab-copy" data-copy-syntax="' + SC.esc(e.syntax[0]) + '">' + SC.esc(SC.t("copy")) + '</button>' +
-      '</div>' +
-      '<div class="ide-tab-panel">' + tabBody + '</div>' +
-      '</div></section>';
-  }
-
-  /** Компактная карточка в списке ниже активной записи. */
-  function miniCard(e, ts) {
-    var cat = catById[e.category];
+    var isOpen = !!state.open[e.id];
     var isSel = state.selected === e.id;
-    return '<article class="ide-mini' + (isSel ? " on" : "") + '" data-entry="' + e.id + '">' +
-      '<div class="ide-mini-h"><b>' + mark(SC.tr(e.name), ts) + '</b>' +
+    var related = (e.related || []).filter(function (r) { return byId[r]; });
+    var body = "";
+    if (isOpen) {
+      body =
+        '<div class="ide-acc-body">' +
+        (e.syntax.length > 1
+          ? '<div class="ide-syn-list">' + e.syntax.map(function (s, i) {
+              return '<div class="ide-syn-row"><span class="ide-syn-idx">' + (i + 1) + '</span><code>' + mark(s, ts) + '</code>' +
+                '<button class="syntax-copy" type="button" data-copy-syntax="' + SC.esc(s) + '" title="' + SC.esc(SC.t("copy")) + '">⧉</button></div>';
+            }).join("") + '</div>'
+          : "") +
+        '<div class="desc ide-focus-desc">' + SC.readable(SC.tr(e.desc)) + "</div>" +
+        SC.codeBlock(e.example, e.category === "config" ? "toml" : "sc", SC.t("card.example") + (e.category === "config" ? " · scriptcraft/config.toml" : "")) +
+        (related.length
+          ? '<div class="related"><span>' + SC.esc(SC.t("card.related")) + ":</span>" + related.map(function (r) {
+              return '<a href="#' + r + '" data-pick="' + r + '">' + SC.esc(SC.tr(byId[r].name)) + "</a>";
+            }).join("") + "</div>"
+          : "") +
+        "</div>";
+    }
+    return '<article class="ide-acc' + (isOpen ? " open" : "") + (isSel ? " on" : "") + '" id="' + e.id + '" data-entry="' + e.id + '">' +
+      '<div class="ide-acc-head" data-toggle="' + e.id + '">' +
+      '<span class="ide-acc-chev">' + (isOpen ? "▾" : "▸") + '</span>' +
+      '<h3>' + mark(SC.tr(e.name), ts) + '</h3>' +
       '<span class="badge c-' + e.category + '">' + (CAT_ICONS[e.category] || "") + " " + SC.esc(SC.tr(cat)) + '</span>' +
-      (e.since === DATA.version ? '<span class="since is-new">★ ' + SC.esc(e.since) + '</span>' : "") +
-      '</div><div class="ide-mini-code"><code>' + mark(e.syntax[0], ts) + '</code></div></article>';
+      '<span class="since' + (e.since === DATA.version ? " is-new" : "") + '">' + SC.esc(SC.t("card.since", { v: e.since })) + '</span>' +
+      '<button class="syntax-copy ide-head-copy" type="button" data-copy-syntax="' + SC.esc(e.syntax[0]) + '" title="' + SC.esc(SC.t("copy")) + '">⧉</button>' +
+      '</div>' +
+      '<div class="ide-acc-syn" data-toggle="' + e.id + '"><code>' + mark(e.syntax[0], ts) + '</code></div>' +
+      body +
+      '</article>';
   }
 
   /** Правая панель: «Quick Example & Preview» с нумерацией строк и зелёной кнопкой копирования. */
@@ -175,6 +163,7 @@
     els.preview.innerHTML =
       '<div class="ide-prev-wrap">' +
       '<h2 class="ide-prev-h">' + SC.esc(SC.t("preview.title")) + '</h2>' +
+      '<div class="ide-prev-sub">' + SC.esc(SC.tr(e.name)) + '</div>' +
       '<div class="ide-editor-box">' +
       '<div class="ide-editor-tabs"><span class="ide-editor-tab">' + SC.esc(fileLabel) + '</span></div>' +
       '<div class="ide-editor-body"><div class="ide-gutter">' + nums + '</div><pre class="ide-pre">' + hl + '</pre></div>' +
@@ -205,26 +194,24 @@
     var list = visible();
     if (!state.selected || !list.some(function (x) { return x.id === state.selected; })) {
       state.selected = list.length ? list[0].id : null;
-      state.tab = "syntax";
+      if (state.selected) state.open[state.selected] = true;
     }
     renderChips();
     els.status.textContent = list.length === DATA.entries.length
       ? SC.t("status.all", { n: list.length })
       : SC.t("status.found", { n: list.length, total: DATA.entries.length });
 
-    if (!list.length) {
-      els.list.innerHTML = '<div class="empty">' + SC.esc(SC.t("empty")) + "</div>";
-    } else {
-      var cur = byId[state.selected];
-      var subList = ts.length || state.onlyNew || Object.keys(state.cats).some(function (k) { return state.cats[k]; })
-        ? list
-        : list.filter(function (x) { return x.category === cur.category; });
-      var heading = ts.length ? SC.t("center.results") : SC.t("center.more");
-      els.list.innerHTML =
-        renderFocused(cur, ts) +
-        '<div class="ide-more-h"><span>' + SC.esc(heading) + '</span><small>' + subList.length + '</small></div>' +
-        '<div class="ide-mini-grid">' + subList.map(function (e) { return miniCard(e, ts); }).join("") + "</div>";
-    }
+    var html = "", lastCat = null;
+    list.forEach(function (e) {
+      if (!ts.length && e.category !== lastCat) {
+        var c = catById[e.category];
+        var n = list.filter(function (x) { return x.category === c.id; }).length;
+        html += '<h2 class="cat-title"><span class="cat-ico">' + (CAT_ICONS[c.id] || "") + "</span> " + SC.esc(SC.tr(c)) + "<small>" + n + "</small></h2>";
+      }
+      lastCat = e.category;
+      html += accCard(e, ts);
+    });
+    els.list.innerHTML = html || '<div class="empty">' + SC.esc(SC.t("empty")) + "</div>";
     renderSide(list, ts);
     renderPreview();
     if (state.selected) markSide(state.selected);
@@ -294,19 +281,36 @@
     if (e && !isOpen(e.category)) setOpen(e.category, true);
     els.side.querySelectorAll("a.cur").forEach(function (a) { a.classList.remove("cur"); });
     var link = els.side.querySelector('a[data-id="' + id + '"]');
-    if (!link) return;
-    link.classList.add("cur");
+    if (link) link.classList.add("cur");
   }
 
-  function selectEntry(id) {
+  /** Раскрывает карточку на месте без прокрутки страницы наверх. */
+  function toggleCardInPlace(id) {
+    if (!id || !byId[id]) return;
+    var wasOpen = !!state.open[id];
+    state.open[id] = !wasOpen;
+    state.selected = id;
+    var scrollPos = els.center ? els.center.scrollTop : window.scrollY;
+    render();
+    if (els.center) els.center.scrollTop = scrollPos;
+  }
+
+  /** Переход из сайдбара или по #id: раскрывает карточку и плавно прокручивает к ней. */
+  function jumpToEntry(id, smooth) {
     if (!id || !byId[id]) return;
     if (!visible().some(function (x) { return x.id === id; })) {
       state.q = ""; state.cats = {}; state.onlyNew = false; els.input.value = "";
     }
     state.selected = id;
-    state.tab = "syntax";
+    state.open[id] = true;
     render();
-    if (els.center) els.center.scrollTo({ top: 0, behavior: "smooth" });
+    var el = document.getElementById(id);
+    if (el) {
+      el.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "nearest" });
+      el.classList.remove("flash");
+      void el.offsetWidth;
+      el.classList.add("flash");
+    }
   }
 
   function currentHash() {
@@ -343,7 +347,7 @@
         ev.preventDefault();
         var id = a.getAttribute("data-id");
         history.replaceState(null, "", "#" + id);
-        selectEntry(id);
+        jumpToEntry(id, true);
         setNav(false);
         return;
       }
@@ -357,6 +361,7 @@
     els.list.addEventListener("click", function (ev) {
       var copy = ev.target.closest("button[data-copy-syntax]");
       if (copy) {
+        ev.stopPropagation();
         SC.copy(copy.getAttribute("data-copy-syntax")).then(function (ok) {
           var prev = copy.textContent;
           copy.textContent = ok ? "✓" : "!";
@@ -365,25 +370,19 @@
         });
         return;
       }
-      var tabBtn = ev.target.closest("button[data-tab]");
-      if (tabBtn) {
-        state.tab = tabBtn.getAttribute("data-tab");
-        render();
-        return;
-      }
       var rel = ev.target.closest("a[data-pick]");
       if (rel) {
         ev.preventDefault();
         var rid = rel.getAttribute("data-pick");
         history.replaceState(null, "", "#" + rid);
-        selectEntry(rid);
+        jumpToEntry(rid, true);
         return;
       }
-      var mini = ev.target.closest("article.ide-mini[data-entry]");
-      if (mini) {
-        var mid = mini.getAttribute("data-entry");
-        history.replaceState(null, "", "#" + mid);
-        selectEntry(mid);
+      var toggle = ev.target.closest("[data-toggle]");
+      if (toggle) {
+        var tid = toggle.getAttribute("data-toggle");
+        history.replaceState(null, "", "#" + tid);
+        toggleCardInPlace(tid);
       }
     });
 
@@ -425,11 +424,15 @@
 
     window.addEventListener("hashchange", function () {
       var h = currentHash();
-      if (byId[h]) selectEntry(h);
+      if (byId[h]) jumpToEntry(h, true);
     });
     document.addEventListener("sc:lang", render);
 
-    if (byId[currentHash()]) state.selected = currentHash();
+    if (byId[currentHash()]) {
+      state.selected = currentHash();
+      state.open[state.selected] = true;
+    }
     render();
+    if (byId[currentHash()]) setTimeout(function () { jumpToEntry(currentHash(), false); }, 0);
   });
 })();

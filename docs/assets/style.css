@@ -279,6 +279,19 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; }
 .ide-mini-code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px; }
 .ide-mini-code code { background: transparent; border: 0; padding: 0; font-size: 12.5px; color: var(--hl-fn); white-space: pre-wrap; word-break: break-word; }
 
+.ide-acc { background: var(--card); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px; overflow: hidden; transition: border-color .15s, box-shadow .15s; }
+.ide-acc:hover { border-color: color-mix(in srgb, var(--border) 45%, var(--accent)); }
+.ide-acc.on { border-color: var(--gold); box-shadow: 0 0 0 1px color-mix(in srgb, var(--gold) 45%, transparent); }
+.ide-acc.flash { animation: flash 1.4s ease-out; }
+.ide-acc-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; cursor: pointer; user-select: none; }
+.ide-acc-head h3 { margin: 0; font-size: 15px; font-weight: 700; }
+.ide-acc-chev { color: var(--accent); font-size: 13px; width: 12px; flex: none; }
+.ide-head-copy { margin-left: auto; border: 1px solid var(--border); border-radius: 5px; padding: 2px 7px; font-size: 13px; }
+.ide-acc-syn { padding: 7px 12px 9px; border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent); background: var(--code-bg); cursor: pointer; }
+.ide-acc-syn code { background: transparent; border: 0; padding: 0; color: var(--gold); font-size: 13.5px; white-space: pre-wrap; word-break: break-word; }
+.ide-acc-body { padding: 12px 14px 14px; border-top: 1px solid var(--border); background: color-mix(in srgb, var(--bg2) 40%, var(--card)); }
+.ide-prev-sub { color: var(--muted); font-size: 13px; margin: -8px 0 12px; }
+
 .ide-preview { border-left: 1px solid var(--border); background: color-mix(in srgb, var(--bg2) 55%, var(--bg)); overflow-y: auto; padding: 18px 18px 32px; }
 .ide-prev-h { margin: 0 0 14px; font-size: 18px; font-weight: 800; letter-spacing: -.015em; }
 .ide-editor-box { background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; box-shadow: var(--shadow); }

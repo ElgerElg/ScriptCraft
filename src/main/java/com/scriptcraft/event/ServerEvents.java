@@ -358,7 +358,13 @@ public final class ServerEvents {
     @SubscribeEvent
     public static void onJump(LivingEvent.LivingJumpEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
-            ScriptLoader.fireEvent(ScriptEvent.JUMP, player);
+            ExecutionContext ctx = ScriptLoader.fireEvent(ScriptEvent.JUMP, player);
+            if (ctx != null && ctx.isCancelled()) {
+                net.minecraft.world.phys.Vec3 v = player.getDeltaMovement();
+                player.setDeltaMovement(v.x, Math.min(-0.08, v.y - 0.42), v.z);
+                player.hurtMarked = true;
+                player.connection.send(new net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket(player));
+            }
         }
     }
 
@@ -378,12 +384,29 @@ public final class ServerEvents {
         boolean sneaking = player.isShiftKeyDown();
         Boolean prevSneak = SNEAK_STATE.put(id, sneaking);
         if (prevSneak != null && prevSneak != sneaking) {
-            ScriptLoader.fireEvent(ScriptEvent.SNEAK, player, Map.of("sneaking", Boolean.toString(sneaking)));
+            ExecutionContext ctx = ScriptLoader.fireEvent(ScriptEvent.SNEAK, player, Map.of("sneaking", Boolean.toString(sneaking)));
+            if (ctx != null && ctx.isCancelled()) {
+                player.setShiftKeyDown(prevSneak);
+                if (!prevSneak) {
+                    player.setPose(net.minecraft.world.entity.Pose.STANDING);
+                }
+                SNEAK_STATE.put(id, prevSneak);
+            }
         }
         boolean sprinting = player.isSprinting();
         Boolean prevSprint = SPRINT_STATE.put(id, sprinting);
         if (prevSprint != null && prevSprint != sprinting) {
-            ScriptLoader.fireEvent(ScriptEvent.SPRINT, player, Map.of("sprinting", Boolean.toString(sprinting)));
+            ExecutionContext ctx = ScriptLoader.fireEvent(ScriptEvent.SPRINT, player, Map.of("sprinting", Boolean.toString(sprinting)));
+            if (ctx != null && ctx.isCancelled()) {
+                player.setSprinting(prevSprint);
+                if (!prevSprint) {
+                    net.minecraft.world.phys.Vec3 v = player.getDeltaMovement();
+                    player.setDeltaMovement(v.x * 0.6, v.y, v.z * 0.6);
+                    player.hurtMarked = true;
+                    player.connection.send(new net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket(player));
+                }
+                SPRINT_STATE.put(id, prevSprint);
+            }
         }
     }
 
