@@ -218,12 +218,32 @@ final class ExprParser {
             return new Parsed(new Expression.MathUnary(w, arg.expression()), arg.end());
         }
         if (w.equals("min") || w.equals("max") || w.equals("pow")) {
+            if (word(t, i + 1).equals("(")) {
+                Parsed a = parse(t, i + 2);
+                int next = word(t, a.end()).equals("and") ? a.end() + 1 : a.end();
+                Parsed b = parse(t, next);
+                if (!word(t, b.end()).equals(")")) {
+                    throw new ParseException("expected closing ')' after " + w + "(...)",
+                            "ожидается закрывающая скобка ')' после " + w + "(...)");
+                }
+                return new Parsed(new Expression.MathBinary(a.expression(), w, b.expression()), b.end() + 1);
+            }
             Parsed a = parseAtom(t, i + 1);
             int next = word(t, a.end()).equals("and") ? a.end() + 1 : a.end();
             Parsed b = parseAtom(t, next);
             return new Parsed(new Expression.MathBinary(a.expression(), w, b.expression()), b.end());
         }
         if (w.equals("clamp")) {
+            if (word(t, i + 1).equals("(")) {
+                Parsed v = parse(t, i + 2);
+                Parsed lo = parse(t, v.end());
+                Parsed hi = parse(t, lo.end());
+                if (!word(t, hi.end()).equals(")")) {
+                    throw new ParseException("expected closing ')' after clamp(...)",
+                            "ожидается закрывающая скобка ')' после clamp(...)");
+                }
+                return new Parsed(new Expression.MathClamp(v.expression(), lo.expression(), hi.expression()), hi.end() + 1);
+            }
             Parsed v = parseAtom(t, i + 1);
             Parsed lo = parseAtom(t, v.end());
             Parsed hi = parseAtom(t, lo.end());

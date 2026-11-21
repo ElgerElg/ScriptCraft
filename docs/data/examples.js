@@ -2085,7 +2085,9 @@ function TdSpawnNext(p: player):
 		set {-hp} to round(30 + {-w} * 22 + {-w} * {-w} * 2.2)
 		set {-spd} to 3.4 + {-w} * 0.08
 		set {-rew} to 10 + round({-w} * 0.7)
-		set {-cd} to max(4, 8 - floor({-w} / 4))
+		set {-cd} to 8 - floor({-w} / 4)
+		if {-cd} < 4:
+			set {-cd} to 4
 		set {-tex} to "td:textures/gui/mob_slime.png"
 
 		# Тип врага по волне
