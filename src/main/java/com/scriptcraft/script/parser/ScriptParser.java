@@ -514,14 +514,14 @@ public final class ScriptParser {
         int depth = 0;
         for (int i = 0; i < inside.length(); i++) {
             char c = inside.charAt(i);
-            if (c == '"') {
+            if (c == '"' && (i == 0 || inside.charAt(i - 1) != '\\')) {
                 quote = !quote;
                 current.append(c);
                 continue;
             }
-            if (!quote && (c == '(' || c == '{')) {
+            if (!quote && (c == '(' || c == '{' || c == '[')) {
                 depth++;
-            } else if (!quote && (c == ')' || c == '}') && depth > 0) {
+            } else if (!quote && (c == ')' || c == '}' || c == ']') && depth > 0) {
                 depth--;
             }
             if (!quote && depth == 0 && c == ',') {

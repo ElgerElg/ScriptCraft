@@ -15,7 +15,7 @@
  */
 window.SC_DOCS = window.SC_DOCS || {};
 window.SC_DOCS.syntax = {
-  version: "0.7.0",
+  version: "0.7.6",
   categories: [
     { id: "events", ru: "События", en: "Events" },
     { id: "structures", ru: "Структуры", en: "Structures" },
@@ -577,12 +577,12 @@ command /heal <player> [integer]:
     id: "struct-function", category: "structures",
     name: { ru: "Функция", en: "Function" },
     syntax: [
-      "function <имя>(<параметр>: <тип>):",
-      "<имя>(<аргумент>, <аргумент>)"
+      "function <имя>(<п1>: <тип>, <п2>: <тип>, ...):",
+      "<имя>(<аргумент1>, <аргумент2>, <аргумент3>, ...)"
     ],
     desc: {
-      ru: "Объявляет переиспользуемую функцию внутри скрипта. Двоеточие в заголовке необязательно, тело пишется с отступом. Все типы параметров и синонимы: `player`, `offline player` (`offline`), `entity`, `block`, `location`, `text` (`string`), `integer` (`int`), `number`, `boolean` (`bool`), `world`, `item`. Вызывается отдельной строкой или из `run MyFunc(...)` в GUI. Аргументами могут быть любые выражения (`player`, `targeted player`, `location of targeted block`, `{переменная}`). Параметр `player` работает как цель (`send \"hi\" to who`, `health of who`, `%who%`). Имя функции нечувствительно к регистру. `stop` завершает только эту функцию.",
-      en: "Declares a reusable function inside the script. Colon is optional; body is indented. All parameter types & aliases: `player`, `offline player` (`offline`), `entity`, `block`, `location`, `text` (`string`), `integer` (`int`), `number`, `boolean` (`bool`), `world`, `item`. Called on its own line or from GUI `run MyFunc(...)`. Arguments can be any expression. A `player` parameter acts as a target (`send \"hi\" to who`, `health of who`, `%who%`). Case-insensitive name. `stop` exits only this function."
+      ru: "Объявляет переиспользуемую функцию внутри скрипта. Поддерживается **любое количество параметров** (0, 1, 2, 3 и более — через запятую). Двоеточие в заголовке необязательно, тело пишется с отступом. Все типы параметров и синонимы: `player`, `offline player` (`offline`), `entity`, `block`, `location`, `text` (`string`), `integer` (`int`), `number`, `boolean` (`bool`), `world`, `item`. Вызывается отдельной строкой или из `run MyFunc(...)` в GUI. Аргументами могут быть любые выражения (`player`, `targeted player`, `location of targeted block`, `{переменная}`). Параметр `player` работает как цель (`send \"hi\" to who`, `health of who`, `%who%`). Имя функции нечувствительно к регистру. `stop` завершает только эту функцию.",
+      en: "Declares a reusable function inside the script. Supports **any number of parameters** (0, 1, 2, 3 or more, comma-separated). Colon is optional; body is indented. All parameter types & aliases: `player`, `offline player` (`offline`), `entity`, `block`, `location`, `text` (`string`), `integer` (`int`), `number`, `boolean` (`bool`), `world`, `item`. Called on its own line or from GUI `run MyFunc(...)`. Arguments can be any expression. A `player` parameter acts as a target (`send \"hi\" to who`, `health of who`, `%who%`). Case-insensitive name. `stop` exits only this function."
     },
     example: `# Функция с игроком и числом
 function GiveReward(who: player, coins: integer, label: text):
@@ -3100,7 +3100,7 @@ image "minecraft:textures/item/diamond.png" at -40, 0 size 24x24 texture 16x16 c
     example: `# Привязка к разным углам и краям экрана
 text "&6ScriptCraft" at 6, 6 anchor top_left shadow
 text "&eЦентр" at 0, -40 anchor center
-text "&7v0.7.0" at -6, -6 anchor bottom_right color #808080`,
+text "&7v0.7.6" at -6, -6 anchor bottom_right color #808080`,
     since: "0.1.0", related: ["screen-text","screen-button","hud-layer"]
   },
   {

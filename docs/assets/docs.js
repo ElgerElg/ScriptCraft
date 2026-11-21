@@ -213,7 +213,6 @@
     });
     els.list.innerHTML = html || '<div class="empty">' + SC.esc(SC.t("empty")) + "</div>";
     renderSide(list, ts);
-    renderPreview();
     if (state.selected) markSide(state.selected);
   }
 
@@ -324,7 +323,6 @@
     els.list = document.getElementById("list");
     els.side = document.getElementById("side");
     els.center = document.getElementById("center");
-    els.preview = document.getElementById("preview");
 
     var params = new URLSearchParams(location.search);
     if (params.get("q")) { state.q = params.get("q"); els.input.value = state.q; }
