@@ -119,10 +119,19 @@
     return String(text).split(/\n\s*\n/).map(function (p) { return "<p>" + SC.inline(p.trim()) + "</p>"; }).join("");
   };
 
-  /** Делит плотное описание на короткие смысловые строки после предложений. */
+  /** Делит плотное описание на короткие смысловые строки (по переносам или после предложений). */
   SC.readable = function (text) {
-    var parts = String(text).trim().split(/(?<=[.!?])\s+(?=(?:`|\*\*|[A-ZА-ЯЁ0-9]))/);
-    if (parts.length < 2) return SC.paras(text);
+    var raw = String(text).trim();
+    if (raw.indexOf("\n") >= 0) {
+      var lines = raw.split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean);
+      return '<ul class="desc-lines">' + lines.map(function (line) {
+        var clean = line.replace(/^[•\-]\s+/, "");
+        var isSub = /^—\s+/.test(clean);
+        return '<li' + (isSub ? ' style="margin-left:14px;opacity:.92"' : '') + '>' + SC.inline(clean) + "</li>";
+      }).join("") + "</ul>";
+    }
+    var parts = raw.split(/(?<=[.!?])\s+(?=(?:`|\*\*|[A-ZА-ЯЁ0-9]))/);
+    if (parts.length < 2) return SC.paras(raw);
     return '<ul class="desc-lines">' + parts.map(function (part) {
       return "<li>" + SC.inline(part) + "</li>";
     }).join("") + "</ul>";
