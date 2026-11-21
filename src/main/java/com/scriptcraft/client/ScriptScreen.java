@@ -50,6 +50,7 @@ public class ScriptScreen extends Screen {
     private final Map<String, Double> sliderValues = new LinkedHashMap<>();
     private final Map<String, Boolean> toggleValues = new LinkedHashMap<>();
     private SliderElement draggingSlider;
+    private ListElement draggingListScroll;
     private long lastSliderSendMs;
     private final Map<ListElement, Integer> scroll = new IdentityHashMap<>();
     private final Map<Integer, String> heldKeys = new LinkedHashMap<>();
@@ -95,8 +96,15 @@ public class ScriptScreen extends Screen {
             }
         }
         Map<String, Integer> prevScrollByKey = new LinkedHashMap<>();
-        for (Map.Entry<ListElement, Integer> entry : scroll.entrySet()) {
-            prevScrollByKey.put(listKey(entry.getKey()), entry.getValue());
+        Map<String, Integer> prevRowsByKey = new LinkedHashMap<>();
+        for (ScreenElement element : ordered) {
+            if (element instanceof ListElement list) {
+                String k = listKey(list);
+                prevRowsByKey.put(k, list.rows().size());
+                if (scroll.containsKey(list)) {
+                    prevScrollByKey.put(k, scroll.get(list));
+                }
+            }
         }
         this.description = next;
         this.ordered = ElementRenderer.sortedByLayer(next.elements(), e -> e.layout().layer());
@@ -119,9 +127,17 @@ public class ScriptScreen extends Screen {
         scroll.clear();
         for (ScreenElement element : ordered) {
             if (element instanceof ListElement list) {
-                Integer s = prevScrollByKey.get(listKey(list));
-                if (s != null) {
-                    scroll.put(list, s);
+                String k = listKey(list);
+                Integer prevRows = prevRowsByKey.get(k);
+                int max = ElementRenderer.listMaxScroll(this.font, list, this.width, this.height);
+                if (prevRows != null && list.rows().size() > prevRows) {
+                    // При добавлении новых строк (например, в чате) прокручиваем список к концу
+                    scroll.put(list, max);
+                } else {
+                    Integer s = prevScrollByKey.get(k);
+                    if (s != null) {
+                        scroll.put(list, Math.max(0, Math.min(max, s)));
+                    }
                 }
             }
         }
@@ -413,6 +429,14 @@ public class ScriptScreen extends Screen {
                 }
                 return true;
             }
+            if (element instanceof ListElement list) {
+                int barScroll = ElementRenderer.listScrollbarDrag(this.font, list, this.width, this.height, mouseX, mouseY, false);
+                if (barScroll >= 0) {
+                    draggingListScroll = list;
+                    scroll.put(list, barScroll);
+                    return true;
+                }
+            }
             int listScroll = element instanceof ListElement list ? scroll.getOrDefault(list, 0) : 0;
             String action = ElementRenderer.clickAction(this.font, element, this.width, this.height, mouseX, mouseY, listScroll);
             if (action != null) {
@@ -431,6 +455,13 @@ public class ScriptScreen extends Screen {
             updateSliderFromMouse(draggingSlider, mouseX, false);
             return true;
         }
+        if (draggingListScroll != null && button == 0) {
+            int barScroll = ElementRenderer.listScrollbarDrag(this.font, draggingListScroll, this.width, this.height, mouseX, mouseY, true);
+            if (barScroll >= 0) {
+                scroll.put(draggingListScroll, barScroll);
+            }
+            return true;
+        }
         return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
     }
 
@@ -439,6 +470,10 @@ public class ScriptScreen extends Screen {
         if (draggingSlider != null && button == 0) {
             updateSliderFromMouse(draggingSlider, mouseX, true);
             draggingSlider = null;
+            return true;
+        }
+        if (draggingListScroll != null && button == 0) {
+            draggingListScroll = null;
             return true;
         }
         return super.mouseReleased(mouseX, mouseY, button);

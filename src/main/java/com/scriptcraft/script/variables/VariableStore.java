@@ -96,8 +96,34 @@ public final class VariableStore {
         List<Map.Entry<String, Object>> out = new ArrayList<>();
         collectChildren(PERSISTENT, head, out);
         collectChildren(TEMPORARY, head, out);
-        out.sort(Comparator.comparing(Map.Entry::getKey));
+        out.sort((a, b) -> compareKeys(a.getKey(), b.getKey()));
         return out;
+    }
+
+    private static int compareKeys(String a, String b) {
+        Long na = tryParseLong(a);
+        Long nb = tryParseLong(b);
+        if (na != null && nb != null) {
+            return Long.compare(na, nb);
+        }
+        return a.compareTo(b);
+    }
+
+    @Nullable
+    private static Long tryParseLong(String s) {
+        if (s == null || s.isEmpty() || s.length() > 18) {
+            return null;
+        }
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (i == 0 && c == '-' && s.length() > 1) continue;
+            if (c < '0' || c > '9') return null;
+        }
+        try {
+            return Long.parseLong(s);
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /** Удаляет прямые индексы {prefix::*}. */

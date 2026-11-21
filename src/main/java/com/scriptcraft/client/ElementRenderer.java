@@ -452,6 +452,42 @@ public final class ElementRenderer {
             g.drawString(font, codes(row.text()), rx + 4, ry + 3, 0xFFFFFFFF, false);
         }
         g.disableScissor();
+
+        // Визуальный ползунок (скроллбар-слайдер) списка, если контент длиннее видимой области
+        int maxScroll = listMaxScroll(font, list, sw, sh);
+        if (maxScroll > 0 && !list.horizontal()) {
+            int trackX = box.x + box.w - 4;
+            int trackY = box.y + header + 1;
+            int trackH = Math.max(8, box.h - header - 2);
+            int contentH = list.rows().size() * ListElement.ROW;
+            int thumbH = Math.max(12, Math.min(trackH, Math.round((float) trackH * trackH / Math.max(1, contentH))));
+            int thumbY = trackY + Math.round(((float) Math.max(0, Math.min(maxScroll, scroll)) / maxScroll) * (trackH - thumbH));
+            boolean hoverBar = mouseX >= trackX - 2 && mouseX <= box.x + box.w && mouseY >= trackY && mouseY <= trackY + trackH;
+            g.fill(trackX, trackY, trackX + 3, trackY + trackH, 0x66000000);
+            g.fill(trackX, thumbY, trackX + 3, thumbY + thumbH, hoverBar ? 0xFF60A5FA : 0xFFB0BAC9);
+        }
+    }
+
+    /** Возвращает новый scroll (0..maxScroll), если клик/перетаскивание попало в полосу прокрутки списка, иначе -1. */
+    public static int listScrollbarDrag(Font font, ListElement list, int sw, int sh, double mouseX, double mouseY, boolean ignoreX) {
+        if (list.horizontal()) {
+            return -1;
+        }
+        int maxScroll = listMaxScroll(font, list, sw, sh);
+        if (maxScroll <= 0) {
+            return -1;
+        }
+        Box box = listBox(list, sw, sh);
+        String headerText = com.scriptcraft.screen.ScreenMeta.rawAction(list.header());
+        int header = headerText.isEmpty() ? 0 : ListElement.ROW;
+        int trackX = box.x + box.w - 7;
+        int trackY = box.y + header + 1;
+        int trackH = Math.max(8, box.h - header - 2);
+        if (!ignoreX && (mouseX < trackX || mouseX > box.x + box.w || mouseY < trackY || mouseY > trackY + trackH)) {
+            return -1;
+        }
+        double norm = Math.max(0.0, Math.min(1.0, (mouseY - trackY) / Math.max(1.0, trackH)));
+        return (int) Math.round(norm * maxScroll);
     }
 
     @Nullable
