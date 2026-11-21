@@ -1640,29 +1640,66 @@ function DinoGameOver(p: player):
     ],
     blocks: [
       { lang: "sc", title: { ru: "scriptcraft/scripts/td.sc", en: "scriptcraft/scripts/td.sc" }, code: `# ==========================================================
-#  td.sc — Tower Defense Pro (3 карты, 3 сложности: 10/20/30 волн,
-#          6 видов башен, свободная постройка, летающие прожектайлы!)
-#  Команда: /td
+#  td.sc — Tower Defense Pro CO-OP
+#          3 карты | 3 сложности (10/20/30 волн) | Кооп на 2 игроков!
+#          6 башен + Эволюция ✦5★ с уникальной пассивкой каждой башни!
+#          Свободная постройка + летающие прожектайлы!
+#  Команды:
+#    /td               — выбор карты и сложности (Соло)
+#    /td coop <игрок>  — пригласить друга в кооп на 2 игроков
+#    /td join          — принять приглашение и войти в игру с другом
 #  Управление:
-#    1..6  — выбрать башню (Лучник / Пушка / Лёд / Маг / Тесла / Снайпер)
-#    ЛКМ по любой свободной клетке — построить башню
-#    ЛКМ по построенной башне — сразу улучшить (до 4★!)
-#    X     — режим продажи (возврат 70%)
-#    Space — старт волны / скорость x1 <-> x2
-#    R     — рестарт текущей карты | M — меню выбора карты
+#    1..6  — выбрать башню | ЛКМ по траве — построить
+#    ЛКМ по башне — улучшить (1★→2★→3★→4★ → ✦5★ Эволюция!)
+#    X     — продажа (70%) | Space — волна / скорость x1 <-> x2
+#    R     — рестарт | M — меню выбора карты
 #  Текстуры: распакуйте td-resources.zip в scriptcraft/resources/
 # ==========================================================
 
 on load:
 	clear {-td-active::*}
+	clear {-td-host::*}
+	clear {-td-coop::*}
+	clear {-td-inv::*}
 
 on quit:
-	TdCleanup(player)
+	TdOnLeave(player)
 
 on screen close "Tower Defense":
-	TdCleanup(player)
+	TdOnLeave(player)
 
-command /td:
+command /td [text] [player]:
+	if arg-1 is not set:
+		TdOpenMenu(player)
+		stop
+	if arg-1 is "coop" or "invite":
+		if arg-2 is not set:
+			send "&eИспользование: &f/td coop <ник_игрока>" to player
+			stop
+		if arg-2 is player:
+			send "&cНельзя пригласить самого себя!" to player
+			stop
+		set {-td-inv::%arg-2%} to %player%
+		set {-td-partner-pend::%player%} to %arg-2%
+		send "&aПриглашение в кооп отправлено игроку &f%arg-2%&a! Сначала выберите карту в &e/td&a." to player
+		send "&6[Tower Defense] &e%player% &fприглашает вас в кооп! Напишите &a/td join &fчтобы принять." to arg-2
+		play sound entity.experience_orb.pickup to arg-2 with volume 0.7 pitch 1.3
+		TdOpenMenu(player)
+		stop
+	if arg-1 is "join" or "accept":
+		if {-td-inv::%player%} is not set:
+			send "&cУ вас нет активных приглашений в кооп." to player
+			stop
+		set {-host} to {-td-inv::%player%}
+		delete {-td-inv::%player%}
+		if {-host} is not online:
+			send "&cИгрок %{-host}% не в сети!" to player
+			stop
+		set {-td-coop-ready::%{-host}%} to %player%
+		send "&aВы приняли приглашение от &e%{-host}%&a! Запускаем кооп..." to player
+		send "&aИгрок &e%player% &aприсоединился к коопу! Запускаем игру..." to {-host}
+		TdStartCoop({-host}, player)
+		stop
 	TdOpenMenu(player)
 
 # --- Горячие клавиши в игре ---
@@ -1692,67 +1729,146 @@ on key space in screen "Tower Defense":
 	TdWaveOrSpeed(player)
 
 on key r in screen "Tower Defense":
-	TdStartGame(player)
+	TdRestartCurrent(player)
 
 on key m in screen "Tower Defense":
 	TdOpenMenu(player)
 
 on toggle "autowave":
+	set {-g} to {-td-host::%player%}
+	if {-g} is not set:
+		stop
 	if %value% is "true":
-		set {-td-auto::%player%} to 1
-		set text of screen element "status_txt" for player to "&aАвто-волна включена!"
+		set {-td-auto::%{-g}%} to 1
+		TdSyncStatus({-g}, "&aАвто-волна включена (%player%)!")
 	else:
-		set {-td-auto::%player%} to 0
-		set text of screen element "status_txt" for player to "&7Авто-волна выключена"
+		set {-td-auto::%{-g}%} to 0
+		TdSyncStatus({-g}, "&7Авто-волна выключена")
 
-# --- Игровой цикл (10 тиков/сек, при x2 — 2 шага за тик) ---
+# --- Игровой цикл (тикает только хост комнаты -> синхронизируется обоим игрокам) ---
 
 every 2 ticks:
 	loop all players:
 		if {-td-active::%loop-player%} is 1:
 			if loop-player has screen "Tower Defense" open:
-				TdTick(loop-player)
+				TdTick(%loop-player%)
 				if {-td-speed::%loop-player%} is 2 and {-td-in-wave::%loop-player%} is 1 and {-td-over::%loop-player%} is 0:
-					TdTick(loop-player)
+					TdTick(%loop-player%)
 			else:
-				TdCleanup(loop-player)
+				TdOnLeave(loop-player)
 
-function TdCleanup(p: player):
-	delete {-td-active::%p%}
-	delete {-td-over::%p%}
+function TdOnLeave(p: player):
+	set {-g} to {-td-host::%p%}
+	if {-g} is not set:
+		stop
+	set {-p2} to {-td-coop::%{-g}%}
+	delete {-td-active::%{-g}%}
+	delete {-td-over::%{-g}%}
+	delete {-td-host::%{-g}%}
+	if {-p2} is set and {-p2} is not "":
+		delete {-td-host::%{-p2}%}
+		if %p% is not {-p2}:
+			send "&e[TD Кооп] &7%p% вышел из игры." to {-p2}
+		else:
+			send "&e[TD Кооп] &7%p% вышел из игры." to {-g}
+	delete {-td-coop::%{-g}%}
+
+# ==========================================================
+#  ХЕЛПЕРЫ СИНХРОНИЗАЦИИ ЭКРАНА ДЛЯ 1 ИЛИ 2 ИГРОКОВ
+# ==========================================================
+
+function TdSyncPos(g: text, id: text, x: number, y: number):
+	set position of screen element id for g to x y
+	set {-p2} to {-td-coop::%g%}
+	if {-p2} is set and {-p2} is not "":
+		set position of screen element id for {-p2} to x y
+
+function TdSyncImg(g: text, id: text, tex: text):
+	set image of screen element id for g to tex
+	set {-p2} to {-td-coop::%g%}
+	if {-p2} is set and {-p2} is not "":
+		set image of screen element id for {-p2} to tex
+
+function TdSyncTxt(g: text, id: text, txt: text):
+	set text of screen element id for g to txt
+	set {-p2} to {-td-coop::%g%}
+	if {-p2} is set and {-p2} is not "":
+		set text of screen element id for {-p2} to txt
+
+function TdSyncShow(g: text, id: text):
+	show screen element id to g
+	set {-p2} to {-td-coop::%g%}
+	if {-p2} is set and {-p2} is not "":
+		show screen element id to {-p2}
+
+function TdSyncHide(g: text, id: text):
+	hide screen element id from g
+	set {-p2} to {-td-coop::%g%}
+	if {-p2} is set and {-p2} is not "":
+		hide screen element id from {-p2}
+
+function TdSyncStatus(g: text, txt: text):
+	TdSyncTxt(g, "status_txt", txt)
+
+function TdSyncSound(g: text, snd: text, vol: number, pit: number):
+	play sound snd to g with volume vol pitch pit
+	set {-p2} to {-td-coop::%g%}
+	if {-p2} is set and {-p2} is not "":
+		play sound snd to {-p2} with volume vol pitch pit
+
+function TdSyncBossBar(g: text, val: number, mx: number):
+	if mx > 0:
+		set max of screen bar "boss_bar" for g to mx
+	set value of screen bar "boss_bar" for g to val
+	set {-p2} to {-td-coop::%g%}
+	if {-p2} is set and {-p2} is not "":
+		if mx > 0:
+			set max of screen bar "boss_bar" for {-p2} to mx
+		set value of screen bar "boss_bar" for {-p2} to val
+
+function TdSyncHud(g: text):
+	set {-sp} to "x1"
+	if {-td-speed::%g%} is 2:
+		set {-sp} to "&b&lx2"
+	set {-p2} to {-td-coop::%g%}
+	if {-p2} is set and {-p2} is not "":
+		set text of screen element "hud_top" for g to "&d[КООП] &eВ:%{-td-wave::%g%}%/%{-td-maxw::%g%}%  &6Зол:%{-td-gold::%g%}%  &cHP:%{-td-hp::%g%}%  &aСч:%{-td-score::%g%}%  &7[%{-sp}%&7]"
+		set text of screen element "hud_top" for {-p2} to "&d[КООП] &eВ:%{-td-wave::%g%}%/%{-td-maxw::%g%}%  &6Зол:%{-td-gold::%{-p2}%}%  &cHP:%{-td-hp::%g%}%  &aСч:%{-td-score::%g%}%  &7[%{-sp}%&7]"
+	else:
+		set text of screen element "hud_top" for g to "&eВолна: &f%{-td-wave::%g%}%/%{-td-maxw::%g%}%   &6Золото: &f%{-td-gold::%g%}%   &cБаза: &f%{-td-hp::%g%}% HP   &aСчёт: &f%{-td-score::%g%}%   &7[%{-sp}%&7]"
 
 # ==========================================================
 #  МЕНЮ ВЫБОРА КАРТЫ И СЛОЖНОСТИ
 # ==========================================================
 
 function TdOpenMenu(p: player):
-	TdCleanup(p)
+	TdOnLeave(p)
 	if {-td-map::%p%} is not set:
 		set {-td-map::%p%} to 1
 	if {-td-diff::%p%} is not set:
 		set {-td-diff::%p%} to 2
 	open screen "Tower Defense" to p:
-		text "&6&lTOWER DEFENSE" at 0 -106 anchor center shadow
-		text "&7Выберите карту и сложность (башни можно ставить куда угодно!)" at 0 -92 anchor center shadow
+		text "&6&lTOWER DEFENSE PRO" at 0 -108 anchor center shadow
+		text "&7Свободная постройка + Эволюция ✦5★ | Кооп на двоих: &e/td coop <ник>" at 0 -94 anchor center shadow
 
 		# 3 превью карт
-		image "td:textures/gui/map_valley.png" at -122 -36 size 112x56 texture 384x192 anchor center run TdPickMap(player, 1) keep open tooltip "&aИзумрудная долина\\n&7Классический S-маршрут"
-		text "&a1. Долина" at -122 0 anchor center shadow id m_lbl1
+		image "td:textures/gui/map_valley.png" at -122 -38 size 112x56 texture 384x192 anchor center run TdPickMap(player, 1) keep open tooltip "&aИзумрудная долина\\n&7Классический S-маршрут"
+		text "&a1. Долина" at -122 -2 anchor center shadow id m_lbl1
 
-		image "td:textures/gui/map_volcano.png" at 0 -36 size 112x56 texture 384x192 anchor center run TdPickMap(player, 2) keep open tooltip "&6Лавовый каньон\\n&7Двойной зигзаг — много поворотов!"
-		text "&72. Каньон" at 0 0 anchor center shadow id m_lbl2
+		image "td:textures/gui/map_volcano.png" at 0 -38 size 112x56 texture 384x192 anchor center run TdPickMap(player, 2) keep open tooltip "&6Лавовый каньон\\n&7Двойной зигзаг — много поворотов!"
+		text "&72. Каньон" at 0 -2 anchor center shadow id m_lbl2
 
-		image "td:textures/gui/map_ice.png" at 122 -36 size 112x56 texture 384x192 anchor center run TdPickMap(player, 3) keep open tooltip "&bЛедяная цитадель\\n&7Короткий и быстрый серпантин!"
-		text "&73. Цитадель" at 122 0 anchor center shadow id m_lbl3
+		image "td:textures/gui/map_ice.png" at 122 -38 size 112x56 texture 384x192 anchor center run TdPickMap(player, 3) keep open tooltip "&bЛедяная цитадель\\n&7Короткий и быстрый серпантин!"
+		text "&73. Цитадель" at 122 -2 anchor center shadow id m_lbl3
 
 		# 3 уровня сложности
-		text "&eСложность:" at 0 24 anchor center shadow
-		button "&aЛёгкий (10 волн)" at -110 44 size 100x20 anchor center run TdPickDiff(player, 1) keep open tooltip "&aЛёгкий уровень\\n&710 волн | 2 босса | 15 HP | 140з"
-		button "&eСредний (20 волн)" at 0 44 size 100x20 anchor center run TdPickDiff(player, 2) keep open tooltip "&eСредний уровень\\n&720 волн | 4 босса | 10 HP | 120з"
-		button "&cТяжёлый (30 волн)" at 110 44 size 100x20 anchor center run TdPickDiff(player, 3) keep open tooltip "&cТяжёлый уровень\\n&730 волн | 6 боссов | 8 HP | 110з"
+		text "&eСложность:" at 0 22 anchor center shadow
+		button "&aЛёгкий (10 волн)" at -110 42 size 100x20 anchor center run TdPickDiff(player, 1) keep open tooltip "&aЛёгкий уровень\\n&710 волн | 2 босса | 15 HP | 140з"
+		button "&eСредний (20 волн)" at 0 42 size 100x20 anchor center run TdPickDiff(player, 2) keep open tooltip "&eСредний уровень\\n&720 волн | 4 босса | 10 HP | 120з"
+		button "&cТяжёлый (30 волн)" at 110 42 size 100x20 anchor center run TdPickDiff(player, 3) keep open tooltip "&cТяжёлый уровень\\n&730 волн | 6 боссов | 8 HP | 110з"
 
-		text "&7Выбрано: &aДолина &7| &eСредний (20 волн)" at 0 72 anchor center shadow id menu_info
-		button "&a&l▶ ИГРАТЬ" at -48 96 size 110x22 anchor center run TdStartGame(player) keep open
+		text "&7Выбрано: &aДолина &7| &eСредний (20 волн)" at 0 70 anchor center shadow id menu_info
+		button "&a&l▶ ИГРАТЬ (СОЛО)" at -54 96 size 118x22 anchor center run TdStartSolo(player) keep open
 		button "&6Топ-5" at 66 96 size 80x22 anchor center run TdShowTop(player) keep open
 	TdRefreshMenuInfo(p)
 
@@ -1789,124 +1905,162 @@ function TdRefreshMenuInfo(p: player):
 	set text of screen element "menu_info" for p to "&7Выбрано: %{-mn}% &7| %{-dn}%"
 
 # ==========================================================
-#  ЗАПУСК ИГРЫ И КАРТЫ
+#  ЗАПУСК ИГРЫ (СОЛО И КООП НА 2 ИГРОКОВ)
 # ==========================================================
 
-function TdStartGame(p: player):
-	if {-td-map::%p%} is not set:
-		set {-td-map::%p%} to 1
-	if {-td-diff::%p%} is not set:
-		set {-td-diff::%p%} to 2
-	set {-m} to {-td-map::%p%}
-	set {-d} to {-td-diff::%p%}
+function TdStartSolo(p: player):
+	TdStartSession(p, "")
 
-	set {-td-active::%p%} to 1
-	set {-td-over::%p%} to 0
-	set {-td-wave::%p%} to 0
-	set {-td-score::%p%} to 0
-	set {-td-tool::%p%} to 1
-	set {-td-sell::%p%} to 0
-	set {-td-speed::%p%} to 1
-	set {-td-auto::%p%} to 0
-	set {-td-auto-cd::%p%} to 0
-	set {-td-in-wave::%p%} to 0
-	set {-td-to-spawn::%p%} to 0
-	set {-td-spawn-boss::%p%} to 0
-	set {-td-spawn-cd::%p%} to 0
-	set {-td-fx-cd::%p%} to 0
+function TdStartCoop(host: player, partner: player):
+	TdStartSession(host, %partner%)
+
+function TdRestartCurrent(p: player):
+	set {-g} to {-td-host::%p%}
+	if {-g} is not set:
+		TdStartSolo(p)
+		stop
+	set {-p2} to {-td-coop::%{-g}%}
+	if {-p2} is set and {-p2} is not "" and {-p2} is online:
+		TdStartSession({-g}, {-p2})
+	else:
+		TdStartSession(p, "")
+
+function TdStartSession(host: player, partnerName: text):
+	set {-g} to %host%
+	if {-td-map::%{-g}%} is not set:
+		set {-td-map::%{-g}%} to 1
+	if {-td-diff::%{-g}%} is not set:
+		set {-td-diff::%{-g}%} to 2
+	set {-m} to {-td-map::%{-g}%}
+	set {-d} to {-td-diff::%{-g}%}
+
+	set {-td-active::%{-g}%} to 1
+	set {-td-over::%{-g}%} to 0
+	set {-td-host::%{-g}%} to {-g}
+	set {-td-coop::%{-g}%} to partnerName
+	set {-td-wave::%{-g}%} to 0
+	set {-td-score::%{-g}%} to 0
+	set {-td-speed::%{-g}%} to 1
+	set {-td-auto::%{-g}%} to 0
+	set {-td-auto-cd::%{-g}%} to 0
+	set {-td-in-wave::%{-g}%} to 0
+	set {-td-to-spawn::%{-g}%} to 0
+	set {-td-spawn-boss::%{-g}%} to 0
+	set {-td-spawn-cd::%{-g}%} to 0
+	set {-td-fx-cd::%{-g}%} to 0
+	set {-td-tool::%{-g}%} to 1
+	set {-td-sell::%{-g}%} to 0
 
 	if {-d} is 1:
-		set {-td-maxw::%p%} to 10
-		set {-td-gold::%p%} to 140
-		set {-td-hp::%p%} to 15
+		set {-td-maxw::%{-g}%} to 10
+		set {-sgold} to 140
+		set {-td-hp::%{-g}%} to 15
 	else if {-d} is 2:
-		set {-td-maxw::%p%} to 20
-		set {-td-gold::%p%} to 120
-		set {-td-hp::%p%} to 10
+		set {-td-maxw::%{-g}%} to 20
+		set {-sgold} to 120
+		set {-td-hp::%{-g}%} to 10
 	else:
-		set {-td-maxw::%p%} to 30
-		set {-td-gold::%p%} to 110
-		set {-td-hp::%p%} to 8
+		set {-td-maxw::%{-g}%} to 30
+		set {-sgold} to 110
+		set {-td-hp::%{-g}%} to 8
 
-	clear {-td-grid::%p%::*}
+	set {-td-gold::%{-g}%} to {-sgold}
+	if partnerName is not "":
+		set {-td-host::%partnerName%} to {-g}
+		set {-td-gold::%partnerName%} to {-sgold}
+		set {-td-tool::%partnerName%} to 1
+		set {-td-sell::%partnerName%} to 0
+
+	clear {-td-grid::%{-g}%::*}
 	loop 24 times:
 		set {-i} to %loop-number%
-		set {-td-ta::%p%::%{-i}%} to 0
-		set {-td-tt::%p%::%{-i}%} to 0
-		set {-td-tl::%p%::%{-i}%} to 0
-		set {-td-tcd::%p%::%{-i}%} to 0
-		set {-td-tcost::%p%::%{-i}%} to 0
+		set {-td-ta::%{-g}%::%{-i}%} to 0
+		set {-td-tt::%{-g}%::%{-i}%} to 0
+		set {-td-tl::%{-g}%::%{-i}%} to 0
+		set {-td-tcd::%{-g}%::%{-i}%} to 0
+		set {-td-tcost::%{-g}%::%{-i}%} to 0
 
 	loop 10 times:
 		set {-i} to %loop-number%
-		set {-td-ea::%p%::%{-i}%} to 0
-		set {-td-eboss::%p%::%{-i}%} to 0
-		set {-td-eslow::%p%::%{-i}%} to 0
+		set {-td-ea::%{-g}%::%{-i}%} to 0
+		set {-td-eboss::%{-g}%::%{-i}%} to 0
+		set {-td-eslow::%{-g}%::%{-i}%} to 0
+		set {-td-efreeze::%{-g}%::%{-i}%} to 0
+		set {-td-eburn::%{-g}%::%{-i}%} to 0
+		set {-td-eburn-d::%{-g}%::%{-i}%} to 0
 
 	loop 6 times:
 		set {-i} to %loop-number%
-		set {-td-pra::%p%::%{-i}%} to 0
+		set {-td-pra::%{-g}%::%{-i}%} to 0
 
-	TdLoadWaypoints(p, {-m})
+	TdLoadWaypoints({-g}, {-m})
 	if {-m} is 1:
-		TdOpenMap1(p)
+		TdOpenMap1(host)
+		if partnerName is not "":
+			TdOpenMap1(partnerName)
 	else if {-m} is 2:
-		TdOpenMap2(p)
+		TdOpenMap2(host)
+		if partnerName is not "":
+			TdOpenMap2(partnerName)
 	else:
-		TdOpenMap3(p)
-	TdUpdateHud(p)
+		TdOpenMap3(host)
+		if partnerName is not "":
+			TdOpenMap3(partnerName)
+	TdSyncHud({-g})
+	if partnerName is not "":
+		TdSyncStatus({-g}, "&d&lКООП НА ДВОИХ! &f%{-g}% &7+ &f%partnerName% &7— стройте башни вместе!")
 
-function TdLoadWaypoints(p: player, mapId: number):
+function TdLoadWaypoints(g: text, mapId: number):
 	if mapId is 1:
-		set {-td-wpcnt::%p%} to 6
-		set {-td-wpx::%p%::1} to -180
-		set {-td-wpy::%p%::1} to -70
-		set {-td-wpx::%p%::2} to 132
-		set {-td-wpy::%p%::2} to -70
-		set {-td-wpx::%p%::3} to 132
-		set {-td-wpy::%p%::3} to -22
-		set {-td-wpx::%p%::4} to -132
-		set {-td-wpy::%p%::4} to -22
-		set {-td-wpx::%p%::5} to -132
-		set {-td-wpy::%p%::5} to 50
-		set {-td-wpx::%p%::6} to 180
-		set {-td-wpy::%p%::6} to 50
+		set {-td-wpcnt::%g%} to 6
+		set {-td-wpx::%g%::1} to -180
+		set {-td-wpy::%g%::1} to -70
+		set {-td-wpx::%g%::2} to 132
+		set {-td-wpy::%g%::2} to -70
+		set {-td-wpx::%g%::3} to 132
+		set {-td-wpy::%g%::3} to -22
+		set {-td-wpx::%g%::4} to -132
+		set {-td-wpy::%g%::4} to -22
+		set {-td-wpx::%g%::5} to -132
+		set {-td-wpy::%g%::5} to 50
+		set {-td-wpx::%g%::6} to 180
+		set {-td-wpy::%g%::6} to 50
 	else if mapId is 2:
-		set {-td-wpcnt::%p%} to 8
-		set {-td-wpx::%p%::1} to -180
-		set {-td-wpy::%p%::1} to -94
-		set {-td-wpx::%p%::2} to -84
-		set {-td-wpy::%p%::2} to -94
-		set {-td-wpx::%p%::3} to -84
-		set {-td-wpy::%p%::3} to 50
-		set {-td-wpx::%p%::4} to 36
-		set {-td-wpy::%p%::4} to 50
-		set {-td-wpx::%p%::5} to 36
-		set {-td-wpy::%p%::5} to -70
-		set {-td-wpx::%p%::6} to 132
-		set {-td-wpy::%p%::6} to -70
-		set {-td-wpx::%p%::7} to 132
-		set {-td-wpy::%p%::7} to 26
-		set {-td-wpx::%p%::8} to 180
-		set {-td-wpy::%p%::8} to 26
+		set {-td-wpcnt::%g%} to 8
+		set {-td-wpx::%g%::1} to -180
+		set {-td-wpy::%g%::1} to -94
+		set {-td-wpx::%g%::2} to -84
+		set {-td-wpy::%g%::2} to -94
+		set {-td-wpx::%g%::3} to -84
+		set {-td-wpy::%g%::3} to 50
+		set {-td-wpx::%g%::4} to 36
+		set {-td-wpy::%g%::4} to 50
+		set {-td-wpx::%g%::5} to 36
+		set {-td-wpy::%g%::5} to -70
+		set {-td-wpx::%g%::6} to 132
+		set {-td-wpy::%g%::6} to -70
+		set {-td-wpx::%g%::7} to 132
+		set {-td-wpy::%g%::7} to 26
+		set {-td-wpx::%g%::8} to 180
+		set {-td-wpy::%g%::8} to 26
 	else if mapId is 3:
-		set {-td-wpcnt::%p%} to 8
-		set {-td-wpx::%p%::1} to -180
-		set {-td-wpy::%p%::1} to 2
-		set {-td-wpx::%p%::2} to -108
-		set {-td-wpy::%p%::2} to 2
-		set {-td-wpx::%p%::3} to -108
-		set {-td-wpy::%p%::3} to -70
-		set {-td-wpx::%p%::4} to -12
-		set {-td-wpy::%p%::4} to -70
-		set {-td-wpx::%p%::5} to -12
-		set {-td-wpy::%p%::5} to 50
-		set {-td-wpx::%p%::6} to 84
-		set {-td-wpy::%p%::6} to 50
-		set {-td-wpx::%p%::7} to 84
-		set {-td-wpy::%p%::7} to -46
-		set {-td-wpx::%p%::8} to 180
-		set {-td-wpy::%p%::8} to -46
+		set {-td-wpcnt::%g%} to 8
+		set {-td-wpx::%g%::1} to -180
+		set {-td-wpy::%g%::1} to 2
+		set {-td-wpx::%g%::2} to -108
+		set {-td-wpy::%g%::2} to 2
+		set {-td-wpx::%g%::3} to -108
+		set {-td-wpy::%g%::3} to -70
+		set {-td-wpx::%g%::4} to -12
+		set {-td-wpy::%g%::4} to -70
+		set {-td-wpx::%g%::5} to -12
+		set {-td-wpy::%g%::5} to 50
+		set {-td-wpx::%g%::6} to 84
+		set {-td-wpy::%g%::6} to 50
+		set {-td-wpx::%g%::7} to 84
+		set {-td-wpy::%g%::7} to -46
+		set {-td-wpx::%g%::8} to 180
+		set {-td-wpy::%g%::8} to -46
 
 function TdOpenMap1(p: player):
 	open screen "Tower Defense" to p:
@@ -2001,7 +2155,7 @@ function TdOpenMap1(p: player):
 		image "td:textures/gui/tile_build.png" at 156 74 size 24x24 texture 24x24 anchor center layer 3 id c14_7 run TdCellClick(player, 14, 7) keep open
 		image "td:textures/gui/tile_build.png" at 180 74 size 24x24 texture 24x24 anchor center layer 3 id c15_7 run TdCellClick(player, 15, 7) keep open
 
-		# Пул звёзд уровней для башен (до 24 башен)
+		# Пул звёзд уровней и эволюций (до 24 башен)
 		text "" at 0 0 anchor center shadow layer 6 id st1 hidden
 		text "" at 0 0 anchor center shadow layer 6 id st2 hidden
 		text "" at 0 0 anchor center shadow layer 6 id st3 hidden
@@ -2049,22 +2203,22 @@ function TdOpenMap1(p: player):
 		image "td:textures/gui/fx_boom.png" at 0 0 size 16x16 texture 16x16 anchor center layer 10 id fx hidden
 
 		# Статус и оверлей победы/поражения
-		text "&eВыбран: &fЛучник (50з) &7— клик по любой траве строит, по башне улучшает!" at 0 92 anchor center shadow layer 12 id status_txt
+		text "&eВыбран: &fЛучник (50з) &7— клик по траве строит, по башне улучшает/эволюционирует (✦5★)!" at 0 92 anchor center shadow layer 12 id status_txt
 		text "&c&lБАЗА ПАЛА!" at 0 -20 anchor center shadow layer 20 id end_title hidden
 		text "&fНажми &eR &fили кнопку Меню" at 0 -4 anchor center shadow layer 20 id end_sub hidden
 
-		# Компактная панель: 6 иконок башен + 3 кнопки + тумблер Авто-волны
-		image "td:textures/gui/tower_archer.png" at -176 109 size 22x22 texture 24x24 anchor center layer 12 id ico1 run TdSelectTool(player, 1) keep open tooltip "&e[1] Лучник &7(50з)\\n&7Урон: 14 | Очень быстрый\\n&7Дальность: 88"
+		# Компактная панель: 6 иконок башен (с описанием ✦5★ эволюции) + 3 кнопки + Авто-волна
+		image "td:textures/gui/tower_archer.png" at -176 109 size 22x22 texture 24x24 anchor center layer 12 id ico1 run TdSelectTool(player, 1) keep open tooltip "&e[1] Лучник &7(50з)\\n&7Урон: 14 | Быстрый выстрел\\n&6✦5★ Эволюция: &fШквал (бьёт по 2 целям сразу!)"
 		text "&e[1] 50" at -176 124 anchor center shadow layer 12 id lbl1
-		image "td:textures/gui/tower_cannon.png" at -144 109 size 22x22 texture 24x24 anchor center layer 12 id ico2 run TdSelectTool(player, 2) keep open tooltip "&6[2] Пушка &7(95з)\\n&7Урон: 34 + &cСплеш по области\\n&7Дальность: 82"
+		image "td:textures/gui/tower_cannon.png" at -144 109 size 22x22 texture 24x24 anchor center layer 12 id ico2 run TdSelectTool(player, 2) keep open tooltip "&6[2] Пушка &7(95з)\\n&7Урон: 34 + &cСплеш\\n&6✦5★ Эволюция: &fНапалм (мега-сплеш + поджог врагов!)"
 		text "&7[2] 95" at -144 124 anchor center shadow layer 12 id lbl2
-		image "td:textures/gui/tower_frost.png" at -112 109 size 22x22 texture 24x24 anchor center layer 12 id ico3 run TdSelectTool(player, 3) keep open tooltip "&b[3] Лёд &7(85з)\\n&7Урон: 10 + &bЗамедление 45%\\n&7Дальность: 86"
+		image "td:textures/gui/tower_frost.png" at -112 109 size 22x22 texture 24x24 anchor center layer 12 id ico3 run TdSelectTool(player, 3) keep open tooltip "&b[3] Лёд &7(85з)\\n&7Урон: 10 + &bЗамедление 45%\\n&6✦5★ Эволюция: &fМерзлота (65% замедл. + 25% заморозка!)"
 		text "&7[3] 85" at -112 124 anchor center shadow layer 12 id lbl3
-		image "td:textures/gui/tower_mage.png" at -80 109 size 22x22 texture 24x24 anchor center layer 12 id ico4 run TdSelectTool(player, 4) keep open tooltip "&d[4] Маг &7(130з)\\n&7Урон: 30 | &dДальность 118\\n&7Отлично бьёт боссов"
+		image "td:textures/gui/tower_mage.png" at -80 109 size 22x22 texture 24x24 anchor center layer 12 id ico4 run TdSelectTool(player, 4) keep open tooltip "&d[4] Маг &7(130з)\\n&7Урон: 30 | &dДальность 118\\n&6✦5★ Эволюция: &fУбийца Боссов (x2 урон Боссам + 4% макс.HP!)"
 		text "&7[4] 130" at -80 124 anchor center shadow layer 12 id lbl4
-		image "td:textures/gui/tower_tesla.png" at -48 109 size 22x22 texture 24x24 anchor center layer 12 id ico5 run TdSelectTool(player, 5) keep open tooltip "&b[5] Тесла &7(115з)\\n&7Урон: 18 | &bЦепная молния (3 цели)\\n&7Дальность: 96"
+		image "td:textures/gui/tower_tesla.png" at -48 109 size 22x22 texture 24x24 anchor center layer 12 id ico5 run TdSelectTool(player, 5) keep open tooltip "&b[5] Тесла &7(115з)\\n&7Урон: 18 | &bЦепная молния (3 цели)\\n&6✦5★ Эволюция: &fШторм (5 целей + 90% урон + оглушение!)"
 		text "&7[5] 115" at -48 124 anchor center shadow layer 12 id lbl5
-		image "td:textures/gui/tower_sniper.png" at -16 109 size 22x22 texture 24x24 anchor center layer 12 id ico6 run TdSelectTool(player, 6) keep open tooltip "&c[6] Снайпер &7(150з)\\n&7Урон: 52 | &cКрит 25% (x2)\\n&7Огромная дальность: 190"
+		image "td:textures/gui/tower_sniper.png" at -16 109 size 22x22 texture 24x24 anchor center layer 12 id ico6 run TdSelectTool(player, 6) keep open tooltip "&c[6] Снайпер &7(150з)\\n&7Урон: 52 | &cКрит 25% | Дальн. 190\\n&6✦5★ Эволюция: &fКазнь (крит 45% x2.5 + казнь <20% HP!)"
 		text "&7[6] 150" at -16 124 anchor center shadow layer 12 id lbl6
 		button "&aСтарт/x2" at 42 110 size 62x18 anchor center run TdWaveOrSpeed(player) keep open tooltip "&aЗапустить волну &7(Space)\\n&bВо время волны: скорость x1 / x2"
 		toggle "Авто" id autowave at 102 110 size 50x18 anchor center value false color #22C55E tooltip "&aАвто-волна\\n&7Автоматически запускает следующую волну"
@@ -2176,7 +2330,7 @@ function TdOpenMap2(p: player):
 		image "td:textures/gui/tile_build.png" at 156 74 size 24x24 texture 24x24 anchor center layer 3 id c14_7 run TdCellClick(player, 14, 7) keep open
 		image "td:textures/gui/tile_build.png" at 180 74 size 24x24 texture 24x24 anchor center layer 3 id c15_7 run TdCellClick(player, 15, 7) keep open
 
-		# Пул звёзд уровней для башен (до 24 башен)
+		# Пул звёзд уровней и эволюций (до 24 башен)
 		text "" at 0 0 anchor center shadow layer 6 id st1 hidden
 		text "" at 0 0 anchor center shadow layer 6 id st2 hidden
 		text "" at 0 0 anchor center shadow layer 6 id st3 hidden
@@ -2224,22 +2378,22 @@ function TdOpenMap2(p: player):
 		image "td:textures/gui/fx_boom.png" at 0 0 size 16x16 texture 16x16 anchor center layer 10 id fx hidden
 
 		# Статус и оверлей победы/поражения
-		text "&eВыбран: &fЛучник (50з) &7— клик по любой траве строит, по башне улучшает!" at 0 92 anchor center shadow layer 12 id status_txt
+		text "&eВыбран: &fЛучник (50з) &7— клик по траве строит, по башне улучшает/эволюционирует (✦5★)!" at 0 92 anchor center shadow layer 12 id status_txt
 		text "&c&lБАЗА ПАЛА!" at 0 -20 anchor center shadow layer 20 id end_title hidden
 		text "&fНажми &eR &fили кнопку Меню" at 0 -4 anchor center shadow layer 20 id end_sub hidden
 
-		# Компактная панель: 6 иконок башен + 3 кнопки + тумблер Авто-волны
-		image "td:textures/gui/tower_archer.png" at -176 109 size 22x22 texture 24x24 anchor center layer 12 id ico1 run TdSelectTool(player, 1) keep open tooltip "&e[1] Лучник &7(50з)\\n&7Урон: 14 | Очень быстрый\\n&7Дальность: 88"
+		# Компактная панель: 6 иконок башен (с описанием ✦5★ эволюции) + 3 кнопки + Авто-волна
+		image "td:textures/gui/tower_archer.png" at -176 109 size 22x22 texture 24x24 anchor center layer 12 id ico1 run TdSelectTool(player, 1) keep open tooltip "&e[1] Лучник &7(50з)\\n&7Урон: 14 | Быстрый выстрел\\n&6✦5★ Эволюция: &fШквал (бьёт по 2 целям сразу!)"
 		text "&e[1] 50" at -176 124 anchor center shadow layer 12 id lbl1
-		image "td:textures/gui/tower_cannon.png" at -144 109 size 22x22 texture 24x24 anchor center layer 12 id ico2 run TdSelectTool(player, 2) keep open tooltip "&6[2] Пушка &7(95з)\\n&7Урон: 34 + &cСплеш по области\\n&7Дальность: 82"
+		image "td:textures/gui/tower_cannon.png" at -144 109 size 22x22 texture 24x24 anchor center layer 12 id ico2 run TdSelectTool(player, 2) keep open tooltip "&6[2] Пушка &7(95з)\\n&7Урон: 34 + &cСплеш\\n&6✦5★ Эволюция: &fНапалм (мега-сплеш + поджог врагов!)"
 		text "&7[2] 95" at -144 124 anchor center shadow layer 12 id lbl2
-		image "td:textures/gui/tower_frost.png" at -112 109 size 22x22 texture 24x24 anchor center layer 12 id ico3 run TdSelectTool(player, 3) keep open tooltip "&b[3] Лёд &7(85з)\\n&7Урон: 10 + &bЗамедление 45%\\n&7Дальность: 86"
+		image "td:textures/gui/tower_frost.png" at -112 109 size 22x22 texture 24x24 anchor center layer 12 id ico3 run TdSelectTool(player, 3) keep open tooltip "&b[3] Лёд &7(85з)\\n&7Урон: 10 + &bЗамедление 45%\\n&6✦5★ Эволюция: &fМерзлота (65% замедл. + 25% заморозка!)"
 		text "&7[3] 85" at -112 124 anchor center shadow layer 12 id lbl3
-		image "td:textures/gui/tower_mage.png" at -80 109 size 22x22 texture 24x24 anchor center layer 12 id ico4 run TdSelectTool(player, 4) keep open tooltip "&d[4] Маг &7(130з)\\n&7Урон: 30 | &dДальность 118\\n&7Отлично бьёт боссов"
+		image "td:textures/gui/tower_mage.png" at -80 109 size 22x22 texture 24x24 anchor center layer 12 id ico4 run TdSelectTool(player, 4) keep open tooltip "&d[4] Маг &7(130з)\\n&7Урон: 30 | &dДальность 118\\n&6✦5★ Эволюция: &fУбийца Боссов (x2 урон Боссам + 4% макс.HP!)"
 		text "&7[4] 130" at -80 124 anchor center shadow layer 12 id lbl4
-		image "td:textures/gui/tower_tesla.png" at -48 109 size 22x22 texture 24x24 anchor center layer 12 id ico5 run TdSelectTool(player, 5) keep open tooltip "&b[5] Тесла &7(115з)\\n&7Урон: 18 | &bЦепная молния (3 цели)\\n&7Дальность: 96"
+		image "td:textures/gui/tower_tesla.png" at -48 109 size 22x22 texture 24x24 anchor center layer 12 id ico5 run TdSelectTool(player, 5) keep open tooltip "&b[5] Тесла &7(115з)\\n&7Урон: 18 | &bЦепная молния (3 цели)\\n&6✦5★ Эволюция: &fШторм (5 целей + 90% урон + оглушение!)"
 		text "&7[5] 115" at -48 124 anchor center shadow layer 12 id lbl5
-		image "td:textures/gui/tower_sniper.png" at -16 109 size 22x22 texture 24x24 anchor center layer 12 id ico6 run TdSelectTool(player, 6) keep open tooltip "&c[6] Снайпер &7(150з)\\n&7Урон: 52 | &cКрит 25% (x2)\\n&7Огромная дальность: 190"
+		image "td:textures/gui/tower_sniper.png" at -16 109 size 22x22 texture 24x24 anchor center layer 12 id ico6 run TdSelectTool(player, 6) keep open tooltip "&c[6] Снайпер &7(150з)\\n&7Урон: 52 | &cКрит 25% | Дальн. 190\\n&6✦5★ Эволюция: &fКазнь (крит 45% x2.5 + казнь <20% HP!)"
 		text "&7[6] 150" at -16 124 anchor center shadow layer 12 id lbl6
 		button "&aСтарт/x2" at 42 110 size 62x18 anchor center run TdWaveOrSpeed(player) keep open tooltip "&aЗапустить волну &7(Space)\\n&bВо время волны: скорость x1 / x2"
 		toggle "Авто" id autowave at 102 110 size 50x18 anchor center value false color #22C55E tooltip "&aАвто-волна\\n&7Автоматически запускает следующую волну"
@@ -2354,7 +2508,7 @@ function TdOpenMap3(p: player):
 		image "td:textures/gui/tile_build.png" at 156 74 size 24x24 texture 24x24 anchor center layer 3 id c14_7 run TdCellClick(player, 14, 7) keep open
 		image "td:textures/gui/tile_build.png" at 180 74 size 24x24 texture 24x24 anchor center layer 3 id c15_7 run TdCellClick(player, 15, 7) keep open
 
-		# Пул звёзд уровней для башен (до 24 башен)
+		# Пул звёзд уровней и эволюций (до 24 башен)
 		text "" at 0 0 anchor center shadow layer 6 id st1 hidden
 		text "" at 0 0 anchor center shadow layer 6 id st2 hidden
 		text "" at 0 0 anchor center shadow layer 6 id st3 hidden
@@ -2402,22 +2556,22 @@ function TdOpenMap3(p: player):
 		image "td:textures/gui/fx_boom.png" at 0 0 size 16x16 texture 16x16 anchor center layer 10 id fx hidden
 
 		# Статус и оверлей победы/поражения
-		text "&eВыбран: &fЛучник (50з) &7— клик по любой траве строит, по башне улучшает!" at 0 92 anchor center shadow layer 12 id status_txt
+		text "&eВыбран: &fЛучник (50з) &7— клик по траве строит, по башне улучшает/эволюционирует (✦5★)!" at 0 92 anchor center shadow layer 12 id status_txt
 		text "&c&lБАЗА ПАЛА!" at 0 -20 anchor center shadow layer 20 id end_title hidden
 		text "&fНажми &eR &fили кнопку Меню" at 0 -4 anchor center shadow layer 20 id end_sub hidden
 
-		# Компактная панель: 6 иконок башен + 3 кнопки + тумблер Авто-волны
-		image "td:textures/gui/tower_archer.png" at -176 109 size 22x22 texture 24x24 anchor center layer 12 id ico1 run TdSelectTool(player, 1) keep open tooltip "&e[1] Лучник &7(50з)\\n&7Урон: 14 | Очень быстрый\\n&7Дальность: 88"
+		# Компактная панель: 6 иконок башен (с описанием ✦5★ эволюции) + 3 кнопки + Авто-волна
+		image "td:textures/gui/tower_archer.png" at -176 109 size 22x22 texture 24x24 anchor center layer 12 id ico1 run TdSelectTool(player, 1) keep open tooltip "&e[1] Лучник &7(50з)\\n&7Урон: 14 | Быстрый выстрел\\n&6✦5★ Эволюция: &fШквал (бьёт по 2 целям сразу!)"
 		text "&e[1] 50" at -176 124 anchor center shadow layer 12 id lbl1
-		image "td:textures/gui/tower_cannon.png" at -144 109 size 22x22 texture 24x24 anchor center layer 12 id ico2 run TdSelectTool(player, 2) keep open tooltip "&6[2] Пушка &7(95з)\\n&7Урон: 34 + &cСплеш по области\\n&7Дальность: 82"
+		image "td:textures/gui/tower_cannon.png" at -144 109 size 22x22 texture 24x24 anchor center layer 12 id ico2 run TdSelectTool(player, 2) keep open tooltip "&6[2] Пушка &7(95з)\\n&7Урон: 34 + &cСплеш\\n&6✦5★ Эволюция: &fНапалм (мега-сплеш + поджог врагов!)"
 		text "&7[2] 95" at -144 124 anchor center shadow layer 12 id lbl2
-		image "td:textures/gui/tower_frost.png" at -112 109 size 22x22 texture 24x24 anchor center layer 12 id ico3 run TdSelectTool(player, 3) keep open tooltip "&b[3] Лёд &7(85з)\\n&7Урон: 10 + &bЗамедление 45%\\n&7Дальность: 86"
+		image "td:textures/gui/tower_frost.png" at -112 109 size 22x22 texture 24x24 anchor center layer 12 id ico3 run TdSelectTool(player, 3) keep open tooltip "&b[3] Лёд &7(85з)\\n&7Урон: 10 + &bЗамедление 45%\\n&6✦5★ Эволюция: &fМерзлота (65% замедл. + 25% заморозка!)"
 		text "&7[3] 85" at -112 124 anchor center shadow layer 12 id lbl3
-		image "td:textures/gui/tower_mage.png" at -80 109 size 22x22 texture 24x24 anchor center layer 12 id ico4 run TdSelectTool(player, 4) keep open tooltip "&d[4] Маг &7(130з)\\n&7Урон: 30 | &dДальность 118\\n&7Отлично бьёт боссов"
+		image "td:textures/gui/tower_mage.png" at -80 109 size 22x22 texture 24x24 anchor center layer 12 id ico4 run TdSelectTool(player, 4) keep open tooltip "&d[4] Маг &7(130з)\\n&7Урон: 30 | &dДальность 118\\n&6✦5★ Эволюция: &fУбийца Боссов (x2 урон Боссам + 4% макс.HP!)"
 		text "&7[4] 130" at -80 124 anchor center shadow layer 12 id lbl4
-		image "td:textures/gui/tower_tesla.png" at -48 109 size 22x22 texture 24x24 anchor center layer 12 id ico5 run TdSelectTool(player, 5) keep open tooltip "&b[5] Тесла &7(115з)\\n&7Урон: 18 | &bЦепная молния (3 цели)\\n&7Дальность: 96"
+		image "td:textures/gui/tower_tesla.png" at -48 109 size 22x22 texture 24x24 anchor center layer 12 id ico5 run TdSelectTool(player, 5) keep open tooltip "&b[5] Тесла &7(115з)\\n&7Урон: 18 | &bЦепная молния (3 цели)\\n&6✦5★ Эволюция: &fШторм (5 целей + 90% урон + оглушение!)"
 		text "&7[5] 115" at -48 124 anchor center shadow layer 12 id lbl5
-		image "td:textures/gui/tower_sniper.png" at -16 109 size 22x22 texture 24x24 anchor center layer 12 id ico6 run TdSelectTool(player, 6) keep open tooltip "&c[6] Снайпер &7(150з)\\n&7Урон: 52 | &cКрит 25% (x2)\\n&7Огромная дальность: 190"
+		image "td:textures/gui/tower_sniper.png" at -16 109 size 22x22 texture 24x24 anchor center layer 12 id ico6 run TdSelectTool(player, 6) keep open tooltip "&c[6] Снайпер &7(150з)\\n&7Урон: 52 | &cКрит 25% | Дальн. 190\\n&6✦5★ Эволюция: &fКазнь (крит 45% x2.5 + казнь <20% HP!)"
 		text "&7[6] 150" at -16 124 anchor center shadow layer 12 id lbl6
 		button "&aСтарт/x2" at 42 110 size 62x18 anchor center run TdWaveOrSpeed(player) keep open tooltip "&aЗапустить волну &7(Space)\\n&bВо время волны: скорость x1 / x2"
 		toggle "Авто" id autowave at 102 110 size 50x18 anchor center value false color #22C55E tooltip "&aАвто-волна\\n&7Автоматически запускает следующую волну"
@@ -2425,7 +2579,7 @@ function TdOpenMap3(p: player):
 		button "Меню" at 182 110 size 26x18 anchor center run TdOpenMenu(player) keep open tooltip "&eВыбор карты и сложности &7(M)"
 
 # ==========================================================
-#  УПРАВЛЕНИЕ, СТРОИТЕЛЬСТВО И ПРОДАЖА
+#  УПРАВЛЕНИЕ, СТРОИТЕЛЬСТВО, АПГРЕЙД И ✦5★ ЭВОЛЮЦИЯ
 # ==========================================================
 
 function TdShowTop(p: player):
@@ -2441,7 +2595,8 @@ function TdShowTop(p: player):
 			stop
 
 function TdSelectTool(p: player, tool: number):
-	if {-td-active::%p%} is not 1:
+	set {-g} to {-td-host::%p%}
+	if {-g} is not set or {-td-active::%{-g}%} is not 1:
 		stop
 	set {-td-tool::%p%} to tool
 	set {-td-sell::%p%} to 0
@@ -2453,26 +2608,27 @@ function TdSelectTool(p: player, tool: number):
 	set text of screen element "lbl6" for p to "&7[6] 150"
 	if tool is 1:
 		set text of screen element "lbl1" for p to "&e[1] 50"
-		set text of screen element "status_txt" for p to "&eВыбран: &fЛучник (50з) &7— быстрый урон по 1 цели"
+		set text of screen element "status_txt" for p to "&eЛучник (50з) &7| &6✦5★: &fШквал по 2 целям!"
 	else if tool is 2:
 		set text of screen element "lbl2" for p to "&6[2] 95"
-		set text of screen element "status_txt" for p to "&6Выбран: &fПушка (95з) &7— сплеш по области"
+		set text of screen element "status_txt" for p to "&6Пушка (95з) &7| &6✦5★: &fНапалм (поджог + мега-сплеш)!"
 	else if tool is 3:
 		set text of screen element "lbl3" for p to "&b[3] 85"
-		set text of screen element "status_txt" for p to "&bВыбран: &fЛёд (85з) &7— замедляет врагов на 45%%"
+		set text of screen element "status_txt" for p to "&bЛёд (85з) &7| &6✦5★: &fМерзлота (заморозка на месте)!"
 	else if tool is 4:
 		set text of screen element "lbl4" for p to "&d[4] 130"
-		set text of screen element "status_txt" for p to "&dВыбран: &fМаг (130з) &7— дальнобойный шар против боссов"
+		set text of screen element "status_txt" for p to "&dМаг (130з) &7| &6✦5★: &fУбийца Боссов (x2 + 4%% HP)!"
 	else if tool is 5:
 		set text of screen element "lbl5" for p to "&b[5] 115"
-		set text of screen element "status_txt" for p to "&bВыбран: &fТесла (115з) &7— цепная молния по 3 целям!"
+		set text of screen element "status_txt" for p to "&bТесла (115з) &7| &6✦5★: &fШторм (5 целей + оглушение)!"
 	else if tool is 6:
 		set text of screen element "lbl6" for p to "&c[6] 150"
-		set text of screen element "status_txt" for p to "&cВыбран: &fСнайпер (150з) &7— бьёт почти на всю карту + крит x2!"
+		set text of screen element "status_txt" for p to "&cСнайпер (150з) &7| &6✦5★: &fКазнь (<20%% HP + крит 45%%)!"
 	play sound ui.button.click to p with volume 0.4 pitch 1.3
 
 function TdToggleSell(p: player):
-	if {-td-active::%p%} is not 1:
+	set {-g} to {-td-host::%p%}
+	if {-g} is not set or {-td-active::%{-g}%} is not 1:
 		stop
 	if {-td-sell::%p%} is 1:
 		set {-td-sell::%p%} to 0
@@ -2483,86 +2639,114 @@ function TdToggleSell(p: player):
 		play sound ui.button.click to p with volume 0.4 pitch 0.9
 
 function TdWaveOrSpeed(p: player):
-	if {-td-active::%p%} is not 1 or {-td-over::%p%} is 1:
+	set {-g} to {-td-host::%p%}
+	if {-g} is not set or {-td-active::%{-g}%} is not 1 or {-td-over::%{-g}%} is 1:
 		stop
-	if {-td-in-wave::%p%} is 1:
-		if {-td-speed::%p%} is 1:
-			set {-td-speed::%p%} to 2
-			set text of screen element "status_txt" for p to "&bСкорость: &l2x &7(Space — вернуть 1x)"
+	if {-td-in-wave::%{-g}%} is 1:
+		if {-td-speed::%{-g}%} is 1:
+			set {-td-speed::%{-g}%} to 2
+			TdSyncStatus({-g}, "&bСкорость: &l2x &7(Space — 1x)")
 		else:
-			set {-td-speed::%p%} to 1
-			set text of screen element "status_txt" for p to "&7Скорость: &f1x &7(Space — ускорить 2x)"
-		play sound ui.button.click to p with volume 0.4 pitch 1.5
-		TdUpdateHud(p)
+			set {-td-speed::%{-g}%} to 1
+			TdSyncStatus({-g}, "&7Скорость: &f1x &7(Space — 2x)")
+		TdSyncSound({-g}, "ui.button.click", 0.4, 1.5)
+		TdSyncHud({-g})
 		stop
-	TdNextWave(p)
+	TdNextWave({-g})
 
-function TdCellClick(p: player, col: number, row: number):
-	if {-td-active::%p%} is not 1 or {-td-over::%p%} is 1:
+function TdCellClick(p: player, col: integer, row: integer):
+	set {-g} to {-td-host::%p%}
+	if {-g} is not set or {-td-active::%{-g}%} is not 1 or {-td-over::%{-g}%} is 1:
 		stop
-	set {-tid} to {-td-grid::%p%::%col%_%row%}
+	set {-tid} to {-td-grid::%{-g}%::%col%_%row%}
 	if {-tid} is not set:
 		set {-tid} to 0
 
-	# Режим продажи
+	# Продажа
 	if {-td-sell::%p%} is 1:
 		if {-tid} is 0:
 			set text of screen element "status_txt" for p to "&7Здесь нет башни"
 			stop
-		set {-ref} to round({-td-tcost::%p%::%{-tid}%} * 0.7)
+		set {-ref} to round({-td-tcost::%{-g}%::%{-tid}%} * 0.7)
 		add {-ref} to {-td-gold::%p%}
-		set {-td-ta::%p%::%{-tid}%} to 0
-		set {-td-tt::%p%::%{-tid}%} to 0
-		set {-td-tl::%p%::%{-tid}%} to 0
-		set {-td-tcost::%p%::%{-tid}%} to 0
-		set {-td-grid::%p%::%col%_%row%} to 0
+		set {-td-ta::%{-g}%::%{-tid}%} to 0
+		set {-td-tt::%{-g}%::%{-tid}%} to 0
+		set {-td-tl::%{-g}%::%{-tid}%} to 0
+		set {-td-tcost::%{-g}%::%{-tid}%} to 0
+		set {-td-grid::%{-g}%::%col%_%row%} to 0
 		set {-td-sell::%p%} to 0
-		set image of screen element "c%col%_%row%" for p to "td:textures/gui/tile_build.png"
-		hide screen element "st%{-tid}%" from p
-		set text of screen element "status_txt" for p to "&eБашня продана за +%{-ref}% золота"
-		play sound entity.experience_orb.pickup to p with volume 0.6 pitch 0.9
-		TdUpdateHud(p)
+		TdSyncImg({-g}, "c%col%_%row%", "td:textures/gui/tile_build.png")
+		TdSyncHide({-g}, "st%{-tid}%")
+		TdSyncStatus({-g}, "&e%p% продал башню (+%{-ref}%з)")
+		TdSyncSound({-g}, "entity.experience_orb.pickup", 0.6, 0.9)
+		TdSyncHud({-g})
 		stop
 
-	# Если клетка занята — сразу УЛУЧШАЕМ башню (до 4 ур.)
+	# Апгрейд (1→2→3→4) и ЭВОЛЮЦИЯ (4→5★ с уникальной пассивкой!)
 	if {-tid} > 0:
-		set {-lvl} to {-td-tl::%p%::%{-tid}%}
-		if {-lvl} >= 4:
-			set text of screen element "status_txt" for p to "&dБашня уже макс. уровня (★★★★)!"
+		set {-lvl} to {-td-tl::%{-g}%::%{-tid}%}
+		if {-lvl} >= 5:
+			set text of screen element "status_txt" for p to "&6&lБашня уже эволюционирована (✦5★ MAX)!"
 			stop
 		set {-up} to 65
 		if {-lvl} is 2:
 			set {-up} to 140
 		else if {-lvl} is 3:
 			set {-up} to 240
+		else if {-lvl} is 4:
+			set {-up} to 380
 		if {-td-gold::%p%} < {-up}:
-			set {-nl} to {-lvl} + 1
-			set text of screen element "status_txt" for p to "&cДля ур.%{-nl}% нужно %{-up}%з!"
+			if {-lvl} is 4:
+				set text of screen element "status_txt" for p to "&6Для ✦5★ ЭВОЛЮЦИИ нужно %{-up}%з!"
+			else:
+				set {-nl} to {-lvl} + 1
+				set text of screen element "status_txt" for p to "&cДля ур.%{-nl}% нужно %{-up}%з!"
 			play sound entity.villager.no to p with volume 0.5 pitch 1.0
 			stop
 		remove {-up} from {-td-gold::%p%}
-		add {-up} to {-td-tcost::%p%::%{-tid}%}
-		add 1 to {-td-tl::%p%::%{-tid}%}
-		set {-nl} to {-td-tl::%p%::%{-tid}%}
+		add {-up} to {-td-tcost::%{-g}%::%{-tid}%}
+		add 1 to {-td-tl::%{-g}%::%{-tid}%}
+		set {-nl} to {-td-tl::%{-g}%::%{-tid}%}
 		if {-nl} is 2:
-			set text of screen element "st%{-tid}%" for p to "&6★★"
+			TdSyncTxt({-g}, "st%{-tid}%", "&6★★")
+			TdSyncStatus({-g}, "&a%p% улучшил башню до ур.2! (-%{-up}%з)")
+			TdSyncSound({-g}, "entity.player.levelup", 0.5, 1.35)
 		else if {-nl} is 3:
-			set text of screen element "st%{-tid}%" for p to "&d★★★"
+			TdSyncTxt({-g}, "st%{-tid}%", "&d★★★")
+			TdSyncStatus({-g}, "&a%p% улучшил башню до ур.3! (-%{-up}%з)")
+			TdSyncSound({-g}, "entity.player.levelup", 0.5, 1.45)
+		else if {-nl} is 4:
+			TdSyncTxt({-g}, "st%{-tid}%", "&b★★★★")
+			TdSyncStatus({-g}, "&b%p% поднял ур.4! Следующий клик (380з) → &6&l✦5★ ЭВОЛЮЦИЯ!")
+			TdSyncSound({-g}, "entity.player.levelup", 0.55, 1.6)
 		else:
-			set text of screen element "st%{-tid}%" for p to "&b★★★★"
-		set text of screen element "status_txt" for p to "&aБашня улучшена до ур.%{-nl}%! (-%{-up}%з)"
-		play sound entity.player.levelup to p with volume 0.5 pitch 1.4
-		TdUpdateHud(p)
+			# ЭВОЛЮЦИЯ ✦5★!
+			TdSyncTxt({-g}, "st%{-tid}%", "&6&l✦5★")
+			set {-tt} to {-td-tt::%{-g}%::%{-tid}%}
+			set {-evo} to "Шквал (2 цели!)"
+			if {-tt} is 2:
+				set {-evo} to "Напалм (поджог + мега-сплеш!)"
+			else if {-tt} is 3:
+				set {-evo} to "Вечная мерзлота (заморозка!)"
+			else if {-tt} is 4:
+				set {-evo} to "Убийца Боссов (x2 + 4%% HP!)"
+			else if {-tt} is 5:
+				set {-evo} to "Грозовой шторм (5 целей + стан!)"
+			else if {-tt} is 6:
+				set {-evo} to "Казнь (<20%% HP + крит 45%%!)"
+			TdSyncStatus({-g}, "&6&l✦ ЭВОЛЮЦИЯ 5★! &f%p% открыл: &e%{-evo}%")
+			TdSyncSound({-g}, "ui.toast.challenge_complete", 0.75, 1.2)
+		TdSyncHud({-g})
 		stop
 
-	# Ищем свободный слот башни (макс. 24 на карте)
+	# Постройка новой башни (до 24 на карте)
 	set {-slot} to 0
 	loop 24 times:
 		set {-k} to %loop-number%
-		if {-td-ta::%p%::%{-k}%} is 0 and {-slot} is 0:
+		if {-td-ta::%{-g}%::%{-k}%} is 0 and {-slot} is 0:
 			set {-slot} to {-k}
 	if {-slot} is 0:
-		set text of screen element "status_txt" for p to "&cМаксимум 24 башни на карте! Улучшайте существующие"
+		set text of screen element "status_txt" for p to "&cМаксимум 24 башни! Улучшайте и эволюционируйте до ✦5★"
 		stop
 
 	set {-tool} to {-td-tool::%p%}
@@ -2592,156 +2776,160 @@ function TdCellClick(p: player, col: number, row: number):
 	remove {-cost} from {-td-gold::%p%}
 	set {-cx} to -180 + col * 24
 	set {-cy} to -94 + row * 24
-	set {-td-ta::%p%::%{-slot}%} to 1
-	set {-td-tt::%p%::%{-slot}%} to {-tool}
-	set {-td-tl::%p%::%{-slot}%} to 1
-	set {-td-tcd::%p%::%{-slot}%} to 0
-	set {-td-tcost::%p%::%{-slot}%} to {-cost}
-	set {-td-tx::%p%::%{-slot}%} to {-cx}
-	set {-td-ty::%p%::%{-slot}%} to {-cy}
-	set {-td-grid::%p%::%col%_%row%} to {-slot}
+	set {-td-ta::%{-g}%::%{-slot}%} to 1
+	set {-td-tt::%{-g}%::%{-slot}%} to {-tool}
+	set {-td-tl::%{-g}%::%{-slot}%} to 1
+	set {-td-tcd::%{-g}%::%{-slot}%} to 0
+	set {-td-tcost::%{-g}%::%{-slot}%} to {-cost}
+	set {-td-tx::%{-g}%::%{-slot}%} to {-cx}
+	set {-td-ty::%{-g}%::%{-slot}%} to {-cy}
+	set {-td-grid::%{-g}%::%col%_%row%} to {-slot}
 
-	set image of screen element "c%col%_%row%" for p to {-tex}
+	TdSyncImg({-g}, "c%col%_%row%", {-tex})
 	set {-sy} to {-cy} + 10
-	set position of screen element "st%{-slot}%" for p to {-cx} {-sy}
-	set text of screen element "st%{-slot}%" for p to "&e★"
-	show screen element "st%{-slot}%" to p
-	set text of screen element "status_txt" for p to "&aБашня построена! Клик по ней улучшит за 65з"
-	play sound block.anvil.use to p with volume 0.35 pitch 1.5
-	TdUpdateHud(p)
+	TdSyncPos({-g}, "st%{-slot}%", {-cx}, {-sy})
+	TdSyncTxt({-g}, "st%{-slot}%", "&e★")
+	TdSyncShow({-g}, "st%{-slot}%")
+	TdSyncStatus({-g}, "&a%p% построил башню! Клик по ней улучшит (до ✦5★ Эволюции)")
+	TdSyncSound({-g}, "block.anvil.use", 0.35, 1.5)
+	TdSyncHud({-g})
 
 # ==========================================================
-#  ВОЛНЫ И СПАВН (10 / 20 / 30 ВОЛН + 6 ВИДОВ МОБОВ + 2 БОССА)
+#  ВОЛНЫ И СПАВН
 # ==========================================================
 
-function TdNextWave(p: player):
-	if {-td-wave::%p%} >= {-td-maxw::%p%}:
+function TdNextWave(g: text):
+	if {-td-wave::%g%} >= {-td-maxw::%g%}:
 		stop
-	add 1 to {-td-wave::%p%}
-	set {-w} to {-td-wave::%p%}
-	set {-mw} to {-td-maxw::%p%}
-	set {-td-in-wave::%p%} to 1
-	set {-td-auto-cd::%p%} to 0
-	set {-td-spawn-cd::%p%} to 1
-	set {-td-spawn-boss::%p%} to 0
+	add 1 to {-td-wave::%g%}
+	set {-w} to {-td-wave::%g%}
+	set {-mw} to {-td-maxw::%g%}
+	set {-td-in-wave::%g%} to 1
+	set {-td-auto-cd::%g%} to 0
+	set {-td-spawn-cd::%g%} to 1
+	set {-td-spawn-boss::%g%} to 0
 
 	set {-cnt} to 5 + round({-w} * 0.65)
-	set {-td-to-spawn::%p%} to {-cnt}
+	set {-p2} to {-td-coop::%g%}
+	if {-p2} is set and {-p2} is not "":
+		add 2 to {-cnt}
+	set {-td-to-spawn::%g%} to {-cnt}
 
-	# Босс каждые 5 волн (5, 10, 15, 20, 25, 30)
 	set {-rem5} to {-w} % 5
 	if {-rem5} is 0:
 		set {-bkind} to round({-w} / 5)
-		set {-td-spawn-boss::%p%} to {-bkind}
+		set {-td-spawn-boss::%g%} to {-bkind}
 		if {-w} is {-mw}:
-			set text of screen element "status_txt" for p to "&4&lФИНАЛЬНАЯ ВОЛНА %{-w}%/%{-mw}% — МЕГА-БОСС!"
-			play sound entity.wither.spawn to p with volume 0.55 pitch 0.85
+			TdSyncStatus(g, "&4&lФИНАЛЬНАЯ ВОЛНА %{-w}%/%{-mw}% — МЕГА-БОСС!")
+			TdSyncSound(g, "entity.wither.spawn", 0.55, 0.85)
 		else:
-			set text of screen element "status_txt" for p to "&c&lВОЛНА %{-w}%/%{-mw}% — БОСС ВЫХОДИТ НА ПОЛЕ!"
-			play sound entity.ender_dragon.growl to p with volume 0.5 pitch 1.1
+			TdSyncStatus(g, "&c&lВОЛНА %{-w}%/%{-mw}% — БОСС ВЫХОДИТ НА ПОЛЕ!")
+			TdSyncSound(g, "entity.ender_dragon.growl", 0.5, 1.1)
 	else:
-		set text of screen element "status_txt" for p to "&eВолна %{-w}%/%{-mw}% началась! &7(Space — скорость x1/x2)"
-		play sound entity.experience_orb.pickup to p with volume 0.5 pitch 1.25
-	TdUpdateHud(p)
-
-function TdUpdateHud(p: player):
-	set {-sp} to "x1"
-	if {-td-speed::%p%} is 2:
-		set {-sp} to "&b&lx2"
-	set text of screen element "hud_top" for p to "&eВолна: &f%{-td-wave::%p%}%/%{-td-maxw::%p%}%   &6Золото: &f%{-td-gold::%p%}%   &cБаза: &f%{-td-hp::%p%}% HP   &aСчёт: &f%{-td-score::%p%}%   &7[%{-sp}%&7]"
+		TdSyncStatus(g, "&eВолна %{-w}%/%{-mw}% началась! &7(Space — x1/x2)")
+		TdSyncSound(g, "entity.experience_orb.pickup", 0.5, 1.25)
+	TdSyncHud(g)
 
 # ==========================================================
 #  ОСНОВНОЙ ТИК ИГРЫ
 # ==========================================================
 
-function TdTick(p: player):
-	if {-td-over::%p%} is 1:
+function TdTick(g: text):
+	if {-td-over::%g%} is 1:
 		stop
 
-	if {-td-fx-cd::%p%} > 0:
-		remove 1 from {-td-fx-cd::%p%}
-		if {-td-fx-cd::%p%} <= 0:
-			hide screen element "fx" from p
+	if {-td-fx-cd::%g%} > 0:
+		remove 1 from {-td-fx-cd::%g%}
+		if {-td-fx-cd::%g%} <= 0:
+			TdSyncHide(g, "fx")
 
-	# Авто-старт следующей волны, если включён тумблер Авто
-	if {-td-in-wave::%p%} is 0:
-		if {-td-auto::%p%} is 1 and {-td-wave::%p%} > 0 and {-td-wave::%p%} < {-td-maxw::%p%}:
-			add 1 to {-td-auto-cd::%p%}
-			if {-td-auto-cd::%p%} >= 15:
-				TdNextWave(p)
+	if {-td-in-wave::%g%} is 0:
+		if {-td-auto::%g%} is 1 and {-td-wave::%g%} > 0 and {-td-wave::%g%} < {-td-maxw::%g%}:
+			add 1 to {-td-auto-cd::%g%}
+			if {-td-auto-cd::%g%} >= 15:
+				TdNextWave(g)
 		stop
 
 	# 1. Спавн врагов
-	if {-td-to-spawn::%p%} > 0 or {-td-spawn-boss::%p%} > 0:
-		remove 1 from {-td-spawn-cd::%p%}
-		if {-td-spawn-cd::%p%} <= 0:
-			TdSpawnNext(p)
+	if {-td-to-spawn::%g%} > 0 or {-td-spawn-boss::%g%} > 0:
+		remove 1 from {-td-spawn-cd::%g%}
+		if {-td-spawn-cd::%g%} <= 0:
+			TdSpawnNext(g)
 
-	# 2. Движение врагов по точкам маршрута
+	# 2. Движение врагов + тик горения Напалма
 	set {-boss-alive} to 0
 	loop 10 times:
 		set {-ei} to %loop-number%
-		if {-td-ea::%p%::%{-ei}%} is 1:
-			TdMoveEnemy(p, {-ei})
-			if {-td-ea::%p%::%{-ei}%} is 1 and {-td-eboss::%p%::%{-ei}%} is 1:
+		if {-td-ea::%g%::%{-ei}%} is 1:
+			if {-td-eburn::%g%::%{-ei}%} > 0:
+				remove 1 from {-td-eburn::%g%::%{-ei}%}
+				TdDamageEnemy(g, {-ei}, {-td-eburn-d::%g%::%{-ei}%}, 0, 0)
+			if {-td-ea::%g%::%{-ei}%} is 1:
+				TdMoveEnemy(g, {-ei})
+			if {-td-ea::%g%::%{-ei}%} is 1 and {-td-eboss::%g%::%{-ei}%} is 1:
 				set {-boss-alive} to 1
-				set value of screen bar "boss_bar" for p to {-td-ehp::%p%::%{-ei}%}
+				TdSyncBossBar(g, {-td-ehp::%g%::%{-ei}%}, 0)
 	if {-boss-alive} is 0:
-		hide screen element "boss_bar" from p
+		TdSyncHide(g, "boss_bar")
 
-	# 3. Полёт прожектайлов и попадания
-	TdMoveProjectiles(p)
+	# 3. Полёт прожектайлов
+	TdMoveProjectiles(g)
 
-	# 4. Стрельба всех активных башен
+	# 4. Стрельба всех башен
 	loop 24 times:
 		set {-ti} to %loop-number%
-		if {-td-ta::%p%::%{-ti}%} is 1:
-			TdTowerTick(p, {-ti})
+		if {-td-ta::%g%::%{-ti}%} is 1:
+			TdTowerTick(g, {-ti})
 
 	# 5. Завершение волны
-	if {-td-to-spawn::%p%} <= 0 and {-td-spawn-boss::%p%} <= 0:
+	if {-td-to-spawn::%g%} <= 0 and {-td-spawn-boss::%g%} <= 0:
 		set {-rem} to 0
 		loop 10 times:
 			set {-k} to %loop-number%
-			if {-td-ea::%p%::%{-k}%} is 1:
+			if {-td-ea::%g%::%{-k}%} is 1:
 				add 1 to {-rem}
 		if {-rem} is 0:
-			set {-td-in-wave::%p%} to 0
-			set {-td-auto-cd::%p%} to 0
-			TdClearProjectiles(p)
-			set {-bonus} to 18 + {-td-wave::%p%} * 6
-			add {-bonus} to {-td-gold::%p%}
-			add 100 + {-td-wave::%p%} * 15 to {-td-score::%p%}
-			TdUpdateHud(p)
-			if {-td-wave::%p%} >= {-td-maxw::%p%}:
-				TdWin(p)
+			set {-td-in-wave::%g%} to 0
+			set {-td-auto-cd::%g%} to 0
+			TdClearProjectiles(g)
+			set {-bonus} to 18 + {-td-wave::%g%} * 6
+			add {-bonus} to {-td-gold::%g%}
+			set {-p2} to {-td-coop::%g%}
+			if {-p2} is set and {-p2} is not "":
+				add {-bonus} to {-td-gold::%{-p2}%}
+			add 100 + {-td-wave::%g%} * 15 to {-td-score::%g%}
+			TdSyncHud(g)
+			if {-td-wave::%g%} >= {-td-maxw::%g%}:
+				TdWin(g)
 			else:
-				set text of screen element "status_txt" for p to "&aВолна %{-td-wave::%p%}%/%{-td-maxw::%p%}% пройдена! +%{-bonus}%з. Жмите &eSpace &aдля следующей!"
-				play sound entity.player.levelup to p with volume 0.5 pitch 1.25
+				TdSyncStatus(g, "&aВолна %{-td-wave::%g%}%/%{-td-maxw::%g%}% пройдена! +%{-bonus}%з. Жмите &eSpace!")
+				TdSyncSound(g, "entity.player.levelup", 0.5, 1.25)
 
-function TdSpawnNext(p: player):
-	set {-w} to {-td-wave::%p%}
-	set {-d} to {-td-diff::%p%}
+function TdSpawnNext(g: text):
+	set {-w} to {-td-wave::%g%}
+	set {-d} to {-td-diff::%g%}
 	set {-dmul} to 1.0
 	if {-d} is 1:
 		set {-dmul} to 0.85
 	else if {-d} is 3:
 		set {-dmul} to 1.25
+	set {-p2} to {-td-coop::%g%}
+	if {-p2} is set and {-p2} is not "":
+		set {-dmul} to {-dmul} * 1.45
 
-	set {-sx} to {-td-wpx::%p%::1}
-	set {-sy} to {-td-wpy::%p%::1}
+	set {-sx} to {-td-wpx::%g%::1}
+	set {-sy} to {-td-wpy::%g%::1}
 
-	# Обычные мобы (слоты 1..9)
-	if {-td-to-spawn::%p%} > 0:
+	if {-td-to-spawn::%g%} > 0:
 		set {-slot} to 0
 		loop 9 times:
 			set {-k} to %loop-number%
-			if {-td-ea::%p%::%{-k}%} is 0 and {-slot} is 0:
+			if {-td-ea::%g%::%{-k}%} is 0 and {-slot} is 0:
 				set {-slot} to {-k}
 		if {-slot} is 0:
-			set {-td-spawn-cd::%p%} to 2
+			set {-td-spawn-cd::%g%} to 2
 			stop
-		remove 1 from {-td-to-spawn::%p%}
+		remove 1 from {-td-to-spawn::%g%}
 
 		set {-hp} to round((32 + {-w} * 24 + {-w} * {-w} * 2.5) * {-dmul})
 		set {-spd} to 3.6 + {-w} * 0.08
@@ -2751,88 +2939,91 @@ function TdSpawnNext(p: player):
 			set {-cd} to 3
 		set {-tex} to "td:textures/gui/mob_slime.png"
 
-		# 6 типов мобов по волнам
 		set {-m6} to {-w} % 6
 		if {-m6} is 2:
-			# Гоблин-бегун (очень быстрый!)
 			set {-tex} to "td:textures/gui/mob_goblin.png"
 			set {-hp} to round({-hp} * 0.72)
 			set {-spd} to {-spd} + 1.45
 			set {-cd} to 4
 		else if {-m6} is 3:
-			# Орк-воин
 			set {-tex} to "td:textures/gui/mob_orc.png"
 			set {-hp} to round({-hp} * 1.15)
 		else if {-m6} is 4:
-			# Призрак (быстрый и хитрый)
 			set {-tex} to "td:textures/gui/mob_ghost.png"
 			set {-hp} to round({-hp} * 0.88)
 			set {-spd} to {-spd} + 1.0
 		else if {-m6} is 5:
-			# Тёмный рыцарь (броня)
 			set {-tex} to "td:textures/gui/mob_knight.png"
 			set {-hp} to round({-hp} * 1.32)
 			set {-spd} to {-spd} - 0.3
 		else if {-m6} is 0:
-			# Лавовый голем (жирный танк!)
 			set {-tex} to "td:textures/gui/mob_golem.png"
 			set {-hp} to round({-hp} * 1.65)
 			set {-spd} to {-spd} - 0.7
 			add 5 to {-rew}
 
-		set {-td-spawn-cd::%p%} to {-cd}
-		set {-td-ea::%p%::%{-slot}%} to 1
-		set {-td-eboss::%p%::%{-slot}%} to 0
-		set {-td-ex::%p%::%{-slot}%} to {-sx}
-		set {-td-ey::%p%::%{-slot}%} to {-sy}
-		set {-td-eseg::%p%::%{-slot}%} to 2
-		set {-td-ehp::%p%::%{-slot}%} to {-hp}
-		set {-td-espd::%p%::%{-slot}%} to {-spd}
-		set {-td-erew::%p%::%{-slot}%} to {-rew}
-		set {-td-eslow::%p%::%{-slot}%} to 0
-		set image of screen element "e%{-slot}%" for p to {-tex}
-		set position of screen element "e%{-slot}%" for p to {-sx} {-sy}
-		show screen element "e%{-slot}%" to p
+		set {-td-spawn-cd::%g%} to {-cd}
+		set {-td-ea::%g%::%{-slot}%} to 1
+		set {-td-eboss::%g%::%{-slot}%} to 0
+		set {-td-ex::%g%::%{-slot}%} to {-sx}
+		set {-td-ey::%g%::%{-slot}%} to {-sy}
+		set {-td-eseg::%g%::%{-slot}%} to 2
+		set {-td-ehp::%g%::%{-slot}%} to {-hp}
+		set {-td-emhp::%g%::%{-slot}%} to {-hp}
+		set {-td-espd::%g%::%{-slot}%} to {-spd}
+		set {-td-erew::%g%::%{-slot}%} to {-rew}
+		set {-td-eslow::%g%::%{-slot}%} to 0
+		set {-td-eslow-f::%g%::%{-slot}%} to 0.55
+		set {-td-efreeze::%g%::%{-slot}%} to 0
+		set {-td-eburn::%g%::%{-slot}%} to 0
+		TdSyncImg(g, "e%{-slot}%", {-tex})
+		TdSyncPos(g, "e%{-slot}%", {-sx}, {-sy})
+		TdSyncShow(g, "e%{-slot}%")
 		stop
 
 	# Спавн Босса (слот 10)
-	if {-td-spawn-boss::%p%} > 0 and {-td-ea::%p%::10} is 0:
-		set {-bk} to {-td-spawn-boss::%p%}
-		set {-td-spawn-boss::%p%} to 0
+	if {-td-spawn-boss::%g%} > 0 and {-td-ea::%g%::10} is 0:
+		set {-bk} to {-td-spawn-boss::%g%}
+		set {-td-spawn-boss::%g%} to 0
 		set {-bhp} to round((480 + {-bk} * {-bk} * 380) * {-dmul})
 		set {-bspd} to 2.25 + {-bk} * 0.08
 		set {-brew} to 90 + {-bk} * 75
 		set {-btex} to "td:textures/gui/mob_boss.png"
-		if {-w} is {-td-maxw::%p%}:
+		if {-w} is {-td-maxw::%g%}:
 			set {-btex} to "td:textures/gui/mob_megaboss.png"
 			set {-bhp} to round({-bhp} * 1.35)
-		set {-td-ea::%p%::10} to 1
-		set {-td-eboss::%p%::10} to 1
-		set {-td-ex::%p%::10} to {-sx}
-		set {-td-ey::%p%::10} to {-sy}
-		set {-td-eseg::%p%::10} to 2
-		set {-td-ehp::%p%::10} to {-bhp}
-		set {-td-espd::%p%::10} to {-bspd}
-		set {-td-erew::%p%::10} to {-brew}
-		set {-td-eslow::%p%::10} to 0
-		set image of screen element "e10" for p to {-btex}
-		set position of screen element "e10" for p to {-sx} {-sy}
-		show screen element "e10" to p
-		set max of screen bar "boss_bar" for p to {-bhp}
-		set value of screen bar "boss_bar" for p to {-bhp}
-		show screen element "boss_bar" to p
+		set {-td-ea::%g%::10} to 1
+		set {-td-eboss::%g%::10} to 1
+		set {-td-ex::%g%::10} to {-sx}
+		set {-td-ey::%g%::10} to {-sy}
+		set {-td-eseg::%g%::10} to 2
+		set {-td-ehp::%g%::10} to {-bhp}
+		set {-td-emhp::%g%::10} to {-bhp}
+		set {-td-espd::%g%::10} to {-bspd}
+		set {-td-erew::%g%::10} to {-brew}
+		set {-td-eslow::%g%::10} to 0
+		set {-td-eslow-f::%g%::10} to 0.55
+		set {-td-efreeze::%g%::10} to 0
+		set {-td-eburn::%g%::10} to 0
+		TdSyncImg(g, "e10", {-btex})
+		TdSyncPos(g, "e10", {-sx}, {-sy})
+		TdSyncShow(g, "e10")
+		TdSyncBossBar(g, {-bhp}, {-bhp})
+		TdSyncShow(g, "boss_bar")
 
-# Универсальное движение по точкам маршрута любой карты
-function TdMoveEnemy(p: player, i: number):
-	set {-spd} to {-td-espd::%p%::%i%}
-	if {-td-eslow::%p%::%i%} > 0:
-		remove 1 from {-td-eslow::%p%::%i%}
-		set {-spd} to {-spd} * 0.55
-	set {-seg} to {-td-eseg::%p%::%i%}
-	set {-x} to {-td-ex::%p%::%i%}
-	set {-y} to {-td-ey::%p%::%i%}
-	set {-tx} to {-td-wpx::%p%::%{-seg}%}
-	set {-ty} to {-td-wpy::%p%::%{-seg}%}
+function TdMoveEnemy(g: text, i: number):
+	if {-td-efreeze::%g%::%i%} > 0:
+		remove 1 from {-td-efreeze::%g%::%i%}
+		stop
+	set {-spd} to {-td-espd::%g%::%i%}
+	if {-td-eslow::%g%::%i%} > 0:
+		remove 1 from {-td-eslow::%g%::%i%}
+		set {-spd} to {-spd} * {-td-eslow-f::%g%::%i%}
+	set {-seg} to {-td-eseg::%g%::%i%}
+	set {-x} to {-td-ex::%g%::%i%}
+	set {-y} to {-td-ey::%g%::%i%}
+	set {-tx} to {-td-wpx::%g%::%{-seg}%}
+	set {-ty} to {-td-wpy::%g%::%{-seg}%}
 	set {-dx} to {-tx} - {-x}
 	set {-dy} to {-ty} - {-y}
 	set {-dist} to sqrt({-dx} * {-dx} + {-dy} * {-dy})
@@ -2841,43 +3032,49 @@ function TdMoveEnemy(p: player, i: number):
 		set {-x} to {-tx}
 		set {-y} to {-ty}
 		add 1 to {-seg}
-		if {-seg} > {-td-wpcnt::%p%}:
-			# Враг прорвался в замок!
-			set {-td-ea::%p%::%i%} to 0
-			hide screen element "e%i%" from p
+		if {-seg} > {-td-wpcnt::%g%}:
+			set {-td-ea::%g%::%i%} to 0
+			TdSyncHide(g, "e%i%")
 			set {-dmg} to 1
-			if {-td-eboss::%p%::%i%} is 1:
+			if {-td-eboss::%g%::%i%} is 1:
 				set {-dmg} to 5
-			remove {-dmg} from {-td-hp::%p%}
-			play sound entity.iron_golem.damage to p with volume 0.7 pitch 0.8
-			shake camera of p with intensity 1.6 for 8 ticks
-			fade screen of p to #FF1100 in 2 stay 2 out 8 ticks
-			TdUpdateHud(p)
-			if {-td-hp::%p%} <= 0:
-				TdLose(p)
+			remove {-dmg} from {-td-hp::%g%}
+			TdSyncSound(g, "entity.iron_golem.damage", 0.7, 0.8)
+			shake camera of g with intensity 1.6 for 8 ticks
+			fade screen of g to #FF1100 in 2 stay 2 out 8 ticks
+			set {-p2} to {-td-coop::%g%}
+			if {-p2} is set and {-p2} is not "":
+				shake camera of {-p2} with intensity 1.6 for 8 ticks
+				fade screen of {-p2} to #FF1100 in 2 stay 2 out 8 ticks
+			TdSyncHud(g)
+			if {-td-hp::%g%} <= 0:
+				TdLose(g)
 			stop
 	else:
 		set {-x} to {-x} + ({-dx} / {-dist}) * {-spd}
 		set {-y} to {-y} + ({-dy} / {-dist}) * {-spd}
 
-	set {-td-ex::%p%::%i%} to {-x}
-	set {-td-ey::%p%::%i%} to {-y}
-	set {-td-eseg::%p%::%i%} to {-seg}
-	set position of screen element "e%i%" for p to {-x} {-y}
+	set {-td-ex::%g%::%i%} to {-x}
+	set {-td-ey::%g%::%i%} to {-y}
+	set {-td-eseg::%g%::%i%} to {-seg}
+	TdSyncPos(g, "e%i%", {-x}, {-y})
 
 # ==========================================================
-#  БАШНИ И ЛЕТАЮЩИЕ ПРОЖЕКТАЙЛЫ
+#  БАШНИ, ЭВОЛЮЦИИ ✦5★ И ЛЕТАЮЩИЕ ПРОЖЕКТАЙЛЫ
 # ==========================================================
 
-function TdTowerTick(p: player, tid: number):
-	if {-td-tcd::%p%::%tid%} > 0:
-		remove 1 from {-td-tcd::%p%::%tid%}
+function TdTowerTick(g: text, tid: number):
+	if {-td-tcd::%g%::%tid%} > 0:
+		remove 1 from {-td-tcd::%g%::%tid%}
 		stop
 
-	set {-type} to {-td-tt::%p%::%tid%}
-	set {-lvl} to {-td-tl::%p%::%tid%}
-	set {-tx} to {-td-tx::%p%::%tid%}
-	set {-ty} to {-td-ty::%p%::%tid%}
+	set {-type} to {-td-tt::%g%::%tid%}
+	set {-lvl} to {-td-tl::%g%::%tid%}
+	set {-tx} to {-td-tx::%g%::%tid%}
+	set {-ty} to {-td-ty::%g%::%tid%}
+	set {-evo} to 0
+	if {-lvl} >= 5:
+		set {-evo} to 1
 
 	set {-range} to 88
 	set {-dmg} to 14
@@ -2917,176 +3114,245 @@ function TdTowerTick(p: player, tid: number):
 
 	set {-range} to {-range} + ({-lvl} - 1) * 9
 	set {-dmg} to round({-dmg} * (1 + ({-lvl} - 1) * 0.55))
+	if {-evo} is 1:
+		add 14 to {-range}
+		set {-dmg} to round({-dmg} * 1.4)
 
-	# Выбираем самого продвинутого врага в радиусе
+	# Ищем лучшую цель (и вторую цель для ✦5★ Лучника «Шквал»)
 	set {-best} to 0
 	set {-best-prog} to -1
+	set {-second} to 0
 	loop 10 times:
 		set {-ei} to %loop-number%
-		if {-td-ea::%p%::%{-ei}%} is 1:
-			set {-dx} to {-td-ex::%p%::%{-ei}%} - {-tx}
-			set {-dy} to {-td-ey::%p%::%{-ei}%} - {-ty}
+		if {-td-ea::%g%::%{-ei}%} is 1:
+			set {-dx} to {-td-ex::%g%::%{-ei}%} - {-tx}
+			set {-dy} to {-td-ey::%g%::%{-ei}%} - {-ty}
 			if sqrt({-dx} * {-dx} + {-dy} * {-dy}) <= {-range}:
-				set {-prog} to {-td-eseg::%p%::%{-ei}%} * 1000
+				set {-prog} to {-td-eseg::%g%::%{-ei}%} * 1000
 				if {-prog} > {-best-prog}:
+					set {-second} to {-best}
 					set {-best-prog} to {-prog}
 					set {-best} to {-ei}
+				else if {-second} is 0:
+					set {-second} to {-ei}
 
 	if {-best} is 0:
 		stop
 
-	set {-td-tcd::%p%::%tid%} to {-cd}
-	TdSpawnProjectile(p, {-tx}, {-ty}, {-best}, {-type}, {-dmg}, {-pspd}, {-ptex})
+	set {-td-tcd::%g%::%tid%} to {-cd}
+	TdSpawnProjectile(g, {-tx}, {-ty}, {-best}, {-type}, {-evo}, {-dmg}, {-pspd}, {-ptex})
 
-function TdSpawnProjectile(p: player, sx: number, sy: number, tgt: number, ptype: number, dmg: number, spd: number, tex: text):
-	# Ищем свободный слот прожектайла (1..6); если все заняты — мгновенное попадание
+	# Пассивка ✦5★ Лучника: Шквал — выстрел сразу по 2-й цели!
+	if {-type} is 1 and {-evo} is 1 and {-second} > 0:
+		TdSpawnProjectile(g, {-tx}, {-ty}, {-second}, 1, 1, {-dmg}, {-pspd}, {-ptex})
+
+function TdSpawnProjectile(g: text, sx: number, sy: number, tgt: number, ptype: number, evo: number, dmg: number, spd: number, tex: text):
 	set {-ps} to 0
 	loop 6 times:
 		set {-k} to %loop-number%
-		if {-td-pra::%p%::%{-k}%} is 0 and {-ps} is 0:
+		if {-td-pra::%g%::%{-k}%} is 0 and {-ps} is 0:
 			set {-ps} to {-k}
 	if {-ps} is 0:
-		TdImpact(p, tgt, ptype, dmg, {-td-ex::%p%::%tgt%}, {-td-ey::%p%::%tgt%})
+		TdImpact(g, tgt, ptype, evo, dmg, {-td-ex::%g%::%tgt%}, {-td-ey::%g%::%tgt%})
 		stop
-	set {-td-pra::%p%::%{-ps}%} to 1
-	set {-td-prx::%p%::%{-ps}%} to sx
-	set {-td-pry::%p%::%{-ps}%} to sy
-	set {-td-prtgt::%p%::%{-ps}%} to tgt
-	set {-td-prtype::%p%::%{-ps}%} to ptype
-	set {-td-prdmg::%p%::%{-ps}%} to dmg
-	set {-td-prspd::%p%::%{-ps}%} to spd
-	set image of screen element "pr%{-ps}%" for p to tex
-	set position of screen element "pr%{-ps}%" for p to sx sy
-	show screen element "pr%{-ps}%" to p
+	set {-td-pra::%g%::%{-ps}%} to 1
+	set {-td-prx::%g%::%{-ps}%} to sx
+	set {-td-pry::%g%::%{-ps}%} to sy
+	set {-td-prtgt::%g%::%{-ps}%} to tgt
+	set {-td-prtype::%g%::%{-ps}%} to ptype
+	set {-td-prevo::%g%::%{-ps}%} to evo
+	set {-td-prdmg::%g%::%{-ps}%} to dmg
+	set {-td-prspd::%g%::%{-ps}%} to spd
+	TdSyncImg(g, "pr%{-ps}%", tex)
+	TdSyncPos(g, "pr%{-ps}%", sx, sy)
+	TdSyncShow(g, "pr%{-ps}%")
 
-function TdMoveProjectiles(p: player):
+function TdMoveProjectiles(g: text):
 	loop 6 times:
 		set {-k} to %loop-number%
-		if {-td-pra::%p%::%{-k}%} is 1:
-			set {-tgt} to {-td-prtgt::%p%::%{-k}%}
-			if {-td-ea::%p%::%{-tgt}%} is not 1:
-				set {-td-pra::%p%::%{-k}%} to 0
-				hide screen element "pr%{-k}%" from p
+		if {-td-pra::%g%::%{-k}%} is 1:
+			set {-tgt} to {-td-prtgt::%g%::%{-k}%}
+			if {-td-ea::%g%::%{-tgt}%} is not 1:
+				set {-td-pra::%g%::%{-k}%} to 0
+				TdSyncHide(g, "pr%{-k}%")
 			else:
-				set {-px} to {-td-prx::%p%::%{-k}%}
-				set {-py} to {-td-pry::%p%::%{-k}%}
-				set {-tx} to {-td-ex::%p%::%{-tgt}%}
-				set {-ty} to {-td-ey::%p%::%{-tgt}%}
-				set {-spd} to {-td-prspd::%p%::%{-k}%}
+				set {-px} to {-td-prx::%g%::%{-k}%}
+				set {-py} to {-td-pry::%g%::%{-k}%}
+				set {-tx} to {-td-ex::%g%::%{-tgt}%}
+				set {-ty} to {-td-ey::%g%::%{-tgt}%}
+				set {-spd} to {-td-prspd::%g%::%{-k}%}
 				set {-dx} to {-tx} - {-px}
 				set {-dy} to {-ty} - {-py}
 				set {-dist} to sqrt({-dx} * {-dx} + {-dy} * {-dy})
 				if {-dist} <= {-spd}:
-					set {-td-pra::%p%::%{-k}%} to 0
-					hide screen element "pr%{-k}%" from p
-					TdImpact(p, {-tgt}, {-td-prtype::%p%::%{-k}%}, {-td-prdmg::%p%::%{-k}%}, {-tx}, {-ty})
+					set {-td-pra::%g%::%{-k}%} to 0
+					TdSyncHide(g, "pr%{-k}%")
+					TdImpact(g, {-tgt}, {-td-prtype::%g%::%{-k}%}, {-td-prevo::%g%::%{-k}%}, {-td-prdmg::%g%::%{-k}%}, {-tx}, {-ty})
 				else:
 					set {-nx} to {-px} + ({-dx} / {-dist}) * {-spd}
 					set {-ny} to {-py} + ({-dy} / {-dist}) * {-spd}
-					set {-td-prx::%p%::%{-k}%} to {-nx}
-					set {-td-pry::%p%::%{-k}%} to {-ny}
-					set position of screen element "pr%{-k}%" for p to {-nx} {-ny}
+					set {-td-prx::%g%::%{-k}%} to {-nx}
+					set {-td-pry::%g%::%{-k}%} to {-ny}
+					TdSyncPos(g, "pr%{-k}%", {-nx}, {-ny})
 
-function TdClearProjectiles(p: player):
+function TdClearProjectiles(g: text):
 	loop 6 times:
 		set {-k} to %loop-number%
-		set {-td-pra::%p%::%{-k}%} to 0
-		hide screen element "pr%{-k}%" from p
+		set {-td-pra::%g%::%{-k}%} to 0
+		TdSyncHide(g, "pr%{-k}%")
 
-function TdImpact(p: player, tgt: number, ptype: number, dmg: number, hx: number, hy: number):
+function TdImpact(g: text, tgt: number, ptype: number, evo: number, dmg: number, hx: number, hy: number):
 	if ptype is 2:
-		# Пушка: сплеш-взрыв
-		set position of screen element "fx" for p to hx hy
-		show screen element "fx" to p
-		set {-td-fx-cd::%p%} to 2
-		play sound entity.generic.explode to p with volume 0.16 pitch 1.65
+		# Пушка: сплеш (+ ✦5★ Напалм: радиус 62 и поджог!)
+		TdSyncPos(g, "fx", hx, hy)
+		TdSyncShow(g, "fx")
+		set {-td-fx-cd::%g%} to 2
+		TdSyncSound(g, "entity.generic.explode", 0.16, 1.65)
+		set {-rad} to 44
+		if evo is 1:
+			set {-rad} to 62
 		loop 10 times:
 			set {-si} to %loop-number%
-			if {-td-ea::%p%::%{-si}%} is 1:
-				set {-sdx} to {-td-ex::%p%::%{-si}%} - hx
-				set {-sdy} to {-td-ey::%p%::%{-si}%} - hy
-				if sqrt({-sdx} * {-sdx} + {-sdy} * {-sdy}) <= 44:
-					TdDamageEnemy(p, {-si}, dmg, 0)
+			if {-td-ea::%g%::%{-si}%} is 1:
+				set {-sdx} to {-td-ex::%g%::%{-si}%} - hx
+				set {-sdy} to {-td-ey::%g%::%{-si}%} - hy
+				if sqrt({-sdx} * {-sdx} + {-sdy} * {-sdy}) <= {-rad}:
+					TdDamageEnemy(g, {-si}, dmg, 0, 0)
+					if evo is 1 and {-td-ea::%g%::%{-si}%} is 1:
+						set {-td-eburn::%g%::%{-si}%} to 12
+						set {-td-eburn-d::%g%::%{-si}%} to round(dmg * 0.12)
 	else if ptype is 3:
-		# Лёд: замедление 45%
-		play sound block.glass.break to p with volume 0.18 pitch 1.75
-		TdDamageEnemy(p, tgt, dmg, 18)
+		# Лёд: замедление 45% (+ ✦5★ Вечная мерзлота: 65% + 25% заморозка на месте!)
+		TdSyncSound(g, "block.glass.break", 0.18, 1.75)
+		set {-frz} to 0
+		if evo is 1:
+			set {-td-eslow-f::%g%::%tgt%} to 0.35
+			chance of 25%:
+				set {-frz} to 12
+		else:
+			set {-td-eslow-f::%g%::%tgt%} to 0.55
+		TdDamageEnemy(g, tgt, dmg, 20, {-frz})
+	else if ptype is 4:
+		# Маг (+ ✦5★ Убийца Боссов: x2 урон Боссам + 4% макс. HP!)
+		set {-fdmg} to dmg
+		if evo is 1:
+			if {-td-eboss::%g%::%tgt%} is 1:
+				set {-fdmg} to round({-fdmg} * 2.0)
+			add round({-td-emhp::%g%::%tgt%} * 0.04) to {-fdmg}
+		TdSyncSound(g, "entity.illusioner.cast_spell", 0.18, 1.5)
+		TdDamageEnemy(g, tgt, {-fdmg}, 0, 0)
 	else if ptype is 5:
-		# Тесла: цепная молния до 3 врагов!
-		play sound entity.lightning_bolt.impact to p with volume 0.14 pitch 1.9
-		TdDamageEnemy(p, tgt, dmg, 0)
+		# Тесла: цепная молния 3 цели (+ ✦5★ Шторм: 5 целей, 90% урон, стан 4 тика!)
+		TdSyncSound(g, "entity.lightning_bolt.impact", 0.14, 1.9)
+		set {-maxh} to 3
+		set {-crad} to 68
+		set {-cmul} to 0.75
+		set {-stun} to 0
+		if evo is 1:
+			set {-maxh} to 5
+			set {-crad} to 88
+			set {-cmul} to 0.9
+			set {-stun} to 4
+		TdDamageEnemy(g, tgt, dmg, 0, {-stun})
 		set {-hits} to 1
 		loop 10 times:
 			set {-si} to %loop-number%
-			if {-si} is not tgt and {-hits} < 3 and {-td-ea::%p%::%{-si}%} is 1:
-				set {-sdx} to {-td-ex::%p%::%{-si}%} - hx
-				set {-sdy} to {-td-ey::%p%::%{-si}%} - hy
-				if sqrt({-sdx} * {-sdx} + {-sdy} * {-sdy}) <= 68:
-					TdDamageEnemy(p, {-si}, round(dmg * 0.75), 0)
+			if {-si} is not tgt and {-hits} < {-maxh} and {-td-ea::%g%::%{-si}%} is 1:
+				set {-sdx} to {-td-ex::%g%::%{-si}%} - hx
+				set {-sdy} to {-td-ey::%g%::%{-si}%} - hy
+				if sqrt({-sdx} * {-sdx} + {-sdy} * {-sdy}) <= {-crad}:
+					TdDamageEnemy(g, {-si}, round(dmg * {-cmul}), 0, {-stun})
 					add 1 to {-hits}
 	else if ptype is 6:
-		# Снайпер: шанс крита 25% (x2 урон + вспышка)
+		# Снайпер: крит 25% x2 (+ ✦5★ Казнь: крит 45% x2.5 + казнь обычных мобов <20% HP!)
 		set {-fdmg} to dmg
-		chance of 25%:
-			set {-fdmg} to dmg * 2
-			set position of screen element "fx" for p to hx hy
-			show screen element "fx" to p
-			set {-td-fx-cd::%p%} to 2
-		play sound entity.arrow.hit_player to p with volume 0.25 pitch 1.6
-		TdDamageEnemy(p, tgt, {-fdmg}, 0)
+		if evo is 1:
+			chance of 45%:
+				set {-fdmg} to round(dmg * 2.5)
+				TdSyncPos(g, "fx", hx, hy)
+				TdSyncShow(g, "fx")
+				set {-td-fx-cd::%g%} to 2
+			if {-td-eboss::%g%::%tgt%} is 0 and {-td-ehp::%g%::%tgt%} <= {-td-emhp::%g%::%tgt%} * 0.2:
+				set {-fdmg} to 999999
+		else:
+			chance of 25%:
+				set {-fdmg} to dmg * 2
+				TdSyncPos(g, "fx", hx, hy)
+				TdSyncShow(g, "fx")
+				set {-td-fx-cd::%g%} to 2
+		TdSyncSound(g, "entity.arrow.hit_player", 0.24, 1.6)
+		TdDamageEnemy(g, tgt, {-fdmg}, 0, 0)
 	else:
-		play sound entity.arrow.shoot to p with volume 0.18 pitch 1.45
-		TdDamageEnemy(p, tgt, dmg, 0)
+		TdSyncSound(g, "entity.arrow.shoot", 0.18, 1.45)
+		TdDamageEnemy(g, tgt, dmg, 0, 0)
 
-function TdDamageEnemy(p: player, i: number, dmg: number, slow: number):
-	if {-td-ea::%p%::%i%} is not 1:
+function TdDamageEnemy(g: text, i: number, dmg: number, slow: number, freeze: number):
+	if {-td-ea::%g%::%i%} is not 1:
 		stop
-	remove dmg from {-td-ehp::%p%::%i%}
+	remove dmg from {-td-ehp::%g%::%i%}
 	if slow > 0:
-		set {-td-eslow::%p%::%i%} to slow
-	if {-td-ehp::%p%::%i%} <= 0:
-		set {-td-ea::%p%::%i%} to 0
-		hide screen element "e%i%" from p
-		set {-rew} to {-td-erew::%p%::%i%}
-		add {-rew} to {-td-gold::%p%}
-		add {-rew} to {-td-score::%p%}
-		if {-td-eboss::%p%::%i%} is 1:
-			hide screen element "boss_bar" from p
-			play sound ui.toast.challenge_complete to p with volume 0.7 pitch 1.1
-		TdUpdateHud(p)
+		set {-td-eslow::%g%::%i%} to slow
+	if freeze > 0:
+		set {-td-efreeze::%g%::%i%} to freeze
+	if {-td-ehp::%g%::%i%} <= 0:
+		set {-td-ea::%g%::%i%} to 0
+		TdSyncHide(g, "e%i%")
+		set {-rew} to {-td-erew::%g%::%i%}
+		set {-p2} to {-td-coop::%g%}
+		if {-p2} is set and {-p2} is not "":
+			set {-share} to round({-rew} * 0.65)
+			add {-share} to {-td-gold::%g%}
+			add {-share} to {-td-gold::%{-p2}%}
+		else:
+			add {-rew} to {-td-gold::%g%}
+		add {-rew} to {-td-score::%g%}
+		if {-td-eboss::%g%::%i%} is 1:
+			TdSyncHide(g, "boss_bar")
+			TdSyncSound(g, "ui.toast.challenge_complete", 0.7, 1.1)
+		TdSyncHud(g)
 
 # ==========================================================
 #  ПОБЕДА, ПОРАЖЕНИЕ И РЕКОРДЫ
 # ==========================================================
 
-function TdLose(p: player):
-	set {-td-over::%p%} to 1
-	set {-td-in-wave::%p%} to 0
-	TdClearProjectiles(p)
-	set text of screen element "end_title" for p to "&c&lБАЗА ПАЛА! (Волна %{-td-wave::%p%}%/%{-td-maxw::%p%}%)"
-	set text of screen element "end_sub" for p to "&fСчёт: &e%{-td-score::%p%}% &7— нажми &eR &7(рестарт) или &eM &7(меню)"
-	show screen element "end_title" to p
-	show screen element "end_sub" to p
-	TdSaveScore(p)
+function TdLose(g: text):
+	set {-td-over::%g%} to 1
+	set {-td-in-wave::%g%} to 0
+	TdClearProjectiles(g)
+	TdSyncTxt(g, "end_title", "&c&lБАЗА ПАЛА! (Волна %{-td-wave::%g%}%/%{-td-maxw::%g%}%)")
+	TdSyncTxt(g, "end_sub", "&fСчёт: &e%{-td-score::%g%}% &7— нажми &eR &7(рестарт) или &eM &7(меню)")
+	TdSyncShow(g, "end_title")
+	TdSyncShow(g, "end_sub")
+	TdSaveScore(g)
 
-function TdWin(p: player):
-	set {-td-over::%p%} to 1
-	add {-td-hp::%p%} * 100 * {-td-diff::%p%} to {-td-score::%p%}
-	TdUpdateHud(p)
-	set text of screen element "end_title" for p to "&6&lПОБЕДА! ВСЕ %{-td-maxw::%p%}% ВОЛН ПРОЙДЕНЫ!"
-	set text of screen element "end_sub" for p to "&aСчёт: &e%{-td-score::%p%}% &7— нажми &eR &7(ещё раз) или &eM &7(меню)"
-	show screen element "end_title" to p
-	show screen element "end_sub" to p
-	fade screen of p to #FFD700 in 3 stay 4 out 14 ticks
-	play sound ui.toast.challenge_complete to p with volume 0.9 pitch 1.0
-	TdSaveScore(p)
+function TdWin(g: text):
+	set {-td-over::%g%} to 1
+	set {-wbon} to {-td-hp::%g%} * 100 * {-td-diff::%g%}
+	add {-wbon} to {-td-score::%g%}
+	TdSyncHud(g)
+	TdSyncTxt(g, "end_title", "&6&lПОБЕДА! ВСЕ %{-td-maxw::%g%}% ВОЛН ПРОЙДЕНЫ!")
+	TdSyncTxt(g, "end_sub", "&aСчёт: &e%{-td-score::%g%}% &7— нажми &eR &7(ещё раз) или &eM &7(меню)")
+	TdSyncShow(g, "end_title")
+	TdSyncShow(g, "end_sub")
+	fade screen of g to #FFD700 in 3 stay 4 out 14 ticks
+	set {-p2} to {-td-coop::%g%}
+	if {-p2} is set and {-p2} is not "":
+		fade screen of {-p2} to #FFD700 in 3 stay 4 out 14 ticks
+	TdSyncSound(g, "ui.toast.challenge_complete", 0.9, 1.0)
+	TdSaveScore(g)
 
-function TdSaveScore(p: player):
-	set {-sc} to {-td-score::%p%}
-	if {td::lb::%p%} is not set:
-		set {td::lb::%p%} to {-sc}
-	else if {-sc} > {td::lb::%p%}:
-		set {td::lb::%p%} to {-sc}
+function TdSaveScore(g: text):
+	set {-sc} to {-td-score::%g%}
+	if {td::lb::%g%} is not set:
+		set {td::lb::%g%} to {-sc}
+	else if {-sc} > {td::lb::%g%}:
+		set {td::lb::%g%} to {-sc}
+	set {-p2} to {-td-coop::%g%}
+	if {-p2} is set and {-p2} is not "":
+		if {td::lb::%{-p2}%} is not set:
+			set {td::lb::%{-p2}%} to {-sc}
+		else if {-sc} > {td::lb::%{-p2}%}:
+			set {td::lb::%{-p2}%} to {-sc}
 ` }
     ],
     notes: {
