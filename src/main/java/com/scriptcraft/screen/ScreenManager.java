@@ -280,6 +280,11 @@ public final class ScreenManager {
         if (player == null) {
             return;
         }
+        PlayerScreen current = OPEN.get(player.getUUID());
+        if (current != null && closedTitle != null && !closedTitle.isEmpty() && !Objects.equals(current.title, closedTitle)) {
+            // Устаревший пакет закрытия предыдущего экрана после перехода на новый — игнорируем
+            return;
+        }
         PlayerScreen removed = OPEN.remove(player.getUUID());
         InputSync.clearScreen(player);
         String title = removed != null ? removed.title : (closedTitle == null ? "" : closedTitle);

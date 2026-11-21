@@ -1628,8 +1628,8 @@ function DinoGameOver(p: player):
     id: "tower-defense",
     title: { ru: "Tower Defense Pro (3 карты, 10/20/30 волн, 6 башен)", en: "Tower Defense Pro (3 maps, 10/20/30 waves, 6 towers)" },
     intro: {
-      ru: "Большая стратегия Tower Defense (384×192) с меню выбора из 3 карт (Изумрудная долина, Лавовый каньон, Ледяная цитадель) и 3 уровней сложности (Лёгкий — 10 волн, Средний — 20 волн, Тяжёлый — 30 волн). Свободная постройка башен на любой клетке карты, 6 видов башен (Лучник, Пушка, Лёд, Маг, Тесла с цепной молнией, Снайпер с критами), 6 видов мобов + 2 вида боссов, настоящие летающие прожектайлы, умный клик (апгрейд до 4★), тумблер Авто-волны, скорость x2 и эффекты камеры (shake/fade).",
-      en: "Full-featured Tower Defense (384×192) with a 3-map & 3-difficulty selector (Emerald Valley, Lava Canyon, Ice Citadel; Easy 10w / Medium 20w / Hard 30w). Free tower placement on any non-road tile, 6 towers (Archer, Splash Cannon, Frost, Mage, Chain-Lightning Tesla, Crit Sniper), 6 enemy types + 2 bosses, real homing flying projectiles, smart click auto-upgrade up to 4★, Auto-Wave toggle, 2x speed, and camera shake/fade effects."
+      ru: "Большая стратегия Tower Defense Pro (3 maps, 10/20/30 waves, 6 towers) с меню выбора из 3 карт (Изумрудная долина, Лавовый каньон, Ледяная цитадель) и 3 уровней сложности (Лёгкий — 10 волн, Средний — 20 волн, Тяжёлый — 30 волн). Свободная постройка башен на любой клетке карты, 6 видов башен (Лучник, Пушка, Лёд, Маг, Тесла с цепной молнией, Снайпер с критами), 6 видов мобов + 2 вида боссов, настоящие летающие прожектайлы, умный клик (апгрейд до 4★), тумблер Авто-волны, скорость x2 и эффекты камеры (shake/fade).",
+      en: "Full-featured Tower Defense Pro (3 maps, 10/20/30 waves, 6 towers) with a 3-map & 3-difficulty selector (Emerald Valley, Lava Canyon, Ice Citadel; Easy 10w / Medium 20w / Hard 30w). Free tower placement on any non-road tile, 6 towers (Archer, Splash Cannon, Frost, Mage, Chain-Lightning Tesla, Crit Sniper), 6 enemy types + 2 bosses, real homing flying projectiles, smart click auto-upgrade up to 4★, Auto-Wave toggle, 2x speed, and camera shake/fade effects."
     },
     downloads: [
       {
@@ -1731,7 +1731,7 @@ function TdOpenMenu(p: player):
 		set {-td-map::%p%} to 1
 	if {-td-diff::%p%} is not set:
 		set {-td-diff::%p%} to 2
-	open screen "TD: Выбор карты" to p:
+	open screen "Tower Defense" to p:
 		text "&6&lTOWER DEFENSE" at 0 -106 anchor center shadow
 		text "&7Выберите карту и сложность (башни можно ставить куда угодно!)" at 0 -92 anchor center shadow
 

@@ -90,7 +90,7 @@ function TdOpenMenu(p: player):
 		set {-td-map::%p%} to 1
 	if {-td-diff::%p%} is not set:
 		set {-td-diff::%p%} to 2
-	open screen "TD: Выбор карты" to p:
+	open screen "Tower Defense" to p:
 		text "&6&lTOWER DEFENSE" at 0 -106 anchor center shadow
 		text "&7Выберите карту и сложность (башни можно ставить куда угодно!)" at 0 -92 anchor center shadow
 

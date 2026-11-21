@@ -35,9 +35,13 @@ public final class ClientPacketHandler {
             }
             return;
         }
-        if (mc.screen instanceof ScriptScreen current && current.titleText().equals(title)) {
-            current.applyUpdate(description);
-            return;
+        if (mc.screen instanceof ScriptScreen current) {
+            if (current.titleText().equals(title)) {
+                current.applyUpdate(description);
+                return;
+            }
+            // Сервер заменяет один экран другим — не отправляем устаревший SCREEN_CLOSE для старого экрана
+            current.markServerClosed();
         }
         mc.setScreen(new ScriptScreen(description));
     }
