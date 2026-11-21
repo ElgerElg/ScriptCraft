@@ -453,9 +453,9 @@ public final class ElementRenderer {
         }
         g.disableScissor();
 
-        // Визуальный ползунок (скроллбар-слайдер) списка, если контент длиннее видимой области
+        // Визуальный ползунок (скроллбар-слайдер) списка, если контент длиннее видимой области и не отключён (no scrollbar / no slider)
         int maxScroll = listMaxScroll(font, list, sw, sh);
-        if (maxScroll > 0 && !list.horizontal()) {
+        if (maxScroll > 0 && !list.horizontal() && com.scriptcraft.screen.ScreenMeta.hasListScrollbar(list)) {
             int trackX = box.x + box.w - 4;
             int trackY = box.y + header + 1;
             int trackH = Math.max(8, box.h - header - 2);
@@ -470,7 +470,7 @@ public final class ElementRenderer {
 
     /** Возвращает новый scroll (0..maxScroll), если клик/перетаскивание попало в полосу прокрутки списка, иначе -1. */
     public static int listScrollbarDrag(Font font, ListElement list, int sw, int sh, double mouseX, double mouseY, boolean ignoreX) {
-        if (list.horizontal()) {
+        if (list.horizontal() || !com.scriptcraft.screen.ScreenMeta.hasListScrollbar(list)) {
             return -1;
         }
         int maxScroll = listMaxScroll(font, list, sw, sh);

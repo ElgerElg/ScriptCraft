@@ -105,6 +105,10 @@ public record ScreenMeta(String id, boolean keepOpen, String hotkey, boolean hid
         return false;
     }
 
+    public static boolean hasListScrollbar(ListElement list) {
+        return !"noslider".equals(unpack(list.header()).hotkey());
+    }
+
     public static String packBarId(String id, boolean hidden) {
         return packBarId(id, hidden, "");
     }

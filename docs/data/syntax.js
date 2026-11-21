@@ -1311,17 +1311,23 @@ drop example:ruby at all players`,
   // ================================================================== УСЛОВИЯ
   {
     id: "cond-compare", category: "conditions",
-    name: { ru: "Равно / не равно", en: "Equals / not equals" },
-    syntax: ["<значение> is <значение>", "<значение> is not <значение>", "<значение> = <значение>", "<значение> == <значение>", "<значение> != <значение>"],
+    name: { ru: "Равно / не равно (и списки значений через or / and)", en: "Equals / not equals (& multi-value or / and lists)" },
+    syntax: [
+      "<значение> is <значение> [or <значение2> ...]",
+      "<значение> is not <значение> [or|and <значение2> ...]",
+      "<значение> = <значение>",
+      "<значение> == <значение>",
+      "<значение> != <значение>"
+    ],
     desc: {
-      ru: "Числа сравниваются как числа, текст — без учёта регистра. Справа — одно значение (текст с пробелами — в кавычках).",
-      en: "Numbers compare as numbers, text case-insensitively. One value on the right (quote text with spaces)."
+      ru: "Числа сравниваются как числа, текст — без учёта регистра. Справа можно перечислить несколько значений через `or` / `and`: например `if arg-1 is \"on\" or \"enable\":` или `if arg-1 is not \"on\" or \"off\":` (при отрицании `is not A or B` означает «ни A, ни B»).",
+      en: "Numbers compare as numbers, text case-insensitively. You can list multiple right-hand values with `or` / `and`: e.g. `if arg-1 is \"on\" or \"enable\":` or `if arg-1 is not \"on\" or \"off\":` (for negated checks, `is not A or B` means neither A nor B)."
     },
-    example: `if {rank::%player%} is "vip":
-	send "&6VIP!" to player
-if %player% is not "Notch":
-	send "Ты не Notch" to player`,
-    since: "0.1.0", related: ["struct-if", "cond-number"]
+    example: `if {rank::%player%} is "vip" or "premium" or "admin":
+	send "&6VIP-доступ открыт!" to player
+if arg-1 is not "on" or "off":
+	send "&cУкажите on или off!" to player`,
+    since: "0.1.0", related: ["struct-if", "cond-number", "cond-text-match"]
   },
   {
     id: "cond-number", category: "conditions",
@@ -1418,20 +1424,26 @@ if "Steve" is not in group "banned":
   },
   {
     id: "cond-permission", category: "conditions",
-    name: { ru: "Есть право", en: "Has permission" },
-    syntax: ["<цель> has permission <0-4>", "<цель> has permission \"<узел>\"", "<цель> does not have permission <0-4>", "<цель> does not have permission \"<узел>\""],
+    name: { ru: "Есть право (у игрока или группы)", en: "Has permission (player or group)" },
+    syntax: [
+      "<цель> has permission <0-4>",
+      "<цель> has permission \"<узел>\"",
+      "<цель> does not have permission <0-4>",
+      "<цель> does not have permission \"<узел>\"",
+      "group \"<имя>\" has permission \"<узел>\"",
+      "group \"<имя>\" does not have permission \"<узел>\""
+    ],
     desc: {
-      ru: "Число 0–4 — ванильный уровень (2 — оператор). Строка — узел прав, например `scriptcraft.shop`. Его проверяет LuckPerms, если он стоит модом или плагином. Если LuckPerms не ответил, проверяется узел, который мод зарегистрировал в Forge. Иначе такой узел есть только у оператора. Никого в цели нет — условие ложно.",
-      en: "A number 0–4 is the vanilla level (2 is operator). A string is a permission node, for example `scriptcraft.shop`. LuckPerms answers it whether LuckPerms is installed as a mod or as a plugin. If LuckPerms does not answer, a node registered with Forge is checked. Otherwise only operators have that node. Nobody in the target — the condition is false."
+      ru: "Число 0–4 — ванильный уровень (2 — оператор). Строка — узел прав, например `scriptcraft.shop`. Его проверяет LuckPerms (мод или плагин) как для игроков, так и для групп (`group \"vip\" has permission \"...\"`). Выдавать и забирать права тоже можно как игроку (`add permission \"...\" to player`), так и группе (`add permission \"...\" to group \"vip\"`, `remove permission \"...\" from group \"vip\"`).",
+      en: "A number 0–4 is the vanilla level (2 is operator). A string is a permission node, e.g. `scriptcraft.shop`. Checked via LuckPerms (mod or plugin) for both players and groups (`group \"vip\" has permission \"...\"`). Granting/removing permissions also works on both players (`add permission \"...\" to player`) and groups (`add permission \"...\" to group \"vip\"`, `remove permission \"...\" from group \"vip\"`)."
     },
     example: `if player has permission "scriptcraft.shop":
 	send "&aМожно" to player
+if group "default" has permission "my.feature":
+	remove permission "my.feature" from group "default"
 else:
-	send "&cНет права" to player
-
-if player does not have permission 2:
-	send "&7Ты не оператор" to player`,
-    since: "0.4.1", related: ["struct-command", "cond-player"]
+	add permission "my.feature" to group "default"`,
+    since: "0.4.1", related: ["struct-command", "cond-player", "cond-group"]
   },
   {
     id: "cond-gamemode", category: "conditions",
@@ -1925,23 +1937,28 @@ text "Взять алмаз" at -40, 16 run GiveReward(player, "diamond")`,
   },
   {
     id: "screen-list", category: "screen",
-    name: { ru: "Список", en: "List" },
+    name: { ru: "Список (со скроллбаром и no slider)", en: "List (with scrollbar & no slider)" },
     syntax: [
-      "list vertical [at <X> <Y>] [size <W>x<H>] [header \"<текст>\"] [select]:",
+      "list vertical [at <X> <Y>] [size <W>x<H>] [header \"<текст>\"] [select] [no scrollbar|no slider]:",
       "list horizontal [at <X> <Y>] [size <W>x<H>] [header \"<текст>\"] [select]:",
-      "list from {<имя>::*} vertical [at <X> <Y>] [size <W>x<H>] [header \"<текст>\"] [select]:",
-      "row \"<текст>\" run \"/<команда>\"",
-      "row \"<текст>\" run <Функция>(<аргументы>)",
+      "list from {<имя>::*} vertical [at <X> <Y>] [size <W>x<H>] [header \"<текст>\"] [select] [no scrollbar|no slider]:",
+      "row \"<текст>\" run \"/<команда>\" [keep open]",
+      "row \"<текст>\" run <Функция>(<аргументы>) [keep open]",
       "row \"<текст>\" close",
       "row \"<текст>\""
     ],
     desc: {
-      ru: "Панель строк. `vertical` — столбец, `horizontal` — ряд. `header` — строка над списком. `select` подсвечивает строку под курсором. Клик по строке с `run` выполняет команду или вызывает функцию скрипта и закрывает экран. `list from {имя::*}` в момент открытия строит строку на каждый прямой индекс: одна `row` — шаблон с `%loop-index%` и `%loop-value%`. Пустой список рисует только заголовок. Колёсико листает, если строк больше, чем влезает в `size`. На HUD список только рисуется и тоже снимок.",
-      en: "A panel of rows. `vertical` is a column, `horizontal` is a row. `header` is a line above the list. `select` highlights the row under the cursor. A click on a row with `run` runs the command or calls a script function and closes the screen. `list from {name::*}` builds one row per direct index when the screen opens: the single `row` is a template with `%loop-index%` and `%loop-value%`. An empty list draws only the header. The wheel scrolls when the rows do not fit in `size`. On a HUD the list is display only, and it is a snapshot too."
+      ru: "Панель строк. `vertical` — столбец, `horizontal` — ряд. `header` — строка над списком. `select` подсвечивает строку под курсором. Если строк больше, чем помещается в `size`, список прокручивается колёсиком мыши и интерактивным **ползунком-скроллбаром** справа (его можно тянуть мышкой). Чтобы скрыть ползунок прокрутки (оставив только прокрутку колёсиком), добавьте `no scrollbar` или `no slider`. При динамическом добавлении строк через `update screen` список автоматически прокручивается к концу.",
+      en: "A panel of rows. `vertical` is a column, `horizontal` is a row. `header` is a line above the list. `select` highlights the hovered row. When rows exceed `size`, the list scrolls with the mouse wheel and displays an interactive **draggable scrollbar slider** on the right. Add `no scrollbar` or `no slider` to hide the scrollbar thumb (wheel scrolling still works). Appending new rows via `update screen` auto-scrolls to the bottom."
     },
-    example: `list from {bag::%player%::*} vertical at 0, 0 size 180x160 header "&7Предмет" select:
-	row "&f%loop-index% &8x%loop-value%" run TakeFromBag(player, "%loop-index%") keep open`,
-    since: "0.3.7", related: ["screen-click", "eff-open-screen", "event-open", "expr-variable", "ph-loop-index", "struct-function"]
+    example: `# Обычный список со скроллбаром-слайдером:
+list from {bag::%player%::*} vertical at -70, 0 size 130x140 header "&7Предметы" select:
+	row "&f%loop-index% &8x%loop-value%" run TakeFromBag(player, "%loop-index%") keep open
+
+# Список без видимого ползунка (прокрутка только колёсиком):
+list from {chat::*} at 70, 0 size 150x140 header "&6История" no slider:
+	row "%loop-value%"`,
+    since: "0.3.7", related: ["screen-click", "eff-open-screen", "screen-dynamic", "expr-variable", "ph-loop-index", "struct-function"]
   },
   {
     id: "screen-dynamic", category: "screen",

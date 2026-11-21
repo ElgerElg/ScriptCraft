@@ -1959,6 +1959,7 @@ public final class ScriptParser {
         boolean horizontal = false;
         boolean select = false;
         boolean hidden = false;
+        boolean noScrollbar = false;
         String header = "";
         String from = "";
         String id = "";
@@ -2040,15 +2041,27 @@ public final class ScriptParser {
                     hidden = true;
                     idx++;
                 }
+                case "scrollbar", "slider" -> {
+                    noScrollbar = false;
+                    idx++;
+                }
+                case "no" -> {
+                    String nextOpt = word(t, idx + 1);
+                    if (!nextOpt.equals("scrollbar") && !nextOpt.equals("slider")) {
+                        throw new ParseException("ожидается 'no scrollbar' или 'no slider'");
+                    }
+                    noScrollbar = true;
+                    idx += 2;
+                }
                 case "tooltip", "hover" -> {
                     tooltip = quoted(t, idx + 1);
                     idx += 2;
                 }
-                default -> throw new ParseException("у list нет параметра '" + opt + "' (from, vertical, horizontal, select, header, at, size, anchor, layer, color, id, hidden, tooltip)");
+                default -> throw new ParseException("у list нет параметра '" + opt + "' (from, vertical, horizontal, select, header, at, size, anchor, layer, color, id, hidden, tooltip, no scrollbar, no slider)");
             }
         }
         Layout layout = new Layout(x, y, w, h, anchor, color, layer);
-        String packedHeader = com.scriptcraft.screen.ScreenMeta.pack(id, false, "", hidden, tooltip, header);
+        String packedHeader = com.scriptcraft.screen.ScreenMeta.pack(id, false, noScrollbar ? "noslider" : "", hidden, tooltip, header);
         if (!from.isEmpty()) {
             if (nested.size() > 1) {
                 throw new ParseException("у list from одна строка-шаблон: row \"%loop-index%\"");
