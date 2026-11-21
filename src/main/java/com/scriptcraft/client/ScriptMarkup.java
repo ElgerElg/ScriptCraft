@@ -27,6 +27,9 @@ public final class ScriptMarkup {
     }
 
     public static List<Mark> of(String line) {
+        if (line.stripLeading().startsWith("#")) {
+            return List.of();
+        }
         List<Mark> marks = new ArrayList<>();
         Matcher header = HEADER.matcher(line);
         if (header.find()) {

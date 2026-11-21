@@ -55,10 +55,14 @@ public final class ScriptColors {
         }
     }
 
-    /** Куски строки с одним стилем. Цветовые коды читаются только внутри кавычек. */
+    /** Серый цвет комментариев (# ...) в редакторе студии. */
+    private static final int COMMENT_RGB = 0x858F9E;
+
+    /** Куски строки с одним стилем. Цветовые коды читаются только внутри кавычек, комментарии (#...) — серым. */
     private static java.util.List<Piece> pieces(String line, int end, int baseRgb, boolean quoteColors) {
         java.util.List<Piece> out = new java.util.ArrayList<>();
         boolean inside = false;
+        boolean comment = false;
         Run run = Run.base(baseRgb);
         StringBuilder cur = new StringBuilder();
         int i = 0;
@@ -67,6 +71,19 @@ public final class ScriptColors {
             if (c == '\t') {
                 flush(out, cur, run);
                 out.add(new Piece("", run, true));
+                i++;
+                continue;
+            }
+            if (!comment && !inside && c == '#' && isCommentHash(line, i)) {
+                flush(out, cur, run);
+                comment = true;
+                run = Run.base(COMMENT_RGB);
+                cur.append(c);
+                i++;
+                continue;
+            }
+            if (comment) {
+                cur.append(c);
                 i++;
                 continue;
             }
@@ -103,6 +120,42 @@ public final class ScriptColors {
         }
         flush(out, cur, run);
         return out;
+    }
+
+    /** '#' — начало комментария, если стоит в начале строки или после пробела/таба и не является hex-цветом (#RRGGBB / #AARRGGBB). */
+    private static boolean isCommentHash(String line, int pos) {
+        if (pos > 0) {
+            char prev = line.charAt(pos - 1);
+            if (prev != ' ' && prev != '\t') {
+                return false;
+            }
+        }
+        // Если это начало строки (после отступа) — всегда комментарий
+        boolean onlySpaceBefore = true;
+        for (int k = 0; k < pos; k++) {
+            char ch = line.charAt(k);
+            if (ch != ' ' && ch != '\t') {
+                onlySpaceBefore = false;
+                break;
+            }
+        }
+        if (onlySpaceBefore) {
+            return true;
+        }
+        // Для встроенного '#' проверяем, не является ли это hex-цветом #RRGGBB / #AARRGGBB
+        int hex = 0;
+        for (int k = pos + 1; k < line.length(); k++) {
+            char ch = line.charAt(k);
+            if ((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')) {
+                hex++;
+            } else {
+                break;
+            }
+        }
+        if ((hex == 6 || hex == 8) && (pos + 1 + hex == line.length() || Character.isWhitespace(line.charAt(pos + 1 + hex)))) {
+            return false;
+        }
+        return true;
     }
 
     private static void flush(java.util.List<Piece> out, StringBuilder cur, Run run) {
