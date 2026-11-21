@@ -1124,6 +1124,21 @@ public final class ScriptParser {
                 }
             }
         }
+        if (i < t.size() && !t.get(i).quoted() && word(t, i).equals("group") && !word(t, i + 1).equals("of") && i + 1 < t.size()) {
+            ExprParser.Parsed g = ExprParser.parse(List.of(t.get(i + 1)), 0);
+            int k = i + 2;
+            String h = word(t, k);
+            if ((h.equals("has") && word(t, k + 1).equals("permission"))
+                    || (h.equals("does") && word(t, k + 1).equals("not") && word(t, k + 2).equals("have") && word(t, k + 3).equals("permission"))) {
+                boolean neg = h.equals("does");
+                int pAt = neg ? k + 4 : k + 2;
+                if (pAt >= t.size()) {
+                    throw new ParseException("нужно: group \"имя\" has permission \"узел\"");
+                }
+                ExprParser.Parsed nodeExpr = ExprParser.parse(List.of(t.get(pAt)), 0);
+                return new ParsedCond(new Condition.GroupPermission(g.expression(), nodeExpr.expression(), neg), finish(t, pAt + 1));
+            }
+        }
         if (i < t.size() && !t.get(i).quoted()) {
             TargetParser.Parsed target = TargetParser.parse(t, i);
             if (target != null) {

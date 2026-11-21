@@ -20,9 +20,16 @@ public final class LuckPermsActions {
         SET_META, REMOVE_META, CLEAR_META
     }
 
-    public record Change(Kind kind, Target target, @Nullable Expression a, @Nullable Expression b,
+    public record Change(Kind kind, @Nullable Target target, @Nullable Expression groupTarget,
+                         @Nullable Expression a, @Nullable Expression b,
                          @Nullable Expression time, int secondsPerUnit, @Nullable Expression priority,
                          boolean prioritySet) implements Action {
+        public Change(Kind kind, Target target, @Nullable Expression a, @Nullable Expression b,
+                      @Nullable Expression time, int secondsPerUnit, @Nullable Expression priority,
+                      boolean prioritySet) {
+            this(kind, target, null, a, b, time, secondsPerUnit, priority, prioritySet);
+        }
+
         @Override
         public void execute(ExecutionContext ctx) {
             if (!LuckPermsLink.available()) {
@@ -33,6 +40,14 @@ public final class LuckPermsActions {
             boolean flag = b != null && Effects.bool(b, ctx);
             long seconds = time == null ? 0 : Math.max(0, Math.round(Effects.number(time, ctx) * secondsPerUnit));
             int weight = !prioritySet || priority == null ? 100 : (int) Math.round(Effects.number(priority, ctx));
+            if (groupTarget != null) {
+                String gName = text(groupTarget, ctx);
+                LuckPermsLink.editGroup(gName, grp -> apply(grp, first, second, flag, seconds, weight));
+                return;
+            }
+            if (target == null) {
+                return;
+            }
             List<ServerPlayer> online = target.resolve(ctx);
             if (!online.isEmpty()) {
                 for (ServerPlayer player : online) {

@@ -56,26 +56,26 @@ final class LuckPermsSyntax {
         return switch (verb) {
             case "set" -> {
                 i = expect(t, i, "of");
-                TargetParser.Parsed target = target(t, i);
-                i = expect(t, target.end(), "to");
+                Subject subj = subject(t, i);
+                i = expect(t, subj.end(), "to");
                 ExprParser.Parsed value = ExprParser.parse(t, i);
                 Tail tail = tail(t, value.end());
-                yield change(LuckPermsActions.Kind.SET_PERM, target.target(), node.expression(), value.expression(), tail);
+                yield change(LuckPermsActions.Kind.SET_PERM, subj, node.expression(), value.expression(), tail);
             }
             case "add", "give" -> {
                 i = expect(t, i, "to");
-                TargetParser.Parsed target = target(t, i);
-                Tail tail = tail(t, target.end());
-                yield change(LuckPermsActions.Kind.ADD_PERM, target.target(), node.expression(), null, tail);
+                Subject subj = subject(t, i);
+                Tail tail = tail(t, subj.end());
+                yield change(LuckPermsActions.Kind.ADD_PERM, subj, node.expression(), null, tail);
             }
             case "remove", "unset" -> {
                 String link = word(t, i);
                 if (!link.equals("from") && !link.equals("of")) {
-                    throw need("remove permission <узел> from <цель>");
+                    throw need("remove permission <узел> from <цель или group \"имя\">");
                 }
-                TargetParser.Parsed target = target(t, i + 1);
-                finish(t, target.end());
-                yield change(LuckPermsActions.Kind.REMOVE_PERM, target.target(), node.expression(), null, Tail.NONE);
+                Subject subj = subject(t, i + 1);
+                finish(t, subj.end());
+                yield change(LuckPermsActions.Kind.REMOVE_PERM, subj, node.expression(), null, Tail.NONE);
             }
             default -> throw need("set/add/remove permission");
         };
@@ -89,26 +89,26 @@ final class LuckPermsSyntax {
         i = name.end();
         if (verb.equals("add") || verb.equals("give")) {
             i = expect(t, i, "to");
-            TargetParser.Parsed target = target(t, i);
-            Tail tail = tail(t, target.end());
-            return change(LuckPermsActions.Kind.ADD_GROUP, target.target(), name.expression(), null, tail);
+            Subject subj = subject(t, i);
+            Tail tail = tail(t, subj.end());
+            return change(LuckPermsActions.Kind.ADD_GROUP, subj, name.expression(), null, tail);
         }
         if (verb.equals("remove")) {
             i = expect(t, i, "from");
-            TargetParser.Parsed target = target(t, i);
-            finish(t, target.end());
-            return change(LuckPermsActions.Kind.REMOVE_GROUP, target.target(), name.expression(), null, Tail.NONE);
+            Subject subj = subject(t, i);
+            finish(t, subj.end());
+            return change(LuckPermsActions.Kind.REMOVE_GROUP, subj, name.expression(), null, Tail.NONE);
         }
         throw need("add/remove/set group");
     }
 
     private static Action setGroup(List<Token> t, int i) throws ParseException {
         i = expect(t, i, "of");
-        TargetParser.Parsed target = target(t, i);
-        i = expect(t, target.end(), "to");
+        Subject subj = subject(t, i);
+        i = expect(t, subj.end(), "to");
         ExprParser.Parsed name = ExprParser.parse(t, i);
         Tail tail = tail(t, name.end());
-        return change(LuckPermsActions.Kind.SET_GROUP, target.target(), name.expression(), null, tail);
+        return change(LuckPermsActions.Kind.SET_GROUP, subj, name.expression(), null, tail);
     }
 
     private static Action decoration(List<Token> t, String verb, int i, boolean prefix) throws ParseException {
@@ -117,21 +117,21 @@ final class LuckPermsSyntax {
         LuckPermsActions.Kind remove = prefix ? LuckPermsActions.Kind.REMOVE_PREFIX : LuckPermsActions.Kind.REMOVE_SUFFIX;
         if (verb.equals("set")) {
             i = expect(t, i, "of");
-            TargetParser.Parsed target = target(t, i);
-            i = expect(t, target.end(), "to");
+            Subject subj = subject(t, i);
+            i = expect(t, subj.end(), "to");
             ExprParser.Parsed text = ExprParser.parse(t, i);
-            return change(set, target.target(), text.expression(), null, tail(t, text.end()));
+            return change(set, subj, text.expression(), null, tail(t, text.end()));
         }
         if (verb.equals("add") || verb.equals("give")) {
             ExprParser.Parsed text = ExprParser.parse(t, i);
             i = expect(t, text.end(), "to");
-            TargetParser.Parsed target = target(t, i);
-            return change(add, target.target(), text.expression(), null, tail(t, target.end()));
+            Subject subj = subject(t, i);
+            return change(add, subj, text.expression(), null, tail(t, subj.end()));
         }
         if (verb.equals("remove")) {
             i = expect(t, i, "of");
-            TargetParser.Parsed target = target(t, i);
-            return change(remove, target.target(), null, null, tail(t, target.end()));
+            Subject subj = subject(t, i);
+            return change(remove, subj, null, null, tail(t, subj.end()));
         }
         throw need(prefix ? "set/add/remove prefix" : "set/add/remove suffix");
     }
@@ -140,11 +140,11 @@ final class LuckPermsSyntax {
         if (verb.equals("set")) {
             ExprParser.Parsed key = ExprParser.parse(t, i);
             i = expect(t, key.end(), "of");
-            TargetParser.Parsed target = target(t, i);
-            i = expect(t, target.end(), "to");
+            Subject subj = subject(t, i);
+            i = expect(t, subj.end(), "to");
             ExprParser.Parsed value = ExprParser.parse(t, i);
             finish(t, value.end());
-            return change(LuckPermsActions.Kind.SET_META, target.target(), key.expression(), value.expression(), Tail.NONE);
+            return change(LuckPermsActions.Kind.SET_META, subj, key.expression(), value.expression(), Tail.NONE);
         }
         if (verb.equals("remove")) {
             ExprParser.Parsed key = ExprParser.parse(t, i);
@@ -152,9 +152,9 @@ final class LuckPermsSyntax {
             if (!link.equals("of") && !link.equals("from")) {
                 throw need("remove meta <ключ> of <цель>");
             }
-            TargetParser.Parsed target = target(t, key.end() + 1);
-            finish(t, target.end());
-            return change(LuckPermsActions.Kind.REMOVE_META, target.target(), key.expression(), null, Tail.NONE);
+            Subject subj = subject(t, key.end() + 1);
+            finish(t, subj.end());
+            return change(LuckPermsActions.Kind.REMOVE_META, subj, key.expression(), null, Tail.NONE);
         }
         throw need("set/remove meta");
     }
@@ -169,22 +169,33 @@ final class LuckPermsSyntax {
             default -> throw need("clear permissions/groups/prefixes/suffixes/meta");
         };
         i = expect(t, i, "of");
-        TargetParser.Parsed target = target(t, i);
-        finish(t, target.end());
-        return change(kind, target.target(), null, null, Tail.NONE);
+        Subject subj = subject(t, i);
+        finish(t, subj.end());
+        return change(kind, subj, null, null, Tail.NONE);
     }
 
-    private static Action change(LuckPermsActions.Kind kind, Target target, @Nullable Expression a,
-                                 @Nullable Expression b, Tail tail) {
-        return new LuckPermsActions.Change(kind, target, a, b, tail.time, tail.unit, tail.priority, tail.prioritySet);
+    private record Subject(@Nullable Target target, @Nullable Expression groupName, int end) {
     }
 
-    private static TargetParser.Parsed target(List<Token> t, int i) throws ParseException {
+    private static Subject subject(List<Token> t, int i) throws ParseException {
+        if (word(t, i).equals("group")) {
+            if (i + 1 >= t.size()) {
+                throw need("group \"<имя_группы>\"");
+            }
+            ExprParser.Parsed g = ExprParser.parse(t, i + 1);
+            return new Subject(null, g.expression(), g.end());
+        }
         TargetParser.Parsed parsed = TargetParser.parse(t, i);
         if (parsed == null) {
-            throw need("<цель>");
+            throw need("<цель или group \"имя\">");
         }
-        return parsed;
+        return new Subject(parsed.target(), null, parsed.end());
+    }
+
+    private static Action change(LuckPermsActions.Kind kind, Subject subj, @Nullable Expression a,
+                                 @Nullable Expression b, Tail tail) {
+        return new LuckPermsActions.Change(kind, subj.target(), subj.groupName(), a, b,
+                tail.time, tail.unit, tail.priority, tail.prioritySet);
     }
 
     private static Tail tail(List<Token> t, int i) throws ParseException {

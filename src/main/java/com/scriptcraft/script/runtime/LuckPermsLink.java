@@ -89,6 +89,32 @@ public final class LuckPermsLink {
         }
     }
 
+    /** Проверка права у группы LuckPerms (group "vip" has permission "node"). */
+    public static boolean checkGroup(String rawGroup, String node) {
+        if (rawGroup == null || rawGroup.isBlank() || node == null || node.isBlank() || !available()) {
+            return false;
+        }
+        try {
+            Object api = api();
+            if (api == null) {
+                return false;
+            }
+            String name = group(rawGroup);
+            Object grp = call(call(api, "getGroupManager"), "getGroup", name);
+            if (grp == null) {
+                return false;
+            }
+            Object cached = call(grp, "getCachedData");
+            Object data = permissionData(cached);
+            Object tri = call(data, "checkPermission", node.strip());
+            Object value = call(tri, "asBoolean");
+            return Boolean.TRUE.equals(value);
+        } catch (RuntimeException e) {
+            warn(e);
+            return false;
+        }
+    }
+
     private static Object permissionData(Object cached) {
         try {
             return call(cached, "getPermissionData");
@@ -126,6 +152,28 @@ public final class LuckPermsLink {
                 invalidate(user);
             } catch (RuntimeException e) {
                 ScriptCraft.LOGGER.warn("[ScriptCraft] LuckPerms: {}", e.getMessage());
+            }
+        });
+    }
+
+    /** Изменение прав/префикса/меты группы LuckPerms (group "vip"). */
+    public static void editGroup(String rawGroup, Consumer<Object> action) {
+        Object api = requireApi();
+        String name = group(rawGroup);
+        Object manager = call(api, "getGroupManager");
+        Object loaded = call(manager, "getGroup", name);
+        if (loaded != null) {
+            action.accept(loaded);
+            invalidate(loaded);
+            call(manager, "saveGroup", loaded);
+            return;
+        }
+        call(manager, "modifyGroup", name, (Consumer<Object>) grp -> {
+            try {
+                action.accept(grp);
+                invalidate(grp);
+            } catch (RuntimeException e) {
+                ScriptCraft.LOGGER.warn("[ScriptCraft] LuckPerms group {}: {}", name, e.getMessage());
             }
         });
     }
@@ -653,15 +701,8 @@ public final class LuckPermsLink {
 
     @Nullable
     private static Object invoke(Object target, String name, Object arg) throws ReflectiveOperationException {
-        for (Method method : target.getClass().getMethods()) {
-            if (!method.getName().equals(name) || method.getParameterCount() != 1) {
-                continue;
-            }
-            if (arg == null || wrap(method.getParameterTypes()[0]).isInstance(arg)) {
-                return method.invoke(target, arg);
-            }
-        }
-        return null;
+        Method method = findAccessible(target.getClass(), name, new Object[]{arg}, false);
+        return method == null ? null : method.invoke(target, arg);
     }
 
     private static String group(String raw) {
@@ -681,7 +722,7 @@ public final class LuckPermsLink {
     }
 
     private static Object call(Object target, String name, Object... args) {
-        Method method = find(target.getClass().getMethods(), name, args, false);
+        Method method = findAccessible(target.getClass(), name, args, false);
         if (method == null) {
             throw new ScriptRuntimeException(Messages.get("lp.fail", name));
         }
@@ -698,7 +739,7 @@ public final class LuckPermsLink {
     private static Object callStatic(String className, String name, Object... args) {
         try {
             Class<?> type = Class.forName(className, true, apiLoader());
-            Method method = find(type.getMethods(), name, args, true);
+            Method method = findAccessible(type, name, args, true);
             if (method == null) {
                 throw new ScriptRuntimeException(Messages.get("lp.fail", name));
             }
@@ -711,6 +752,67 @@ public final class LuckPermsLink {
         } catch (IllegalAccessException e) {
             throw new ScriptRuntimeException(e.getMessage() == null ? e.toString() : e.getMessage());
         }
+    }
+
+    /**
+     * Ищет метод сначала в публичных интерфейсах и публичных базовых классах (например, net.luckperms.api.model.data.NodeMap),
+     * чтобы не вызывать Method непубличного внутреннего класса вроде ApiPermissionHolder$NodeMapImpl
+     * (в Java 17 модульная система бросает IllegalAccessException при вызове через непубличный класс-реализацию).
+     */
+    @Nullable
+    private static Method findAccessible(Class<?> type, String name, Object[] args, boolean stat) {
+        if (!stat) {
+            Method ifaceMethod = findInInterfaces(type, name, args);
+            if (ifaceMethod != null) {
+                return ifaceMethod;
+            }
+            for (Class<?> cur = type; cur != null; cur = cur.getSuperclass()) {
+                if (Modifier.isPublic(cur.getModifiers())) {
+                    Method m = find(cur.getDeclaredMethods(), name, args, false);
+                    if (m != null && Modifier.isPublic(m.getModifiers())) {
+                        return m;
+                    }
+                }
+            }
+        }
+        Method fallback = find(type.getMethods(), name, args, stat);
+        if (fallback != null && !Modifier.isPublic(fallback.getDeclaringClass().getModifiers())) {
+            try {
+                fallback.setAccessible(true);
+            } catch (RuntimeException ignored) {
+            }
+        }
+        return fallback;
+    }
+
+    @Nullable
+    private static Method findInInterfaces(Class<?> type, String name, Object[] args) {
+        for (Class<?> cur = type; cur != null; cur = cur.getSuperclass()) {
+            for (Class<?> iface : cur.getInterfaces()) {
+                Method m = findInInterfaceTree(iface, name, args);
+                if (m != null) {
+                    return m;
+                }
+            }
+        }
+        return null;
+    }
+
+    @Nullable
+    private static Method findInInterfaceTree(Class<?> iface, String name, Object[] args) {
+        if (Modifier.isPublic(iface.getModifiers())) {
+            Method m = find(iface.getMethods(), name, args, false);
+            if (m != null && Modifier.isPublic(m.getDeclaringClass().getModifiers())) {
+                return m;
+            }
+        }
+        for (Class<?> parent : iface.getInterfaces()) {
+            Method m = findInInterfaceTree(parent, name, args);
+            if (m != null) {
+                return m;
+            }
+        }
+        return null;
     }
 
     @Nullable

@@ -119,7 +119,6 @@ public final class ScriptCommands {
         for (String root : ROOTS) {
             if (root.equals("script") && dispatcher.getRoot().getChild(root) != null) {
                 // На случай, если другой мод уже занял /script — основная команда и /sc всё равно работают.
-                ScriptCraft.LOGGER.warn("[ScriptCraft] Команда /script уже занята другим модом — синоним пропущен");
                 continue;
             }
             dispatcher.register(buildRoot(root));
@@ -278,7 +277,6 @@ public final class ScriptCommands {
                 }
                 REGISTERED.remove(name);
             } else if (dispatcher.getRoot().getChild(name) != null) {
-                ScriptCraft.LOGGER.warn("[ScriptCraft] Команда /{} уже существует (ваниль или другой мод) — пропущена", name);
                 continue;
             }
             CommandDefinition def = ScriptLoader.getProgram().command(name);

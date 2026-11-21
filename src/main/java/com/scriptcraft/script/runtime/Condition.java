@@ -174,6 +174,16 @@ public interface Condition {
         }
     }
 
+    /** group "vip" has permission "node" / group "vip" does not have permission "node". */
+    record GroupPermission(Expression groupName, Expression node, boolean negate) implements Condition {
+        @Override
+        public boolean test(ExecutionContext ctx) {
+            String g = Expression.toText(groupName.evaluate(ctx)).strip();
+            String n = Expression.toText(node.evaluate(ctx)).strip();
+            return LuckPermsLink.checkGroup(g, n) != negate;
+        }
+    }
+
     /** player is [not] in world overworld|nether|the_end|namespace:path. */
     record InWorld(Target target, String worldId, boolean negate) implements Condition {
         @Override
