@@ -1100,21 +1100,17 @@ public final class ScriptParser {
             String rawList = t.get(i).value().substring(1, t.get(i).value().length() - 1);
             String w1 = word(t, i + 1);
             if (w1.equals("contains")) {
-                ExprParser.Parsed needle = ExprParser.parse(t, i + 2);
-                return new ParsedCond(new Condition.ListContains(rawList, needle.expression(), false), needle.end());
+                return parseMultiExprCond(t, i + 2, false, r -> new Condition.ListContains(rawList, r, false));
             }
             if (w1.equals("does") && word(t, i + 2).equals("not") && word(t, i + 3).equals("contain")) {
-                ExprParser.Parsed needle = ExprParser.parse(t, i + 4);
-                return new ParsedCond(new Condition.ListContains(rawList, needle.expression(), true), needle.end());
+                return parseMultiExprCond(t, i + 4, true, r -> new Condition.ListContains(rawList, r, true));
             }
             if (w1.equals("has") && (word(t, i + 2).equals("key") || word(t, i + 2).equals("index"))) {
-                ExprParser.Parsed key = ExprParser.parse(t, i + 3);
-                return new ParsedCond(new Condition.ListHasKey(rawList, key.expression(), false), key.end());
+                return parseMultiExprCond(t, i + 3, false, r -> new Condition.ListHasKey(rawList, r, false));
             }
             if (w1.equals("does") && word(t, i + 2).equals("not") && word(t, i + 3).equals("have")
                     && (word(t, i + 4).equals("key") || word(t, i + 4).equals("index"))) {
-                ExprParser.Parsed key = ExprParser.parse(t, i + 5);
-                return new ParsedCond(new Condition.ListHasKey(rawList, key.expression(), true), key.end());
+                return parseMultiExprCond(t, i + 5, true, r -> new Condition.ListHasKey(rawList, r, true));
             }
             if (w1.equals("is")) {
                 boolean neg = word(t, i + 2).equals("not");
@@ -1160,43 +1156,114 @@ public final class ScriptParser {
             if (word(t, next).equals("empty") && (next + 1 == t.size() || isJoin(word(t, next + 1)))) {
                 return new ParsedCond(new Condition.TextEmpty(left.expression(), negate), next + 1);
             }
-            ExprParser.Parsed right = ExprParser.parse(t, next);
-            return new ParsedCond(new Condition.Compare(left.expression(), negate ? "is not" : "is", right.expression()), right.end());
+            return parseMultiExprCond(t, next, negate,
+                    r -> new Condition.Compare(left.expression(), negate ? "is not" : "is", r));
         }
         if (op.equals("contains")) {
-            ExprParser.Parsed right = ExprParser.parse(t, opAt + 1);
-            return new ParsedCond(new Condition.TextMatch(left.expression(), right.expression(), "contains", false), right.end());
+            return parseMultiExprCond(t, opAt + 1, false,
+                    r -> new Condition.TextMatch(left.expression(), r, "contains", false));
         }
         if (op.equals("starts") && word(t, opAt + 1).equals("with")) {
-            ExprParser.Parsed right = ExprParser.parse(t, opAt + 2);
-            return new ParsedCond(new Condition.TextMatch(left.expression(), right.expression(), "starts", false), right.end());
+            return parseMultiExprCond(t, opAt + 2, false,
+                    r -> new Condition.TextMatch(left.expression(), r, "starts", false));
         }
         if (op.equals("ends") && word(t, opAt + 1).equals("with")) {
-            ExprParser.Parsed right = ExprParser.parse(t, opAt + 2);
-            return new ParsedCond(new Condition.TextMatch(left.expression(), right.expression(), "ends", false), right.end());
+            return parseMultiExprCond(t, opAt + 2, false,
+                    r -> new Condition.TextMatch(left.expression(), r, "ends", false));
         }
         if (op.equals("does") && word(t, opAt + 1).equals("not")) {
             String verb = word(t, opAt + 2);
             if (verb.equals("contain")) {
-                ExprParser.Parsed right = ExprParser.parse(t, opAt + 3);
-                return new ParsedCond(new Condition.TextMatch(left.expression(), right.expression(), "contains", true), right.end());
+                return parseMultiExprCond(t, opAt + 3, true,
+                        r -> new Condition.TextMatch(left.expression(), r, "contains", true));
             }
             if (verb.equals("start") && word(t, opAt + 3).equals("with")) {
-                ExprParser.Parsed right = ExprParser.parse(t, opAt + 4);
-                return new ParsedCond(new Condition.TextMatch(left.expression(), right.expression(), "starts", true), right.end());
+                return parseMultiExprCond(t, opAt + 4, true,
+                        r -> new Condition.TextMatch(left.expression(), r, "starts", true));
             }
             if (verb.equals("end") && word(t, opAt + 3).equals("with")) {
-                ExprParser.Parsed right = ExprParser.parse(t, opAt + 4);
-                return new ParsedCond(new Condition.TextMatch(left.expression(), right.expression(), "ends", true), right.end());
+                return parseMultiExprCond(t, opAt + 4, true,
+                        r -> new Condition.TextMatch(left.expression(), r, "ends", true));
             }
         }
         if (op.equals(">") || op.equals("<") || op.equals(">=") || op.equals("<=") || op.equals("=") || op.equals("==") || op.equals("!=")) {
             String cmp = op.equals("!=") ? "is not" : (op.equals("=") || op.equals("==") ? "is" : op);
-            ExprParser.Parsed right = ExprParser.parse(t, opAt + 1);
-            return new ParsedCond(new Condition.Compare(left.expression(), cmp, right.expression()), right.end());
+            boolean neg = cmp.equals("is not");
+            return parseMultiExprCond(t, opAt + 1, neg,
+                    r -> new Condition.Compare(left.expression(), cmp, r));
         }
         throw new ParseException("неизвестный оператор условия: " + (op.isEmpty() ? t.get(Math.min(opAt, t.size() - 1)).value() : op)
-                + " (is, is not, >, <, >=, <=, is set, and, or)");
+                + " (is, is not, >, <, >=, <=, is set, contains, starts with, ends with, and, or)");
+    }
+
+    /**
+     * Разбирает правую часть условия с поддержкой перечисления значений через or / and:
+     * - if arg-1 is "on" or "off":
+     * - if arg-1 is not "or" or "on":   (при отрицании "is not A or B" означает "не A и не B")
+     * - if message contains "a" or "b" or "c":
+     * Останавливается, если после or / and идёт полноценное новое условие со своим оператором.
+     */
+    private ParsedCond parseMultiExprCond(List<Token> t, int start, boolean negate,
+                                          java.util.function.Function<Expression, Condition> factory) throws ParseException {
+        ExprParser.Parsed first = ExprParser.parse(t, start);
+        Condition acc = factory.apply(first.expression());
+        int cur = first.end();
+        while (cur < t.size()) {
+            String conj = word(t, cur);
+            if (!conj.equals("or") && !conj.equals("and")) {
+                break;
+            }
+            if (cur + 1 >= t.size() || isStandaloneCondition(t, cur + 1)) {
+                break;
+            }
+            ExprParser.Parsed next = ExprParser.parse(t, cur + 1);
+            Condition nextCond = factory.apply(next.expression());
+            // Для отрицаний ("is not A or B") оба союза or/and означают конъюнкцию ("ни A, ни B").
+            boolean useAnd = negate || conj.equals("and");
+            acc = useAnd ? new Condition.And(acc, nextCond) : new Condition.Or(acc, nextCond);
+            cur = next.end();
+        }
+        return new ParsedCond(acc, cur);
+    }
+
+    /** Проверяет, начинается ли с индекса pos самостоятельное условие (со своим оператором is, has, >, contains...). */
+    private boolean isStandaloneCondition(List<Token> t, int pos) {
+        if (pos >= t.size()) {
+            return false;
+        }
+        if (!t.get(pos).quoted() && t.get(pos).value().startsWith("{") && t.get(pos).value().endsWith("::*}")) {
+            String w1 = word(t, pos + 1);
+            if (w1.equals("contains") || w1.equals("does") || w1.equals("has") || w1.equals("is")) {
+                return true;
+            }
+        }
+        if (!t.get(pos).quoted() && word(t, pos).equals("group") && !word(t, pos + 1).equals("of") && pos + 2 < t.size()) {
+            String h = word(t, pos + 2);
+            if (h.equals("has") || h.equals("does")) {
+                return true;
+            }
+        }
+        if (!t.get(pos).quoted()) {
+            try {
+                TargetParser.Parsed tp = TargetParser.parse(t, pos);
+                if (tp != null) {
+                    String h = word(t, tp.end());
+                    if (h.equals("is") || h.equals("has") || h.equals("does")) {
+                        return true;
+                    }
+                }
+            } catch (ParseException ignored) {
+            }
+        }
+        try {
+            ExprParser.Parsed exp = ExprParser.parse(t, pos);
+            String op = word(t, exp.end());
+            return op.equals("is") || op.equals("contains") || op.equals("starts") || op.equals("ends")
+                    || op.equals("does") || op.equals(">") || op.equals("<") || op.equals(">=")
+                    || op.equals("<=") || op.equals("=") || op.equals("==") || op.equals("!=");
+        } catch (ParseException e) {
+            return false;
+        }
     }
 
     /** player is sneaking / is holding / has item / is in creative / is in world ... или null, если это обычное сравнение. */
@@ -1297,8 +1364,9 @@ public final class ScriptParser {
                 return new ParsedCond(new Condition.ScreenOpen(target.target(), title, negate), finish(t, after));
             }
             if (next.equals("group")) {
-                ExprParser.Parsed name = ExprParser.parse(t, n + 2);
-                return new ParsedCond(new Condition.InGroup(target.target(), name.expression(), negate), finish(t, name.end()));
+                ParsedCond multi = parseMultiExprCond(t, n + 2, negate,
+                        r -> new Condition.InGroup(target.target(), r, negate));
+                return new ParsedCond(multi.condition(), finish(t, multi.end()));
             }
             if (next.equals("world")) {
                 if (n + 2 >= t.size()) {

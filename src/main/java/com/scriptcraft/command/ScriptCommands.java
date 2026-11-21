@@ -326,9 +326,9 @@ public final class ScriptCommands {
             parent.then(next);
             return;
         }
-        if (spec.optional()) {
-            parent.executes(ctx -> invoke(name, ctx, specs));
-        }
+        // Всегда разрешаем выполнить команду без оставшихся аргументов (тогда они равны <none> / is not set),
+        // чтобы в скрипте работала проверка "if arg-1 is not set:" даже для <text>, <player>, <integer> и т.д.
+        parent.executes(ctx -> invoke(name, ctx, specs));
         boolean lastTyped = true;
         for (int i = index + 1; i < specs.size(); i++) {
             if (!specs.get(i).isLiteral()) {
