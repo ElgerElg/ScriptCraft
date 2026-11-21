@@ -8,7 +8,7 @@ import java.util.List;
 /** Полное описание экрана: заголовок + список элементов. Именно это летит по сети. */
 public record ScreenDescription(String title, List<ScreenElement> elements) {
     /** Защита от слишком больших пакетов. */
-    public static final int MAX_ELEMENTS = 256;
+    public static final int MAX_ELEMENTS = 512;
 
     public void write(FriendlyByteBuf buf) {
         buf.writeUtf(title);
