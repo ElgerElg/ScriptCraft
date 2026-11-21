@@ -1661,6 +1661,7 @@ on load:
 	clear {-td-host::*}
 	clear {-td-team::*}
 	clear {-td-inv::*}
+	clear {-td-reconn::*}
 
 on quit:
 	TdOnLeave(player)
@@ -1692,9 +1693,17 @@ command /td [text] [player]:
 		play sound entity.experience_orb.pickup to arg-2 with volume 0.7 pitch 1.3
 		TdOpenMenu(player)
 		stop
-	if arg-1 is "join" or "accept":
+	if arg-1 is "join" or "accept" or "reconnect" or "rejoin":
+		# Сначала проверяем: может игрок вылетел/закрыл активную кооп-игру и хочет вернуться?
+		if {-td-reconn::%player%} is set:
+			set {-rh} to {-td-reconn::%player%}
+			if {-rh} is online and {-td-active::%{-rh}%} is 1:
+				delete {-td-reconn::%player%}
+				TdReconnect({-rh}, player)
+				stop
+			delete {-td-reconn::%player%}
 		if {-td-inv::%player%} is not set:
-			send "&cУ вас нет активных приглашений в кооп." to player
+			send "&cУ вас нет активных приглашений или кооп-игры для переподключения." to player
 			stop
 		set {-host} to {-td-inv::%player%}
 		delete {-td-inv::%player%}
@@ -1708,6 +1717,10 @@ command /td [text] [player]:
 				send "&cКоманда уже полная (4/4)!" to player
 				stop
 			add %player% to {-td-team::%{-host}%::*}
+		# Если игра хоста уже идёт — сразу подключаем прямо на карту!
+		if {-td-active::%{-host}%} is 1:
+			TdReconnect({-host}, player)
+			stop
 		set {-members} to join {-td-team::%{-host}%::*} with ", "
 		send "&aВы в команде с &e%{-members}%&a! Ждите старта от хоста &f%{-host}%" to player
 		send "&a%player% присоединился! Команда: &e%{-members}% &7— жмите ▶ ИГРАТЬ в /td!" to {-host}
@@ -1770,31 +1783,107 @@ on toggle "autowave":
 every 2 ticks:
 	loop all players:
 		if {-td-active::%loop-player%} is 1:
-			if loop-player has screen "Tower Defense" open:
+			# Проверяем, открыт ли экран хоть у кого-то из команды (чтобы кооп не падал при вылете 1 игрока)
+			set {-any-open} to 0
+			loop {-td-team::%loop-player%::*}:
+				set {-tp} to %loop-value%
+				if {-tp} is online and {-tp} has screen "Tower Defense" open:
+					set {-any-open} to 1
+			if {-any-open} is 1:
 				TdTick(loop-player)
 				if {-td-speed::%loop-player%} is 2 and {-td-in-wave::%loop-player%} is 1 and {-td-over::%loop-player%} is 0:
 					TdTick(loop-player)
 			else:
-				TdOnLeave(loop-player)
+				delete {-td-active::%loop-player%}
+				delete {-td-over::%loop-player%}
 
 function TdOnLeave(p: player):
 	set {-g} to {-td-host::%p%}
 	if {-g} is not set:
 		stop
-	delete {-td-host::%p%}
-	remove %p% from {-td-team::%{-g}%::*}
-	if %p% is {-g} or {-td-team::%{-g}%::*} is empty:
-		# Хост вышел — завершаем сессию для всех
+	set {-pcnt} to size of {-td-team::%{-g}%::*}
+	if {-pcnt} <= 1:
+		# Соло-игра: закрываем сессию
 		delete {-td-active::%{-g}%}
 		delete {-td-over::%{-g}%}
-		loop {-td-team::%{-g}%::*}:
-			set {-tp} to %loop-value%
-			delete {-td-host::%{-tp}%}
-			send "&e[TD Кооп] &7Хост %p% завершил игру." to {-tp}
+		delete {-td-host::%p%}
 		clear {-td-team::%{-g}%::*}
+		stop
+	# В коопе сохраняем право на переподключение через /td join!
+	if {-td-active::%{-g}%} is 1 and {-td-over::%{-g}%} is 0:
+		set {-td-reconn::%p%} to {-g}
+		if p is online:
+			send "&e[TD Кооп] &7Вы закрыли игру. Вернуться обратно с сохранением золота: &a/td join" to p
+		TdSyncStatus({-g}, "&e%p% временно вышел &7(может вернуться через /td join)")
+
+function TdReconnect(g: player, p: player):
+	set {-m} to {-td-map::%g%}
+	if {-td-team::%g%::*} does not contain %p%:
+		add %p% to {-td-team::%g%::*}
+	set {-td-host::%p%} to %g%
+	if {-td-gold::%p%} is not set:
+		set {-td-gold::%p%} to 120
+	set {-td-tool::%p%} to 1
+	set {-td-sell::%p%} to 0
+	if {-m} is 1:
+		TdOpenMap1(p)
+	else if {-m} is 2:
+		TdOpenMap2(p)
 	else:
-		TdSyncStatus({-g}, "&e%p% покинул команду.")
-		TdSyncHud({-g})
+		TdOpenMap3(p)
+	# Восстанавливаем все стоящие башни (текстуры и звёзды)
+	loop 28 times:
+		set {-ti} to %loop-number%
+		if {-td-ta::%g%::%{-ti}%} is 1:
+			set {-tc} to {-td-tcol::%g%::%{-ti}%}
+			set {-tr} to {-td-trow::%g%::%{-ti}%}
+			set {-tt} to {-td-tt::%g%::%{-ti}%}
+			set {-tl} to {-td-tl::%g%::%{-ti}%}
+			set {-tx} to {-td-tx::%g%::%{-ti}%}
+			set {-ty} to {-td-ty::%g%::%{-ti}%}
+			set {-tex} to "td:textures/gui/tower_archer.png"
+			if {-tt} is 2:
+				set {-tex} to "td:textures/gui/tower_cannon.png"
+			else if {-tt} is 3:
+				set {-tex} to "td:textures/gui/tower_frost.png"
+			else if {-tt} is 4:
+				set {-tex} to "td:textures/gui/tower_mage.png"
+			else if {-tt} is 5:
+				set {-tex} to "td:textures/gui/tower_tesla.png"
+			else if {-tt} is 6:
+				set {-tex} to "td:textures/gui/tower_sniper.png"
+			else if {-tt} is 7:
+				set {-tex} to "td:textures/gui/tower_poison.png"
+			else if {-tt} is 8:
+				set {-tex} to "td:textures/gui/tower_farm.png"
+			set image of screen element "c%{-tc}%_%{-tr}%" for p to {-tex}
+			set {-sy} to {-ty} + 11
+			set position of screen element "st%{-ti}%" for p to {-tx} {-sy}
+			set {-st} to "&e★"
+			if {-tl} is 2:
+				set {-st} to "&6★★"
+			else if {-tl} is 3:
+				set {-st} to "&d★★★"
+			else if {-tl} is 4:
+				set {-st} to "&b★★★★"
+			else if {-tl} >= 5:
+				set {-st} to "&6&l✦5★"
+			set text of screen element "st%{-ti}%" for p to {-st}
+			show screen element "st%{-ti}%" to p
+	# Восстанавливаем всех живых врагов и полосу Босса
+	loop 12 times:
+		set {-ei} to %loop-number%
+		if {-td-ea::%g%::%{-ei}%} is 1:
+			set image of screen element "e%{-ei}%" for p to {-td-etex::%g%::%{-ei}%}
+			set position of screen element "e%{-ei}%" for p to {-td-ex::%g%::%{-ei}%} {-td-ey::%g%::%{-ei}%}
+			show screen element "e%{-ei}%" to p
+			if {-td-eboss::%g%::%{-ei}%} is 1:
+				set max of screen bar "boss_bar" for p to {-td-emhp::%g%::%{-ei}%}
+				set value of screen bar "boss_bar" for p to {-td-ehp::%g%::%{-ei}%}
+				show screen element "boss_bar" to p
+	TdSyncHud(g)
+	TdSyncStatus(g, "&a%p% вернулся в кооп-игру!")
+	play sound entity.player.levelup to p with volume 0.5 pitch 1.3
 
 # ==========================================================
 #  ХЕЛПЕРЫ СИНХРОНИЗАЦИИ ДЛЯ 1..4 ИГРОКОВ
@@ -2966,6 +3055,8 @@ function TdCellClick(p: player, col: integer, row: integer):
 	set {-td-tcd::%{-g}%::%{-slot}%} to 0
 	set {-td-tcost::%{-g}%::%{-slot}%} to {-cost}
 	set {-td-towner::%{-g}%::%{-slot}%} to %p%
+	set {-td-tcol::%{-g}%::%{-slot}%} to col
+	set {-td-trow::%{-g}%::%{-slot}%} to row
 	set {-td-tx::%{-g}%::%{-slot}%} to {-cx}
 	set {-td-ty::%{-g}%::%{-slot}%} to {-cy}
 	set {-td-grid::%{-g}%::%col%_%row%} to {-slot}
@@ -3235,6 +3326,7 @@ function TdSpawnNext(g: player):
 		set {-td-efreeze::%g%::%{-slot}%} to 0
 		set {-td-eburn::%g%::%{-slot}%} to 0
 		set {-td-epoison::%g%::%{-slot}%} to 0
+		set {-td-etex::%g%::%{-slot}%} to {-tex}
 		TdSyncImg(g, "e%{-slot}%", {-tex})
 		TdSyncPos(g, "e%{-slot}%", {-sx}, {-sy})
 		TdSyncShow(g, "e%{-slot}%")
@@ -3271,6 +3363,7 @@ function TdSpawnNext(g: player):
 		set {-td-efreeze::%g%::12} to 0
 		set {-td-eburn::%g%::12} to 0
 		set {-td-epoison::%g%::12} to 0
+		set {-td-etex::%g%::12} to {-btex}
 		TdSyncImg(g, "e12", {-btex})
 		TdSyncPos(g, "e12", {-sx}, {-sy})
 		TdSyncShow(g, "e12")
