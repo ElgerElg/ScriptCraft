@@ -245,7 +245,8 @@ function TdOpenMenu(p: player):
 	if {-td-team::%p%::*} is empty:
 		add %p% to {-td-team::%p%::*}
 	open screen "Tower Defense" to p:
-		image "td:textures/gui/panel_menu.png" at 0 0 size 430x252 texture 430x252 anchor center layer 0
+		bar "bg_menu" value 0 max 1 at 0 0 size 430x252 anchor center background #EE0B1220 layer 0
+		bar "bg_hdr" value 1 max 1 at 0 -114 size 426x22 anchor center color #FF2563EB background #FF2563EB layer 1
 		text "&f&lTOWER DEFENSE ULTRA HD" at 0 -114 anchor center shadow layer 2
 		text "&7Кооп до 4 игроков: &e/td coop <ник> &7(друг: &a/td join&7) | 8 башен + ✦5★ Эволюция!" at 0 -92 anchor center shadow layer 2
 
@@ -463,8 +464,8 @@ function TdLoadWaypoints(g: player, mapId: number):
 
 function TdOpenMap1(p: player):
 	open screen "Tower Defense" to p:
-		# Верхняя HUD-панель (градиент + иконки + команда)
-		image "td:textures/gui/panel_hud.png" at 0 -131 size 456x22 texture 456x22 anchor center layer 11
+		# Верхняя HUD-панель (без PNG — не бывает битых текстур!)
+		bar "bg_hud" value 0 max 1 at 0 -131 size 456x22 anchor center background #DD0F172A layer 11
 		image "td:textures/gui/icon_wave.png" at -214 -131 size 12x12 texture 32x32 anchor center layer 12 tooltip "&eТекущая волна"
 		text "&f0/20" at -188 -131 anchor center shadow layer 12 id hud_wave
 		image "td:textures/gui/icon_coin.png" at -142 -131 size 12x12 texture 32x32 anchor center layer 12 tooltip "&6Ваше личное золото"
@@ -625,13 +626,13 @@ function TdOpenMap1(p: player):
 		image "td:textures/gui/fx_boom.png" at 0 0 size 20x20 texture 32x32 anchor center layer 10 id fx hidden
 
 		# Информационная строка (между картой и нижней панелью — ничего не перекрывает)
-		image "td:textures/gui/panel_status.png" at 0 119 size 456x14 texture 456x14 anchor center layer 11
+		bar "bg_stat" value 0 max 1 at 0 119 size 456x14 anchor center background #DD0F172A layer 11
 		text "&eВыбран: &fЛучник (50з) &7— клик по траве строит, по башне улучшает/показывает радиус!" at 0 119 anchor center shadow layer 12 id status_txt
 		text "&c&lБАЗА ПАЛА!" at 0 -16 anchor center shadow layer 20 id end_title hidden
 		text "&fНажми &eR &f(рестарт) или &eM &f(меню)" at 0 2 anchor center shadow layer 20 id end_sub hidden
 
-		# Нижняя панель инструментов (градиент + 8 HD башен + 3 кнопки + Авто-волна)
-		image "td:textures/gui/panel_bar.png" at 0 148 size 456x40 texture 456x40 anchor center layer 11
+		# Нижняя панель инструментов (8 HD башен + 3 кнопки + Авто-волна)
+		bar "bg_bar" value 0 max 1 at 0 148 size 456x40 anchor center background #EE0B1220 layer 11
 		image "td:textures/gui/tower_archer.png" at -208 140 size 22x22 texture 48x48 anchor center layer 12 id ico1 run TdSelectTool(player, 1) keep open tooltip "&e[1] Лучник &7(50з)\n&7Урон: 15 | Очень быстрый | Дальн: 98\n&6✦5★ Шквал: &fстреляет сразу по 2 целям!"
 		text "&e[1]50" at -208 158 anchor center shadow layer 12 id lbl1
 		image "td:textures/gui/tower_cannon.png" at -172 140 size 22x22 texture 48x48 anchor center layer 12 id ico2 run TdSelectTool(player, 2) keep open tooltip "&6[2] Пушка &7(95з)\n&7Урон: 36 + &cСплеш | Дальн: 92\n&6✦5★ Напалм: &fмега-сплеш + поджог врагов!"
@@ -655,8 +656,8 @@ function TdOpenMap1(p: player):
 
 function TdOpenMap2(p: player):
 	open screen "Tower Defense" to p:
-		# Верхняя HUD-панель (градиент + иконки + команда)
-		image "td:textures/gui/panel_hud.png" at 0 -131 size 456x22 texture 456x22 anchor center layer 11
+		# Верхняя HUD-панель (без PNG — не бывает битых текстур!)
+		bar "bg_hud" value 0 max 1 at 0 -131 size 456x22 anchor center background #DD0F172A layer 11
 		image "td:textures/gui/icon_wave.png" at -214 -131 size 12x12 texture 32x32 anchor center layer 12 tooltip "&eТекущая волна"
 		text "&f0/20" at -188 -131 anchor center shadow layer 12 id hud_wave
 		image "td:textures/gui/icon_coin.png" at -142 -131 size 12x12 texture 32x32 anchor center layer 12 tooltip "&6Ваше личное золото"
@@ -829,13 +830,13 @@ function TdOpenMap2(p: player):
 		image "td:textures/gui/fx_boom.png" at 0 0 size 20x20 texture 32x32 anchor center layer 10 id fx hidden
 
 		# Информационная строка (между картой и нижней панелью — ничего не перекрывает)
-		image "td:textures/gui/panel_status.png" at 0 119 size 456x14 texture 456x14 anchor center layer 11
+		bar "bg_stat" value 0 max 1 at 0 119 size 456x14 anchor center background #DD0F172A layer 11
 		text "&eВыбран: &fЛучник (50з) &7— клик по траве строит, по башне улучшает/показывает радиус!" at 0 119 anchor center shadow layer 12 id status_txt
 		text "&c&lБАЗА ПАЛА!" at 0 -16 anchor center shadow layer 20 id end_title hidden
 		text "&fНажми &eR &f(рестарт) или &eM &f(меню)" at 0 2 anchor center shadow layer 20 id end_sub hidden
 
-		# Нижняя панель инструментов (градиент + 8 HD башен + 3 кнопки + Авто-волна)
-		image "td:textures/gui/panel_bar.png" at 0 148 size 456x40 texture 456x40 anchor center layer 11
+		# Нижняя панель инструментов (8 HD башен + 3 кнопки + Авто-волна)
+		bar "bg_bar" value 0 max 1 at 0 148 size 456x40 anchor center background #EE0B1220 layer 11
 		image "td:textures/gui/tower_archer.png" at -208 140 size 22x22 texture 48x48 anchor center layer 12 id ico1 run TdSelectTool(player, 1) keep open tooltip "&e[1] Лучник &7(50з)\n&7Урон: 15 | Очень быстрый | Дальн: 98\n&6✦5★ Шквал: &fстреляет сразу по 2 целям!"
 		text "&e[1]50" at -208 158 anchor center shadow layer 12 id lbl1
 		image "td:textures/gui/tower_cannon.png" at -172 140 size 22x22 texture 48x48 anchor center layer 12 id ico2 run TdSelectTool(player, 2) keep open tooltip "&6[2] Пушка &7(95з)\n&7Урон: 36 + &cСплеш | Дальн: 92\n&6✦5★ Напалм: &fмега-сплеш + поджог врагов!"
@@ -859,8 +860,8 @@ function TdOpenMap2(p: player):
 
 function TdOpenMap3(p: player):
 	open screen "Tower Defense" to p:
-		# Верхняя HUD-панель (градиент + иконки + команда)
-		image "td:textures/gui/panel_hud.png" at 0 -131 size 456x22 texture 456x22 anchor center layer 11
+		# Верхняя HUD-панель (без PNG — не бывает битых текстур!)
+		bar "bg_hud" value 0 max 1 at 0 -131 size 456x22 anchor center background #DD0F172A layer 11
 		image "td:textures/gui/icon_wave.png" at -214 -131 size 12x12 texture 32x32 anchor center layer 12 tooltip "&eТекущая волна"
 		text "&f0/20" at -188 -131 anchor center shadow layer 12 id hud_wave
 		image "td:textures/gui/icon_coin.png" at -142 -131 size 12x12 texture 32x32 anchor center layer 12 tooltip "&6Ваше личное золото"
@@ -1036,13 +1037,13 @@ function TdOpenMap3(p: player):
 		image "td:textures/gui/fx_boom.png" at 0 0 size 20x20 texture 32x32 anchor center layer 10 id fx hidden
 
 		# Информационная строка (между картой и нижней панелью — ничего не перекрывает)
-		image "td:textures/gui/panel_status.png" at 0 119 size 456x14 texture 456x14 anchor center layer 11
+		bar "bg_stat" value 0 max 1 at 0 119 size 456x14 anchor center background #DD0F172A layer 11
 		text "&eВыбран: &fЛучник (50з) &7— клик по траве строит, по башне улучшает/показывает радиус!" at 0 119 anchor center shadow layer 12 id status_txt
 		text "&c&lБАЗА ПАЛА!" at 0 -16 anchor center shadow layer 20 id end_title hidden
 		text "&fНажми &eR &f(рестарт) или &eM &f(меню)" at 0 2 anchor center shadow layer 20 id end_sub hidden
 
-		# Нижняя панель инструментов (градиент + 8 HD башен + 3 кнопки + Авто-волна)
-		image "td:textures/gui/panel_bar.png" at 0 148 size 456x40 texture 456x40 anchor center layer 11
+		# Нижняя панель инструментов (8 HD башен + 3 кнопки + Авто-волна)
+		bar "bg_bar" value 0 max 1 at 0 148 size 456x40 anchor center background #EE0B1220 layer 11
 		image "td:textures/gui/tower_archer.png" at -208 140 size 22x22 texture 48x48 anchor center layer 12 id ico1 run TdSelectTool(player, 1) keep open tooltip "&e[1] Лучник &7(50з)\n&7Урон: 15 | Очень быстрый | Дальн: 98\n&6✦5★ Шквал: &fстреляет сразу по 2 целям!"
 		text "&e[1]50" at -208 158 anchor center shadow layer 12 id lbl1
 		image "td:textures/gui/tower_cannon.png" at -172 140 size 22x22 texture 48x48 anchor center layer 12 id ico2 run TdSelectTool(player, 2) keep open tooltip "&6[2] Пушка &7(95з)\n&7Урон: 36 + &cСплеш | Дальн: 92\n&6✦5★ Напалм: &fмега-сплеш + поджог врагов!"
@@ -1219,13 +1220,13 @@ function TdCellClick(p: player, col: integer, row: integer):
 		if {-lvl} >= 5:
 			set text of screen element "status_txt" for p to "&6&l✦5★ MAX &7| Владелец: &f%{-own}% &7| Дальность: &b%{-td-tmp-rng}%"
 			stop
-		set {-up} to 65
+		set {-up} to 135
 		if {-lvl} is 2:
-			set {-up} to 140
+			set {-up} to 295
 		else if {-lvl} is 3:
-			set {-up} to 240
+			set {-up} to 505
 		else if {-lvl} is 4:
-			set {-up} to 380
+			set {-up} to 800
 		if {-td-gold::%p%} < {-up}:
 			if {-lvl} is 4:
 				set text of screen element "status_txt" for p to "&7Владелец: &f%{-own}% &7(ур.4) | Для &6✦5★ ЭВОЛЮЦИИ &7нужно &6%{-up}%з!"
@@ -1250,7 +1251,7 @@ function TdCellClick(p: player, col: integer, row: integer):
 			TdSyncSound({-g}, "entity.player.levelup", 0.5, 1.45)
 		else if {-nl} is 4:
 			TdSyncTxt({-g}, "st%{-tid}%", "&b★★★★")
-			TdSyncStatus({-g}, "&b%p% поднял ур.4! След. клик (380з) → &6&l✦5★ ЭВОЛЮЦИЯ!")
+			TdSyncStatus({-g}, "&b%p% поднял ур.4! След. клик (800з) → &6&l✦5★ ЭВОЛЮЦИЯ!")
 			TdSyncSound({-g}, "entity.player.levelup", 0.55, 1.6)
 		else:
 			TdSyncTxt({-g}, "st%{-tid}%", "&6&l✦5★")
