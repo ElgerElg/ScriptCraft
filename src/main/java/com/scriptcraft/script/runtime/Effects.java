@@ -329,10 +329,32 @@ public final class Effects {
     private static SoundEvent soundEvent(String raw) {
         ResourceLocation rl = id(raw);
         SoundEvent sound = ForgeRegistries.SOUND_EVENTS.getValue(rl);
-        if (sound == null || !ForgeRegistries.SOUND_EVENTS.containsKey(rl)) {
-            throw new ScriptRuntimeException(Messages.get("effect.unknown_sound", rl));
+        if (sound != null && ForgeRegistries.SOUND_EVENTS.containsKey(rl)) {
+            return sound;
         }
-        return sound;
+        // Кастомные звуки из scriptcraft/resources/assets/<ns>/sounds.json + .ogg (любой не-minecraft namespace или любой кастомный путь)
+        if (!"minecraft".equals(rl.getNamespace()) || hasCustomSoundResource(rl)) {
+            return SoundEvent.createVariableRangeEvent(rl);
+        }
+        throw new ScriptRuntimeException(Messages.get("effect.unknown_sound", rl));
+    }
+
+    private static boolean hasCustomSoundResource(ResourceLocation rl) {
+        String soundsJson = "assets/" + rl.getNamespace() + "/sounds.json";
+        return com.scriptcraft.resources.ResourceIndex.entries().containsKey(soundsJson);
+    }
+
+    /** stop sound [<id>] for|to <target> */
+    public record StopSound(Target target, @Nullable String soundId) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            ResourceLocation rl = soundId == null || soundId.isBlank() ? null : id(ctx.format(soundId));
+            net.minecraft.network.protocol.game.ClientboundStopSoundPacket packet =
+                    new net.minecraft.network.protocol.game.ClientboundStopSoundPacket(rl, null);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                p.connection.send(packet);
+            }
+        }
     }
 
     /** send title "..." [with subtitle "..."] to player */
@@ -1225,42 +1247,196 @@ public final class Effects {
         }
     }
 
-    /** spawn particle <id> at <x y z | target | expr> [count N] [speed S] */
+    /** spawn particle <id> at <x y z | target | expr> [count N] [speed S] [offset dx dy dz] [color #RRGGBB] [for <listeners>] */
     public record SpawnParticle(String particleId, @Nullable Target target, @Nullable Expression place,
                                 @Nullable Expression x, @Nullable Expression y, @Nullable Expression z,
-                                @Nullable Expression count, @Nullable Expression speed) implements Action {
+                                @Nullable Expression count, @Nullable Expression speed,
+                                @Nullable Expression dx, @Nullable Expression dy, @Nullable Expression dz,
+                                @Nullable String hexColor, @Nullable Target listeners) implements Action {
+        public SpawnParticle(String particleId, @Nullable Target target, @Nullable Expression place,
+                             @Nullable Expression x, @Nullable Expression y, @Nullable Expression z,
+                             @Nullable Expression count, @Nullable Expression speed) {
+            this(particleId, target, place, x, y, z, count, speed, null, null, null, null, null);
+        }
+
         @Override
         public void execute(ExecutionContext ctx) {
-            ResourceLocation rl = id(ctx.format(particleId));
-            ParticleType<?> type = ForgeRegistries.PARTICLE_TYPES.getValue(rl);
-            if (!(type instanceof SimpleParticleType simple)) {
-                throw new ScriptRuntimeException("неизвестная или неподдерживаемая частица: " + rl);
-            }
+            ParticleOptions opts = resolveParticle(ctx.format(particleId), hexColor == null ? null : ctx.format(hexColor));
             int cnt = count == null ? 10 : (int) Math.max(1, Math.min(500, number(count, ctx)));
             double spd = speed == null ? 0.05 : Math.max(0, Math.min(5, number(speed, ctx)));
+            double ox = dx == null ? 0.25 : Math.max(0, Math.min(32, number(dx, ctx)));
+            double oy = dy == null ? 0.25 : Math.max(0, Math.min(32, number(dy, ctx)));
+            double oz = dz == null ? 0.25 : Math.max(0, Math.min(32, number(dz, ctx)));
             if (x != null && y != null && z != null) {
-                emit(levelOf(ctx), simple, number(x, ctx), number(y, ctx), number(z, ctx), cnt, spd);
+                emit(ctx, levelOf(ctx), opts, number(x, ctx), number(y, ctx), number(z, ctx), cnt, ox, oy, oz, spd, listeners);
                 return;
             }
             if (place != null) {
                 ScriptLocation loc = Places.require(place.evaluate(ctx));
-                emit(Places.level(ctx.server(), loc), simple, loc.x(), loc.y(), loc.z(), cnt, spd);
+                emit(ctx, Places.level(ctx.server(), loc), opts, loc.x(), loc.y(), loc.z(), cnt, ox, oy, oz, spd, listeners);
                 return;
             }
             if (target != null) {
                 ScriptLocation loc = Places.fromNamed(target, ctx);
                 if (loc != null) {
-                    emit(Places.level(ctx.server(), loc), simple, loc.x(), loc.y(), loc.z(), cnt, spd);
+                    emit(ctx, Places.level(ctx.server(), loc), opts, loc.x(), loc.y(), loc.z(), cnt, ox, oy, oz, spd, listeners);
                     return;
                 }
                 for (ServerPlayer p : target.resolve(ctx)) {
-                    emit(p.serverLevel(), simple, p.getX(), p.getY() + 1.0, p.getZ(), cnt, spd);
+                    emit(ctx, p.serverLevel(), opts, p.getX(), p.getY() + 1.0, p.getZ(), cnt, ox, oy, oz, spd, listeners);
                 }
             }
         }
 
-        private static void emit(ServerLevel level, ParticleOptions opts, double px, double py, double pz, int cnt, double spd) {
-            level.sendParticles(opts, px, py, pz, cnt, 0.25, 0.25, 0.25, spd);
+        static ParticleOptions resolveParticle(String rawId, @Nullable String hexColor) {
+            String low = rawId.strip().toLowerCase(java.util.Locale.ROOT);
+            if (low.equals("dust") || low.equals("minecraft:dust") || low.equals("redstone") || low.equals("minecraft:redstone")) {
+                int rgb = parseHexRgb(hexColor, 0xFF3333);
+                float r = ((rgb >> 16) & 0xFF) / 255f;
+                float g = ((rgb >> 8) & 0xFF) / 255f;
+                float b = (rgb & 0xFF) / 255f;
+                return new net.minecraft.core.particles.DustParticleOptions(new org.joml.Vector3f(r, g, b), 1.0f);
+            }
+            ResourceLocation rl = id(rawId);
+            ParticleType<?> type = ForgeRegistries.PARTICLE_TYPES.getValue(rl);
+            if (!(type instanceof SimpleParticleType simple)) {
+                throw new ScriptRuntimeException("неизвестная или неподдерживаемая частица: " + rl);
+            }
+            return simple;
+        }
+
+        private static int parseHexRgb(@Nullable String raw, int fallback) {
+            if (raw == null || raw.isBlank()) return fallback;
+            String s = raw.strip();
+            if (s.startsWith("#")) s = s.substring(1);
+            if (s.length() == 8) s = s.substring(2);
+            try {
+                return Integer.parseInt(s, 16) & 0xFFFFFF;
+            } catch (NumberFormatException e) {
+                return fallback;
+            }
+        }
+
+        private static void emit(ExecutionContext ctx, ServerLevel level, ParticleOptions opts,
+                                 double px, double py, double pz, int cnt, double ox, double oy, double oz, double spd,
+                                 @Nullable Target listeners) {
+            if (listeners == null) {
+                level.sendParticles(opts, px, py, pz, cnt, ox, oy, oz, spd);
+                return;
+            }
+            for (ServerPlayer p : listeners.resolve(ctx)) {
+                if (p.serverLevel() == level) {
+                    level.sendParticles(p, opts, true, px, py, pz, cnt, ox, oy, oz, spd);
+                }
+            }
+        }
+    }
+
+    /** spawn particle ring <id> at <target|loc> radius <r> [points <n>] [color #RRGGBB] */
+    public record SpawnParticleRing(String particleId, @Nullable Target target, @Nullable Expression place,
+                                    Expression radius, @Nullable Expression points, @Nullable String hexColor) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            ParticleOptions opts = SpawnParticle.resolveParticle(ctx.format(particleId), hexColor == null ? null : ctx.format(hexColor));
+            double rad = Math.max(0.1, Math.min(32.0, number(radius, ctx)));
+            int pts = points == null ? 24 : (int) Math.max(4, Math.min(180, Math.round(number(points, ctx))));
+            if (place != null) {
+                ScriptLocation loc = Places.require(place.evaluate(ctx));
+                drawRing(Places.level(ctx.server(), loc), opts, loc.x(), loc.y(), loc.z(), rad, pts);
+                return;
+            }
+            if (target != null) {
+                ScriptLocation loc = Places.fromNamed(target, ctx);
+                if (loc != null) {
+                    drawRing(Places.level(ctx.server(), loc), opts, loc.x(), loc.y(), loc.z(), rad, pts);
+                    return;
+                }
+                for (ServerPlayer p : target.resolve(ctx)) {
+                    drawRing(p.serverLevel(), opts, p.getX(), p.getY() + 0.15, p.getZ(), rad, pts);
+                }
+            }
+        }
+
+        private static void drawRing(ServerLevel level, ParticleOptions opts, double cx, double cy, double cz, double r, int pts) {
+            for (int i = 0; i < pts; i++) {
+                double ang = (Math.PI * 2.0 * i) / pts;
+                level.sendParticles(opts, cx + Math.cos(ang) * r, cy, cz + Math.sin(ang) * r, 1, 0, 0, 0, 0);
+            }
+        }
+    }
+
+    /** shake camera of <target> [with intensity N] [for T ticks|seconds] */
+    public record CameraShake(Target target, @Nullable Expression intensity, @Nullable Expression duration, int ticksPerUnit) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            float amp = intensity == null ? 1.5f : (float) Math.max(0.05, Math.min(15.0, number(intensity, ctx)));
+            int ticks = duration == null ? 20 : (int) Math.max(1, Math.min(20 * 60, Math.round(number(duration, ctx) * ticksPerUnit)));
+            com.scriptcraft.network.CameraEffectPacket pkt = com.scriptcraft.network.CameraEffectPacket.shake(amp, ticks);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                com.scriptcraft.network.ModNetwork.sendTo(p, pkt);
+            }
+        }
+    }
+
+    /** fade screen of <target> [to #RRGGBB] [in N] [stay N] [out N] */
+    public record CameraFade(Target target, @Nullable String hexColor, Expression fadeIn, Expression stay, Expression fadeOut, int ticksPerUnit) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            int argb = 0xFF000000;
+            if (hexColor != null && !hexColor.isBlank()) {
+                String s = ctx.format(hexColor).strip();
+                if (s.startsWith("#")) s = s.substring(1);
+                try {
+                    long v = Long.parseLong(s, 16);
+                    if (s.length() <= 6) v |= 0xFF000000L;
+                    argb = (int) v;
+                } catch (NumberFormatException ignored) {
+                }
+            }
+            int inT = (int) Math.max(0, Math.min(20 * 60, Math.round(number(fadeIn, ctx) * ticksPerUnit)));
+            int stayT = (int) Math.max(0, Math.min(20 * 60, Math.round(number(stay, ctx) * ticksPerUnit)));
+            int outT = (int) Math.max(0, Math.min(20 * 60, Math.round(number(fadeOut, ctx) * ticksPerUnit)));
+            com.scriptcraft.network.CameraEffectPacket pkt = com.scriptcraft.network.CameraEffectPacket.fade(argb, inT, stayT, outT);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                com.scriptcraft.network.ModNetwork.sendTo(p, pkt);
+            }
+        }
+    }
+
+    /** set camera fov of <target> to <offset> [for T ticks|seconds] */
+    public record CameraFov(Target target, Expression offset, @Nullable Expression duration, int ticksPerUnit) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            float off = (float) Math.max(-50.0, Math.min(60.0, number(offset, ctx)));
+            int ticks = duration == null ? 0 : (int) Math.max(1, Math.min(20 * 300, Math.round(number(duration, ctx) * ticksPerUnit)));
+            com.scriptcraft.network.CameraEffectPacket pkt = com.scriptcraft.network.CameraEffectPacket.fov(off, ticks);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                com.scriptcraft.network.ModNetwork.sendTo(p, pkt);
+            }
+        }
+    }
+
+    /** roll/tilt camera of <target> by <degrees> [for T ticks|seconds] */
+    public record CameraRoll(Target target, Expression degrees, @Nullable Expression duration, int ticksPerUnit) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            float deg = (float) Math.max(-180.0, Math.min(180.0, number(degrees, ctx)));
+            int ticks = duration == null ? 0 : (int) Math.max(1, Math.min(20 * 300, Math.round(number(duration, ctx) * ticksPerUnit)));
+            com.scriptcraft.network.CameraEffectPacket pkt = com.scriptcraft.network.CameraEffectPacket.roll(deg, ticks);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                com.scriptcraft.network.ModNetwork.sendTo(p, pkt);
+            }
+        }
+    }
+
+    /** reset camera of <target> */
+    public record CameraReset(Target target) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            com.scriptcraft.network.CameraEffectPacket pkt = com.scriptcraft.network.CameraEffectPacket.reset();
+            for (ServerPlayer p : target.resolve(ctx)) {
+                com.scriptcraft.network.ModNetwork.sendTo(p, pkt);
+            }
         }
     }
 

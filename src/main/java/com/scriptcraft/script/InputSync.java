@@ -167,6 +167,9 @@ public final class InputSync {
         else if (element instanceof TextElement t) action = com.scriptcraft.screen.ScreenMeta.rawAction(t.action());
         else if (element instanceof ImageElement img) action = com.scriptcraft.screen.ScreenMeta.rawAction(img.action());
         else if (element instanceof SlotElement s) action = com.scriptcraft.screen.ScreenMeta.rawAction(s.action());
+        else if (element instanceof com.scriptcraft.screen.InputElement in) action = com.scriptcraft.screen.ScreenMeta.rawAction(in.action());
+        else if (element instanceof com.scriptcraft.screen.SliderElement sl) action = com.scriptcraft.screen.ScreenMeta.rawAction(sl.action());
+        else if (element instanceof com.scriptcraft.screen.ToggleElement tg) action = com.scriptcraft.screen.ScreenMeta.rawAction(tg.action());
         else if (element instanceof ListElement list) {
             for (ListElement.Row row : list.rows()) {
                 String rowAct = com.scriptcraft.screen.ScreenMeta.rawAction(row.action());

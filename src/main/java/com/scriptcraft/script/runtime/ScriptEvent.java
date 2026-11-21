@@ -47,6 +47,8 @@ public enum ScriptEvent {
     SCREEN_OPEN("screen open", true, "open screen", "gui open", "open gui"),
     /** Закрыт кастомный экран скрипта (on screen close:). %screen% — заголовок экрана. */
     SCREEN_CLOSE("screen close", true, "close screen", "gui close", "close gui"),
+    /** Изменилось значение input / slider / toggle на кастомном экране. %element%, %value%, %screen%. */
+    GUI_CHANGE("gui change", true, "screen change", "gui input", "screen input", "input", "slider", "toggle"),
     /** Открывается ванильный экран (on open inventory:). %menu%. cancel event в теле блокирует экран на клиенте. */
     OPEN("open", true, "open menu", "menu open"),
     /** Получил урон. Можно отменить. %damage%, %attacker%, %cause%. */

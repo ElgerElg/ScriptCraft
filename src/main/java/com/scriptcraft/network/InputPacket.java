@@ -18,14 +18,17 @@ public record InputPacket(byte kind, String name) {
     public static final byte KEY_RELEASE = 3;
     public static final byte KEY_HOLD = 4;
     public static final byte SCREEN_CLOSE = 5;
+    public static final byte GUI_INPUT = 6;
+    public static final byte GUI_SLIDER = 7;
+    public static final byte GUI_TOGGLE = 8;
 
     public static void encode(InputPacket packet, FriendlyByteBuf buf) {
         buf.writeByte(packet.kind);
-        buf.writeUtf(packet.name, 256);
+        buf.writeUtf(packet.name, 1024);
     }
 
     public static InputPacket decode(FriendlyByteBuf buf) {
-        return new InputPacket(buf.readByte(), buf.readUtf(256));
+        return new InputPacket(buf.readByte(), buf.readUtf(1024));
     }
 
     public static void handle(InputPacket packet, Supplier<NetworkEvent.Context> ctx) {
@@ -44,6 +47,8 @@ public record InputPacket(byte kind, String name) {
                 ScriptLoader.fireEvent(ScriptEvent.KEY_HOLD, player, Map.of("key", packet.name, "screen", screenVal));
             } else if (packet.kind == SCREEN_CLOSE) {
                 com.scriptcraft.screen.ScreenManager.onClientClosed(player, packet.name);
+            } else if (packet.kind == GUI_INPUT || packet.kind == GUI_SLIDER || packet.kind == GUI_TOGGLE) {
+                com.scriptcraft.screen.ScreenManager.onClientControl(player, packet.kind, packet.name);
             } else if (packet.kind == OPEN && InputSync.JUMP_TOKEN.equals(packet.name) && InputSync.cancelsJump()) {
                 com.scriptcraft.event.ServerEvents.handleJump(player, true);
             } else if (packet.kind == OPEN && InputSync.watchesMenu(packet.name)) {

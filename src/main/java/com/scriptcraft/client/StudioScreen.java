@@ -265,6 +265,8 @@ public class StudioScreen extends Screen {
             renderHome(g, mouseX, mouseY - slideY);
         } else if (StudioSession.JOURNAL.equals(StudioSession.active)) {
             renderJournal(g, mouseX, mouseY - slideY);
+        } else if (StudioSession.PROFILER.equals(StudioSession.active) && ClientUiSettings.showProfiler()) {
+            renderProfiler(g, mouseX, mouseY - slideY);
         } else if (script() != null) {
             renderEditor(g, mouseX, mouseY - slideY);
             if (StudioSession.toolPanelOpen) {
@@ -288,6 +290,9 @@ public class StudioScreen extends Screen {
         }
         if (ask != null) {
             renderAsk(g, mouseX, mouseY - slideY);
+        }
+        if (StudioSession.historyOpen) {
+            renderHistoryModal(g, mouseX, mouseY - slideY);
         }
         g.pose().popPose();
         drawTip(g);
@@ -319,6 +324,9 @@ public class StudioScreen extends Screen {
             journalLabel = journalLabel + " " + StudioSession.issues.size();
         }
         x = tab(g, mx, my, x, journalLabel, StudioSession.JOURNAL, false);
+        if (ClientUiSettings.showProfiler()) {
+            x = tab(g, mx, my, x, Messages.get("studio.profiler"), StudioSession.PROFILER, false);
+        }
         if (!catalogRequested && this.minecraft != null && this.minecraft.getConnection() != null) {
             catalogRequested = true;
             ModNetwork.sendToServer(new ScriptListPacket.Request());
@@ -468,7 +476,19 @@ public class StudioScreen extends Screen {
         x = tool(g, mx, my, x, y, "redo", Messages.get("studio.m.redo"));
         g.fill(x + 2, y + 4, x + 3, y + TOOL_H - 4, EDGE);
         x += 8;
-        tool(g, mx, my, x, y, "find", Messages.get("studio.find_replace"));
+        x = tool(g, mx, my, x, y, "find", Messages.get("studio.find_replace"));
+        histBtnX = -1000;
+        ScriptDocument curDoc = script();
+        if (curDoc != null && !curDoc.genericFile && !curDoc.isImage) {
+            g.fill(x + 2, y + 4, x + 3, y + TOOL_H - 4, EDGE);
+            x += 8;
+            String histLbl = Messages.get("studio.history");
+            histBtnW = this.font.width(histLbl) + 12;
+            histBtnX = x;
+            histBtnY = y + 3;
+            paintMiniBtn(g, mx, my, histBtnX, histBtnY, histBtnW, 16, histLbl, "tool:history");
+            x += histBtnW + 4;
+        }
 
         // Аватары участников совместной правки в правой части тулбара (клик -> переход на их строку)
         peerHeadHits.clear();
@@ -1880,6 +1900,10 @@ public class StudioScreen extends Screen {
         boolean isRu = "ru".equals(ClientUiSettings.language());
         drawSideBtn(g, mx, my, setLangRuX, setLangY, 58, "РУС", isRu);
         drawSideBtn(g, mx, my, setLangEnX, setLangY, 58, "ENG", !isRu);
+        y += 20;
+        setProfX = x;
+        setProfY = y;
+        drawSettingsCheck(g, mx, my, x, y, midX - x - 18, "set:prof", Messages.get("studio.set.profiler"), ClientUiSettings.showProfiler());
 
         // --- Правая колонка: Все горячие клавиши клиента ---
         int rx = midX + 6;
@@ -2327,6 +2351,10 @@ public class StudioScreen extends Screen {
             }
             return true;
         }
+        if (StudioSession.historyOpen) {
+            historyClick(mx, my);
+            return true;
+        }
         if (StudioSession.HOME.equals(StudioSession.active) && !settings) {
             for (HomeLink link : homeLinks) {
                 if (hover(mx, my, link.x, link.y, link.w, link.h)) {
@@ -2477,7 +2505,9 @@ public class StudioScreen extends Screen {
                     requestClose(tab.substring(2));
                 } else {
                     StudioSession.active = tab;
-                    if (!StudioSession.HOME.equals(tab) && !StudioSession.JOURNAL.equals(tab)) {
+                    if (StudioSession.PROFILER.equals(tab)) {
+                        lastProfFetchMs = 0L;
+                    } else if (!StudioSession.HOME.equals(tab) && !StudioSession.JOURNAL.equals(tab)) {
                         StudioSession.lastScriptTab = tab;
                     }
                     settings = false;
@@ -2505,6 +2535,11 @@ public class StudioScreen extends Screen {
             settingsClick(mx, my);
             return true;
         }
+        if (StudioSession.PROFILER.equals(StudioSession.active) && ClientUiSettings.showProfiler()
+                && my >= py + TITLE + MENU_H) {
+            profilerClick(mx, my);
+            return true;
+        }
         if (script() != null && my >= py + TITLE + MENU_H && my < py + TITLE + MENU_H + TOOL_H) {
             for (PeerHeadHit hit : peerHeadHits) {
                 if (hover(mx, my, hit.x, hit.y, hit.w, hit.h)) {
@@ -2515,6 +2550,20 @@ public class StudioScreen extends Screen {
                     }
                     return true;
                 }
+            }
+            if (histBtnX >= 0 && hover(mx, my, histBtnX, histBtnY, histBtnW, 16)) {
+                ScriptDocument d = script();
+                if (d != null && !d.genericFile && !d.isImage) {
+                    StudioSession.historyOpen = true;
+                    StudioSession.historyScript = d.name;
+                    StudioSession.historySelectedId = "";
+                    StudioSession.historyPreviewText = "";
+                    histListScroll = 0;
+                    histPreviewScroll = 0;
+                    ModNetwork.sendToServer(new com.scriptcraft.network.ScriptHistoryPacket.Request(
+                            com.scriptcraft.network.ScriptHistoryPacket.LIST, d.name, ""));
+                }
+                return true;
             }
             toolClick(mx);
             return true;
@@ -2757,6 +2806,18 @@ public class StudioScreen extends Screen {
         int step = (int) Math.signum(delta) * -3;
         if (settings) {
             hotkeyScroll = Math.max(0, Math.min(hotkeyMaxScroll, hotkeyScroll + step * 12));
+            return true;
+        }
+        if (StudioSession.historyOpen) {
+            if (mouseX < histSplitX) {
+                histListScroll = Math.max(0, Math.min(histListMax, histListScroll + step * 12));
+            } else {
+                histPreviewScroll = Math.max(0, Math.min(histPreviewMax, histPreviewScroll + step * 3));
+            }
+            return true;
+        }
+        if (StudioSession.PROFILER.equals(StudioSession.active) && ClientUiSettings.showProfiler()) {
+            profScroll = Math.max(0, Math.min(profMaxScroll, profScroll + step * 14));
             return true;
         }
         ScriptDocument doc = script();
@@ -3905,6 +3966,13 @@ public class StudioScreen extends Screen {
             return StudioSession.JOURNAL;
         }
         x += tabWidth(journalLabel, false, false);
+        if (ClientUiSettings.showProfiler()) {
+            String profLabel = Messages.get("studio.profiler");
+            if (hitTab(mx, x, profLabel, false) != null) {
+                return StudioSession.PROFILER;
+            }
+            x += tabWidth(profLabel, false, false);
+        }
         for (String name : new ArrayList<>(StudioSession.docs.keySet())) {
             if (x > limit - 70) {
                 break;
@@ -4046,6 +4114,14 @@ public class StudioScreen extends Screen {
         }
         if (hover(mx, my, setLangEnX, setLangY, 58, 15)) {
             ClientUiSettings.setLanguage("en");
+            return;
+        }
+        if (hover(mx, my, setProfX, setProfY, 220, 14)) {
+            boolean next = !ClientUiSettings.showProfiler();
+            ClientUiSettings.setShowProfiler(next);
+            if (!next && StudioSession.PROFILER.equals(StudioSession.active)) {
+                StudioSession.active = StudioSession.HOME;
+            }
             return;
         }
         if (hover(mx, my, hkResetX, hkResetY, hkResetW, 14)) {
@@ -4246,5 +4322,307 @@ public class StudioScreen extends Screen {
         g.fill(x + 7, y + 7, x + 9, y + 9, color);
         // Внутреннее отверстие
         g.fill(x + 4, y + 4, x + 6, y + 6, holeBg);
+    }
+
+    // ------------------------------------------------------------------ Профайлер и история версий
+
+    private int setProfX, setProfY;
+    private int histBtnX = -1000, histBtnY, histBtnW;
+    private long lastProfFetchMs;
+    private int profScroll, profMaxScroll;
+    private int profToggleX, profToggleY, profToggleW;
+    private int profResetX, profResetY, profResetW;
+    private final List<ProfRowHit> profHits = new ArrayList<>();
+    private final int[] profSortX = new int[4];
+    private int profSortY;
+
+    private record ProfRowHit(int x, int y, int w, int h, String script) {
+    }
+
+    private int histModalX, histModalY, histModalW, histModalH, histSplitX;
+    private int histCloseX, histCloseY;
+    private int histRestoreX, histRestoreY, histRestoreW;
+    private int histDeleteX, histDeleteY, histDeleteW;
+    private int histListScroll, histListMax, histPreviewScroll, histPreviewMax;
+    private final List<HistEntryHit> histHits = new ArrayList<>();
+
+    private record HistEntryHit(int x, int y, int w, int h, String id) {
+    }
+
+    private void renderProfiler(GuiGraphics g, int mx, int my) {
+        long now = System.currentTimeMillis();
+        if (now - lastProfFetchMs >= 1000L && this.minecraft != null && this.minecraft.getConnection() != null) {
+            lastProfFetchMs = now;
+            ModNetwork.sendToServer(new com.scriptcraft.network.ProfilerPacket.Request(com.scriptcraft.network.ProfilerPacket.FETCH));
+        }
+        int x0 = px + 10;
+        int y0 = py + TITLE + MENU_H + 8;
+        int w = pw - 20;
+        int h = ph - TITLE - MENU_H - 16;
+
+        com.scriptcraft.network.ProfilerPacket.Data data = StudioSession.profilerData;
+        boolean srvOn = data == null || data.enabled();
+
+        // Верхняя панель управления профайлером
+        g.fill(x0, y0, x0 + w, y0 + 24, SURFACE);
+        border(g, x0, y0, w, 24, EDGE);
+
+        String togLbl = Messages.get(srvOn ? "studio.profiler.on" : "studio.profiler.off");
+        profToggleW = this.font.width(togLbl) + 14;
+        profToggleX = x0 + 6;
+        profToggleY = y0 + 4;
+        g.fill(profToggleX, profToggleY, profToggleX + profToggleW, profToggleY + 16, srvOn ? 0xFF1F382E : 0xFF3A1E24);
+        border(g, profToggleX, profToggleY, profToggleW, 16, srvOn ? GREEN : 0xFFEF4444);
+        g.drawString(this.font, togLbl, profToggleX + 7, profToggleY + 4, srvOn ? GREEN : 0xFFFCA5A5, false);
+
+        String rstLbl = Messages.get("studio.profiler.reset");
+        profResetW = this.font.width(rstLbl) + 12;
+        profResetX = profToggleX + profToggleW + 6;
+        profResetY = y0 + 4;
+        paintMiniBtn(g, mx, my, profResetX, profResetY, profResetW, 16, rstLbl, "prof:reset");
+
+        if (data != null) {
+            String summary = String.format(java.util.Locale.ROOT, "MSPT: %.2f ms  |  Scripts: %.3f ms/t  |  %d",
+                    data.serverMspt(), data.scriptTickMs(), data.rows().size());
+            g.drawString(this.font, summary, profResetX + profResetW + 12, y0 + 8, TEXT, false);
+        }
+
+        // Заголовки таблицы
+        int tblY = y0 + 30;
+        int tblH = Math.max(40, h - 30);
+        g.fill(x0, tblY, x0 + w, tblY + tblH, 0xFF0E131D);
+        border(g, x0, tblY, w, tblH, EDGE);
+
+        int hdrY = tblY + 1;
+        g.fill(x0 + 1, hdrY, x0 + w - 1, hdrY + 16, BAR);
+        g.drawString(this.font, "Script / Section", x0 + 8, hdrY + 4, MUTED, false);
+
+        profSortY = hdrY;
+        int colCalls = x0 + w - 62;
+        int colMax = colCalls - 64;
+        int colAvg = colMax - 64;
+        int colRecent = colAvg - 72;
+        profSortX[0] = colRecent;
+        profSortX[1] = colAvg;
+        profSortX[2] = colMax;
+        profSortX[3] = colCalls;
+        String[] hdrs = {"ms/s", "avg ms", "max ms", "calls"};
+        for (int i = 0; i < 4; i++) {
+            boolean active = StudioSession.profilerSort == i;
+            String lbl = active ? hdrs[i] + " v" : hdrs[i];
+            g.drawString(this.font, lbl, profSortX[i], hdrY + 4, active ? GOLD : MUTED, false);
+        }
+
+        profHits.clear();
+        int bodyY = hdrY + 17;
+        int bodyH = Math.max(10, tblH - 18);
+        if (data == null || data.rows().isEmpty()) {
+            String msg = Messages.get(srvOn ? "studio.profiler.empty" : "studio.profiler.disabled");
+            g.drawCenteredString(this.font, msg, x0 + w / 2, bodyY + bodyH / 2 - 4, MUTED);
+            profMaxScroll = 0;
+            profScroll = 0;
+            return;
+        }
+
+        List<com.scriptcraft.network.ProfilerPacket.Row> rows = new ArrayList<>(data.rows());
+        rows.sort((a, b) -> switch (StudioSession.profilerSort) {
+            case 1 -> Float.compare(b.avgMs(), a.avgMs());
+            case 2 -> Float.compare(b.maxMs(), a.maxMs());
+            case 3 -> Long.compare(b.calls(), a.calls());
+            default -> Float.compare(b.recentMsPerSec(), a.recentMsPerSec());
+        });
+
+        int rowH = 17;
+        int totalH = rows.size() * rowH + 4;
+        profMaxScroll = Math.max(0, totalH - bodyH);
+        profScroll = Math.max(0, Math.min(profScroll, profMaxScroll));
+
+        g.enableScissor(x0 + 1, bodyY, x0 + w - 1, bodyY + bodyH);
+        int ry = bodyY + 2 - profScroll;
+        for (var r : rows) {
+            if (ry + rowH >= bodyY && ry <= bodyY + bodyH) {
+                boolean hot = hover(mx, my, x0 + 2, ry, w - 4, rowH - 1);
+                g.fill(x0 + 2, ry, x0 + w - 2, ry + rowH - 1, hot ? ROW_HOT : ROW);
+                int barColor = r.recentMsPerSec() > 10f ? 0x60EF4444 : (r.recentMsPerSec() > 1f ? 0x55F59E0B : 0x4522C55E);
+                float frac = Math.min(1f, r.recentMsPerSec() / 20f);
+                int barW = Math.round((w - 4) * frac);
+                if (barW > 0) {
+                    g.fill(x0 + 2, ry, x0 + 2 + barW, ry + rowH - 1, barColor);
+                }
+                String name = r.script() + "  ::  " + r.section();
+                g.drawString(this.font, trim(name, Math.max(40, colRecent - x0 - 16)), x0 + 8, ry + 4, TEXT, false);
+                g.drawString(this.font, String.format(java.util.Locale.ROOT, "%.2f", r.recentMsPerSec()), colRecent, ry + 4,
+                        r.recentMsPerSec() > 10f ? 0xFFFCA5A5 : (r.recentMsPerSec() > 1f ? GOLD : GREEN), false);
+                g.drawString(this.font, String.format(java.util.Locale.ROOT, "%.3f", r.avgMs()), colAvg, ry + 4, TEXT, false);
+                g.drawString(this.font, String.format(java.util.Locale.ROOT, "%.2f", r.maxMs()), colMax, ry + 4, MUTED, false);
+                g.drawString(this.font, Long.toString(r.calls()), colCalls, ry + 4, MUTED, false);
+                profHits.add(new ProfRowHit(x0 + 2, ry, w - 4, rowH - 1, r.script()));
+            }
+            ry += rowH;
+        }
+        g.disableScissor();
+    }
+
+    private void profilerClick(int mx, int my) {
+        if (hover(mx, my, profToggleX, profToggleY, profToggleW, 16)) {
+            ModNetwork.sendToServer(new com.scriptcraft.network.ProfilerPacket.Request(com.scriptcraft.network.ProfilerPacket.TOGGLE));
+            return;
+        }
+        if (hover(mx, my, profResetX, profResetY, profResetW, 16)) {
+            ModNetwork.sendToServer(new com.scriptcraft.network.ProfilerPacket.Request(com.scriptcraft.network.ProfilerPacket.RESET));
+            return;
+        }
+        for (int i = 0; i < 4; i++) {
+            if (hover(mx, my, profSortX[i] - 2, profSortY, 62, 16)) {
+                StudioSession.profilerSort = i;
+                return;
+            }
+        }
+        for (ProfRowHit hit : profHits) {
+            if (hover(mx, my, hit.x, hit.y, hit.w, hit.h)) {
+                if (hit.script != null && !hit.script.isEmpty() && !hit.script.startsWith("<")) {
+                    openScript(hit.script);
+                }
+                return;
+            }
+        }
+    }
+
+    private void renderHistoryModal(GuiGraphics g, int mx, int my) {
+        g.fill(px, py, px + pw, py + ph, 0x99000000);
+        histModalW = Math.min(pw - 32, Math.max(360, pw - 90));
+        histModalH = Math.min(ph - 32, Math.max(220, ph - 70));
+        histModalX = px + (pw - histModalW) / 2;
+        histModalY = py + (ph - histModalH) / 2;
+        g.fill(histModalX, histModalY, histModalX + histModalW, histModalY + histModalH, 0xFA131924);
+        border(g, histModalX, histModalY, histModalW, histModalH, ACCENT);
+
+        // Шапка модалки
+        g.fill(histModalX + 1, histModalY + 1, histModalX + histModalW - 1, histModalY + 22, BAR);
+        String title = StudioSession.historyRetentionDays > 0
+                ? Messages.get("studio.history.title", StudioSession.historyScript, StudioSession.historyRetentionDays)
+                : Messages.get("studio.history.title_forever", StudioSession.historyScript);
+        g.drawString(this.font, trim(title, histModalW - 32), histModalX + 8, histModalY + 7, GOLD, false);
+        histCloseX = histModalX + histModalW - 18;
+        histCloseY = histModalY + 4;
+        boolean closeHot = hover(mx, my, histCloseX, histCloseY, 14, 14);
+        g.fill(histCloseX, histCloseY, histCloseX + 14, histCloseY + 14, closeHot ? 0xFF7F1D1D : ROW);
+        g.drawCenteredString(this.font, "x", histCloseX + 7, histCloseY + 3, TEXT);
+
+        int contentY = histModalY + 25;
+        int contentH = histModalH - 54;
+        int leftW = Math.min(200, Math.max(130, histModalW / 3));
+        histSplitX = histModalX + leftW;
+
+        // Левая колонка: список снимков
+        g.fill(histModalX + 6, contentY, histSplitX - 4, contentY + contentH, 0xFF0E131D);
+        border(g, histModalX + 6, contentY, leftW - 10, contentH, EDGE);
+        histHits.clear();
+        if (StudioSession.historyEntries.isEmpty()) {
+            g.drawCenteredString(this.font, Messages.get("studio.history.empty"), histModalX + leftW / 2, contentY + contentH / 2 - 4, MUTED);
+            histListMax = 0;
+        } else {
+            int rowH = 26;
+            histListMax = Math.max(0, StudioSession.historyEntries.size() * rowH - contentH + 6);
+            histListScroll = Math.max(0, Math.min(histListScroll, histListMax));
+            java.time.format.DateTimeFormatter fmt = java.time.format.DateTimeFormatter.ofPattern("dd.MM HH:mm:ss");
+            g.enableScissor(histModalX + 7, contentY + 1, histSplitX - 5, contentY + contentH - 1);
+            int ry = contentY + 3 - histListScroll;
+            for (var e : StudioSession.historyEntries) {
+                if (ry + rowH >= contentY && ry <= contentY + contentH) {
+                    boolean sel = e.id().equals(StudioSession.historySelectedId);
+                    boolean hot = hover(mx, my, histModalX + 8, ry, leftW - 14, rowH - 2);
+                    g.fill(histModalX + 8, ry, histSplitX - 6, ry + rowH - 2, sel ? 0xFF23354D : (hot ? ROW_HOT : ROW));
+                    if (sel) {
+                        g.fill(histModalX + 8, ry, histModalX + 10, ry + rowH - 2, ACCENT);
+                    }
+                    String ts = java.time.Instant.ofEpochMilli(e.timestampMs())
+                            .atZone(java.time.ZoneId.systemDefault()).format(fmt);
+                    g.drawString(this.font, ts, histModalX + 13, ry + 3, sel ? TEXT : MUTED, false);
+                    String sub = e.author() + " • " + Messages.get("studio.history.lines", e.lines());
+                    g.drawString(this.font, trim(sub, leftW - 22), histModalX + 13, ry + 13, 0xFF8B99B0, false);
+                    histHits.add(new HistEntryHit(histModalX + 8, ry, leftW - 14, rowH - 2, e.id()));
+                }
+                ry += rowH;
+            }
+            g.disableScissor();
+        }
+
+        // Правая колонка: превью кода
+        int rightX = histSplitX + 2;
+        int rightW = histModalX + histModalW - rightX - 6;
+        g.fill(rightX, contentY, rightX + rightW, contentY + contentH, 0xFF0B0F17);
+        border(g, rightX, contentY, rightW, contentH, EDGE);
+        String[] lines = StudioSession.historyPreviewText.isEmpty() ? new String[0] : StudioSession.historyPreviewText.split("\n", -1);
+        int visibleLines = Math.max(1, (contentH - 8) / LINE_H);
+        histPreviewMax = Math.max(0, lines.length - visibleLines);
+        histPreviewScroll = Math.max(0, Math.min(histPreviewScroll, histPreviewMax));
+        g.enableScissor(rightX + 2, contentY + 2, rightX + rightW - 2, contentY + contentH - 2);
+        for (int i = histPreviewScroll; i < Math.min(lines.length, histPreviewScroll + visibleLines + 1); i++) {
+            int ly = contentY + 4 + (i - histPreviewScroll) * LINE_H;
+            g.drawString(this.font, String.valueOf(i + 1), rightX + 6, ly, 0xFF566275, false);
+            g.drawString(this.font, trim(lines[i].replace("\t", "    "), rightW - 34), rightX + 28, ly, TEXT, false);
+        }
+        g.disableScissor();
+
+        // Нижние кнопки: Восстановить / Удалить
+        int footY = histModalY + histModalH - 23;
+        String resLbl = Messages.get("studio.history.restore");
+        histRestoreW = this.font.width(resLbl) + 16;
+        histRestoreX = histModalX + histModalW - histRestoreW - 8;
+        histRestoreY = footY;
+        boolean hasSel = !StudioSession.historySelectedId.isEmpty();
+        if (hasSel) {
+            boolean rHot = hover(mx, my, histRestoreX, histRestoreY, histRestoreW, 17);
+            g.fill(histRestoreX, histRestoreY, histRestoreX + histRestoreW, histRestoreY + 17, rHot ? 0xFF1E4D38 : 0xFF183B2C);
+            border(g, histRestoreX, histRestoreY, histRestoreW, 17, GREEN);
+            g.drawString(this.font, resLbl, histRestoreX + 8, histRestoreY + 5, GREEN, false);
+
+            String delLbl = Messages.get("studio.history.delete");
+            histDeleteW = this.font.width(delLbl) + 14;
+            histDeleteX = histRestoreX - histDeleteW - 6;
+            histDeleteY = footY;
+            boolean dHot = hover(mx, my, histDeleteX, histDeleteY, histDeleteW, 17);
+            g.fill(histDeleteX, histDeleteY, histDeleteX + histDeleteW, histDeleteY + 17, dHot ? 0xFF5C1E26 : 0xFF3A1A20);
+            border(g, histDeleteX, histDeleteY, histDeleteW, 17, 0xFFEF4444);
+            g.drawString(this.font, delLbl, histDeleteX + 7, histDeleteY + 5, 0xFFFCA5A5, false);
+        } else {
+            histRestoreX = -1000;
+            histDeleteX = -1000;
+        }
+    }
+
+    private void historyClick(int mx, int my) {
+        if (!hover(mx, my, histModalX, histModalY, histModalW, histModalH)
+                || hover(mx, my, histCloseX, histCloseY, 14, 14)) {
+            StudioSession.historyOpen = false;
+            return;
+        }
+        if (histRestoreX >= 0 && hover(mx, my, histRestoreX, histRestoreY, histRestoreW, 17)
+                && !StudioSession.historySelectedId.isEmpty()) {
+            ModNetwork.sendToServer(new com.scriptcraft.network.ScriptHistoryPacket.Request(
+                    com.scriptcraft.network.ScriptHistoryPacket.RESTORE,
+                    StudioSession.historyScript, StudioSession.historySelectedId));
+            StudioSession.historyOpen = false;
+            return;
+        }
+        if (histDeleteX >= 0 && hover(mx, my, histDeleteX, histDeleteY, histDeleteW, 17)
+                && !StudioSession.historySelectedId.isEmpty()) {
+            ModNetwork.sendToServer(new com.scriptcraft.network.ScriptHistoryPacket.Request(
+                    com.scriptcraft.network.ScriptHistoryPacket.DELETE,
+                    StudioSession.historyScript, StudioSession.historySelectedId));
+            return;
+        }
+        for (HistEntryHit hit : histHits) {
+            if (hover(mx, my, hit.x, hit.y, hit.w, hit.h)) {
+                StudioSession.historySelectedId = hit.id;
+                StudioSession.historyPreviewText = "";
+                histPreviewScroll = 0;
+                ModNetwork.sendToServer(new com.scriptcraft.network.ScriptHistoryPacket.Request(
+                        com.scriptcraft.network.ScriptHistoryPacket.PREVIEW,
+                        StudioSession.historyScript, hit.id));
+                return;
+            }
+        }
     }
 }

@@ -159,6 +159,14 @@ final class EffectPatterns {
                 c -> new Actions.ScreenSetBar(c.target(1), hudName(c.text(0)), null, barValue(c.expr(2))));
         rule("set max of screen bar %text% to %expr%",
                 c -> new Actions.ScreenSetBar(new Target.Self(), hudName(c.text(0)), null, barValue(c.expr(1))));
+        rule("set value of screen element %text% for|of %target% to %expr%",
+                c -> new Actions.ScreenSetControlValue(c.target(1), hudName(c.text(0)), c.expr(2)));
+        rule("set value of screen %text% for|of %target% to %expr%",
+                c -> new Actions.ScreenSetControlValue(c.target(1), hudName(c.text(0)), c.expr(2)));
+        rule("set value of screen element %text% to %expr%",
+                c -> new Actions.ScreenSetControlValue(new Target.Self(), hudName(c.text(0)), c.expr(1)));
+        rule("set value of screen %text% to %expr%",
+                c -> new Actions.ScreenSetControlValue(new Target.Self(), hudName(c.text(0)), c.expr(1)));
 
         rule("set item|slot of screen element %text% for|of %target% to %id% %num%",
                 c -> new Actions.ScreenSetSlot(c.target(1), hudName(c.text(0)), c.id(2), c.num(3)));
@@ -237,6 +245,9 @@ final class EffectPatterns {
         rule("play sound %id% to %target% with volume %expr%",
                 c -> new Effects.PlaySound(c.target(1), c.id(0), c.expr(2), null));
         rule("play sound %id% to %target%", c -> new Effects.PlaySound(c.target(1), c.id(0), null, null));
+        rule("stop sound %id% for|to %target%", c -> new Effects.StopSound(c.target(1), c.id(0)));
+        rule("stop sound for|to %target%", c -> new Effects.StopSound(c.target(0), null));
+        rule("stop all sounds for|to %target%", c -> new Effects.StopSound(c.target(0), null));
         rule("send title %text% to %target%", c -> new Effects.Title(c.target(1), c.text(0), null));
         rule("send title %text% with subtitle %text% to %target%", c -> new Effects.Title(c.target(2), c.text(0), c.text(1)));
         rule("send action bar %text% to %target%", c -> new Effects.ActionBar(c.target(1), c.text(0)));
@@ -347,7 +358,39 @@ final class EffectPatterns {
         rule("explode at %piece% with force|power %expr%", c -> new Effects.ExplodeAt(c.exprValue(0), c.expr(1), false));
         rule("explode at %expr%", c -> new Effects.ExplodeAt(c.expr(0), null, false));
 
-        // --- частицы
+        // --- частицы (включая цветной dust, offset, кольцо и фильтр игроков)
+        rule("spawn particle ring|circle %id% at %target% radius %num% points %num% color %color%",
+                c -> new Effects.SpawnParticleRing(c.id(0), c.target(1), null, c.num(2), c.num(3), c.raw(4).value()));
+        rule("spawn particle ring|circle %id% at %target% radius %num% color %color%",
+                c -> new Effects.SpawnParticleRing(c.id(0), c.target(1), null, c.num(2), null, c.raw(3).value()));
+        rule("spawn particle ring|circle %id% at %target% radius %num% points %expr%",
+                c -> new Effects.SpawnParticleRing(c.id(0), c.target(1), null, c.num(2), c.expr(3), null));
+        rule("spawn particle ring|circle %id% at %target% radius %expr%",
+                c -> new Effects.SpawnParticleRing(c.id(0), c.target(1), null, c.expr(2), null, null));
+        rule("spawn particle ring|circle %id% at %piece% radius %num% points %num% color %color%",
+                c -> new Effects.SpawnParticleRing(c.id(0), null, c.exprValue(1), c.num(2), c.num(3), c.raw(4).value()));
+        rule("spawn particle ring|circle %id% at %piece% radius %num% color %color%",
+                c -> new Effects.SpawnParticleRing(c.id(0), null, c.exprValue(1), c.num(2), null, c.raw(3).value()));
+        rule("spawn particle ring|circle %id% at %piece% radius %num% points %expr%",
+                c -> new Effects.SpawnParticleRing(c.id(0), null, c.exprValue(1), c.num(2), c.expr(3), null));
+        rule("spawn particle ring|circle %id% at %piece% radius %expr%",
+                c -> new Effects.SpawnParticleRing(c.id(0), null, c.exprValue(1), c.expr(2), null, null));
+
+        rule("spawn particle %id% at %target% count %num% offset %num% %num% %num% speed %num% for|to %target%",
+                c -> new Effects.SpawnParticle(c.id(0), c.target(1), null, null, null, null, c.num(2), c.num(6), c.num(3), c.num(4), c.num(5), null, c.target(7)));
+        rule("spawn particle %id% at %target% count %num% offset %num% %num% %num% speed %expr%",
+                c -> new Effects.SpawnParticle(c.id(0), c.target(1), null, null, null, null, c.num(2), c.expr(6), c.num(3), c.num(4), c.num(5), null, null));
+        rule("spawn particle %id% at %target% count %num% color %color% for|to %target%",
+                c -> new Effects.SpawnParticle(c.id(0), c.target(1), null, null, null, null, c.num(2), null, null, null, null, c.raw(3).value(), c.target(4)));
+        rule("spawn particle %id% at %target% count %num% color %color%",
+                c -> new Effects.SpawnParticle(c.id(0), c.target(1), null, null, null, null, c.num(2), null, null, null, null, c.raw(3).value(), null));
+        rule("spawn particle %id% at %target% color %color%",
+                c -> new Effects.SpawnParticle(c.id(0), c.target(1), null, null, null, null, null, null, null, null, null, c.raw(2).value(), null));
+        rule("spawn particle %id% at %piece% count %num% color %color%",
+                c -> new Effects.SpawnParticle(c.id(0), null, c.exprValue(1), null, null, null, c.num(2), null, null, null, null, c.raw(3).value(), null));
+        rule("spawn particle %id% at %piece% color %color%",
+                c -> new Effects.SpawnParticle(c.id(0), null, c.exprValue(1), null, null, null, null, null, null, null, null, c.raw(2).value(), null));
+
         rule("spawn particle %id% at %num% %num% %num% count %num% speed %expr%",
                 c -> new Effects.SpawnParticle(c.id(0), null, null, c.num(1), c.num(2), c.num(3), c.num(4), c.expr(5)));
         rule("spawn particle %id% at %num% %num% %num% count %expr%",
@@ -366,6 +409,47 @@ final class EffectPatterns {
                 c -> new Effects.SpawnParticle(c.id(0), null, c.exprValue(1), null, null, null, c.expr(2), null));
         rule("spawn particle %id% at %expr%",
                 c -> new Effects.SpawnParticle(c.id(0), null, c.expr(1), null, null, null, null, null));
+
+        // --- камера: shake, fade, fov, roll, reset
+        rule("shake camera of %target% with intensity %num% for %num% ticks|tick",
+                c -> new Effects.CameraShake(c.target(0), c.num(1), c.num(2), 1));
+        rule("shake camera of %target% with intensity %num% for %num% " + SECONDS,
+                c -> new Effects.CameraShake(c.target(0), c.num(1), c.num(2), 20));
+        rule("shake camera of %target% with intensity %expr%",
+                c -> new Effects.CameraShake(c.target(0), c.expr(1), null, 20));
+        rule("shake camera of %target% for %num% ticks|tick",
+                c -> new Effects.CameraShake(c.target(0), null, c.num(1), 1));
+        rule("shake camera of %target% for %num% " + SECONDS,
+                c -> new Effects.CameraShake(c.target(0), null, c.num(1), 20));
+        rule("shake camera of %target%",
+                c -> new Effects.CameraShake(c.target(0), null, null, 20));
+
+        rule("fade screen of %target% to %color% in %num% stay %num% out %num% ticks|tick",
+                c -> new Effects.CameraFade(c.target(0), c.raw(1).value(), c.num(2), c.num(3), c.num(4), 1));
+        rule("fade screen of %target% to %color% in %num% stay %num% out %num%",
+                c -> new Effects.CameraFade(c.target(0), c.raw(1).value(), c.num(2), c.num(3), c.num(4), 1));
+        rule("fade screen of %target% to %color% for %num% " + SECONDS,
+                c -> new Effects.CameraFade(c.target(0), c.raw(1).value(), new Expression.Literal(0.3), c.num(2), new Expression.Literal(0.5), 20));
+        rule("fade screen of %target% for %num% " + SECONDS,
+                c -> new Effects.CameraFade(c.target(0), "#000000", new Expression.Literal(0.3), c.num(1), new Expression.Literal(0.5), 20));
+        rule("fade screen of %target% in %num% stay %num% out %num%",
+                c -> new Effects.CameraFade(c.target(0), "#000000", c.num(1), c.num(2), c.num(3), 1));
+
+        rule("set camera fov of %target% to %num% for %num% ticks|tick",
+                c -> new Effects.CameraFov(c.target(0), c.num(1), c.num(2), 1));
+        rule("set camera fov of %target% to %num% for %num% " + SECONDS,
+                c -> new Effects.CameraFov(c.target(0), c.num(1), c.num(2), 20));
+        rule("set camera fov of %target% to %expr%",
+                c -> new Effects.CameraFov(c.target(0), c.expr(1), null, 20));
+
+        rule("roll|tilt camera of %target% by %num% for %num% ticks|tick",
+                c -> new Effects.CameraRoll(c.target(0), c.num(1), c.num(2), 1));
+        rule("roll|tilt camera of %target% by %num% for %num% " + SECONDS,
+                c -> new Effects.CameraRoll(c.target(0), c.num(1), c.num(2), 20));
+        rule("roll|tilt camera of %target% by %expr%",
+                c -> new Effects.CameraRoll(c.target(0), c.expr(1), null, 20));
+
+        rule("reset camera of %target%", c -> new Effects.CameraReset(c.target(0)));
 
         // --- скорборд
         rule("set scoreboard title %text% for|to|of %target%", c -> new Effects.ScoreboardTitle(c.target(1), c.text(0)));

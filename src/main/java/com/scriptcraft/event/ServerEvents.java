@@ -128,6 +128,8 @@ public final class ServerEvents {
     public static void onServerStarting(ServerStartingEvent event) {
         VariableStore.load(event.getServer());
         ResourceSync.onServerStarting();
+        com.scriptcraft.script.ScriptProfiler.onServerStarting();
+        com.scriptcraft.studio.ScriptHistory.cleanup();
         // Мир загружен: define из скриптов получают слоты пула (запоминаются в данных мира).
         BindingSync.onServerStarting(event.getServer(), ScriptLoader.getProgram());
     }
@@ -181,6 +183,7 @@ public final class ServerEvents {
         SlotMigration.onServerStopped();
         BindingStore.onServerStopped();
         com.scriptcraft.studio.StudioRooms.clear();
+        com.scriptcraft.script.ScriptProfiler.onServerStopped();
         ScoreboardManager.onServerStopped();
         SNEAK_STATE.clear();
         SPRINT_STATE.clear();
@@ -196,6 +199,8 @@ public final class ServerEvents {
             SlotMigration.tick(event.getServer());
             ScriptLoader.tick(event.getServer());
             InventoryWatch.tick(event.getServer());
+            com.scriptcraft.script.ScriptProfiler.tick(event.getServer());
+            com.scriptcraft.studio.ScriptHistory.tick();
         }
     }
 

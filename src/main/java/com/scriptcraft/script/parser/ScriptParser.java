@@ -268,6 +268,15 @@ public final class ScriptParser {
                 parseKeyed(headerLine, ScriptEvent.SCREEN_CLOSE, screenEventFilter(headerLine, rawRest), body);
                 return;
             }
+            if (rest.equals("gui change") || rest.startsWith("gui change ")
+                    || rest.equals("screen change") || rest.startsWith("screen change ")
+                    || rest.equals("gui input") || rest.startsWith("gui input ")
+                    || rest.equals("input") || rest.startsWith("input ")
+                    || rest.equals("slider") || rest.startsWith("slider ")
+                    || rest.equals("toggle") || rest.startsWith("toggle ")) {
+                parseKeyed(headerLine, ScriptEvent.GUI_CHANGE, guiChangeFilter(headerLine, rawRest), body);
+                return;
+            }
             if (rest.startsWith("open ")) {
                 parseKeyed(headerLine, ScriptEvent.OPEN, menuFilter(headerLine, rest.substring(5).strip()), body);
                 return;
@@ -939,11 +948,28 @@ public final class ScriptParser {
                 openIf = -1;
                 try {
                     String inner = line.text().substring(5, line.text().length() - 1).strip();
-                    if (inner.startsWith("{") && inner.endsWith("::*}")) {
+                    List<Token> lt = Tokenizer.tokenize(inner);
+                    if (!lt.isEmpty() && !lt.get(0).quoted() && lt.get(0).value().startsWith("{") && lt.get(0).value().endsWith("::*}")) {
                         if (children.isEmpty()) {
                             throw new ParseException("у 'loop' нет вложенных действий");
                         }
-                        actions.add(new Actions.LoopIndices(inner.substring(1, inner.length() - 1), parseActions(children)));
+                        int sortMode = 0;
+                        if (lt.size() > 1) {
+                            if (word(lt, 1).equals("sorted")) {
+                                String dir = word(lt, 2);
+                                if (dir.equals("descending") || dir.equals("desc")) {
+                                    sortMode = -1;
+                                } else if (dir.isEmpty() || dir.equals("ascending") || dir.equals("asc")) {
+                                    sortMode = 1;
+                                } else {
+                                    throw new ParseException("нужно: loop {имя::*} sorted [ascending|descending]:");
+                                }
+                            } else {
+                                throw new ParseException("нужно: loop {имя::*} [sorted [ascending|descending]]:");
+                            }
+                        }
+                        String raw = lt.get(0).value();
+                        actions.add(new Actions.LoopIndices(raw.substring(1, raw.length() - 1), parseActions(children), sortMode));
                         i = end;
                         continue;
                     }
@@ -1070,6 +1096,34 @@ public final class ScriptParser {
     }
 
     private ParsedCond parsePrimary(List<Token> t, int i) throws ParseException {
+        if (i < t.size() && !t.get(i).quoted() && t.get(i).value().startsWith("{") && t.get(i).value().endsWith("::*}")) {
+            String rawList = t.get(i).value().substring(1, t.get(i).value().length() - 1);
+            String w1 = word(t, i + 1);
+            if (w1.equals("contains")) {
+                ExprParser.Parsed needle = ExprParser.parse(t, i + 2);
+                return new ParsedCond(new Condition.ListContains(rawList, needle.expression(), false), needle.end());
+            }
+            if (w1.equals("does") && word(t, i + 2).equals("not") && word(t, i + 3).equals("contain")) {
+                ExprParser.Parsed needle = ExprParser.parse(t, i + 4);
+                return new ParsedCond(new Condition.ListContains(rawList, needle.expression(), true), needle.end());
+            }
+            if (w1.equals("has") && (word(t, i + 2).equals("key") || word(t, i + 2).equals("index"))) {
+                ExprParser.Parsed key = ExprParser.parse(t, i + 3);
+                return new ParsedCond(new Condition.ListHasKey(rawList, key.expression(), false), key.end());
+            }
+            if (w1.equals("does") && word(t, i + 2).equals("not") && word(t, i + 3).equals("have")
+                    && (word(t, i + 4).equals("key") || word(t, i + 4).equals("index"))) {
+                ExprParser.Parsed key = ExprParser.parse(t, i + 5);
+                return new ParsedCond(new Condition.ListHasKey(rawList, key.expression(), true), key.end());
+            }
+            if (w1.equals("is")) {
+                boolean neg = word(t, i + 2).equals("not");
+                int next = neg ? i + 3 : i + 2;
+                if (word(t, next).equals("empty")) {
+                    return new ParsedCond(new Condition.ListEmpty(rawList, neg), next + 1);
+                }
+            }
+        }
         if (i < t.size() && !t.get(i).quoted()) {
             TargetParser.Parsed target = TargetParser.parse(t, i);
             if (target != null) {
@@ -1475,6 +1529,24 @@ public final class ScriptParser {
                 return new Actions.SetVariable(name, value.expression());
             }
             case "add", "remove" -> {
+                // remove index <key> from {list::*}
+                if (head.equals("remove") && (word(t, 1).equals("index") || word(t, 1).equals("key"))) {
+                    int fromIdx = -1;
+                    for (int k = 2; k < t.size(); k++) {
+                        if (word(t, k).equals("from")) {
+                            fromIdx = k;
+                            break;
+                        }
+                    }
+                    if (fromIdx < 3 || fromIdx + 2 != t.size()) {
+                        throw new ParseException("нужно: remove index <ключ> from {список::*}");
+                    }
+                    ExprParser.Parsed keyExpr = ExprParser.parse(t, 2);
+                    if (keyExpr.end() != fromIdx) {
+                        throw new ParseException("нужно: remove index <ключ> from {список::*}");
+                    }
+                    return new Actions.RemoveIndex(keyExpr.expression(), variableName(t, fromIdx + 1));
+                }
                 // add <значение> to {имя} / remove <значение> from {имя}
                 // Слово to/from можно не писать, если последнее — переменная: add targeted block {list::*}
                 boolean remove = head.equals("remove");
@@ -1502,8 +1574,24 @@ public final class ScriptParser {
                 return new Actions.AddToVariable(variableName(t, bare ? at : at + 1), amount.expression(), remove);
             }
             case "delete", "clear" -> {
-                // delete {name}
+                // delete {name} / clear {list::*}
                 return new Actions.DeleteVariable(variableName(t, 1));
+            }
+            case "sort" -> {
+                String listName = variableName(t, 1);
+                boolean desc = false;
+                if (t.size() > 2) {
+                    String dir = word(t, 2);
+                    if (dir.equals("descending") || dir.equals("desc")) {
+                        desc = true;
+                    } else if (!dir.equals("ascending") && !dir.equals("asc")) {
+                        throw new ParseException("нужно: sort {список::*} [ascending|descending]");
+                    }
+                }
+                return new Actions.SortList(listName, desc);
+            }
+            case "reverse" -> {
+                return new Actions.ReverseList(variableName(t, 1));
             }
             case "send", "message" -> {
                 // Правильные формы разобраны таблицей эффектов; сюда попадают только ошибки.
@@ -1578,8 +1666,11 @@ public final class ScriptParser {
                 Set<String> ids = new HashSet<>();
                 int auto = 0;
                 for (ParsedElement pe : parseScreenBody(children)) {
-                    if (pe.element() instanceof ButtonElement) {
-                        throw new ParseException("кнопки в HUD не поддерживаются (HUD не принимает клики) — используйте open screen");
+                    if (pe.element() instanceof ButtonElement
+                            || pe.element() instanceof com.scriptcraft.screen.InputElement
+                            || pe.element() instanceof com.scriptcraft.screen.SliderElement
+                            || pe.element() instanceof com.scriptcraft.screen.ToggleElement) {
+                        throw new ParseException("интерактивные элементы (button, input, slider, toggle) в HUD не поддерживаются — используйте open screen");
                     }
                     String id = pe.id();
                     if (id.isEmpty()) {
@@ -1676,6 +1767,26 @@ public final class ScriptParser {
     }
 
     @Nullable
+    private String guiChangeFilter(Line header, String rawRest) {
+        try {
+            List<Token> t = Tokenizer.tokenize(rawRest);
+            // gui change ["id"] | input ["id"] | slider ["id"] | toggle ["id"]
+            int start = (word(t, 0).equals("gui") || word(t, 0).equals("screen")) ? 2 : 1;
+            if (t.size() == start) {
+                return "*";
+            }
+            if (t.size() == start + 1) {
+                return t.get(start).value().strip();
+            }
+            error(header, "нужно: on gui change [\"id\"]:  или  on input [\"id\"]:  или  on slider [\"id\"]:  или  on toggle [\"id\"]:");
+            return null;
+        } catch (ParseException e) {
+            error(header, e.getMessage());
+            return null;
+        }
+    }
+
+    @Nullable
     private String menuFilter(Line header, String rest) {
         String name = rest.toLowerCase(Locale.ROOT);
         if (name.startsWith("menu ")) {
@@ -1738,6 +1849,7 @@ public final class ScriptParser {
         String header = "";
         String from = "";
         String id = "";
+        String tooltip = "";
         int x = 0, y = 0, w = 120, h = 140, layer = 0;
         int color = 0xFFFFFFFF;
         Anchor anchor = Anchor.CENTER;
@@ -1815,11 +1927,15 @@ public final class ScriptParser {
                     hidden = true;
                     idx++;
                 }
-                default -> throw new ParseException("у list нет параметра '" + opt + "' (from, vertical, horizontal, select, header, at, size, anchor, layer, color, id, hidden)");
+                case "tooltip", "hover" -> {
+                    tooltip = quoted(t, idx + 1);
+                    idx += 2;
+                }
+                default -> throw new ParseException("у list нет параметра '" + opt + "' (from, vertical, horizontal, select, header, at, size, anchor, layer, color, id, hidden, tooltip)");
             }
         }
         Layout layout = new Layout(x, y, w, h, anchor, color, layer);
-        String packedHeader = com.scriptcraft.screen.ScreenMeta.pack(id, false, "", hidden, header);
+        String packedHeader = com.scriptcraft.screen.ScreenMeta.pack(id, false, "", hidden, tooltip, header);
         if (!from.isEmpty()) {
             if (nested.size() > 1) {
                 throw new ParseException("у list from одна строка-шаблон: row \"%loop-index%\"");
@@ -2006,13 +2122,16 @@ public final class ScriptParser {
 
     /** Какие параметры допустимы у каждого вида элемента (лишний параметр — понятная ошибка, а не тихое игнорирование). */
     private static final Map<String, Set<String>> ELEMENT_OPTIONS = Map.of(
-            "text", Set.of("at", "anchor", "color", "shadow", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden"),
-            "button", Set.of("at", "size", "anchor", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "layer", "id"),
-            "image", Set.of("at", "size", "texture", "anchor", "color", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden"),
-            "slot", Set.of("at", "size", "anchor", "color", "no", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden"),
+            "text", Set.of("at", "anchor", "color", "shadow", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "tooltip", "hover"),
+            "button", Set.of("at", "size", "anchor", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "layer", "id", "tooltip", "hover"),
+            "image", Set.of("at", "size", "texture", "anchor", "color", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "tooltip", "hover"),
+            "slot", Set.of("at", "size", "anchor", "color", "no", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "tooltip", "hover"),
             "bar", Set.of("at", "size", "texture", "anchor", "color", "layer", "id", "value", "max", "direction",
-                    "background", "fill", "text", "shadow", "hidden"),
-            "hotbar", Set.of("at", "size", "anchor", "color", "no", "layer", "id", "spacing"));
+                    "background", "fill", "text", "shadow", "hidden", "tooltip", "hover"),
+            "hotbar", Set.of("at", "size", "anchor", "color", "no", "layer", "id", "spacing"),
+            "input", Set.of("at", "size", "anchor", "color", "layer", "id", "value", "placeholder", "hint", "max", "length", "run", "function", "hidden", "tooltip", "hover"),
+            "slider", Set.of("at", "size", "anchor", "color", "layer", "id", "from", "to", "min", "max", "value", "step", "run", "function", "hidden", "tooltip", "hover"),
+            "toggle", Set.of("at", "size", "anchor", "color", "layer", "id", "value", "checked", "run", "function", "hidden", "tooltip", "hover"));
 
     /**
      * Элемент экрана или HUD (одна строка; "hotbar" раскладывается в 9 слотов):
@@ -2073,7 +2192,29 @@ public final class ScriptParser {
                 }
             }
             case "hotbar" -> idx = 1;
-            default -> throw new ParseException("неизвестный элемент: " + kind + " (text, button, image, slot, bar, hotbar)");
+            case "input" -> {
+                idx = 1;
+                if (t.size() > 1 && t.get(1).quoted()) {
+                    id = EffectPatterns.hudName(t.get(1).value());
+                    idx = 2;
+                }
+            }
+            case "slider" -> {
+                idx = 1;
+                if (t.size() > 1 && t.get(1).quoted()) {
+                    main = t.get(1).value();
+                    idx = 2;
+                }
+            }
+            case "toggle", "checkbox" -> {
+                kind = "toggle";
+                idx = 1;
+                if (t.size() > 1 && t.get(1).quoted()) {
+                    main = t.get(1).value();
+                    idx = 2;
+                }
+            }
+            default -> throw new ParseException("неизвестный элемент: " + kind + " (text, button, image, slot, bar, hotbar, input, slider, toggle)");
         }
 
         int x = 0, y = 0, w = 0, h = 0, texW = 0, texH = 0, layer = 0, spacing = -1;
@@ -2082,10 +2223,15 @@ public final class ScriptParser {
         Anchor anchor = Anchor.CENTER;
         boolean shadow = false, frame = true, keepOpen = false, hidden = false;
         String hotkey = "";
+        String tooltip = "";
         // У кнопки клик без run всё равно закрывает экран. У текста, картинки и слота клика нет, пока не написать run или close.
         String action = kind.equals("button") ? "close" : "";
-        // Полоса
-        String value = "0", max = null, fillTexture = "", backgroundTexture = "", barText = "";
+        // Полоса и контролы
+        String value = kind.equals("input") ? "" : "0", max = null, fillTexture = "", backgroundTexture = "", barText = "";
+        String placeholder = "";
+        int inputMaxLen = 64;
+        double sliderMin = 0.0, sliderMax = 100.0, sliderStep = 1.0;
+        boolean toggleVal = false;
         BarDirection direction = BarDirection.LEFT_TO_RIGHT;
         int backgroundColor = 0x80000000;
 
@@ -2159,6 +2305,43 @@ public final class ScriptParser {
                     hidden = true;
                     idx++;
                 }
+                case "tooltip", "hover" -> {
+                    tooltip = quoted(t, idx + 1);
+                    idx += 2;
+                }
+                case "placeholder", "hint" -> {
+                    placeholder = quoted(t, idx + 1);
+                    idx += 2;
+                }
+                case "length" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: length N");
+                    inputMaxLen = Math.max(1, Math.min(1024, parseInt(t.get(idx + 1).value())));
+                    idx += 2;
+                }
+                case "from", "min" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: from <число>");
+                    sliderMin = parseDouble(t.get(idx + 1).value());
+                    idx += 2;
+                }
+                case "to" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: to <число>");
+                    sliderMax = parseDouble(t.get(idx + 1).value());
+                    idx += 2;
+                }
+                case "step" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: step <число>");
+                    sliderStep = Math.max(0.0, parseDouble(t.get(idx + 1).value()));
+                    idx += 2;
+                }
+                case "checked" -> {
+                    if (idx + 1 < t.size() && (word(t, idx + 1).equals("true") || word(t, idx + 1).equals("false"))) {
+                        toggleVal = word(t, idx + 1).equals("true");
+                        idx += 2;
+                    } else {
+                        toggleVal = true;
+                        idx++;
+                    }
+                }
                 case "layer" -> {
                     if (idx + 1 >= t.size()) throw new ParseException("нужно: layer N (целое число, больше = выше)");
                     layer = parseInt(t.get(idx + 1).value());
@@ -2180,12 +2363,28 @@ public final class ScriptParser {
                     idx += 2;
                 }
                 case "value", "max" -> {
-                    if (idx + 1 >= t.size()) throw new ParseException("нужно: " + opt + " <число | {переменная} | health | food ...>");
-                    String v = barValueRaw(t.get(idx + 1));
-                    if (opt.equals("value")) {
-                        value = v;
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: " + opt + " <значение>");
+                    if (kind.equals("input")) {
+                        if (opt.equals("value")) {
+                            value = t.get(idx + 1).value();
+                        } else {
+                            inputMaxLen = Math.max(1, Math.min(1024, parseInt(t.get(idx + 1).value())));
+                        }
+                    } else if (kind.equals("slider")) {
+                        if (opt.equals("value")) {
+                            value = t.get(idx + 1).value();
+                        } else {
+                            sliderMax = parseDouble(t.get(idx + 1).value());
+                        }
+                    } else if (kind.equals("toggle")) {
+                        toggleVal = "true".equalsIgnoreCase(t.get(idx + 1).value()) || "on".equalsIgnoreCase(t.get(idx + 1).value()) || "1".equals(t.get(idx + 1).value());
                     } else {
-                        max = v;
+                        String v = barValueRaw(t.get(idx + 1));
+                        if (opt.equals("value")) {
+                            value = v;
+                        } else {
+                            max = v;
+                        }
                     }
                     idx += 2;
                 }
@@ -2234,14 +2433,26 @@ public final class ScriptParser {
             color = 0xFF4CAF50;
         }
         Layout layout = new Layout(x, y, w, h, anchor, color, layer);
-        String packedAction = com.scriptcraft.screen.ScreenMeta.pack(id, keepOpen, hotkey, hidden, action);
+        boolean effectiveKeep = keepOpen || kind.equals("input") || kind.equals("slider") || kind.equals("toggle");
+        String packedAction = com.scriptcraft.screen.ScreenMeta.pack(id, effectiveKeep, hotkey, hidden, tooltip, action);
         ScreenElement element = switch (kind) {
             case "text" -> new TextElement(layout, main, shadow, packedAction);
             case "button" -> new ButtonElement(layout, main, packedAction);
             case "slot" -> new SlotElement(layout, slotContent, main, count, frame, packedAction);
-            case "bar" -> new BarElement(layout, com.scriptcraft.screen.ScreenMeta.packBarId(id, hidden),
+            case "bar" -> new BarElement(layout, com.scriptcraft.screen.ScreenMeta.packBarId(id, hidden, tooltip),
                     value, max != null ? max : defaultMax(value), direction,
                     backgroundColor, fillTexture, backgroundTexture, texW, texH, barText, shadow);
+            case "input" -> new com.scriptcraft.screen.InputElement(layout, value, placeholder, inputMaxLen, packedAction);
+            case "slider" -> {
+                double initVal;
+                try {
+                    initVal = Double.parseDouble(value);
+                } catch (NumberFormatException e) {
+                    initVal = sliderMin;
+                }
+                yield new com.scriptcraft.screen.SliderElement(layout, main, sliderMin, sliderMax, initVal, sliderStep, packedAction).withValue(initVal);
+            }
+            case "toggle" -> new com.scriptcraft.screen.ToggleElement(layout, main, toggleVal, packedAction);
             default -> new ImageElement(layout, main, texW, texH, packedAction);
         };
         return List.of(new ParsedElement(id, element));
@@ -2323,6 +2534,18 @@ public final class ScriptParser {
             return Integer.parseInt(s);
         } catch (NumberFormatException e) {
             throw new ParseException("ожидается целое число, а не '" + s + "'");
+        }
+    }
+
+    private static double parseDouble(String s) throws ParseException {
+        try {
+            double v = Double.parseDouble(s);
+            if (!Double.isFinite(v)) {
+                throw new ParseException("ожидается число, а не '" + s + "'");
+            }
+            return v;
+        } catch (NumberFormatException e) {
+            throw new ParseException("ожидается число, а не '" + s + "'");
         }
     }
 

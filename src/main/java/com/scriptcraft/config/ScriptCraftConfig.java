@@ -43,6 +43,9 @@ public final class ScriptCraftConfig {
     private static final ForgeConfigSpec.BooleanValue EFFECT_COMMANDS_REQUIRE_OP;
     private static final ForgeConfigSpec.BooleanValue STUDIO_LIVE_EDIT;
     private static final ForgeConfigSpec.BooleanValue STUDIO_REQUIRE_OP;
+    private static final ForgeConfigSpec.BooleanValue SCRIPT_HISTORY_ENABLED;
+    private static final ForgeConfigSpec.IntValue SCRIPT_HISTORY_RETENTION_DAYS;
+    private static final ForgeConfigSpec.BooleanValue PROFILER_ENABLED;
 
     static {
         ForgeConfigSpec.Builder b = new ForgeConfigSpec.Builder();
@@ -143,6 +146,21 @@ public final class ScriptCraftConfig {
                         "false: любой игрок.")
                 .define("requireOp", true);
 
+        SCRIPT_HISTORY_ENABLED = b.comment(
+                        "Automatically save a snapshot of each script before saving changes in Studio.",
+                        "Автоматически сохранять снимок скрипта перед каждым сохранением в студии.")
+                .define("scriptHistoryEnabled", true);
+
+        SCRIPT_HISTORY_RETENTION_DAYS = b.comment(
+                        "Auto-delete script version snapshots older than N days (default: 3, 0 = keep forever).",
+                        "Автоудаление старых версий скриптов старше N дней (по умолчанию: 3, 0 = не удалять).")
+                .defineInRange("scriptHistoryRetentionDays", 3, 0, 365);
+
+        PROFILER_ENABLED = b.comment(
+                        "Enable server script profiler by default (can also be toggled live in Studio).",
+                        "Включить профайлер скриптов на сервере по умолчанию (можно переключать на лету в студии).")
+                .define("profilerEnabled", true);
+
         b.pop();
         SPEC = b.build();
     }
@@ -211,6 +229,18 @@ public final class ScriptCraftConfig {
     /** true: студия у операторов и у тех, кому выдано scriptcraft.studio. */
     public static boolean studioRequireOp() {
         return safe(STUDIO_REQUIRE_OP::get, true);
+    }
+
+    public static boolean scriptHistoryEnabled() {
+        return safe(SCRIPT_HISTORY_ENABLED::get, true);
+    }
+
+    public static int scriptHistoryRetentionDays() {
+        return safe(SCRIPT_HISTORY_RETENTION_DAYS::get, 3);
+    }
+
+    public static boolean profilerEnabled() {
+        return safe(PROFILER_ENABLED::get, true);
     }
 
     public static int variableBackups() {

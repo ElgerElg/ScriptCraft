@@ -299,6 +299,21 @@ public final class Messages {
         add("studio.m.full", "Fullscreen", "На весь экран");
         add("studio.m.window", "Window", "Окно");
         add("studio.m.utf", "UTF-8", "UTF-8");
+        add("studio.profiler", "Profiler", "Профайлер");
+        add("studio.profiler.on", "Server: ON", "Сервер: ВКЛ");
+        add("studio.profiler.off", "Server: OFF", "Сервер: ВЫКЛ");
+        add("studio.profiler.reset", "Reset", "Сбросить");
+        add("studio.profiler.empty", "No script executions recorded yet", "Пока нет данных о выполнении скриптов");
+        add("studio.profiler.disabled", "Server profiler is paused", "Серверный профайлер выключен");
+        add("studio.set.profiler", "Show Profiler in Studio", "Показывать профайлер в студии");
+        add("studio.history", "History", "История");
+        add("studio.history.title", "History: %s (%d d.)", "История: %s (%d дн.)");
+        add("studio.history.title_forever", "History: %s (forever)", "История: %s (без автоудаления)");
+        add("studio.history.empty", "No saved versions yet", "Пока нет сохранённых версий");
+        add("studio.history.restore", "Restore", "Восстановить");
+        add("studio.history.delete", "Delete", "Удалить");
+        add("studio.history.restored", "&aRestored version of %s", "&aВосстановлена версия %s");
+        add("studio.history.lines", "%d lines", "%d строк");
     }
 
     private static volatile String clientLanguage;

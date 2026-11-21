@@ -213,6 +213,9 @@ public final class StudioRooms {
                 ModNetwork.sendTo(player, new ScriptDataPacket(name, current, rev, flags));
                 return false;
             }
+            if (!disk.equals(text) && !disk.isEmpty()) {
+                ScriptHistory.recordBeforeSave(name, disk, name(player));
+            }
             ScriptPaths.write(name, text);
             long now = ScriptPaths.modified(name);
             if (room != null) {
@@ -223,6 +226,38 @@ public final class StudioRooms {
                 room.rememberRevision();
                 now = room.revision;
                 tell(player.getServer(), name, room, player.getUUID(), text, now, true);
+            } else {
+                ModNetwork.sendTo(player, new ScriptDataPacket(name, text, now, ScriptDataPacket.FORCE | ScriptDataPacket.DISK));
+            }
+            return true;
+        } catch (IOException e) {
+            Feedback.toPlayer(player, "studio.save_failed", e.getMessage() == null ? "" : e.getMessage());
+            return false;
+        }
+    }
+
+    /** Принудительное восстановление версии из истории (предварительно сохраняет текущую версию в историю). */
+    public static boolean forceRestore(ServerPlayer player, String name, String text) {
+        text = norm(text);
+        if (!ScriptPaths.contained(name) || text.getBytes(StandardCharsets.UTF_8).length > ScriptPayload.MAX_BYTES) {
+            return false;
+        }
+        boolean live = ScriptCraftConfig.studioLiveEdit();
+        try {
+            String disk = diskText(name);
+            if (!disk.equals(text) && !disk.isEmpty()) {
+                ScriptHistory.recordBeforeSave(name, disk, name(player));
+            }
+            ScriptPaths.write(name, text);
+            long now = ScriptPaths.modified(name);
+            Room room = live ? ROOMS.get(name) : null;
+            if (room != null) {
+                room.text = text;
+                room.saved = text;
+                room.lastEditor = player.getUUID();
+                room.revision = room.revision + 1;
+                room.rememberRevision();
+                tell(player.getServer(), name, room, player.getUUID(), text, room.revision, true);
             } else {
                 ModNetwork.sendTo(player, new ScriptDataPacket(name, text, now, ScriptDataPacket.FORCE | ScriptDataPacket.DISK));
             }

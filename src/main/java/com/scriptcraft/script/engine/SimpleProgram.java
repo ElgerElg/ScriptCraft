@@ -84,11 +84,14 @@ final class SimpleProgram implements ScriptProgram {
                 continue;
             }
             ctx.setScript(handler.file());
+            long prof = com.scriptcraft.script.ScriptProfiler.start();
             try {
                 runActions(handler.actions(), ctx);
             } catch (RuntimeException e) {
                 ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка в 'on {}' ({}): {}", event.scriptName(), handler.file(), e.getMessage());
                 ScriptLoader.noteRuntime(handler.file(), e.getMessage(), ctx.player(), ctx.server());
+            } finally {
+                com.scriptcraft.script.ScriptProfiler.end(prof, handler.file(), "on " + event.scriptName());
             }
         }
     }
@@ -124,6 +127,10 @@ final class SimpleProgram implements ScriptProgram {
             case SCREEN_OPEN, SCREEN_CLOSE -> {
                 String screen = ctx.placeholder("screen");
                 yield handlerFilter.equals("*") || handlerFilter.equals("any") || handlerFilter.equalsIgnoreCase(screen);
+            }
+            case GUI_CHANGE -> {
+                String elem = ctx.placeholder("element");
+                yield handlerFilter.equals("*") || handlerFilter.equals("any") || handlerFilter.equalsIgnoreCase(elem);
             }
             default -> true;
         };
@@ -193,11 +200,14 @@ final class SimpleProgram implements ScriptProgram {
     /** Каждый запуск — свой контекст и лимит; ошибка не прерывает остальные обработчики и игроков. */
     private static void runSafely(ScriptEvent event, EventHandler handler, ExecutionContext ctx) {
         ctx.setScript(handler.file());
+        long prof = com.scriptcraft.script.ScriptProfiler.start();
         try {
             runActions(handler.actions(), ctx);
         } catch (RuntimeException e) {
             ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка в 'on {}' ({}): {}", event.scriptName(), handler.file(), e.getMessage());
             ScriptLoader.noteRuntime(handler.file(), e.getMessage(), ctx.player(), ctx.server());
+        } finally {
+            com.scriptcraft.script.ScriptProfiler.end(prof, handler.file(), "on " + event.scriptName());
         }
     }
 
@@ -209,7 +219,12 @@ final class SimpleProgram implements ScriptProgram {
             return false;
         }
         ctx.setScript(def.file());
-        runActions(def.actions(), ctx);
+        long prof = com.scriptcraft.script.ScriptProfiler.start();
+        try {
+            runActions(def.actions(), ctx);
+        } finally {
+            com.scriptcraft.script.ScriptProfiler.end(prof, def.file(), "/" + name);
+        }
         return true;
     }
 
@@ -236,7 +251,12 @@ final class SimpleProgram implements ScriptProgram {
             ctx.pushFrame(frame);
             pushed = true;
             ctx.setScript(def.file());
-            Actions.runAll(def.actions(), ctx);
+            long prof = com.scriptcraft.script.ScriptProfiler.start();
+            try {
+                Actions.runAll(def.actions(), ctx);
+            } finally {
+                com.scriptcraft.script.ScriptProfiler.end(prof, def.file(), "fn " + def.name());
+            }
         } finally {
             if (pushed) {
                 ctx.popFrame();
@@ -255,11 +275,14 @@ final class SimpleProgram implements ScriptProgram {
             }
             ExecutionContext ctx = new ExecutionContext(server, null, null);
             ctx.setScript(handler.file());
+            long prof = com.scriptcraft.script.ScriptProfiler.start();
             try {
                 runActions(handler.actions(), ctx);
             } catch (RuntimeException e) {
                 ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка в 'every' ({}): {}", handler.file(), e.getMessage());
                 ScriptLoader.noteRuntime(handler.file(), e.getMessage(), null, server);
+            } finally {
+                com.scriptcraft.script.ScriptProfiler.end(prof, handler.file(), "every " + handler.periodTicks() + "t");
             }
         }
     }

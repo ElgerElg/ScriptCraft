@@ -2378,7 +2378,230 @@ show vanilla all for player`,
     example: `create safe explosion at location of targeted block with power 2`, since: "0.5.3", related: [] },
   { id: "eff-playsound-at", category: "effects", name: { ru: "Звук в точке / от игрока", en: "Play sound at location / player" },
     syntax: ["play sound <id> at <x y z|цель|локация> [for <слушатели>] [with volume <V> [pitch <P>]]"],
-    desc: { ru: "Проигрывает звук в координатах, от игрока или от `targeted block`/`targeted entity`. Без `for` слышно всем рядом; с `for <цель>` — только выбранным игрокам.", en: "Plays a sound at coordinates, a player, or a location expression. Without `for`, everyone nearby hears it; with `for <target>`, only chosen players hear it." },
-    example: `play sound entity.experience_orb.pickup at player for all players with volume 1 pitch 1.2\nplay sound block.anvil.land at location of targeted block`, since: "0.5.3", related: [] }
+    desc: { ru: "Проигрывает звук в координатах, от игрока или от `targeted block`/`targeted entity`. Без `for` слышно всем рядом; с `for <цель>` — только выбранным игрокам. Поддерживаются как ванильные звуки, так и кастомные `.ogg` из `scriptcraft/resources/assets/<ns>/sounds.json`.", en: "Plays a sound at coordinates, a player, or a location expression. Without `for`, everyone nearby hears it; with `for <target>`, only chosen players hear it. Supports both vanilla and custom `.ogg` sounds from `scriptcraft/resources/assets/<ns>/sounds.json`." },
+    example: `play sound entity.experience_orb.pickup at player for all players with volume 1 pitch 1.2\nplay sound mypack:boss_roar at player with volume 1.5 pitch 0.9`, since: "0.5.3", related: ["eff-stop-sound"] },
+
+  // ================================================================== НОВЫЕ ФИЧИ: GUI КОНТРОЛЫ, СПИСКИ, КАМЕРА, ПРОФАЙЛЕР, ИСТОРИЯ
+  { id: "screen-input", category: "screen", name: { ru: "Поле ввода текста (input)", en: "Text input field (input)" },
+    syntax: [
+      "input [\"<id>\"] [id <id>] at <x> <y> [size <WxH>] [anchor <A>] [value \"...\"] [placeholder \"...\"] [max <N>] [color #hex] [tooltip \"...\"] [run ...]",
+      "value of screen element \"<id>\" [of <цель>]",
+      "set value of screen element \"<id>\" [for <цель>] to <выражение>"
+    ],
+    desc: {
+      ru: "Интерактивное текстовое поле в `open screen`. Введённый текст синхронизируется на сервер в реальном времени, вызывает событие `on input \"<id>\":` и доступен через выражение `value of screen element \"<id>\"` (или `input \"<id>\"`). Экран при вводе не закрывается.",
+      en: "Interactive text box inside `open screen`. Typed text syncs live to the server, triggers `on input \"<id>\":`, and can be read with `value of screen element \"<id>\"` (or `input \"<id>\"`). Typing never closes the screen."
+    },
+    example: `command /promo:
+	open screen "Промокод":
+		text "&eВведите промокод:" at 0 -30 anchor center
+		input "code" at 0 -10 size 150x20 placeholder "Например: VIP2026" max 24 tooltip "&7Введите код и нажмите Применить"
+		button "&aПрименить" at 0 22 size 110x20 run ApplyPromo(player) keep open
+
+function ApplyPromo(p: player):
+	set {-code} to value of screen element "code" of p
+	if {-code} is "VIP2026":
+		send "&aПромокод активирован!" to p
+		close screen of p
+	else:
+		send "&cНеверный код: %{-code}%" to p`,
+    since: "0.6.8", related: ["screen-slider", "screen-toggle", "screen-tooltip", "event-gui-change"]
+  },
+  { id: "screen-slider", category: "screen", name: { ru: "Слайдер / ползунок (slider)", en: "Slider control (slider)" },
+    syntax: [
+      "slider [\"<подпись>\"] id <id> at <x> <y> [size <WxH>] [anchor <A>] from <min> to <max> [value <V>] [step <S>] [color #hex] [tooltip \"...\"] [run ...]"
+    ],
+    desc: {
+      ru: "Интерактивный ползунок с шагом `step` и диапазоном `from <min> to <max>`. При перетаскивании отправляет числовое значение на сервер, вызывает `on slider \"<id>\":` (в `%value%` — текущее число) и опциональный `run`.",
+      en: "Interactive range slider with `from <min> to <max>` and `step`. Dragging syncs the numeric value to the server, fires `on slider \"<id>\":` (`%value%`), and runs the optional `run` action."
+    },
+    example: `command /settings:
+	open screen "Настройки":
+		slider "Громкость" id vol at 0 -16 size 160x20 from 0 to 100 value 75 step 5 color #3B82F6 tooltip "&7Перетащите ползунок"
+
+on slider "vol":
+	set {vol::%player%} to %value%
+	send action bar "&bГромкость: %value%%%" to player`,
+    since: "0.6.8", related: ["screen-input", "screen-toggle", "screen-tooltip", "event-gui-change"]
+  },
+  { id: "screen-toggle", category: "screen", name: { ru: "Тумблер / чекбокс (toggle)", en: "Toggle / checkbox (toggle)" },
+    syntax: [
+      "toggle|checkbox [\"<подпись>\"] id <id> at <x> <y> [size <WxH>] [anchor <A>] [value true|false] [checked] [color #hex] [tooltip \"...\"] [run ...]"
+    ],
+    desc: {
+      ru: "Переключатель (тумблер) `true` / `false` на экране. При клике сразу меняет состояние без закрытия экрана, вызывает `on toggle \"<id>\":` (`%value%` = `true` или `false`) и сохраняет состояние в `value of screen element \"<id>\"`.",
+      en: "Boolean toggle switch (`true` / `false`) on a custom screen. Clicking toggles immediately without closing, fires `on toggle \"<id>\":` (`%value%`), and updates `value of screen element \"<id>\"`."
+    },
+    example: `command /prefs:
+	open screen "Параметры":
+		toggle "Показывать HUD" id show_hud at 0 -10 size 150x20 value true color #22C55E tooltip "&7Включить или скрыть интерфейс"
+
+on toggle "show_hud":
+	if %value% is "true":
+		show hud "main" to player
+	else:
+		hide hud "main" from player`,
+    since: "0.6.8", related: ["screen-input", "screen-slider", "screen-tooltip", "event-gui-change"]
+  },
+  { id: "screen-tooltip", category: "screen", name: { ru: "Тултипы элементов (tooltip)", en: "Element tooltips (tooltip)" },
+    syntax: ["... tooltip \"Подсказка\\nВторая строка\"", "... hover \"Подсказка\""],
+    desc: {
+      ru: "Параметр `tooltip \"...\"` (или `hover \"...\"`) работает у любых элементов экрана (`button`, `text`, `image`, `slot`, `bar`, `list`, `input`, `slider`, `toggle`). Поддерживаются цветовые коды `&` и переносы строк `\\n`.",
+      en: "The `tooltip \"...\"` (or `hover \"...\"`) option works on all screen elements (`button`, `text`, `image`, `slot`, `bar`, `list`, `input`, `slider`, `toggle`). Supports `&` color codes and `\\n` line breaks."
+    },
+    example: `command /shop:
+	open screen "Магазин":
+		button "&6Купить меч" at 0 0 size 120x20 run "/buy sword" keep open tooltip "&eАлмазный меч\\n&7Цена: &a500 монет\\n&8Нажмите ЛКМ"`,
+    since: "0.6.8", related: ["screen-input", "screen-slider", "screen-toggle"]
+  },
+  { id: "event-gui-change", category: "events", name: { ru: "Изменение контрола GUI", en: "GUI control change" },
+    syntax: ["on gui change [\"<id>\"]:", "on input [\"<id>\"]:", "on slider [\"<id>\"]:", "on toggle [\"<id>\"]:"],
+    desc: {
+      ru: "Срабатывает, когда игрок вводит текст в `input`, двигает `slider` или переключает `toggle` на кастомном экране. Плейсхолдеры: `%element%` (id контрола), `%value%` (новое значение), `%screen%` (заголовок экрана).",
+      en: "Fires when a player types into an `input`, moves a `slider`, or clicks a `toggle` on a custom screen. Placeholders: `%element%`, `%value%`, `%screen%`."
+    },
+    example: `on gui change:
+	send "&7[%screen%] &e%element% &7= &f%value%" to player
+
+on input "search":
+	set {search::%player%} to %value%`,
+    since: "0.6.8", related: ["screen-input", "screen-slider", "screen-toggle"]
+  },
+  { id: "list-operations", category: "effects", name: { ru: "Списки и массивы (sort, reverse, size, join)", en: "Lists & arrays (sort, reverse, size, join)" },
+    syntax: [
+      "add <значение> to {list::*}",
+      "remove <значение> from {list::*}",
+      "remove index <ключ> from {list::*}",
+      "sort {list::*} [ascending|descending]",
+      "reverse {list::*}",
+      "clear {list::*}",
+      "size|count|amount|length of {list::*}",
+      "first|last element of {list::*}",
+      "index of <значение> in {list::*}",
+      "join {list::*} with \", \""
+    ],
+    desc: {
+      ru: "Полный набор операций со списками и словарями `{list::*}`: добавление, удаление по значению или ключу, сортировка чисел/строк (`sort`), переворот (`reverse`), очистка (`clear`), размер (`size of`), первый/последний элемент, поиск индекса и склейка в строку (`join ... with`).",
+      en: "Full list & map operations on `{list::*}`: append, remove by value or key, numeric/string sorting (`sort`), `reverse`, `clear`, `size of`, `first`/`last element of`, `index of`, and `join ... with`."
+    },
+    example: `command /listdemo:
+	clear {nums::*}
+	add 42 to {nums::*}
+	add 7 to {nums::*}
+	add 19 to {nums::*}
+	sort {nums::*} descending
+	set {-cnt} to size of {nums::*}
+	set {-joined} to join {nums::*} with ", "
+	send "&aВсего %{-cnt}%: &f%{-joined}% &7(первый: %{nums::1}%)" to player`,
+    since: "0.6.8", related: ["list-conditions", "loop-sorted"]
+  },
+  { id: "list-conditions", category: "conditions", name: { ru: "Проверки списков (contains, has key, is empty)", en: "List conditions (contains, has key, is empty)" },
+    syntax: [
+      "{list::*} contains <значение>",
+      "{list::*} does not contain <значение>",
+      "{list::*} has key <ключ>",
+      "{list::*} does not have key <ключ>",
+      "{list::*} is [not] empty"
+    ],
+    desc: {
+      ru: "Условия для списков и ассоциативных массивов `{list::*}`: проверка наличия значения, наличия ключа/индекса и пустоты списка.",
+      en: "Conditions for lists and maps `{list::*}`: check if a value exists, if a key exists, or whether the list is empty."
+    },
+    example: `if {vip::*} contains %player%:
+	send "&6Вы в списке VIP!" to player
+if {scores::*} has key %player%:
+	send "&eВаш счёт: %{scores::%player%}%" to player
+if {queue::*} is empty:
+	send "&7Очередь пуста" to player`,
+    since: "0.6.8", related: ["list-operations", "loop-sorted"]
+  },
+  { id: "loop-sorted", category: "structures", name: { ru: "Цикл по ключам и сортированный цикл", en: "Key/value loop & sorted loop" },
+    syntax: [
+      "loop {map::*}:",
+      "loop {map::*} sorted [ascending|descending]:"
+    ],
+    desc: {
+      ru: "Перебирает все прямые пары ключ/значение `{map::*}`. Внутри доступны `loop-index` (`%loop-index%`) и `loop-value` (`%loop-value%`). С модификатором `sorted descending` (или `ascending`) перебирает элементы по возрастанию/убыванию значений без изменения исходной таблицы — идеально для Топ-10.",
+      en: "Iterates all direct key/value entries of `{map::*}` with `loop-index` (`%loop-index%`) and `loop-value` (`%loop-value%`). Adding `sorted descending` (or `ascending`) iterates in sorted value order without mutating the map — ideal for Top-10 leaderboards."
+    },
+    example: `command /top:
+	set {-rank} to 0
+	loop {coins::*} sorted descending:
+		add 1 to {-rank}
+		send "&e#%{-rank}% &f%loop-index% &7— &a%loop-value% монет" to player
+		if {-rank} >= 10:
+			stop`,
+    since: "0.6.8", related: ["list-operations", "list-conditions"]
+  },
+  { id: "eff-stop-sound", category: "effects", name: { ru: "Остановка звука и кастомные звуки", en: "Stop sound & custom sounds" },
+    syntax: [
+      "play sound <ns:sound_id> to <цель> [with volume <V> [pitch <P>]]",
+      "stop sound [<id>] for|to <цель>",
+      "stop all sounds for|to <цель>"
+    ],
+    desc: {
+      ru: "`play sound` поддерживает кастомные `.ogg` звуки из `scriptcraft/resources/assets/<ns>/sounds/` + `sounds.json` (автоматически синхронизируются клиентам). `stop sound` останавливает конкретный звук или все звуки у игрока.",
+      en: "`play sound` supports custom `.ogg` sounds from `scriptcraft/resources/assets/<ns>/sounds/` + `sounds.json` (auto-synced to clients). `stop sound` stops a specific sound or all sounds for the target."
+    },
+    example: `command /music:
+	play sound mypack:boss_theme to player with volume 0.8 pitch 1.0
+
+command /mute:
+	stop all sounds for player`,
+    since: "0.6.8", related: ["eff-playsound-at"]
+  },
+  { id: "eff-particle-advanced", category: "effects", name: { ru: "Цветные партиклы, разброс и кольца", en: "Colored particles, offsets & rings" },
+    syntax: [
+      "spawn particle dust at <цель|локация> [count <N>] color #RRGGBB [for <слушатели>]",
+      "spawn particle <id> at <цель> count <N> offset <dx> <dy> <dz> speed <S> [for <слушатели>]",
+      "spawn particle ring|circle <id> at <цель|локация> radius <R> [points <N>] [color #RRGGBB]"
+    ],
+    desc: {
+      ru: "Расширенные эффекты частиц: цветная пыль `dust` с HEX-цветом `#RRGGBB`, настраиваемый разброс `offset dx dy dz`, показ только выбранным игрокам `for <цель>`, а также готовое кольцо частиц `spawn particle ring`.",
+      en: "Advanced particles: hex-colored `dust` (`#RRGGBB`), custom `offset dx dy dz`, per-player visibility (`for <target>`), and instant particle circles (`spawn particle ring`)."
+    },
+    example: `command /aura:
+	spawn particle ring dust at player radius 2.5 points 36 color #FF44AA
+	spawn particle flame at player count 20 offset 0.5 1.0 0.5 speed 0.04 for player`,
+    since: "0.6.8", related: ["eff-particle", "eff-camera"]
+  },
+  { id: "eff-camera", category: "effects", name: { ru: "Эффекты камеры (shake, fade, fov, roll)", en: "Camera effects (shake, fade, fov, roll)" },
+    syntax: [
+      "shake camera of <цель> [with intensity <N>] [for <T> ticks|seconds]",
+      "fade screen of <цель> [to #RRGGBB] [in <T> stay <T> out <T> [ticks]]",
+      "fade screen of <цель> [to #RRGGBB] for <N> seconds",
+      "set camera fov of <цель> to <смещение> [for <T> ticks|seconds]",
+      "roll|tilt camera of <цель> by <градусы> [for <T> ticks|seconds]",
+      "reset camera of <цель>"
+    ],
+    desc: {
+      ru: "Плавные клиентские эффекты камеры: встряска (`shake camera`), затемнение или вспышка экрана (`fade screen`), динамический зум/FOV (`set camera fov`), наклон камеры (`roll camera`) и мгновенный сброс (`reset camera`).",
+      en: "Smooth client-side camera effects: camera shake (`shake camera`), screen fade/flash (`fade screen`), dynamic FOV offset (`set camera fov`), camera roll/tilt (`roll camera`), and instant reset (`reset camera`)."
+    },
+    example: `command /impact:
+	shake camera of player with intensity 2.5 for 1.5 seconds
+	fade screen of player to #FF2200 in 3 stay 4 out 15 ticks
+	set camera fov of player to -15 for 20 ticks
+	roll camera of player by 8 for 15 ticks`,
+    since: "0.6.8", related: ["eff-particle-advanced", "eff-playsound-at"]
+  },
+  { id: "cfg-studio-history-profiler", category: "config", name: { ru: "История версий и профайлер студии", en: "Script version history & Studio profiler" },
+    syntax: [
+      "studio.scriptHistoryEnabled = true",
+      "studio.scriptHistoryRetentionDays = 3",
+      "studio.profilerEnabled = true"
+    ],
+    desc: {
+      ru: "Перед каждым сохранением скрипта в студии создаётся снимок предыдущей версии в `scriptcraft/history/` (кнопка «История» в редакторе позволяет просматривать и откатывать версии). Старые версии автоматически удаляются через `scriptHistoryRetentionDays` дней (по умолчанию `3`, `0` — хранить бессрочно). Профайлер в студии показывает MSPT сервера, затраты каждого скрипта/события/цикла; его можно включать/выключать на сервере, а также полностью скрыть для клиента в настройках студии (шестерёнка).",
+      en: "Before every save in Studio, a snapshot of the previous script version is stored in `scriptcraft/history/` (use the History button in the editor to preview & restore). Old versions auto-delete after `scriptHistoryRetentionDays` days (default `3`, `0` = keep forever). The Studio Profiler shows server MSPT and per-script/event/loop timings; it can be toggled on the server and hidden/disabled per-client in Studio Settings."
+    },
+    example: `[studio]
+	liveEdit = true
+	requireOp = true
+	scriptHistoryEnabled = true
+	scriptHistoryRetentionDays = 3
+	profilerEnabled = true`,
+    since: "0.6.8", related: []
+  }
   ]
 };

@@ -319,6 +319,57 @@ final class ExprParser {
         if (w.equals("loop-player")) {
             return new Parsed(new Expression.Property(Expression.Prop.NAME, new Target.LoopPlayer()), i + 1);
         }
+        if (w.equals("loop-index") || w.equals("loop-value")) {
+            return new Parsed(new Expression.EventValue(w), i + 1);
+        }
+        // Списки и массивы: size/count/amount/length of {list::*}, first/last element of {list::*}, index of X in {list::*}, join {list::*} with ", "
+        if ((w.equals("size") || w.equals("count") || w.equals("amount") || w.equals("length"))
+                && word(t, i + 1).equals("of") && isListVar(t, i + 2)) {
+            return new Parsed(new Expression.ListSize(stripBraces(t.get(i + 2).value())), i + 3);
+        }
+        if ((w.equals("first") || w.equals("last")) && word(t, i + 1).equals("element")
+                && word(t, i + 2).equals("of") && isListVar(t, i + 3)) {
+            return new Parsed(new Expression.ListEdge(stripBraces(t.get(i + 3).value()), w.equals("last")), i + 4);
+        }
+        if (w.equals("index") && word(t, i + 1).equals("of")) {
+            Parsed needle = parseAtom(t, i + 2);
+            if (word(t, needle.end()).equals("in") && isListVar(t, needle.end() + 1)) {
+                return new Parsed(new Expression.ListIndexOf(needle.expression(), stripBraces(t.get(needle.end() + 1).value())), needle.end() + 2);
+            }
+        }
+        if (w.equals("join") && isListVar(t, i + 1) && word(t, i + 2).equals("with")) {
+            Parsed sep = parseAtom(t, i + 3);
+            return new Parsed(new Expression.ListJoin(stripBraces(t.get(i + 1).value()), sep.expression()), sep.end());
+        }
+        // Интерактивные контролы GUI: value of screen [element] "<id>" [of <target>] / screen value "<id>" [of <target>] / input "<id>" [of <target>]
+        if (w.equals("value") && word(t, i + 1).equals("of") && word(t, i + 2).equals("screen")) {
+            int at = word(t, i + 3).equals("element") ? i + 4 : i + 3;
+            Parsed idExpr = parseAtom(t, at);
+            int cur = idExpr.end();
+            Target target = null;
+            if (word(t, cur).equals("of") || word(t, cur).equals("for")) {
+                TargetParser.Parsed tp = TargetParser.parse(t, cur + 1);
+                if (tp != null) {
+                    target = tp.target();
+                    cur = tp.end();
+                }
+            }
+            return new Parsed(new Expression.ScreenControlValue(idExpr.expression(), target), cur);
+        }
+        if ((w.equals("screen") && word(t, i + 1).equals("value")) || (w.equals("input") && i + 1 < t.size() && t.get(i + 1).quoted())) {
+            int at = w.equals("screen") ? i + 2 : i + 1;
+            Parsed idExpr = parseAtom(t, at);
+            int cur = idExpr.end();
+            Target target = null;
+            if (word(t, cur).equals("of") || word(t, cur).equals("for")) {
+                TargetParser.Parsed tp = TargetParser.parse(t, cur + 1);
+                if (tp != null) {
+                    target = tp.target();
+                    cur = tp.end();
+                }
+            }
+            return new Parsed(new Expression.ScreenControlValue(idExpr.expression(), target), cur);
+        }
         if (w.equals("clicked")) {
             String kind = word(t, i + 1);
             if (kind.equals("entity")) {
@@ -573,5 +624,15 @@ final class ExprParser {
 
     private static String word(List<Token> t, int i) {
         return i < t.size() && !t.get(i).quoted() ? t.get(i).value().toLowerCase(Locale.ROOT) : "";
+    }
+
+    private static boolean isListVar(List<Token> t, int i) {
+        if (i >= t.size() || t.get(i).quoted()) return false;
+        String v = t.get(i).value();
+        return v.length() > 4 && v.startsWith("{") && v.endsWith("::*}");
+    }
+
+    private static String stripBraces(String v) {
+        return v.substring(1, v.length() - 1);
     }
 }

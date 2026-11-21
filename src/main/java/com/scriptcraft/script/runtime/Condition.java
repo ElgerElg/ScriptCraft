@@ -237,6 +237,56 @@ public interface Condition {
         }
     }
 
+    /** {list::*} contains <val> / does not contain <val>. */
+    record ListContains(String rawPattern, Expression needle, boolean negate) implements Condition {
+        @Override
+        public boolean test(ExecutionContext ctx) {
+            String name = ctx.variableName(rawPattern);
+            String prefix = name.endsWith("::*") ? name.substring(0, name.length() - 3) : name;
+            Object want = needle.evaluate(ctx);
+            Double wantNum = Expression.toNumber(want);
+            String wantStr = Expression.toText(want);
+            boolean found = false;
+            for (java.util.Map.Entry<String, Object> e : com.scriptcraft.script.variables.VariableStore.children(prefix)) {
+                Object v = e.getValue();
+                Double vNum = Expression.toNumber(v);
+                if (wantNum != null && vNum != null) {
+                    if (Double.compare(wantNum, vNum) == 0) {
+                        found = true;
+                        break;
+                    }
+                } else if (wantStr.equalsIgnoreCase(Expression.toText(v))) {
+                    found = true;
+                    break;
+                }
+            }
+            return found != negate;
+        }
+    }
+
+    /** {list::*} has key <key> / does not have key <key>. */
+    record ListHasKey(String rawPattern, Expression key, boolean negate) implements Condition {
+        @Override
+        public boolean test(ExecutionContext ctx) {
+            String name = ctx.variableName(rawPattern);
+            String prefix = name.endsWith("::*") ? name.substring(0, name.length() - 3) : name;
+            String k = Expression.toText(key.evaluate(ctx));
+            boolean exists = com.scriptcraft.script.variables.VariableStore.get(prefix + "::" + k) != null;
+            return exists != negate;
+        }
+    }
+
+    /** {list::*} is [not] empty. */
+    record ListEmpty(String rawPattern, boolean negate) implements Condition {
+        @Override
+        public boolean test(ExecutionContext ctx) {
+            String name = ctx.variableName(rawPattern);
+            String prefix = name.endsWith("::*") ? name.substring(0, name.length() - 3) : name;
+            boolean empty = com.scriptcraft.script.variables.VariableStore.children(prefix).isEmpty();
+            return empty != negate;
+        }
+    }
+
     /**
      * Условие верно, если оно верно для каждого игрока цели.
      * Никого нет — условие ложно (и для "is", и для "is not"): оффлайн — это не "не крадётся".

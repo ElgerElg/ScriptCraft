@@ -77,6 +77,10 @@ public final class ModPaths {
         return root().resolve("resources");
     }
 
+    public static Path history() {
+        return root().resolve("history");
+    }
+
     public static Path cache() {
         return root().resolve("cache");
     }

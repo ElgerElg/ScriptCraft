@@ -22,7 +22,8 @@ public final class ModNetwork {
     // 11: у предмета в таблице привязок тип, еда и инструмент; у блока — трение, скорость, прыжок, падение, горение.
     // 12: студия — ревизия сохранения, живая правка, право scriptcraft.studio.
     // 13: студия — проводник по scriptcraft/, картинки, загрузка файлов, активные редакторы.
-    private static final String PROTOCOL_VERSION = "13";
+    // 14: интерактивные контролы GUI (input/slider/toggle/tooltip), эффекты камеры, профайлер, история версий.
+    private static final String PROTOCOL_VERSION = "14";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(ScriptCraft.MODID, "main"),
@@ -161,6 +162,36 @@ public final class ModNetwork {
                 .encoder(StudioExplorerPacket.FileView::encode)
                 .decoder(StudioExplorerPacket.FileView::decode)
                 .consumerMainThread(StudioExplorerPacket.FileView::handle)
+                .add();
+        CHANNEL.messageBuilder(CameraEffectPacket.class, id++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(CameraEffectPacket::encode)
+                .decoder(CameraEffectPacket::decode)
+                .consumerMainThread(CameraEffectPacket::handle)
+                .add();
+        CHANNEL.messageBuilder(ProfilerPacket.Request.class, id++, NetworkDirection.PLAY_TO_SERVER)
+                .encoder(ProfilerPacket.Request::encode)
+                .decoder(ProfilerPacket.Request::decode)
+                .consumerMainThread(ProfilerPacket.Request::handle)
+                .add();
+        CHANNEL.messageBuilder(ProfilerPacket.Data.class, id++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(ProfilerPacket.Data::encode)
+                .decoder(ProfilerPacket.Data::decode)
+                .consumerMainThread(ProfilerPacket.Data::handle)
+                .add();
+        CHANNEL.messageBuilder(ScriptHistoryPacket.Request.class, id++, NetworkDirection.PLAY_TO_SERVER)
+                .encoder(ScriptHistoryPacket.Request::encode)
+                .decoder(ScriptHistoryPacket.Request::decode)
+                .consumerMainThread(ScriptHistoryPacket.Request::handle)
+                .add();
+        CHANNEL.messageBuilder(ScriptHistoryPacket.ListView.class, id++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(ScriptHistoryPacket.ListView::encode)
+                .decoder(ScriptHistoryPacket.ListView::decode)
+                .consumerMainThread(ScriptHistoryPacket.ListView::handle)
+                .add();
+        CHANNEL.messageBuilder(ScriptHistoryPacket.PreviewView.class, id++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(ScriptHistoryPacket.PreviewView::encode)
+                .decoder(ScriptHistoryPacket.PreviewView::decode)
+                .consumerMainThread(ScriptHistoryPacket.PreviewView::handle)
                 .add();
     }
 

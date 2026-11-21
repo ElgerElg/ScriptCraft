@@ -30,6 +30,7 @@ import java.util.Map;
 public final class StudioSession {
     public static final String HOME = "home";
     public static final String JOURNAL = "journal";
+    public static final String PROFILER = "profiler";
 
     public static boolean maximized = true;
     public static boolean minimized;
@@ -96,6 +97,16 @@ public final class StudioSession {
     public static final Deque<String> dirForward = new ArrayDeque<>();
     public static String selectedExplorerPath;
     private static int imageSeq;
+    /** Данные профайлера с сервера. */
+    public static com.scriptcraft.network.ProfilerPacket.Data profilerData;
+    public static int profilerSort = 0; // 0 = ms/s, 1 = avg, 2 = max, 3 = calls
+    /** История версий открытого скрипта. */
+    public static boolean historyOpen = false;
+    public static String historyScript = "";
+    public static int historyRetentionDays = 3;
+    public static List<com.scriptcraft.network.ScriptHistoryPacket.Entry> historyEntries = List.of();
+    public static String historySelectedId = "";
+    public static String historyPreviewText = "";
 
     private StudioSession() {
     }
@@ -121,6 +132,12 @@ public final class StudioSession {
         dirBack.clear();
         dirForward.clear();
         selectedExplorerPath = null;
+        profilerData = null;
+        historyOpen = false;
+        historyScript = "";
+        historyEntries = List.of();
+        historySelectedId = "";
+        historyPreviewText = "";
         StudioSync.reset();
     }
 
@@ -351,6 +368,41 @@ public final class StudioSession {
         history.add(new Note(plain, plain, "", 0, 1, List.of()));
         while (history.size() > 40) {
             history.remove(0);
+        }
+    }
+
+    public static void acceptProfiler(com.scriptcraft.network.ProfilerPacket.Data data) {
+        profilerData = data;
+    }
+
+    public static void acceptHistoryList(com.scriptcraft.network.ScriptHistoryPacket.ListView view) {
+        historyScript = view.scriptName();
+        historyRetentionDays = view.retentionDays();
+        historyEntries = List.copyOf(view.entries());
+        if (historyEntries.isEmpty()) {
+            historySelectedId = "";
+            historyPreviewText = "";
+        } else {
+            boolean still = false;
+            for (var e : historyEntries) {
+                if (e.id().equals(historySelectedId)) {
+                    still = true;
+                    break;
+                }
+            }
+            if (!still) {
+                historySelectedId = historyEntries.get(0).id();
+                historyPreviewText = "";
+                com.scriptcraft.network.ModNetwork.sendToServer(
+                        new com.scriptcraft.network.ScriptHistoryPacket.Request(
+                                com.scriptcraft.network.ScriptHistoryPacket.PREVIEW, historyScript, historySelectedId));
+            }
+        }
+    }
+
+    public static void acceptHistoryPreview(com.scriptcraft.network.ScriptHistoryPacket.PreviewView view) {
+        if (view.scriptName().equals(historyScript) && view.snapshotId().equals(historySelectedId)) {
+            historyPreviewText = view.text();
         }
     }
 }

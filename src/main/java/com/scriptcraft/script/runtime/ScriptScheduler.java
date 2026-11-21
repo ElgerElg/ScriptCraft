@@ -67,10 +67,13 @@ public final class ScriptScheduler {
             ctx.setScript(task.script());
             ctx.restorePlaceholders(task.placeholders());
             ctx.restoreLocals(task.locals());
+            long prof = com.scriptcraft.script.ScriptProfiler.start();
             try {
                 Actions.runAll(task.actions(), ctx);
             } catch (RuntimeException e) {
                 ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка после wait ({}): {}", task.script(), e.getMessage());
+            } finally {
+                com.scriptcraft.script.ScriptProfiler.end(prof, task.script(), "wait");
             }
         }
     }

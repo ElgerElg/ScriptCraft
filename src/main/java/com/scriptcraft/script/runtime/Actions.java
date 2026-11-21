@@ -406,6 +406,80 @@ public final class Actions {
         }
     }
 
+    /** set value of screen element "<id>" [for <target>] to <expr> (input, slider, toggle, bar). */
+    public record ScreenSetControlValue(Target target, String id, Expression value) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            String resolvedId = ctx.format(id);
+            Object val = value.evaluate(ctx);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                com.scriptcraft.screen.ScreenManager.mutateElement(p, resolvedId,
+                        e -> com.scriptcraft.screen.ScreenMeta.withControlValue(e, val));
+            }
+        }
+    }
+
+    /** sort {list::*} [ascending|descending] — сортирует значения (числа численно, строки лексикографически) и переиндексирует 1..N. */
+    public record SortList(String rawPattern, boolean descending) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            String name = ctx.variableName(rawPattern);
+            String prefix = name.endsWith("::*") ? name.substring(0, name.length() - 3) : name;
+            List<java.util.Map.Entry<String, Object>> entries = new ArrayList<>(VariableStore.children(prefix));
+            if (entries.isEmpty()) {
+                return;
+            }
+            entries.sort((a, b) -> {
+                int cmp = compareValues(a.getValue(), b.getValue());
+                return descending ? -cmp : cmp;
+            });
+            VariableStore.deleteChildren(prefix);
+            int idx = 1;
+            for (java.util.Map.Entry<String, Object> e : entries) {
+                VariableStore.set(prefix + "::" + (idx++), e.getValue());
+            }
+        }
+
+        static int compareValues(Object a, Object b) {
+            Double na = Expression.toNumber(a);
+            Double nb = Expression.toNumber(b);
+            if (na != null && nb != null) {
+                return Double.compare(na, nb);
+            }
+            return Expression.toText(a).compareToIgnoreCase(Expression.toText(b));
+        }
+    }
+
+    /** reverse {list::*} — переворачивает порядок элементов и переиндексирует 1..N. */
+    public record ReverseList(String rawPattern) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            String name = ctx.variableName(rawPattern);
+            String prefix = name.endsWith("::*") ? name.substring(0, name.length() - 3) : name;
+            List<java.util.Map.Entry<String, Object>> entries = new ArrayList<>(VariableStore.children(prefix));
+            if (entries.size() <= 1) {
+                return;
+            }
+            java.util.Collections.reverse(entries);
+            VariableStore.deleteChildren(prefix);
+            int idx = 1;
+            for (java.util.Map.Entry<String, Object> e : entries) {
+                VariableStore.set(prefix + "::" + (idx++), e.getValue());
+            }
+        }
+    }
+
+    /** remove index <key> from {list::*} */
+    public record RemoveIndex(Expression key, String rawPattern) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            String name = ctx.variableName(rawPattern);
+            String prefix = name.endsWith("::*") ? name.substring(0, name.length() - 3) : name;
+            String k = Expression.toText(key.evaluate(ctx));
+            VariableStore.delete(prefix + "::" + k);
+        }
+    }
+
     /**
      * loop <цель>: + вложенные действия — выполнить блок для каждого игрока цели;
      * внутри блока цель {@code loop-player} и плейсхолдер %loop-player% — текущий игрок.
@@ -413,9 +487,15 @@ public final class Actions {
      * Каждое действие каждого прохода тратит шаг бюджета (maxScriptSteps).
      */
     /**
-     * loop {имя::*}: — по каждому прямому индексу. %loop-index% — хвост ключа, %loop-value% — значение.
+     * loop {имя::*} [sorted [ascending|descending]]: — по каждому прямому индексу.
+     * %loop-index% — хвост ключа, %loop-value% — значение.
+     * sortMode: 0 = по ключам, 1 = по возрастанию значений, -1 = по убыванию значений.
      */
-    public record LoopIndices(String rawPattern, List<Action> body) implements Action {
+    public record LoopIndices(String rawPattern, List<Action> body, int sortMode) implements Action {
+        public LoopIndices(String rawPattern, List<Action> body) {
+            this(rawPattern, body, 0);
+        }
+
         @Override
         public void execute(ExecutionContext ctx) {
             String name = ctx.variableName(rawPattern);
@@ -424,9 +504,16 @@ public final class Actions {
             }
             String previousIndex = ctx.placeholderOrNull("loop-index");
             String previousValue = ctx.placeholderOrNull("loop-value");
+            List<java.util.Map.Entry<String, Object>> entries = new ArrayList<>(
+                    com.scriptcraft.script.variables.VariableStore.children(name.substring(0, name.length() - 3)));
+            if (sortMode != 0) {
+                entries.sort((a, b) -> {
+                    int cmp = SortList.compareValues(a.getValue(), b.getValue());
+                    return sortMode < 0 ? -cmp : cmp;
+                });
+            }
             try {
-                for (java.util.Map.Entry<String, Object> entry : com.scriptcraft.script.variables.VariableStore.children(
-                        name.substring(0, name.length() - 3))) {
+                for (java.util.Map.Entry<String, Object> entry : entries) {
                     if (ctx.isStopped()) {
                         break;
                     }

@@ -128,6 +128,41 @@ public final class ElementRenderer {
         return null;
     }
 
+    /** Хитбокс элемента для тултипа (без требования action). */
+    public static boolean isHovered(Font font, ScreenElement e, int screenW, int screenH, double mouseX, double mouseY) {
+        if (com.scriptcraft.screen.ScreenMeta.isHidden(e)) {
+            return false;
+        }
+        Layout l = e.layout();
+        Box b;
+        if (e instanceof TextElement text) {
+            b = textBounds(font, text, screenW, screenH);
+        } else if (e instanceof ImageElement) {
+            b = box(l, screenW, screenH, l.width() > 0 ? l.width() : 16, l.height() > 0 ? l.height() : 16);
+        } else if (e instanceof SlotElement) {
+            int w = l.width() > 0 ? l.width() : SLOT_SIZE;
+            b = box(l, screenW, screenH, w, l.height() > 0 ? l.height() : w);
+        } else if (e instanceof BarElement) {
+            b = box(l, screenW, screenH, l.width() > 0 ? l.width() : BarElement.DEFAULT_WIDTH, l.height() > 0 ? l.height() : BarElement.DEFAULT_HEIGHT);
+        } else if (e instanceof ListElement list) {
+            b = listBox(list, screenW, screenH);
+        } else if (e instanceof com.scriptcraft.screen.ButtonElement) {
+            b = box(l, screenW, screenH, l.width() > 0 ? l.width() : 100, l.height() > 0 ? l.height() : 20);
+        } else if (e instanceof com.scriptcraft.screen.InputElement) {
+            b = box(l, screenW, screenH, l.width() > 0 ? l.width() : com.scriptcraft.screen.InputElement.DEFAULT_WIDTH,
+                    l.height() > 0 ? l.height() : com.scriptcraft.screen.InputElement.DEFAULT_HEIGHT);
+        } else if (e instanceof com.scriptcraft.screen.SliderElement) {
+            b = box(l, screenW, screenH, l.width() > 0 ? l.width() : com.scriptcraft.screen.SliderElement.DEFAULT_WIDTH,
+                    l.height() > 0 ? l.height() : com.scriptcraft.screen.SliderElement.DEFAULT_HEIGHT);
+        } else if (e instanceof com.scriptcraft.screen.ToggleElement) {
+            b = box(l, screenW, screenH, l.width() > 0 ? l.width() : com.scriptcraft.screen.ToggleElement.DEFAULT_WIDTH,
+                    l.height() > 0 ? l.height() : com.scriptcraft.screen.ToggleElement.DEFAULT_HEIGHT);
+        } else {
+            return false;
+        }
+        return mouseX >= b.x && mouseY >= b.y && mouseX < b.x + b.w && mouseY < b.y + b.h;
+    }
+
     /** На сколько пикселей список вообще можно сдвинуть. */
     public static int listMaxScroll(Font font, ListElement list, int screenW, int screenH) {
         Box box = listBox(list, screenW, screenH);

@@ -30,10 +30,23 @@ public final class ScreenManager {
     private static final class PlayerScreen {
         String title;
         final List<ScreenElement> elements = new ArrayList<>();
+        final Map<String, Object> values = new java.util.concurrent.ConcurrentHashMap<>();
 
         PlayerScreen(String title, List<ScreenElement> initial) {
             this.title = title;
             this.elements.addAll(initial);
+            seedValues(initial);
+        }
+
+        void seedValues(List<ScreenElement> list) {
+            for (ScreenElement e : list) {
+                String id = ScreenMeta.elementId(e);
+                if (id.isEmpty()) continue;
+                String key = id.toLowerCase(java.util.Locale.ROOT);
+                if (e instanceof InputElement in) values.put(key, in.value());
+                else if (e instanceof SliderElement sl) values.put(key, sl.value());
+                else if (e instanceof ToggleElement tg) values.put(key, tg.value());
+            }
         }
     }
 
@@ -118,7 +131,84 @@ public final class ScreenManager {
             }
         }
         if (changed) {
+            ps.seedValues(patch);
             syncInPlace(player, ps);
+        }
+    }
+
+    @Nullable
+    public static Object controlValue(ServerPlayer player, String id) {
+        if (player == null || id == null || id.isEmpty()) {
+            return null;
+        }
+        PlayerScreen ps = OPEN.get(player.getUUID());
+        if (ps == null) {
+            return null;
+        }
+        return ps.values.get(id.toLowerCase(java.util.Locale.ROOT));
+    }
+
+    /** Клиент изменил значение input / slider / toggle на открытом экране. */
+    public static void onClientControl(ServerPlayer player, byte kind, String payload) {
+        if (player == null || payload == null) {
+            return;
+        }
+        PlayerScreen ps = OPEN.get(player.getUUID());
+        if (ps == null) {
+            return;
+        }
+        int sep = payload.indexOf('\0');
+        if (sep <= 0) {
+            return;
+        }
+        String id = payload.substring(0, sep);
+        String rawVal = payload.substring(sep + 1);
+        int idx = findIndex(ps.elements, id);
+        if (idx < 0) {
+            return;
+        }
+        ScreenElement old = ps.elements.get(idx);
+        Object parsedVal;
+        ScreenElement updated;
+        if (kind == com.scriptcraft.network.InputPacket.GUI_INPUT && old instanceof InputElement in) {
+            String trimmed = rawVal.length() > in.maxLength() ? rawVal.substring(0, in.maxLength()) : rawVal;
+            parsedVal = trimmed;
+            updated = in.withValue(trimmed);
+        } else if (kind == com.scriptcraft.network.InputPacket.GUI_SLIDER && old instanceof SliderElement sl) {
+            double num;
+            try {
+                num = Double.parseDouble(rawVal);
+                if (!Double.isFinite(num)) return;
+            } catch (NumberFormatException e) {
+                return;
+            }
+            SliderElement nextSl = sl.withValue(num);
+            parsedVal = nextSl.value();
+            updated = nextSl;
+        } else if (kind == com.scriptcraft.network.InputPacket.GUI_TOGGLE && old instanceof ToggleElement tg) {
+            boolean b = "true".equalsIgnoreCase(rawVal) || "1".equals(rawVal);
+            parsedVal = b;
+            updated = tg.withValue(b);
+        } else {
+            return;
+        }
+        ps.elements.set(idx, updated);
+        ps.values.put(id.toLowerCase(java.util.Locale.ROOT), parsedVal);
+        String valStr = com.scriptcraft.script.runtime.Expression.toText(parsedVal);
+        ScriptLoader.fireEvent(ScriptEvent.GUI_CHANGE, player, Map.of(
+                "element", id,
+                "value", valStr,
+                "screen", ps.title));
+        String packedAct = ScreenMeta.elementPackedAction(updated);
+        String rawAct = ScreenMeta.rawAction(packedAct);
+        if (rawAct.startsWith("fn:")) {
+            String call = rawAct.substring(3).replace("%value%", valStr).replace("%element%", id);
+            if (InputSync.mayRunScreenFunc(player, rawAct.substring(3))) {
+                ScriptLoader.runScreenFunction(player, call);
+            }
+        } else if (rawAct.startsWith("/") && player.getServer() != null) {
+            String cmd = rawAct.substring(1).replace("%value%", valStr).replace("%element%", id);
+            player.getServer().getCommands().performPrefixedCommand(player.createCommandSourceStack(), cmd);
         }
     }
 
@@ -138,6 +228,7 @@ public final class ScreenManager {
         ScreenElement next = mutator.apply(old);
         if (next != null && !next.equals(old)) {
             ps.elements.set(idx, next);
+            ps.seedValues(List.of(next));
             syncInPlace(player, ps);
         }
     }

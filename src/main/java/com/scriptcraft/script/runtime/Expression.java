@@ -526,6 +526,81 @@ public interface Expression {
         }
     }
 
+    /** size/count/amount/length of {list::*} */
+    record ListSize(String rawList) implements Expression {
+        @Override
+        public Object evaluate(ExecutionContext ctx) {
+            String resolved = ctx.variableName(rawList);
+            String prefix = resolved.endsWith("::*") ? resolved.substring(0, resolved.length() - 3) : resolved;
+            return (double) com.scriptcraft.script.variables.VariableStore.children(prefix).size();
+        }
+    }
+
+    /** first/last element of {list::*} */
+    record ListEdge(String rawList, boolean last) implements Expression {
+        @Override
+        public Object evaluate(ExecutionContext ctx) {
+            String resolved = ctx.variableName(rawList);
+            String prefix = resolved.endsWith("::*") ? resolved.substring(0, resolved.length() - 3) : resolved;
+            java.util.List<java.util.Map.Entry<String, Object>> entries =
+                    com.scriptcraft.script.variables.VariableStore.children(prefix);
+            if (entries.isEmpty()) {
+                return null;
+            }
+            return entries.get(last ? entries.size() - 1 : 0).getValue();
+        }
+    }
+
+    /** index of <val> in {list::*} */
+    record ListIndexOf(Expression needle, String rawList) implements Expression {
+        @Override
+        public Object evaluate(ExecutionContext ctx) {
+            String resolved = ctx.variableName(rawList);
+            String prefix = resolved.endsWith("::*") ? resolved.substring(0, resolved.length() - 3) : resolved;
+            Object want = needle.evaluate(ctx);
+            Double wantNum = toNumber(want);
+            String wantStr = toText(want);
+            for (java.util.Map.Entry<String, Object> e : com.scriptcraft.script.variables.VariableStore.children(prefix)) {
+                Double vNum = toNumber(e.getValue());
+                if (wantNum != null && vNum != null) {
+                    if (Double.compare(wantNum, vNum) == 0) return e.getKey();
+                } else if (wantStr.equalsIgnoreCase(toText(e.getValue()))) {
+                    return e.getKey();
+                }
+            }
+            return null;
+        }
+    }
+
+    /** join {list::*} with ", " */
+    record ListJoin(String rawList, Expression sep) implements Expression {
+        @Override
+        public Object evaluate(ExecutionContext ctx) {
+            String resolved = ctx.variableName(rawList);
+            String prefix = resolved.endsWith("::*") ? resolved.substring(0, resolved.length() - 3) : resolved;
+            String delim = toText(sep.evaluate(ctx));
+            StringBuilder sb = new StringBuilder();
+            for (java.util.Map.Entry<String, Object> e : com.scriptcraft.script.variables.VariableStore.children(prefix)) {
+                if (!sb.isEmpty()) sb.append(delim);
+                sb.append(toText(e.getValue()));
+            }
+            return sb.toString();
+        }
+    }
+
+    /** value of screen element "<id>" [of <target>] / screen value "<id>" [of <target>] */
+    record ScreenControlValue(Expression id, @Nullable Target target) implements Expression {
+        @Override
+        public Object evaluate(ExecutionContext ctx) {
+            ServerPlayer p = target == null ? ctx.player() : target.first(ctx);
+            if (p == null) {
+                return null;
+            }
+            String elemId = toText(id.evaluate(ctx));
+            return com.scriptcraft.screen.ScreenManager.controlValue(p, elemId);
+        }
+    }
+
     /** Значение -> текст для вывода: 5.0 -> "5", null -> "<none>" (как в Skript). */
     static String toText(@Nullable Object value) {
         if (value == null) {

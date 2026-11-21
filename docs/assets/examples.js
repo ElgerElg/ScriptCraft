@@ -52,9 +52,17 @@
       var rel = (x.related || []).filter(function (r) { return byId[r]; }).map(function (r) {
         return '<a href="index.html#' + r + '">' + SC.esc(SC.tr(byId[r].name)) + "</a>";
       }).join("");
+      var dls = (x.downloads || []).map(function (d) {
+        return '<a class="dl-btn" href="' + SC.esc(d.href) + '" download>' +
+          '<span class="dl-ico">⬇</span>' +
+          '<span class="dl-meta"><strong>' + SC.esc(SC.tr(d.label)) + '</strong>' +
+          (d.desc ? '<small>' + SC.esc(SC.tr(d.desc)) + '</small>' : '') +
+          '</span></a>';
+      }).join("");
       return '<section class="ex' + (x.id === state.active ? " on" : "") + '" id="' + x.id + '">' +
         '<h2>' + SC.esc(SC.tr(x.title)) + ' <a class="perma" href="#' + x.id + '">#</a></h2>' +
         '<div class="desc">' + SC.paras(SC.tr(x.intro)) + "</div>" +
+        (dls ? '<div class="dl-row">' + dls + '</div>' : '') +
         x.blocks.map(function (b) { return SC.codeBlock(b.code, b.lang, SC.tr(b.title)); }).join("") +
         (notes.length ? '<div class="label">' + SC.esc(SC.t("ex.notes")) + "</div><ul>" +
           notes.map(function (n) { return "<li>" + SC.inline(n) + "</li>"; }).join("") + "</ul>" : "") +

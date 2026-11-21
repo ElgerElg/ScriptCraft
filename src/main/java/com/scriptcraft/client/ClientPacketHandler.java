@@ -76,4 +76,20 @@ public final class ClientPacketHandler {
     public static void toast(String text) {
         ClientToasts.push(text);
     }
+
+    public static void cameraEffect(com.scriptcraft.network.CameraEffectPacket packet) {
+        ClientCameraEffects.apply(packet);
+    }
+
+    public static void profilerData(com.scriptcraft.network.ProfilerPacket.Data data) {
+        StudioSession.acceptProfiler(data);
+    }
+
+    public static void historyList(com.scriptcraft.network.ScriptHistoryPacket.ListView view) {
+        StudioSession.acceptHistoryList(view);
+    }
+
+    public static void historyPreview(com.scriptcraft.network.ScriptHistoryPacket.PreviewView view) {
+        StudioSession.acceptHistoryPreview(view);
+    }
 }

@@ -81,6 +81,7 @@ public final class ClientUiSettings {
     private static boolean sidebarOpen = true;
     private static int sidebarWidth = 156;
     private static String language = "ru";
+    private static boolean showProfiler = true;
     private static final Map<String, KeyBind> DEFAULTS = defaultBinds();
     private static final Map<String, KeyBind> BINDS = new LinkedHashMap<>(DEFAULTS);
 
@@ -165,6 +166,17 @@ public final class ClientUiSettings {
         load();
         language = normalizeLang(value);
         com.scriptcraft.lang.Messages.setClientLanguage(language);
+        save();
+    }
+
+    public static boolean showProfiler() {
+        load();
+        return showProfiler;
+    }
+
+    public static void setShowProfiler(boolean value) {
+        load();
+        showProfiler = value;
         save();
     }
 
@@ -330,6 +342,7 @@ public final class ClientUiSettings {
         sidebarOpen = Boolean.parseBoolean(p.getProperty("sidebarOpen", "true"));
         sidebarWidth = Math.max(110, Math.min(320, parseInt(p.getProperty("sidebarWidth"), sidebarWidth)));
         language = normalizeLang(p.getProperty("language", language));
+        showProfiler = Boolean.parseBoolean(p.getProperty("showProfiler", "true"));
         com.scriptcraft.lang.Messages.setClientLanguage(language);
         for (var entry : DEFAULTS.entrySet()) {
             BINDS.put(entry.getKey(), KeyBind.decode(p.getProperty("bind." + entry.getKey()), entry.getValue()));
@@ -352,6 +365,7 @@ public final class ClientUiSettings {
             sb.append("sidebarOpen=").append(sidebarOpen).append('\n');
             sb.append("sidebarWidth=").append(sidebarWidth).append('\n');
             sb.append("language=").append(language).append('\n');
+            sb.append("showProfiler=").append(showProfiler).append('\n');
             for (var entry : BINDS.entrySet()) {
                 sb.append("bind.").append(entry.getKey()).append('=').append(entry.getValue().encode()).append('\n');
             }
