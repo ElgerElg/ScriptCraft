@@ -601,6 +601,18 @@ public interface Expression {
         }
     }
 
+    /** length of <текст> */
+    record TextLength(Expression text) implements Expression {
+        @Override
+        public Object evaluate(ExecutionContext ctx) {
+            Object v = text.evaluate(ctx);
+            if (v == null) {
+                return 0.0;
+            }
+            return (double) toText(v).length();
+        }
+    }
+
     /** Значение -> текст для вывода: 5.0 -> "5", null -> "<none>" (как в Skript). */
     static String toText(@Nullable Object value) {
         if (value == null) {

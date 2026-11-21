@@ -17,7 +17,9 @@ final class ExprParser {
     record Parsed(Expression expression, int end) {
     }
 
-    private static final Set<String> STOP = Set.of("is", "and", "or", ">", "<", ">=", "<=", "=", "==", "!=");
+    private static final Set<String> STOP = Set.of(
+            "is", "and", "or", ">", "<", ">=", "<=", "=", "==", "!=",
+            "contains", "starts", "ends", "does");
 
     /** Имена свойств от длинных к коротким, чтобы "food level" не разобралось как "food". */
     private static final Object[][] PROPS = {
@@ -322,10 +324,17 @@ final class ExprParser {
         if (w.equals("loop-index") || w.equals("loop-value")) {
             return new Parsed(new Expression.EventValue(w), i + 1);
         }
+        if (w.equals("message") || w.equals("%message%")) {
+            return new Parsed(new Expression.EventValue("message"), i + 1);
+        }
         // Списки и массивы: size/count/amount/length of {list::*}, first/last element of {list::*}, index of X in {list::*}, join {list::*} with ", "
         if ((w.equals("size") || w.equals("count") || w.equals("amount") || w.equals("length"))
                 && word(t, i + 1).equals("of") && isListVar(t, i + 2)) {
             return new Parsed(new Expression.ListSize(stripBraces(t.get(i + 2).value())), i + 3);
+        }
+        if (w.equals("length") && word(t, i + 1).equals("of") && !isListVar(t, i + 2)) {
+            Parsed strExpr = parseAtom(t, i + 2);
+            return new Parsed(new Expression.TextLength(strExpr.expression()), strExpr.end());
         }
         if ((w.equals("first") || w.equals("last")) && word(t, i + 1).equals("element")
                 && word(t, i + 2).equals("of") && isListVar(t, i + 3)) {

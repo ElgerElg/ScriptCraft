@@ -1142,8 +1142,38 @@ public final class ScriptParser {
             if (word(t, next).equals("set") && (next + 1 == t.size() || isJoin(word(t, next + 1)))) {
                 return new ParsedCond(new Condition.IsSet(left.expression(), negate), next + 1);
             }
+            if (word(t, next).equals("empty") && (next + 1 == t.size() || isJoin(word(t, next + 1)))) {
+                return new ParsedCond(new Condition.TextEmpty(left.expression(), negate), next + 1);
+            }
             ExprParser.Parsed right = ExprParser.parse(t, next);
             return new ParsedCond(new Condition.Compare(left.expression(), negate ? "is not" : "is", right.expression()), right.end());
+        }
+        if (op.equals("contains")) {
+            ExprParser.Parsed right = ExprParser.parse(t, opAt + 1);
+            return new ParsedCond(new Condition.TextMatch(left.expression(), right.expression(), "contains", false), right.end());
+        }
+        if (op.equals("starts") && word(t, opAt + 1).equals("with")) {
+            ExprParser.Parsed right = ExprParser.parse(t, opAt + 2);
+            return new ParsedCond(new Condition.TextMatch(left.expression(), right.expression(), "starts", false), right.end());
+        }
+        if (op.equals("ends") && word(t, opAt + 1).equals("with")) {
+            ExprParser.Parsed right = ExprParser.parse(t, opAt + 2);
+            return new ParsedCond(new Condition.TextMatch(left.expression(), right.expression(), "ends", false), right.end());
+        }
+        if (op.equals("does") && word(t, opAt + 1).equals("not")) {
+            String verb = word(t, opAt + 2);
+            if (verb.equals("contain")) {
+                ExprParser.Parsed right = ExprParser.parse(t, opAt + 3);
+                return new ParsedCond(new Condition.TextMatch(left.expression(), right.expression(), "contains", true), right.end());
+            }
+            if (verb.equals("start") && word(t, opAt + 3).equals("with")) {
+                ExprParser.Parsed right = ExprParser.parse(t, opAt + 4);
+                return new ParsedCond(new Condition.TextMatch(left.expression(), right.expression(), "starts", true), right.end());
+            }
+            if (verb.equals("end") && word(t, opAt + 3).equals("with")) {
+                ExprParser.Parsed right = ExprParser.parse(t, opAt + 4);
+                return new ParsedCond(new Condition.TextMatch(left.expression(), right.expression(), "ends", true), right.end());
+            }
         }
         if (op.equals(">") || op.equals("<") || op.equals(">=") || op.equals("<=") || op.equals("=") || op.equals("==") || op.equals("!=")) {
             String cmp = op.equals("!=") ? "is not" : (op.equals("=") || op.equals("==") ? "is" : op);

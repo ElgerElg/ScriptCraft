@@ -287,6 +287,36 @@ public interface Condition {
         }
     }
 
+    /** Проверка текста: <текст> contains / starts with / ends with <подстрока> (без учёта регистра, как в Skript). */
+    record TextMatch(Expression text, Expression part, String mode, boolean negate) implements Condition {
+        @Override
+        public boolean test(ExecutionContext ctx) {
+            Object a = text.evaluate(ctx);
+            Object b = part.evaluate(ctx);
+            if (a == null || b == null) {
+                return negate;
+            }
+            String hay = Expression.toText(a).toLowerCase(java.util.Locale.ROOT);
+            String needle = Expression.toText(b).toLowerCase(java.util.Locale.ROOT);
+            boolean match = switch (mode) {
+                case "starts" -> hay.startsWith(needle);
+                case "ends" -> hay.endsWith(needle);
+                default -> hay.contains(needle);
+            };
+            return match != negate;
+        }
+    }
+
+    /** <текст/переменная> is [not] empty */
+    record TextEmpty(Expression text, boolean negate) implements Condition {
+        @Override
+        public boolean test(ExecutionContext ctx) {
+            Object a = text.evaluate(ctx);
+            boolean empty = a == null || Expression.toText(a).isEmpty() || "<none>".equals(Expression.toText(a));
+            return empty != negate;
+        }
+    }
+
     /**
      * Условие верно, если оно верно для каждого игрока цели.
      * Никого нет — условие ложно (и для "is", и для "is not"): оффлайн — это не "не крадётся".

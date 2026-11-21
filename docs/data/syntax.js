@@ -2513,7 +2513,31 @@ if {scores::*} has key %player%:
 	send "&eВаш счёт: %{scores::%player%}%" to player
 if {queue::*} is empty:
 	send "&7Очередь пуста" to player`,
-    since: "0.6.8", related: ["list-operations", "loop-sorted"]
+    since: "0.6.8", related: ["list-operations", "loop-sorted", "cond-text-match"]
+  },
+  { id: "cond-text-match", category: "conditions", name: { ru: "Проверки текста (contains, starts with, ends with)", en: "Text conditions (contains, starts with, ends with)" },
+    syntax: [
+      "<текст> contains <подстрока>",
+      "<текст> does not contain <подстрока>",
+      "<текст> starts with <префикс>",
+      "<текст> does not start with <префикс>",
+      "<текст> ends with <суффикс>",
+      "<текст> does not end with <суффикс>",
+      "<текст> is [not] empty",
+      "length of <текст>"
+    ],
+    desc: {
+      ru: "Проверка любого текста, переменной `{var}` или сообщения чата (`message` / `%message%`): содержит ли подстроку (`contains`), начинается ли с символа/префикса (`starts with`), заканчивается ли на суффикс (`ends with`), пуст ли текст (`is empty`), а также длина строки `length of <текст>`.",
+      en: "Checks any text, `{var}`, or chat `message` (`%message%`): substring check (`contains`), prefix check (`starts with`), suffix check (`ends with`), emptiness (`is empty`), plus `length of <text>`."
+    },
+    example: `on chat:
+	if message starts with "!":
+		cancel event
+		broadcast "&6[Глобал] &f%player%: &e%message%"
+	else if message contains "спам":
+		cancel event
+		send "&cЗапрещённое слово в чате!" to player`,
+    since: "0.7.0", related: ["list-conditions"]
   },
   { id: "loop-sorted", category: "structures", name: { ru: "Цикл по ключам и сортированный цикл", en: "Key/value loop & sorted loop" },
     syntax: [
