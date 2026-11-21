@@ -2,14 +2,14 @@
 #  td.sc — Tower Defense Ultra HD (Кооп до 4 игроков!)
 #          3 HD-карты (448x224) | 3 сложности (10 / 20 / 30 волн)
 #          8 башен + Эволюция ✦5★ | 13 видов мобов и боссов
-#          Свободная постройка + круг радиуса + летающие прожектайлы!
+#          Тонкие HP-полоски мобов + живые тултипы башен!
 #  Команды:
 #    /td               — меню карты, сложности и команды
 #    /td coop <игрок>  — пригласить друга в кооп (до 4 игроков!)
-#    /td join          — принять приглашение в кооп-команду
+#    /td join          — войти в команду или переподключиться в кооп
 #  Управление:
-#    1..8  — выбрать башню | ЛКМ по траве — построить
-#    ЛКМ по башне — показать радиус, владельца и улучшить (до ✦5★!)
+#    1..8  — выбрать башню | Навести на башню — живой тултип
+#    ЛКМ по траве — построить | ЛКМ по башне — радиус и апгрейд
 #    X     — продать (70%) | Space — волна / скорость x1 <-> x2
 #    R     — рестарт | M — меню
 #  Текстуры: распакуйте td-resources.zip в scriptcraft/resources/
@@ -190,88 +190,76 @@ function TdReconnect(g: player, p: player):
 		TdOpenMap2(p)
 	else:
 		TdOpenMap3(p)
-	# Восстанавливаем все стоящие башни (текстуры и звёзды)
+	# Восстанавливаем все стоящие башни (текстуры, живые тултипы и звёзды)
 	loop 28 times:
 		set {-ti} to %loop-number%
 		if {-td-ta::%g%::%{-ti}%} is 1:
-			set {-tc} to {-td-tcol::%g%::%{-ti}%}
-			set {-tr} to {-td-trow::%g%::%{-ti}%}
-			set {-tt} to {-td-tt::%g%::%{-ti}%}
-			set {-tl} to {-td-tl::%g%::%{-ti}%}
-			set {-tx} to {-td-tx::%g%::%{-ti}%}
-			set {-ty} to {-td-ty::%g%::%{-ti}%}
-			set {-tex} to "td:textures/gui/tower_archer.png"
-			if {-tt} is 2:
-				set {-tex} to "td:textures/gui/tower_cannon.png"
-			else if {-tt} is 3:
-				set {-tex} to "td:textures/gui/tower_frost.png"
-			else if {-tt} is 4:
-				set {-tex} to "td:textures/gui/tower_mage.png"
-			else if {-tt} is 5:
-				set {-tex} to "td:textures/gui/tower_tesla.png"
-			else if {-tt} is 6:
-				set {-tex} to "td:textures/gui/tower_sniper.png"
-			else if {-tt} is 7:
-				set {-tex} to "td:textures/gui/tower_poison.png"
-			else if {-tt} is 8:
-				set {-tex} to "td:textures/gui/tower_farm.png"
-			set image of screen element "c%{-tc}%_%{-tr}%" for p to {-tex}
-			set {-sy} to {-ty} + 11
-			set position of screen element "st%{-ti}%" for p to {-tx} {-sy}
-			set {-st} to "&e★"
-			if {-tl} is 2:
-				set {-st} to "&6★★"
-			else if {-tl} is 3:
-				set {-st} to "&d★★★"
-			else if {-tl} is 4:
-				set {-st} to "&b★★★★"
-			else if {-tl} >= 5:
-				set {-st} to "&6&l✦5★"
-			set text of screen element "st%{-ti}%" for p to {-st}
-			show screen element "st%{-ti}%" to p
-	# Восстанавливаем всех живых врагов и полосу Босса
+			TdSyncTowerVisual(g, {-ti})
+	# Восстанавливаем всех живых врагов, их тонкие полоски HP и полосу Босса
 	loop 12 times:
 		set {-ei} to %loop-number%
 		if {-td-ea::%g%::%{-ei}%} is 1:
+			set {-ex} to {-td-ex::%g%::%{-ei}%}
+			set {-ey} to {-td-ey::%g%::%{-ei}%}
 			set image of screen element "e%{-ei}%" for p to {-td-etex::%g%::%{-ei}%}
-			set position of screen element "e%{-ei}%" for p to {-td-ex::%g%::%{-ei}%} {-td-ey::%g%::%{-ei}%}
+			set position of screen element "e%{-ei}%" for p to {-ex} {-ey}
 			show screen element "e%{-ei}%" to p
+			set {-hy} to {-ey} - 13
 			if {-td-eboss::%g%::%{-ei}%} is 1:
+				set {-hy} to {-ey} - 19
 				set max of screen bar "boss_bar" for p to {-td-emhp::%g%::%{-ei}%}
 				set value of screen bar "boss_bar" for p to {-td-ehp::%g%::%{-ei}%}
 				show screen element "boss_bar" to p
+			set max of screen bar "ehp%{-ei}%" for p to {-td-emhp::%g%::%{-ei}%}
+			set value of screen bar "ehp%{-ei}%" for p to {-td-ehp::%g%::%{-ei}%}
+			set position of screen element "ehp%{-ei}%" for p to {-ex} {-hy}
+			show screen element "ehp%{-ei}%" to p
 	TdSyncHud(g)
 	TdSyncStatus(g, "&a%p% вернулся в кооп-игру!")
 	play sound entity.player.levelup to p with volume 0.5 pitch 1.3
 
 # ==========================================================
-#  ХЕЛПЕРЫ СИНХРОНИЗАЦИИ ДЛЯ 1..4 ИГРОКОВ
+#  ХЕЛПЕРЫ СИНХРОНИЗАЦИИ ДЛЯ 1..4 ИГРОКОВ (С ОПТИМИЗАЦИЕЙ)
 # ==========================================================
 
 function TdSyncPos(g: player, id: text, x: number, y: number):
 	loop {-td-team::%g%::*}:
 		set {-tp} to %loop-value%
-		set position of screen element "%id%" for {-tp} to x y
+		if {-tp} is online and {-tp} has screen "Tower Defense" open:
+			set position of screen element "%id%" for {-tp} to x y
 
 function TdSyncImg(g: player, id: text, tex: text):
 	loop {-td-team::%g%::*}:
 		set {-tp} to %loop-value%
-		set image of screen element "%id%" for {-tp} to tex
+		if {-tp} is online and {-tp} has screen "Tower Defense" open:
+			set image of screen element "%id%" for {-tp} to tex
 
 function TdSyncTxt(g: player, id: text, txt: text):
 	loop {-td-team::%g%::*}:
 		set {-tp} to %loop-value%
-		set text of screen element "%id%" for {-tp} to txt
+		if {-tp} is online and {-tp} has screen "Tower Defense" open:
+			set text of screen element "%id%" for {-tp} to txt
 
 function TdSyncShow(g: player, id: text):
 	loop {-td-team::%g%::*}:
 		set {-tp} to %loop-value%
-		show screen element "%id%" to {-tp}
+		if {-tp} is online and {-tp} has screen "Tower Defense" open:
+			show screen element "%id%" to {-tp}
 
 function TdSyncHide(g: player, id: text):
 	loop {-td-team::%g%::*}:
 		set {-tp} to %loop-value%
-		hide screen element "%id%" from {-tp}
+		if {-tp} is online and {-tp} has screen "Tower Defense" open:
+			hide screen element "%id%" from {-tp}
+
+function TdSyncCell(g: player, col: integer, row: integer, cx: number, cy: number, tex: text, tip: text):
+	loop {-td-team::%g%::*}:
+		set {-tp} to %loop-value%
+		if {-tp} is online and {-tp} has screen "Tower Defense" open:
+			update screen "Tower Defense" for {-tp}:
+				image "td:textures/gui/tile_build.png" at 0 0 size 28x28 texture 28x28 anchor center layer 3 id "c%col%_%row%" run TdCellClick(player, %col%, %row%) keep open tooltip "%tip%"
+			set image of screen element "c%col%_%row%" for {-tp} to tex
+			set position of screen element "c%col%_%row%" for {-tp} to cx cy
 
 function TdSyncStatus(g: player, txt: text):
 	TdSyncTxt(g, "status_txt", txt)
@@ -279,14 +267,26 @@ function TdSyncStatus(g: player, txt: text):
 function TdSyncSound(g: player, snd: text, vol: number, pit: number):
 	loop {-td-team::%g%::*}:
 		set {-tp} to %loop-value%
-		play sound %snd% to {-tp} with volume vol pitch pit
+		if {-tp} is online and {-tp} has screen "Tower Defense" open:
+			play sound %snd% to {-tp} with volume vol pitch pit
 
-function TdSyncBossBar(g: player, val: number, mx: number):
+function TdSyncBar(g: player, id: text, val: number, mx: number):
 	loop {-td-team::%g%::*}:
 		set {-tp} to %loop-value%
-		if mx > 0:
-			set max of screen bar "boss_bar" for {-tp} to mx
-		set value of screen bar "boss_bar" for {-tp} to val
+		if {-tp} is online and {-tp} has screen "Tower Defense" open:
+			if mx > 0:
+				set max of screen bar "%id%" for {-tp} to mx
+			set value of screen bar "%id%" for {-tp} to val
+
+function TdSyncBossBar(g: player, val: number, mx: number):
+	TdSyncBar(g, "boss_bar", val, mx)
+
+function TdSyncGoldScore(g: player):
+	loop {-td-team::%g%::*}:
+		set {-tp} to %loop-value%
+		if {-tp} is online and {-tp} has screen "Tower Defense" open:
+			set text of screen element "hud_gold" for {-tp} to "&6%{-td-gold::%{-tp}%}%"
+			set text of screen element "hud_score" for {-tp} to "&a%{-td-score::%g%}%"
 
 function TdSyncHud(g: player):
 	set {-sp} to "x1"
@@ -299,11 +299,12 @@ function TdSyncHud(g: player):
 		set {-tstr} to "&dКооп(%{-pcnt}%): &f%{-names}% &7[%{-sp}%&7]"
 	loop {-td-team::%g%::*}:
 		set {-tp} to %loop-value%
-		set text of screen element "hud_wave" for {-tp} to "&f%{-td-wave::%g%}%/%{-td-maxw::%g%}%"
-		set text of screen element "hud_gold" for {-tp} to "&6%{-td-gold::%{-tp}%}%"
-		set text of screen element "hud_hp" for {-tp} to "&c%{-td-hp::%g%}%"
-		set text of screen element "hud_score" for {-tp} to "&a%{-td-score::%g%}%"
-		set text of screen element "hud_team" for {-tp} to {-tstr}
+		if {-tp} is online and {-tp} has screen "Tower Defense" open:
+			set text of screen element "hud_wave" for {-tp} to "&f%{-td-wave::%g%}%/%{-td-maxw::%g%}%"
+			set text of screen element "hud_gold" for {-tp} to "&6%{-td-gold::%{-tp}%}%"
+			set text of screen element "hud_hp" for {-tp} to "&c%{-td-hp::%g%}%"
+			set text of screen element "hud_score" for {-tp} to "&a%{-td-score::%g%}%"
+			set text of screen element "hud_team" for {-tp} to {-tstr}
 
 function TdShowRange(p: player, tx: number, ty: number, rng: number):
 	hide screen element "rng_s" from p
@@ -321,8 +322,113 @@ function TdShowRange(p: player, tx: number, ty: number, rng: number):
 		set position of screen element "rng_s" for p to tx ty
 		show screen element "rng_s" to p
 
+# --- Обновление визуала и живого тултипа построенной башни ---
+
+function TdSyncTowerVisual(g: player, tid: number):
+	set {-tc} to {-td-tcol::%g%::%tid%}
+	set {-tr} to {-td-trow::%g%::%tid%}
+	set {-tt} to {-td-tt::%g%::%tid%}
+	set {-tl} to {-td-tl::%g%::%tid%}
+	set {-tx} to {-td-tx::%g%::%tid%}
+	set {-ty} to {-td-ty::%g%::%tid%}
+	set {-own} to {-td-towner::%g%::%tid%}
+	set {-ref} to round({-td-tcost::%g%::%tid%} * 0.7)
+
+	set {-tex} to "td:textures/gui/tower_archer.png"
+	set {-tname} to "&eЛучник"
+	set {-bdmg} to 15
+	set {-evod} to "Шквал (2 цели сразу!)"
+	if {-tt} is 2:
+		set {-tex} to "td:textures/gui/tower_cannon.png"
+		set {-tname} to "&6Пушка"
+		set {-bdmg} to 36
+		set {-evod} to "Напалм (мега-сплеш + поджог)"
+	else if {-tt} is 3:
+		set {-tex} to "td:textures/gui/tower_frost.png"
+		set {-tname} to "&bЛёд"
+		set {-bdmg} to 8
+		set {-evod} to "Стужа (50%% замедл. по радиусу + 12%% заморозка)"
+	else if {-tt} is 4:
+		set {-tex} to "td:textures/gui/tower_mage.png"
+		set {-tname} to "&dМаг"
+		set {-bdmg} to 32
+		set {-evod} to "Убийца Боссов (x2 + 4%% макс.HP)"
+	else if {-tt} is 5:
+		set {-tex} to "td:textures/gui/tower_tesla.png"
+		set {-tname} to "&bТесла"
+		set {-bdmg} to 20
+		set {-evod} to "Шторм (5 целей + стан)"
+	else if {-tt} is 6:
+		set {-tex} to "td:textures/gui/tower_sniper.png"
+		set {-tname} to "&cСнайпер"
+		set {-bdmg} to 56
+		set {-evod} to "Казнь (<20%% HP + крит 45%%)"
+	else if {-tt} is 7:
+		set {-tex} to "td:textures/gui/tower_poison.png"
+		set {-tname} to "&aАлхимик"
+		set {-bdmg} to 12
+		set {-evod} to "Чума (заразный яд по области)"
+	else if {-tt} is 8:
+		set {-tex} to "td:textures/gui/tower_farm.png"
+		set {-tname} to "&6Банк"
+		set {-bdmg} to 0
+		set {-evod} to "Золотой Дворец (+180з и +1 HP/волну)"
+
+	set {-st} to "&e★"
+	if {-tl} is 2:
+		set {-st} to "&6★★"
+	else if {-tl} is 3:
+		set {-st} to "&d★★★"
+	else if {-tl} is 4:
+		set {-st} to "&b★★★★"
+	else if {-tl} >= 5:
+		set {-st} to "&6&l✦5★"
+
+	TdTowerRange({-tt}, {-tl})
+	set {-rng} to {-td-tmp-rng}
+
+	if {-tt} is 8:
+		set {-inc} to 28
+		if {-tl} is 2:
+			set {-inc} to 50
+		else if {-tl} is 3:
+			set {-inc} to 80
+		else if {-tl} is 4:
+			set {-inc} to 120
+		else if {-tl} >= 5:
+			set {-inc} to 180
+		set {-stat} to "&7Доход: &6+%{-inc}%з/волну"
+	else:
+		set {-cdmg} to round({-bdmg} * (1 + ({-tl} - 1) * 0.55))
+		if {-tl} >= 5:
+			set {-cdmg} to round({-cdmg} * 1.4)
+		if {-tt} is 3:
+			set {-stat} to "&7Аура урон: &b%{-cdmg}% &7| Радиус: &b%{-rng}%"
+		else:
+			set {-stat} to "&7Урон: &c%{-cdmg}% &7| Дальн: &b%{-rng}%"
+
+	if {-tl} >= 5:
+		set {-act} to "&6✦ %{-evod}%\n&7Продажа (X): &e+%{-ref}%з"
+	else if {-tl} is 4:
+		set {-act} to "&6✦ ЛКМ: Эволюция 5★ за 570з!\n&7Продажа (X): &e+%{-ref}%з"
+	else:
+		set {-up} to 95
+		if {-tl} is 2:
+			set {-up} to 210
+		else if {-tl} is 3:
+			set {-up} to 360
+		set {-nl} to {-tl} + 1
+		set {-act} to "&aЛКМ: ур.%{-nl}% за &6%{-up}%з &7| Продажа (X): &e+%{-ref}%з"
+
+	set {-tip} to "%{-tname}% %{-st}% &7(ур.%{-tl}%)\n&7Владелец: &f%{-own}%\n%{-stat}%\n%{-act}%"
+	TdSyncCell(g, {-tc}, {-tr}, {-tx}, {-ty}, {-tex}, {-tip})
+	set {-sy} to {-ty} + 11
+	TdSyncPos(g, "st%tid%", {-tx}, {-sy})
+	TdSyncTxt(g, "st%tid%", {-st})
+	TdSyncShow(g, "st%tid%")
+
 # ==========================================================
-#  МЕНЮ ВЫБОРА КАРТЫ, СЛОЖНОСТИ И КОМАНДЫ (ДО 4 ИГРОКОВ)
+#  СОВРЕМЕННОЕ МЕНЮ ВЫБОРА КАРТЫ, СЛОЖНОСТИ И КОМАНДЫ (1..4)
 # ==========================================================
 
 function TdOpenMenu(p: player):
@@ -334,31 +440,39 @@ function TdOpenMenu(p: player):
 	if {-td-team::%p%::*} is empty:
 		add %p% to {-td-team::%p%::*}
 	open screen "Tower Defense" to p:
-		bar "bg_menu" value 0 max 1 at 0 0 size 430x252 anchor center background #EE0B1220 layer 0
-		bar "bg_hdr" value 1 max 1 at 0 -114 size 426x22 anchor center color #FF2563EB background #FF2563EB layer 1
-		text "&f&lTOWER DEFENSE ULTRA HD" at 0 -114 anchor center shadow layer 2
+		bar "bg_menu" value 0 max 1 at 0 0 size 438x258 anchor center background #F2090E1A layer 0
+		bar "bg_top" value 1 max 1 at 0 -128 size 438x2 anchor center color #FF38BDF8 background #FF38BDF8 layer 1
+		bar "bg_bot" value 1 max 1 at 0 128 size 438x2 anchor center color #FF1E293B background #FF1E293B layer 1
+		bar "bg_hdr" value 0 max 1 at 0 -114 size 434x24 anchor center background #FF111C33 layer 1
+		text "&b&l✦ &f&lTOWER DEFENSE &b&lULTRA HD &b&l✦" at 0 -114 anchor center shadow layer 2
 		text "&7Кооп до 4 игроков: &e/td coop <ник> &7(друг: &a/td join&7) | 8 башен + ✦5★ Эволюция!" at 0 -92 anchor center shadow layer 2
 
-		# 3 HD превью карт
+		# Карточки под 3 HD превью карт + индикатор выбора
+		bar "card_m1" value 0 max 1 at -132 -40 size 130x68 anchor center background #CC162032 layer 1
+		bar "card_m2" value 0 max 1 at 0 -40 size 130x68 anchor center background #CC162032 layer 1
+		bar "card_m3" value 0 max 1 at 132 -40 size 130x68 anchor center background #CC162032 layer 1
+		bar "map_sel" value 1 max 1 at -132 -7 size 130x2 anchor center color #FF22C55E background #FF22C55E layer 3
+
 		image "td:textures/gui/map_valley.png" at -132 -40 size 124x62 texture 896x448 anchor center layer 2 run TdPickMap(player, 1) keep open tooltip "&aИзумрудная долина\n&7Классический S-маршрут"
-		text "&a1. Долина" at -132 -1 anchor center shadow layer 2 id m_lbl1
+		text "&a1. Долина" at -132 3 anchor center shadow layer 2 id m_lbl1
 
 		image "td:textures/gui/map_volcano.png" at 0 -40 size 124x62 texture 896x448 anchor center layer 2 run TdPickMap(player, 2) keep open tooltip "&6Лавовый каньон\n&7Двойной зигзаг — много поворотов!"
-		text "&72. Каньон" at 0 -1 anchor center shadow layer 2 id m_lbl2
+		text "&72. Каньон" at 0 3 anchor center shadow layer 2 id m_lbl2
 
 		image "td:textures/gui/map_ice.png" at 132 -40 size 124x62 texture 896x448 anchor center layer 2 run TdPickMap(player, 3) keep open tooltip "&bЛедяная цитадель\n&7Быстрый арктический серпантин!"
-		text "&73. Цитадель" at 132 -1 anchor center shadow layer 2 id m_lbl3
+		text "&73. Цитадель" at 132 3 anchor center shadow layer 2 id m_lbl3
 
-		# 3 уровня сложности
-		text "&eСложность:" at 0 22 anchor center shadow layer 2
-		button "&aЛёгкий (10 волн)" at -122 42 size 112x20 anchor center layer 2 run TdPickDiff(player, 1) keep open tooltip "&aЛёгкий уровень\n&710 волн | 2 босса | 15 HP | 140з"
-		button "&eСредний (20 волн)" at 0 42 size 112x20 anchor center layer 2 run TdPickDiff(player, 2) keep open tooltip "&eСредний уровень\n&720 волн | 4 босса | 10 HP | 120з"
-		button "&cТяжёлый (30 волн)" at 122 42 size 112x20 anchor center layer 2 run TdPickDiff(player, 3) keep open tooltip "&cТяжёлый уровень\n&730 волн | 6 боссов | 8 HP | 110з"
+		# Блок сложности и команды
+		bar "card_diff" value 0 max 1 at 0 54 size 414x70 anchor center background #AA111827 layer 1
+		text "&b&lСЛОЖНОСТЬ" at 0 26 anchor center shadow layer 2
+		button "&aЛёгкий (10 волн)" at -122 44 size 112x20 anchor center layer 2 run TdPickDiff(player, 1) keep open tooltip "&aЛёгкий уровень\n&710 волн | 2 босса | 15 HP | 140з"
+		button "&eСредний (20 волн)" at 0 44 size 112x20 anchor center layer 2 run TdPickDiff(player, 2) keep open tooltip "&eСредний уровень\n&720 волн | 4 босса | 10 HP | 120з"
+		button "&cТяжёлый (30 волн)" at 122 44 size 112x20 anchor center layer 2 run TdPickDiff(player, 3) keep open tooltip "&cТяжёлый уровень\n&730 волн | 6 боссов | 8 HP | 110з"
 
 		text "&7Выбрано: &aДолина &7| &eСредний" at 0 68 anchor center shadow layer 2 id menu_info
-		text "&dКоманда (1/4): &f%p%" at 0 82 anchor center shadow layer 2 id menu_team
-		button "&a&l▶ ИГРАТЬ" at -60 106 size 124x22 anchor center layer 2 run TdStartGame(player) keep open
-		button "&6Топ-5" at 72 106 size 92x22 anchor center layer 2 run TdShowTop(player) keep open
+		text "&dКоманда (1/4): &f%p%" at 0 81 anchor center shadow layer 2 id menu_team
+		button "&a&l▶ ИГРАТЬ" at -60 107 size 126x22 anchor center layer 2 run TdStartGame(player) keep open
+		button "&6Топ-5" at 72 107 size 92x22 anchor center layer 2 run TdShowTop(player) keep open
 	TdRefreshMenuInfo(p)
 
 function TdPickMap(p: player, m: number):
@@ -380,12 +494,15 @@ function TdRefreshMenuInfo(p: player):
 	set {-mn} to "&aДолина"
 	if {-m} is 1:
 		set text of screen element "m_lbl1" for p to "&a&l▶ 1. Долина"
+		set position of screen element "map_sel" for p to -132 -7
 	else if {-m} is 2:
 		set {-mn} to "&6Каньон"
 		set text of screen element "m_lbl2" for p to "&6&l▶ 2. Каньон"
+		set position of screen element "map_sel" for p to 0 -7
 	else:
 		set {-mn} to "&bЦитадель"
 		set text of screen element "m_lbl3" for p to "&b&l▶ 3. Цитадель"
+		set position of screen element "map_sel" for p to 132 -7
 	set {-dn} to "&eСредний (20 волн)"
 	if {-d} is 1:
 		set {-dn} to "&aЛёгкий (10 волн)"
@@ -439,6 +556,7 @@ function TdStartGame(host: player):
 	set {-td-spawn-boss::%host%} to 0
 	set {-td-spawn-cd::%host%} to 0
 	set {-td-fx-cd::%host%} to 0
+	set {-td-boss-vis::%host%} to 0
 
 	if {-d} is 1:
 		set {-td-maxw::%host%} to 10
@@ -553,113 +671,120 @@ function TdLoadWaypoints(g: player, mapId: number):
 
 function TdOpenMap1(p: player):
 	open screen "Tower Defense" to p:
-		# Верхняя HUD-панель (без PNG — не бывает битых текстур!)
-		bar "bg_hud" value 0 max 1 at 0 -131 size 456x22 anchor center background #DD0F172A layer 11
-		image "td:textures/gui/icon_wave.png" at -214 -131 size 12x12 texture 32x32 anchor center layer 12 tooltip "&eТекущая волна"
-		text "&f0/20" at -188 -131 anchor center shadow layer 12 id hud_wave
-		image "td:textures/gui/icon_coin.png" at -142 -131 size 12x12 texture 32x32 anchor center layer 12 tooltip "&6Ваше личное золото"
-		text "&6120" at -116 -131 anchor center shadow layer 12 id hud_gold
-		image "td:textures/gui/icon_heart.png" at -68 -131 size 12x12 texture 32x32 anchor center layer 12 tooltip "&cЗдоровье базы"
-		text "&c10" at -48 -131 anchor center shadow layer 12 id hud_hp
-		image "td:textures/gui/icon_trophy.png" at -12 -131 size 12x12 texture 32x32 anchor center layer 12 tooltip "&aОбщий счёт"
-		text "&a0" at 16 -131 anchor center shadow layer 12 id hud_score
-		text "&7Соло &7[x1]" at 142 -131 anchor center shadow layer 12 id hud_team
+		# Современный верхний HUD (стеклянная панель + карточки + неоновый акцент)
+		bar "bg_hud" value 0 max 1 at 0 -132 size 458x24 anchor center background #EE090E1A layer 11
+		bar "hud_line" value 1 max 1 at 0 -120 size 458x1 anchor center color #FF38BDF8 background #FF38BDF8 layer 12
+		bar "pill_w" value 0 max 1 at -198 -132 size 56x16 anchor center background #CC162032 layer 11
+		bar "pill_g" value 0 max 1 at -126 -132 size 64x16 anchor center background #CC162032 layer 11
+		bar "pill_h" value 0 max 1 at -58 -132 size 50x16 anchor center background #CC162032 layer 11
+		bar "pill_s" value 0 max 1 at 10 -132 size 68x16 anchor center background #CC162032 layer 11
+		bar "pill_t" value 0 max 1 at 140 -132 size 166x16 anchor center background #CC162032 layer 11
+		image "td:textures/gui/icon_wave.png" at -216 -132 size 11x11 texture 32x32 anchor center layer 12 tooltip "&eТекущая волна"
+		text "&f0/20" at -190 -132 anchor center shadow layer 12 id hud_wave
+		image "td:textures/gui/icon_coin.png" at -148 -132 size 11x11 texture 32x32 anchor center layer 12 tooltip "&6Ваше личное золото"
+		text "&6120" at -118 -132 anchor center shadow layer 12 id hud_gold
+		image "td:textures/gui/icon_heart.png" at -72 -132 size 11x11 texture 32x32 anchor center layer 12 tooltip "&cЗдоровье базы"
+		text "&c10" at -50 -132 anchor center shadow layer 12 id hud_hp
+		image "td:textures/gui/icon_trophy.png" at -14 -132 size 11x11 texture 32x32 anchor center layer 12 tooltip "&aОбщий счёт"
+		text "&a0" at 18 -132 anchor center shadow layer 12 id hud_score
+		text "&7Соло &7[x1]" at 140 -132 anchor center shadow layer 12 id hud_team
 
-		# Большая HD карта 448x224 (текстура 896x448)
-		image "td:textures/gui/map_valley.png" at 0 -2 size 448x224 texture 896x448 anchor center layer 0 id map
-		bar "boss_bar" value 100 max 100 at 0 -106 size 220x8 anchor center color #E74C3C background #AA1A0A0A text "&c&lБОСС: %value%/%max%" shadow layer 14 hidden
+		# Тактическая рамка + большая HD карта 448x224 (текстура 896x448)
+		bar "map_frame" value 0 max 1 at 0 -2 size 452x228 anchor center background #8838BDF8 layer 0
+		image "td:textures/gui/map_valley.png" at 0 -2 size 448x224 texture 896x448 anchor center layer 1 id map
+		bar "boss_bar" value 100 max 100 at 0 -106 size 230x9 anchor center color #FFEF4444 background #CC1A0A0A text "&c&l☠ БОСС: %value%/%max%" shadow layer 14 hidden
 
 		# Круги радиуса башни (малый / средний / снайпер)
 		image "td:textures/gui/range_circle.png" at 0 0 size 196x196 texture 192x192 anchor center layer 2 id rng_s hidden
 		image "td:textures/gui/range_circle.png" at 0 0 size 260x260 texture 192x192 anchor center layer 2 id rng_m hidden
 		image "td:textures/gui/range_circle.png" at 0 0 size 390x390 texture 192x192 anchor center layer 2 id rng_l hidden
 
-		# Свободная сетка постройки 16x8 (клетка 28x28)
-		image "td:textures/gui/tile_build.png" at -210 -100 size 28x28 texture 28x28 anchor center layer 3 id c0_0 run TdCellClick(player, 0, 0) keep open
-		image "td:textures/gui/tile_build.png" at -182 -100 size 28x28 texture 28x28 anchor center layer 3 id c1_0 run TdCellClick(player, 1, 0) keep open
-		image "td:textures/gui/tile_build.png" at -154 -100 size 28x28 texture 28x28 anchor center layer 3 id c2_0 run TdCellClick(player, 2, 0) keep open
-		image "td:textures/gui/tile_build.png" at -126 -100 size 28x28 texture 28x28 anchor center layer 3 id c3_0 run TdCellClick(player, 3, 0) keep open
-		image "td:textures/gui/tile_build.png" at -98 -100 size 28x28 texture 28x28 anchor center layer 3 id c4_0 run TdCellClick(player, 4, 0) keep open
-		image "td:textures/gui/tile_build.png" at -70 -100 size 28x28 texture 28x28 anchor center layer 3 id c5_0 run TdCellClick(player, 5, 0) keep open
-		image "td:textures/gui/tile_build.png" at -42 -100 size 28x28 texture 28x28 anchor center layer 3 id c6_0 run TdCellClick(player, 6, 0) keep open
-		image "td:textures/gui/tile_build.png" at -14 -100 size 28x28 texture 28x28 anchor center layer 3 id c7_0 run TdCellClick(player, 7, 0) keep open
-		image "td:textures/gui/tile_build.png" at 14 -100 size 28x28 texture 28x28 anchor center layer 3 id c8_0 run TdCellClick(player, 8, 0) keep open
-		image "td:textures/gui/tile_build.png" at 42 -100 size 28x28 texture 28x28 anchor center layer 3 id c9_0 run TdCellClick(player, 9, 0) keep open
-		image "td:textures/gui/tile_build.png" at 70 -100 size 28x28 texture 28x28 anchor center layer 3 id c10_0 run TdCellClick(player, 10, 0) keep open
-		image "td:textures/gui/tile_build.png" at 98 -100 size 28x28 texture 28x28 anchor center layer 3 id c11_0 run TdCellClick(player, 11, 0) keep open
-		image "td:textures/gui/tile_build.png" at 126 -100 size 28x28 texture 28x28 anchor center layer 3 id c12_0 run TdCellClick(player, 12, 0) keep open
-		image "td:textures/gui/tile_build.png" at 154 -100 size 28x28 texture 28x28 anchor center layer 3 id c13_0 run TdCellClick(player, 13, 0) keep open
-		image "td:textures/gui/tile_build.png" at 182 -100 size 28x28 texture 28x28 anchor center layer 3 id c14_0 run TdCellClick(player, 14, 0) keep open
-		image "td:textures/gui/tile_build.png" at 210 -100 size 28x28 texture 28x28 anchor center layer 3 id c15_0 run TdCellClick(player, 15, 0) keep open
-		image "td:textures/gui/tile_build.png" at 182 -72 size 28x28 texture 28x28 anchor center layer 3 id c14_1 run TdCellClick(player, 14, 1) keep open
-		image "td:textures/gui/tile_build.png" at 210 -72 size 28x28 texture 28x28 anchor center layer 3 id c15_1 run TdCellClick(player, 15, 1) keep open
-		image "td:textures/gui/tile_build.png" at -210 -44 size 28x28 texture 28x28 anchor center layer 3 id c0_2 run TdCellClick(player, 0, 2) keep open
-		image "td:textures/gui/tile_build.png" at -182 -44 size 28x28 texture 28x28 anchor center layer 3 id c1_2 run TdCellClick(player, 1, 2) keep open
-		image "td:textures/gui/tile_build.png" at -154 -44 size 28x28 texture 28x28 anchor center layer 3 id c2_2 run TdCellClick(player, 2, 2) keep open
-		image "td:textures/gui/tile_build.png" at -126 -44 size 28x28 texture 28x28 anchor center layer 3 id c3_2 run TdCellClick(player, 3, 2) keep open
-		image "td:textures/gui/tile_build.png" at -98 -44 size 28x28 texture 28x28 anchor center layer 3 id c4_2 run TdCellClick(player, 4, 2) keep open
-		image "td:textures/gui/tile_build.png" at -70 -44 size 28x28 texture 28x28 anchor center layer 3 id c5_2 run TdCellClick(player, 5, 2) keep open
-		image "td:textures/gui/tile_build.png" at -42 -44 size 28x28 texture 28x28 anchor center layer 3 id c6_2 run TdCellClick(player, 6, 2) keep open
-		image "td:textures/gui/tile_build.png" at -14 -44 size 28x28 texture 28x28 anchor center layer 3 id c7_2 run TdCellClick(player, 7, 2) keep open
-		image "td:textures/gui/tile_build.png" at 14 -44 size 28x28 texture 28x28 anchor center layer 3 id c8_2 run TdCellClick(player, 8, 2) keep open
-		image "td:textures/gui/tile_build.png" at 42 -44 size 28x28 texture 28x28 anchor center layer 3 id c9_2 run TdCellClick(player, 9, 2) keep open
-		image "td:textures/gui/tile_build.png" at 70 -44 size 28x28 texture 28x28 anchor center layer 3 id c10_2 run TdCellClick(player, 10, 2) keep open
-		image "td:textures/gui/tile_build.png" at 98 -44 size 28x28 texture 28x28 anchor center layer 3 id c11_2 run TdCellClick(player, 11, 2) keep open
-		image "td:textures/gui/tile_build.png" at 126 -44 size 28x28 texture 28x28 anchor center layer 3 id c12_2 run TdCellClick(player, 12, 2) keep open
-		image "td:textures/gui/tile_build.png" at 182 -44 size 28x28 texture 28x28 anchor center layer 3 id c14_2 run TdCellClick(player, 14, 2) keep open
-		image "td:textures/gui/tile_build.png" at 210 -44 size 28x28 texture 28x28 anchor center layer 3 id c15_2 run TdCellClick(player, 15, 2) keep open
-		image "td:textures/gui/tile_build.png" at -210 -16 size 28x28 texture 28x28 anchor center layer 3 id c0_3 run TdCellClick(player, 0, 3) keep open
-		image "td:textures/gui/tile_build.png" at -182 -16 size 28x28 texture 28x28 anchor center layer 3 id c1_3 run TdCellClick(player, 1, 3) keep open
-		image "td:textures/gui/tile_build.png" at 182 -16 size 28x28 texture 28x28 anchor center layer 3 id c14_3 run TdCellClick(player, 14, 3) keep open
-		image "td:textures/gui/tile_build.png" at 210 -16 size 28x28 texture 28x28 anchor center layer 3 id c15_3 run TdCellClick(player, 15, 3) keep open
-		image "td:textures/gui/tile_build.png" at -210 12 size 28x28 texture 28x28 anchor center layer 3 id c0_4 run TdCellClick(player, 0, 4) keep open
-		image "td:textures/gui/tile_build.png" at -182 12 size 28x28 texture 28x28 anchor center layer 3 id c1_4 run TdCellClick(player, 1, 4) keep open
-		image "td:textures/gui/tile_build.png" at -126 12 size 28x28 texture 28x28 anchor center layer 3 id c3_4 run TdCellClick(player, 3, 4) keep open
-		image "td:textures/gui/tile_build.png" at -98 12 size 28x28 texture 28x28 anchor center layer 3 id c4_4 run TdCellClick(player, 4, 4) keep open
-		image "td:textures/gui/tile_build.png" at -70 12 size 28x28 texture 28x28 anchor center layer 3 id c5_4 run TdCellClick(player, 5, 4) keep open
-		image "td:textures/gui/tile_build.png" at -42 12 size 28x28 texture 28x28 anchor center layer 3 id c6_4 run TdCellClick(player, 6, 4) keep open
-		image "td:textures/gui/tile_build.png" at -14 12 size 28x28 texture 28x28 anchor center layer 3 id c7_4 run TdCellClick(player, 7, 4) keep open
-		image "td:textures/gui/tile_build.png" at 14 12 size 28x28 texture 28x28 anchor center layer 3 id c8_4 run TdCellClick(player, 8, 4) keep open
-		image "td:textures/gui/tile_build.png" at 42 12 size 28x28 texture 28x28 anchor center layer 3 id c9_4 run TdCellClick(player, 9, 4) keep open
-		image "td:textures/gui/tile_build.png" at 70 12 size 28x28 texture 28x28 anchor center layer 3 id c10_4 run TdCellClick(player, 10, 4) keep open
-		image "td:textures/gui/tile_build.png" at 98 12 size 28x28 texture 28x28 anchor center layer 3 id c11_4 run TdCellClick(player, 11, 4) keep open
-		image "td:textures/gui/tile_build.png" at 126 12 size 28x28 texture 28x28 anchor center layer 3 id c12_4 run TdCellClick(player, 12, 4) keep open
-		image "td:textures/gui/tile_build.png" at 154 12 size 28x28 texture 28x28 anchor center layer 3 id c13_4 run TdCellClick(player, 13, 4) keep open
-		image "td:textures/gui/tile_build.png" at 182 12 size 28x28 texture 28x28 anchor center layer 3 id c14_4 run TdCellClick(player, 14, 4) keep open
-		image "td:textures/gui/tile_build.png" at 210 12 size 28x28 texture 28x28 anchor center layer 3 id c15_4 run TdCellClick(player, 15, 4) keep open
-		image "td:textures/gui/tile_build.png" at -210 40 size 28x28 texture 28x28 anchor center layer 3 id c0_5 run TdCellClick(player, 0, 5) keep open
-		image "td:textures/gui/tile_build.png" at -182 40 size 28x28 texture 28x28 anchor center layer 3 id c1_5 run TdCellClick(player, 1, 5) keep open
-		image "td:textures/gui/tile_build.png" at -126 40 size 28x28 texture 28x28 anchor center layer 3 id c3_5 run TdCellClick(player, 3, 5) keep open
-		image "td:textures/gui/tile_build.png" at -98 40 size 28x28 texture 28x28 anchor center layer 3 id c4_5 run TdCellClick(player, 4, 5) keep open
-		image "td:textures/gui/tile_build.png" at -70 40 size 28x28 texture 28x28 anchor center layer 3 id c5_5 run TdCellClick(player, 5, 5) keep open
-		image "td:textures/gui/tile_build.png" at -42 40 size 28x28 texture 28x28 anchor center layer 3 id c6_5 run TdCellClick(player, 6, 5) keep open
-		image "td:textures/gui/tile_build.png" at -14 40 size 28x28 texture 28x28 anchor center layer 3 id c7_5 run TdCellClick(player, 7, 5) keep open
-		image "td:textures/gui/tile_build.png" at 14 40 size 28x28 texture 28x28 anchor center layer 3 id c8_5 run TdCellClick(player, 8, 5) keep open
-		image "td:textures/gui/tile_build.png" at 42 40 size 28x28 texture 28x28 anchor center layer 3 id c9_5 run TdCellClick(player, 9, 5) keep open
-		image "td:textures/gui/tile_build.png" at 70 40 size 28x28 texture 28x28 anchor center layer 3 id c10_5 run TdCellClick(player, 10, 5) keep open
-		image "td:textures/gui/tile_build.png" at 98 40 size 28x28 texture 28x28 anchor center layer 3 id c11_5 run TdCellClick(player, 11, 5) keep open
-		image "td:textures/gui/tile_build.png" at 126 40 size 28x28 texture 28x28 anchor center layer 3 id c12_5 run TdCellClick(player, 12, 5) keep open
-		image "td:textures/gui/tile_build.png" at 154 40 size 28x28 texture 28x28 anchor center layer 3 id c13_5 run TdCellClick(player, 13, 5) keep open
-		image "td:textures/gui/tile_build.png" at 182 40 size 28x28 texture 28x28 anchor center layer 3 id c14_5 run TdCellClick(player, 14, 5) keep open
-		image "td:textures/gui/tile_build.png" at 210 40 size 28x28 texture 28x28 anchor center layer 3 id c15_5 run TdCellClick(player, 15, 5) keep open
-		image "td:textures/gui/tile_build.png" at -210 68 size 28x28 texture 28x28 anchor center layer 3 id c0_6 run TdCellClick(player, 0, 6) keep open
-		image "td:textures/gui/tile_build.png" at -182 68 size 28x28 texture 28x28 anchor center layer 3 id c1_6 run TdCellClick(player, 1, 6) keep open
-		image "td:textures/gui/tile_build.png" at -210 96 size 28x28 texture 28x28 anchor center layer 3 id c0_7 run TdCellClick(player, 0, 7) keep open
-		image "td:textures/gui/tile_build.png" at -182 96 size 28x28 texture 28x28 anchor center layer 3 id c1_7 run TdCellClick(player, 1, 7) keep open
-		image "td:textures/gui/tile_build.png" at -154 96 size 28x28 texture 28x28 anchor center layer 3 id c2_7 run TdCellClick(player, 2, 7) keep open
-		image "td:textures/gui/tile_build.png" at -126 96 size 28x28 texture 28x28 anchor center layer 3 id c3_7 run TdCellClick(player, 3, 7) keep open
-		image "td:textures/gui/tile_build.png" at -98 96 size 28x28 texture 28x28 anchor center layer 3 id c4_7 run TdCellClick(player, 4, 7) keep open
-		image "td:textures/gui/tile_build.png" at -70 96 size 28x28 texture 28x28 anchor center layer 3 id c5_7 run TdCellClick(player, 5, 7) keep open
-		image "td:textures/gui/tile_build.png" at -42 96 size 28x28 texture 28x28 anchor center layer 3 id c6_7 run TdCellClick(player, 6, 7) keep open
-		image "td:textures/gui/tile_build.png" at -14 96 size 28x28 texture 28x28 anchor center layer 3 id c7_7 run TdCellClick(player, 7, 7) keep open
-		image "td:textures/gui/tile_build.png" at 14 96 size 28x28 texture 28x28 anchor center layer 3 id c8_7 run TdCellClick(player, 8, 7) keep open
-		image "td:textures/gui/tile_build.png" at 42 96 size 28x28 texture 28x28 anchor center layer 3 id c9_7 run TdCellClick(player, 9, 7) keep open
-		image "td:textures/gui/tile_build.png" at 70 96 size 28x28 texture 28x28 anchor center layer 3 id c10_7 run TdCellClick(player, 10, 7) keep open
-		image "td:textures/gui/tile_build.png" at 98 96 size 28x28 texture 28x28 anchor center layer 3 id c11_7 run TdCellClick(player, 11, 7) keep open
-		image "td:textures/gui/tile_build.png" at 126 96 size 28x28 texture 28x28 anchor center layer 3 id c12_7 run TdCellClick(player, 12, 7) keep open
-		image "td:textures/gui/tile_build.png" at 154 96 size 28x28 texture 28x28 anchor center layer 3 id c13_7 run TdCellClick(player, 13, 7) keep open
-		image "td:textures/gui/tile_build.png" at 182 96 size 28x28 texture 28x28 anchor center layer 3 id c14_7 run TdCellClick(player, 14, 7) keep open
-		image "td:textures/gui/tile_build.png" at 210 96 size 28x28 texture 28x28 anchor center layer 3 id c15_7 run TdCellClick(player, 15, 7) keep open
+		# Свободная сетка постройки 16x8 (клетка 28x28, тултипы обновляются автоматически!)
+		image "td:textures/gui/tile_build.png" at -210 -100 size 28x28 texture 28x28 anchor center layer 3 id c0_0 run TdCellClick(player, 0, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -182 -100 size 28x28 texture 28x28 anchor center layer 3 id c1_0 run TdCellClick(player, 1, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -154 -100 size 28x28 texture 28x28 anchor center layer 3 id c2_0 run TdCellClick(player, 2, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -126 -100 size 28x28 texture 28x28 anchor center layer 3 id c3_0 run TdCellClick(player, 3, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -98 -100 size 28x28 texture 28x28 anchor center layer 3 id c4_0 run TdCellClick(player, 4, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -70 -100 size 28x28 texture 28x28 anchor center layer 3 id c5_0 run TdCellClick(player, 5, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -42 -100 size 28x28 texture 28x28 anchor center layer 3 id c6_0 run TdCellClick(player, 6, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -14 -100 size 28x28 texture 28x28 anchor center layer 3 id c7_0 run TdCellClick(player, 7, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 14 -100 size 28x28 texture 28x28 anchor center layer 3 id c8_0 run TdCellClick(player, 8, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 42 -100 size 28x28 texture 28x28 anchor center layer 3 id c9_0 run TdCellClick(player, 9, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 70 -100 size 28x28 texture 28x28 anchor center layer 3 id c10_0 run TdCellClick(player, 10, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 98 -100 size 28x28 texture 28x28 anchor center layer 3 id c11_0 run TdCellClick(player, 11, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 126 -100 size 28x28 texture 28x28 anchor center layer 3 id c12_0 run TdCellClick(player, 12, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 154 -100 size 28x28 texture 28x28 anchor center layer 3 id c13_0 run TdCellClick(player, 13, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 182 -100 size 28x28 texture 28x28 anchor center layer 3 id c14_0 run TdCellClick(player, 14, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 210 -100 size 28x28 texture 28x28 anchor center layer 3 id c15_0 run TdCellClick(player, 15, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 182 -72 size 28x28 texture 28x28 anchor center layer 3 id c14_1 run TdCellClick(player, 14, 1) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 210 -72 size 28x28 texture 28x28 anchor center layer 3 id c15_1 run TdCellClick(player, 15, 1) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -210 -44 size 28x28 texture 28x28 anchor center layer 3 id c0_2 run TdCellClick(player, 0, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -182 -44 size 28x28 texture 28x28 anchor center layer 3 id c1_2 run TdCellClick(player, 1, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -154 -44 size 28x28 texture 28x28 anchor center layer 3 id c2_2 run TdCellClick(player, 2, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -126 -44 size 28x28 texture 28x28 anchor center layer 3 id c3_2 run TdCellClick(player, 3, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -98 -44 size 28x28 texture 28x28 anchor center layer 3 id c4_2 run TdCellClick(player, 4, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -70 -44 size 28x28 texture 28x28 anchor center layer 3 id c5_2 run TdCellClick(player, 5, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -42 -44 size 28x28 texture 28x28 anchor center layer 3 id c6_2 run TdCellClick(player, 6, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -14 -44 size 28x28 texture 28x28 anchor center layer 3 id c7_2 run TdCellClick(player, 7, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 14 -44 size 28x28 texture 28x28 anchor center layer 3 id c8_2 run TdCellClick(player, 8, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 42 -44 size 28x28 texture 28x28 anchor center layer 3 id c9_2 run TdCellClick(player, 9, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 70 -44 size 28x28 texture 28x28 anchor center layer 3 id c10_2 run TdCellClick(player, 10, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 98 -44 size 28x28 texture 28x28 anchor center layer 3 id c11_2 run TdCellClick(player, 11, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 126 -44 size 28x28 texture 28x28 anchor center layer 3 id c12_2 run TdCellClick(player, 12, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 182 -44 size 28x28 texture 28x28 anchor center layer 3 id c14_2 run TdCellClick(player, 14, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 210 -44 size 28x28 texture 28x28 anchor center layer 3 id c15_2 run TdCellClick(player, 15, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -210 -16 size 28x28 texture 28x28 anchor center layer 3 id c0_3 run TdCellClick(player, 0, 3) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -182 -16 size 28x28 texture 28x28 anchor center layer 3 id c1_3 run TdCellClick(player, 1, 3) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 182 -16 size 28x28 texture 28x28 anchor center layer 3 id c14_3 run TdCellClick(player, 14, 3) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 210 -16 size 28x28 texture 28x28 anchor center layer 3 id c15_3 run TdCellClick(player, 15, 3) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -210 12 size 28x28 texture 28x28 anchor center layer 3 id c0_4 run TdCellClick(player, 0, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -182 12 size 28x28 texture 28x28 anchor center layer 3 id c1_4 run TdCellClick(player, 1, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -126 12 size 28x28 texture 28x28 anchor center layer 3 id c3_4 run TdCellClick(player, 3, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -98 12 size 28x28 texture 28x28 anchor center layer 3 id c4_4 run TdCellClick(player, 4, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -70 12 size 28x28 texture 28x28 anchor center layer 3 id c5_4 run TdCellClick(player, 5, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -42 12 size 28x28 texture 28x28 anchor center layer 3 id c6_4 run TdCellClick(player, 6, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -14 12 size 28x28 texture 28x28 anchor center layer 3 id c7_4 run TdCellClick(player, 7, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 14 12 size 28x28 texture 28x28 anchor center layer 3 id c8_4 run TdCellClick(player, 8, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 42 12 size 28x28 texture 28x28 anchor center layer 3 id c9_4 run TdCellClick(player, 9, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 70 12 size 28x28 texture 28x28 anchor center layer 3 id c10_4 run TdCellClick(player, 10, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 98 12 size 28x28 texture 28x28 anchor center layer 3 id c11_4 run TdCellClick(player, 11, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 126 12 size 28x28 texture 28x28 anchor center layer 3 id c12_4 run TdCellClick(player, 12, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 154 12 size 28x28 texture 28x28 anchor center layer 3 id c13_4 run TdCellClick(player, 13, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 182 12 size 28x28 texture 28x28 anchor center layer 3 id c14_4 run TdCellClick(player, 14, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 210 12 size 28x28 texture 28x28 anchor center layer 3 id c15_4 run TdCellClick(player, 15, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -210 40 size 28x28 texture 28x28 anchor center layer 3 id c0_5 run TdCellClick(player, 0, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -182 40 size 28x28 texture 28x28 anchor center layer 3 id c1_5 run TdCellClick(player, 1, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -126 40 size 28x28 texture 28x28 anchor center layer 3 id c3_5 run TdCellClick(player, 3, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -98 40 size 28x28 texture 28x28 anchor center layer 3 id c4_5 run TdCellClick(player, 4, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -70 40 size 28x28 texture 28x28 anchor center layer 3 id c5_5 run TdCellClick(player, 5, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -42 40 size 28x28 texture 28x28 anchor center layer 3 id c6_5 run TdCellClick(player, 6, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -14 40 size 28x28 texture 28x28 anchor center layer 3 id c7_5 run TdCellClick(player, 7, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 14 40 size 28x28 texture 28x28 anchor center layer 3 id c8_5 run TdCellClick(player, 8, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 42 40 size 28x28 texture 28x28 anchor center layer 3 id c9_5 run TdCellClick(player, 9, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 70 40 size 28x28 texture 28x28 anchor center layer 3 id c10_5 run TdCellClick(player, 10, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 98 40 size 28x28 texture 28x28 anchor center layer 3 id c11_5 run TdCellClick(player, 11, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 126 40 size 28x28 texture 28x28 anchor center layer 3 id c12_5 run TdCellClick(player, 12, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 154 40 size 28x28 texture 28x28 anchor center layer 3 id c13_5 run TdCellClick(player, 13, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 182 40 size 28x28 texture 28x28 anchor center layer 3 id c14_5 run TdCellClick(player, 14, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 210 40 size 28x28 texture 28x28 anchor center layer 3 id c15_5 run TdCellClick(player, 15, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -210 68 size 28x28 texture 28x28 anchor center layer 3 id c0_6 run TdCellClick(player, 0, 6) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -182 68 size 28x28 texture 28x28 anchor center layer 3 id c1_6 run TdCellClick(player, 1, 6) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -210 96 size 28x28 texture 28x28 anchor center layer 3 id c0_7 run TdCellClick(player, 0, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -182 96 size 28x28 texture 28x28 anchor center layer 3 id c1_7 run TdCellClick(player, 1, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -154 96 size 28x28 texture 28x28 anchor center layer 3 id c2_7 run TdCellClick(player, 2, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -126 96 size 28x28 texture 28x28 anchor center layer 3 id c3_7 run TdCellClick(player, 3, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -98 96 size 28x28 texture 28x28 anchor center layer 3 id c4_7 run TdCellClick(player, 4, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -70 96 size 28x28 texture 28x28 anchor center layer 3 id c5_7 run TdCellClick(player, 5, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -42 96 size 28x28 texture 28x28 anchor center layer 3 id c6_7 run TdCellClick(player, 6, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -14 96 size 28x28 texture 28x28 anchor center layer 3 id c7_7 run TdCellClick(player, 7, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 14 96 size 28x28 texture 28x28 anchor center layer 3 id c8_7 run TdCellClick(player, 8, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 42 96 size 28x28 texture 28x28 anchor center layer 3 id c9_7 run TdCellClick(player, 9, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 70 96 size 28x28 texture 28x28 anchor center layer 3 id c10_7 run TdCellClick(player, 10, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 98 96 size 28x28 texture 28x28 anchor center layer 3 id c11_7 run TdCellClick(player, 11, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 126 96 size 28x28 texture 28x28 anchor center layer 3 id c12_7 run TdCellClick(player, 12, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 154 96 size 28x28 texture 28x28 anchor center layer 3 id c13_7 run TdCellClick(player, 13, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 182 96 size 28x28 texture 28x28 anchor center layer 3 id c14_7 run TdCellClick(player, 14, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 210 96 size 28x28 texture 28x28 anchor center layer 3 id c15_7 run TdCellClick(player, 15, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
 
 		# Пул звёзд уровней и эволюций (до 28 башен)
 		text "" at 0 0 anchor center shadow layer 6 id st1 hidden
@@ -691,19 +816,31 @@ function TdOpenMap1(p: player):
 		text "" at 0 0 anchor center shadow layer 6 id st27 hidden
 		text "" at 0 0 anchor center shadow layer 6 id st28 hidden
 
-		# 11 слотов обычных врагов + 1 слот Босса (HD 40x40 / 56x56)
+		# 11 слотов обычных врагов + 1 слот Босса + тонкие полоски HP над каждым мобом
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e1 hidden
+		bar "ehp1" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e2 hidden
+		bar "ehp2" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e3 hidden
+		bar "ehp3" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e4 hidden
+		bar "ehp4" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e5 hidden
+		bar "ehp5" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e6 hidden
+		bar "ehp6" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e7 hidden
+		bar "ehp7" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e8 hidden
+		bar "ehp8" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e9 hidden
+		bar "ehp9" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e10 hidden
+		bar "ehp10" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e11 hidden
+		bar "ehp11" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_boss.png" at -210 -72 size 32x32 texture 56x56 anchor center layer 8 id e12 hidden
+		bar "ehp12" value 100 max 100 at -210 -91 size 30x4 anchor center color #FFEF4444 background #CC1A0A0A layer 9 hidden
 
 		# 6 летающих HD прожектайлов + вспышка взрыва
 		image "td:textures/gui/proj_arrow.png" at 0 0 size 11x11 texture 20x20 anchor center layer 9 id pr1 hidden
@@ -714,30 +851,41 @@ function TdOpenMap1(p: player):
 		image "td:textures/gui/proj_arrow.png" at 0 0 size 11x11 texture 20x20 anchor center layer 9 id pr6 hidden
 		image "td:textures/gui/fx_boom.png" at 0 0 size 20x20 texture 32x32 anchor center layer 10 id fx hidden
 
-		# Информационная строка (между картой и нижней панелью — ничего не перекрывает)
-		bar "bg_stat" value 0 max 1 at 0 119 size 456x14 anchor center background #DD0F172A layer 11
-		text "&eВыбран: &fЛучник (50з) &7— клик по траве строит, по башне улучшает/показывает радиус!" at 0 119 anchor center shadow layer 12 id status_txt
+		# Современная инфо-строка статуса
+		bar "bg_stat" value 0 max 1 at 0 119 size 458x15 anchor center background #E60B1220 layer 11
+		bar "stat_acc" value 1 max 1 at -227 119 size 3x15 anchor center color #FF38BDF8 background #FF38BDF8 layer 12
+		text "&eВыбран: &fЛучник (50з) &7— наведи на башню для инфо, ЛКМ для постройки/апгрейда!" at 0 119 anchor center shadow layer 12 id status_txt
 		text "&c&lБАЗА ПАЛА!" at 0 -16 anchor center shadow layer 20 id end_title hidden
 		text "&fНажми &eR &f(рестарт) или &eM &f(меню)" at 0 2 anchor center shadow layer 20 id end_sub hidden
 
-		# Нижняя панель инструментов (8 HD башен + 3 кнопки + Авто-волна)
-		bar "bg_bar" value 0 max 1 at 0 148 size 456x40 anchor center background #EE0B1220 layer 11
-		image "td:textures/gui/tower_archer.png" at -208 140 size 22x22 texture 48x48 anchor center layer 12 id ico1 run TdSelectTool(player, 1) keep open tooltip "&e[1] Лучник &7(50з)\n&7Урон: 15 | Очень быстрый | Дальн: 98\n&6✦5★ Шквал: &fстреляет сразу по 2 целям!"
-		text "&e[1]50" at -208 158 anchor center shadow layer 12 id lbl1
-		image "td:textures/gui/tower_cannon.png" at -172 140 size 22x22 texture 48x48 anchor center layer 12 id ico2 run TdSelectTool(player, 2) keep open tooltip "&6[2] Пушка &7(95з)\n&7Урон: 36 + &cСплеш | Дальн: 92\n&6✦5★ Напалм: &fмега-сплеш + поджог врагов!"
-		text "&7[2]95" at -172 158 anchor center shadow layer 12 id lbl2
-		image "td:textures/gui/tower_frost.png" at -136 140 size 22x22 texture 48x48 anchor center layer 12 id ico3 run TdSelectTool(player, 3) keep open tooltip "&b[3] Лёд &7(85з)\n&7Урон: 11 + &bЗамедление 45% | Дальн: 96\n&6✦5★ Мерзлота: &f65% замедл. + 25% заморозка!"
-		text "&7[3]85" at -136 158 anchor center shadow layer 12 id lbl3
-		image "td:textures/gui/tower_mage.png" at -100 140 size 22x22 texture 48x48 anchor center layer 12 id ico4 run TdSelectTool(player, 4) keep open tooltip "&d[4] Маг &7(130з)\n&7Урон: 32 | &dДальность 132\n&6✦5★ Убийца Боссов: &fx2 Боссам + 4% макс.HP!"
-		text "&7[4]130" at -100 158 anchor center shadow layer 12 id lbl4
-		image "td:textures/gui/tower_tesla.png" at -64 140 size 22x22 texture 48x48 anchor center layer 12 id ico5 run TdSelectTool(player, 5) keep open tooltip "&b[5] Тесла &7(115з)\n&7Урон: 20 | &bЦепная молния (3 цели) | Дальн: 108\n&6✦5★ Шторм: &f5 целей + 90% урон + стан!"
-		text "&7[5]115" at -64 158 anchor center shadow layer 12 id lbl5
-		image "td:textures/gui/tower_sniper.png" at -28 140 size 22x22 texture 48x48 anchor center layer 12 id ico6 run TdSelectTool(player, 6) keep open tooltip "&c[6] Снайпер &7(150з)\n&7Урон: 56 | &cКрит 25% | Дальн: 215\n&6✦5★ Казнь: &fкрит 45% x2.5 + казнь <20% HP!"
-		text "&7[6]150" at -28 158 anchor center shadow layer 12 id lbl6
-		image "td:textures/gui/tower_poison.png" at 8 140 size 22x22 texture 48x48 anchor center layer 12 id ico7 run TdSelectTool(player, 7) keep open tooltip "&a[7] Алхимик &7(105з)\n&7Урон: 12 + &aЯд (урон в сек.) | Дальн: 100\n&6✦5★ Чума: &fяд заражает всех врагов вокруг!"
-		text "&7[7]105" at 8 158 anchor center shadow layer 12 id lbl7
-		image "td:textures/gui/tower_farm.png" at 44 140 size 22x22 texture 48x48 anchor center layer 12 id ico8 run TdSelectTool(player, 8) keep open tooltip "&6[8] Банк &7(140з)\n&7Доход: &6+28/+50/+80/+120з &7каждую волну!\n&6✦5★ Дворец: &f+180з за волну и +1 HP базе!"
-		text "&7[8]140" at 44 158 anchor center shadow layer 12 id lbl8
+		# Нижняя панель инструментов (карточки слотов + индикатор выбора + 8 башен)
+		bar "bg_bar" value 0 max 1 at 0 148 size 458x42 anchor center background #F2090E1A layer 11
+		bar "bar_line" value 1 max 1 at 0 127 size 458x1 anchor center color #FF1E293B background #FF1E293B layer 12
+		bar "slot_bg1" value 0 max 1 at -208 148 size 32x34 anchor center background #CC162032 layer 11
+		bar "slot_bg2" value 0 max 1 at -172 148 size 32x34 anchor center background #CC162032 layer 11
+		bar "slot_bg3" value 0 max 1 at -136 148 size 32x34 anchor center background #CC162032 layer 11
+		bar "slot_bg4" value 0 max 1 at -100 148 size 32x34 anchor center background #CC162032 layer 11
+		bar "slot_bg5" value 0 max 1 at -64 148 size 32x34 anchor center background #CC162032 layer 11
+		bar "slot_bg6" value 0 max 1 at -28 148 size 32x34 anchor center background #CC162032 layer 11
+		bar "slot_bg7" value 0 max 1 at 8 148 size 32x34 anchor center background #CC162032 layer 11
+		bar "slot_bg8" value 0 max 1 at 44 148 size 32x34 anchor center background #CC162032 layer 11
+		bar "sel_bar" value 1 max 1 at -208 131 size 32x2 anchor center color #FFFACC15 background #FFFACC15 layer 13
+		image "td:textures/gui/tower_archer.png" at -208 142 size 22x22 texture 48x48 anchor center layer 12 id ico1 run TdSelectTool(player, 1) keep open tooltip "&e[1] Лучник &7(50з)\n&7Урон: 15 | Очень быстрый | Дальн: 98\n&6✦5★ Шквал: &fстреляет сразу по 2 целям!"
+		text "&e[1]50" at -208 159 anchor center shadow layer 12 id lbl1
+		image "td:textures/gui/tower_cannon.png" at -172 142 size 22x22 texture 48x48 anchor center layer 12 id ico2 run TdSelectTool(player, 2) keep open tooltip "&6[2] Пушка &7(95з)\n&7Урон: 36 + &cСплеш | Дальн: 92\n&6✦5★ Напалм: &fмега-сплеш + поджог врагов!"
+		text "&7[2]95" at -172 159 anchor center shadow layer 12 id lbl2
+		image "td:textures/gui/tower_frost.png" at -136 142 size 22x22 texture 48x48 anchor center layer 12 id ico3 run TdSelectTool(player, 3) keep open tooltip "&b[3] Лёд &7(85з)\n&7Урон: 8 | &bАура замедления 40% по радиусу | Дальн: 96\n&6✦5★ Стужа: &f50% замедл. + 12% заморозка (0.5с, не боссов)"
+		text "&7[3]85" at -136 159 anchor center shadow layer 12 id lbl3
+		image "td:textures/gui/tower_mage.png" at -100 142 size 22x22 texture 48x48 anchor center layer 12 id ico4 run TdSelectTool(player, 4) keep open tooltip "&d[4] Маг &7(130з)\n&7Урон: 32 | &dДальность 132\n&6✦5★ Убийца Боссов: &fx2 Боссам + 4% макс.HP!"
+		text "&7[4]130" at -100 159 anchor center shadow layer 12 id lbl4
+		image "td:textures/gui/tower_tesla.png" at -64 142 size 22x22 texture 48x48 anchor center layer 12 id ico5 run TdSelectTool(player, 5) keep open tooltip "&b[5] Тесла &7(115з)\n&7Урон: 20 | &bЦепная молния (3 цели) | Дальн: 108\n&6✦5★ Шторм: &f5 целей + 90% урон + стан!"
+		text "&7[5]115" at -64 159 anchor center shadow layer 12 id lbl5
+		image "td:textures/gui/tower_sniper.png" at -28 142 size 22x22 texture 48x48 anchor center layer 12 id ico6 run TdSelectTool(player, 6) keep open tooltip "&c[6] Снайпер &7(150з)\n&7Урон: 56 | &cКрит 25% | Дальн: 215\n&6✦5★ Казнь: &fкрит 45% x2.5 + казнь <20% HP!"
+		text "&7[6]150" at -28 159 anchor center shadow layer 12 id lbl6
+		image "td:textures/gui/tower_poison.png" at 8 142 size 22x22 texture 48x48 anchor center layer 12 id ico7 run TdSelectTool(player, 7) keep open tooltip "&a[7] Алхимик &7(105з)\n&7Урон: 12 + &aЯд (урон в сек.) | Дальн: 100\n&6✦5★ Чума: &fяд заражает всех врагов вокруг!"
+		text "&7[7]105" at 8 159 anchor center shadow layer 12 id lbl7
+		image "td:textures/gui/tower_farm.png" at 44 142 size 22x22 texture 48x48 anchor center layer 12 id ico8 run TdSelectTool(player, 8) keep open tooltip "&6[8] Банк &7(140з)\n&7Доход: &6+28/+50/+80/+120з &7каждую волну!\n&6✦5★ Дворец: &f+180з за волну и +1 HP базе!"
+		text "&7[8]140" at 44 159 anchor center shadow layer 12 id lbl8
 		button "&aСтарт/x2" at 118 139 size 68x16 anchor center run TdWaveOrSpeed(player) keep open tooltip "&aЗапустить волну &7(Space)\n&bВо время волны: скорость x1 / x2"
 		toggle "Авто" id autowave at 192 139 size 58x16 anchor center value false color #22C55E tooltip "&aАвто-волна\n&7Авто-старт следующей волны через 1.5с"
 		button "&cПродать" at 118 158 size 68x16 anchor center run TdToggleSell(player) keep open tooltip "&cПродать свою башню &7(X)\n&7Возврат 70% стоимости"
@@ -745,125 +893,132 @@ function TdOpenMap1(p: player):
 
 function TdOpenMap2(p: player):
 	open screen "Tower Defense" to p:
-		# Верхняя HUD-панель (без PNG — не бывает битых текстур!)
-		bar "bg_hud" value 0 max 1 at 0 -131 size 456x22 anchor center background #DD0F172A layer 11
-		image "td:textures/gui/icon_wave.png" at -214 -131 size 12x12 texture 32x32 anchor center layer 12 tooltip "&eТекущая волна"
-		text "&f0/20" at -188 -131 anchor center shadow layer 12 id hud_wave
-		image "td:textures/gui/icon_coin.png" at -142 -131 size 12x12 texture 32x32 anchor center layer 12 tooltip "&6Ваше личное золото"
-		text "&6120" at -116 -131 anchor center shadow layer 12 id hud_gold
-		image "td:textures/gui/icon_heart.png" at -68 -131 size 12x12 texture 32x32 anchor center layer 12 tooltip "&cЗдоровье базы"
-		text "&c10" at -48 -131 anchor center shadow layer 12 id hud_hp
-		image "td:textures/gui/icon_trophy.png" at -12 -131 size 12x12 texture 32x32 anchor center layer 12 tooltip "&aОбщий счёт"
-		text "&a0" at 16 -131 anchor center shadow layer 12 id hud_score
-		text "&7Соло &7[x1]" at 142 -131 anchor center shadow layer 12 id hud_team
+		# Современный верхний HUD (стеклянная панель + карточки + неоновый акцент)
+		bar "bg_hud" value 0 max 1 at 0 -132 size 458x24 anchor center background #EE090E1A layer 11
+		bar "hud_line" value 1 max 1 at 0 -120 size 458x1 anchor center color #FF38BDF8 background #FF38BDF8 layer 12
+		bar "pill_w" value 0 max 1 at -198 -132 size 56x16 anchor center background #CC162032 layer 11
+		bar "pill_g" value 0 max 1 at -126 -132 size 64x16 anchor center background #CC162032 layer 11
+		bar "pill_h" value 0 max 1 at -58 -132 size 50x16 anchor center background #CC162032 layer 11
+		bar "pill_s" value 0 max 1 at 10 -132 size 68x16 anchor center background #CC162032 layer 11
+		bar "pill_t" value 0 max 1 at 140 -132 size 166x16 anchor center background #CC162032 layer 11
+		image "td:textures/gui/icon_wave.png" at -216 -132 size 11x11 texture 32x32 anchor center layer 12 tooltip "&eТекущая волна"
+		text "&f0/20" at -190 -132 anchor center shadow layer 12 id hud_wave
+		image "td:textures/gui/icon_coin.png" at -148 -132 size 11x11 texture 32x32 anchor center layer 12 tooltip "&6Ваше личное золото"
+		text "&6120" at -118 -132 anchor center shadow layer 12 id hud_gold
+		image "td:textures/gui/icon_heart.png" at -72 -132 size 11x11 texture 32x32 anchor center layer 12 tooltip "&cЗдоровье базы"
+		text "&c10" at -50 -132 anchor center shadow layer 12 id hud_hp
+		image "td:textures/gui/icon_trophy.png" at -14 -132 size 11x11 texture 32x32 anchor center layer 12 tooltip "&aОбщий счёт"
+		text "&a0" at 18 -132 anchor center shadow layer 12 id hud_score
+		text "&7Соло &7[x1]" at 140 -132 anchor center shadow layer 12 id hud_team
 
-		# Большая HD карта 448x224 (текстура 896x448)
-		image "td:textures/gui/map_volcano.png" at 0 -2 size 448x224 texture 896x448 anchor center layer 0 id map
-		bar "boss_bar" value 100 max 100 at 0 -106 size 220x8 anchor center color #E74C3C background #AA1A0A0A text "&c&lБОСС: %value%/%max%" shadow layer 14 hidden
+		# Тактическая рамка + большая HD карта 448x224 (текстура 896x448)
+		bar "map_frame" value 0 max 1 at 0 -2 size 452x228 anchor center background #8838BDF8 layer 0
+		image "td:textures/gui/map_volcano.png" at 0 -2 size 448x224 texture 896x448 anchor center layer 1 id map
+		bar "boss_bar" value 100 max 100 at 0 -106 size 230x9 anchor center color #FFEF4444 background #CC1A0A0A text "&c&l☠ БОСС: %value%/%max%" shadow layer 14 hidden
 
 		# Круги радиуса башни (малый / средний / снайпер)
 		image "td:textures/gui/range_circle.png" at 0 0 size 196x196 texture 192x192 anchor center layer 2 id rng_s hidden
 		image "td:textures/gui/range_circle.png" at 0 0 size 260x260 texture 192x192 anchor center layer 2 id rng_m hidden
 		image "td:textures/gui/range_circle.png" at 0 0 size 390x390 texture 192x192 anchor center layer 2 id rng_l hidden
 
-		# Свободная сетка постройки 16x8 (клетка 28x28)
-		image "td:textures/gui/tile_build.png" at -70 -100 size 28x28 texture 28x28 anchor center layer 3 id c5_0 run TdCellClick(player, 5, 0) keep open
-		image "td:textures/gui/tile_build.png" at -42 -100 size 28x28 texture 28x28 anchor center layer 3 id c6_0 run TdCellClick(player, 6, 0) keep open
-		image "td:textures/gui/tile_build.png" at -14 -100 size 28x28 texture 28x28 anchor center layer 3 id c7_0 run TdCellClick(player, 7, 0) keep open
-		image "td:textures/gui/tile_build.png" at 14 -100 size 28x28 texture 28x28 anchor center layer 3 id c8_0 run TdCellClick(player, 8, 0) keep open
-		image "td:textures/gui/tile_build.png" at 42 -100 size 28x28 texture 28x28 anchor center layer 3 id c9_0 run TdCellClick(player, 9, 0) keep open
-		image "td:textures/gui/tile_build.png" at 70 -100 size 28x28 texture 28x28 anchor center layer 3 id c10_0 run TdCellClick(player, 10, 0) keep open
-		image "td:textures/gui/tile_build.png" at 98 -100 size 28x28 texture 28x28 anchor center layer 3 id c11_0 run TdCellClick(player, 11, 0) keep open
-		image "td:textures/gui/tile_build.png" at 126 -100 size 28x28 texture 28x28 anchor center layer 3 id c12_0 run TdCellClick(player, 12, 0) keep open
-		image "td:textures/gui/tile_build.png" at 154 -100 size 28x28 texture 28x28 anchor center layer 3 id c13_0 run TdCellClick(player, 13, 0) keep open
-		image "td:textures/gui/tile_build.png" at 182 -100 size 28x28 texture 28x28 anchor center layer 3 id c14_0 run TdCellClick(player, 14, 0) keep open
-		image "td:textures/gui/tile_build.png" at 210 -100 size 28x28 texture 28x28 anchor center layer 3 id c15_0 run TdCellClick(player, 15, 0) keep open
-		image "td:textures/gui/tile_build.png" at -210 -72 size 28x28 texture 28x28 anchor center layer 3 id c0_1 run TdCellClick(player, 0, 1) keep open
-		image "td:textures/gui/tile_build.png" at -182 -72 size 28x28 texture 28x28 anchor center layer 3 id c1_1 run TdCellClick(player, 1, 1) keep open
-		image "td:textures/gui/tile_build.png" at -154 -72 size 28x28 texture 28x28 anchor center layer 3 id c2_1 run TdCellClick(player, 2, 1) keep open
-		image "td:textures/gui/tile_build.png" at -126 -72 size 28x28 texture 28x28 anchor center layer 3 id c3_1 run TdCellClick(player, 3, 1) keep open
-		image "td:textures/gui/tile_build.png" at -70 -72 size 28x28 texture 28x28 anchor center layer 3 id c5_1 run TdCellClick(player, 5, 1) keep open
-		image "td:textures/gui/tile_build.png" at -42 -72 size 28x28 texture 28x28 anchor center layer 3 id c6_1 run TdCellClick(player, 6, 1) keep open
-		image "td:textures/gui/tile_build.png" at -14 -72 size 28x28 texture 28x28 anchor center layer 3 id c7_1 run TdCellClick(player, 7, 1) keep open
-		image "td:textures/gui/tile_build.png" at 14 -72 size 28x28 texture 28x28 anchor center layer 3 id c8_1 run TdCellClick(player, 8, 1) keep open
-		image "td:textures/gui/tile_build.png" at 182 -72 size 28x28 texture 28x28 anchor center layer 3 id c14_1 run TdCellClick(player, 14, 1) keep open
-		image "td:textures/gui/tile_build.png" at 210 -72 size 28x28 texture 28x28 anchor center layer 3 id c15_1 run TdCellClick(player, 15, 1) keep open
-		image "td:textures/gui/tile_build.png" at -210 -44 size 28x28 texture 28x28 anchor center layer 3 id c0_2 run TdCellClick(player, 0, 2) keep open
-		image "td:textures/gui/tile_build.png" at -182 -44 size 28x28 texture 28x28 anchor center layer 3 id c1_2 run TdCellClick(player, 1, 2) keep open
-		image "td:textures/gui/tile_build.png" at -154 -44 size 28x28 texture 28x28 anchor center layer 3 id c2_2 run TdCellClick(player, 2, 2) keep open
-		image "td:textures/gui/tile_build.png" at -126 -44 size 28x28 texture 28x28 anchor center layer 3 id c3_2 run TdCellClick(player, 3, 2) keep open
-		image "td:textures/gui/tile_build.png" at -70 -44 size 28x28 texture 28x28 anchor center layer 3 id c5_2 run TdCellClick(player, 5, 2) keep open
-		image "td:textures/gui/tile_build.png" at -42 -44 size 28x28 texture 28x28 anchor center layer 3 id c6_2 run TdCellClick(player, 6, 2) keep open
-		image "td:textures/gui/tile_build.png" at -14 -44 size 28x28 texture 28x28 anchor center layer 3 id c7_2 run TdCellClick(player, 7, 2) keep open
-		image "td:textures/gui/tile_build.png" at 14 -44 size 28x28 texture 28x28 anchor center layer 3 id c8_2 run TdCellClick(player, 8, 2) keep open
-		image "td:textures/gui/tile_build.png" at 70 -44 size 28x28 texture 28x28 anchor center layer 3 id c10_2 run TdCellClick(player, 10, 2) keep open
-		image "td:textures/gui/tile_build.png" at 98 -44 size 28x28 texture 28x28 anchor center layer 3 id c11_2 run TdCellClick(player, 11, 2) keep open
-		image "td:textures/gui/tile_build.png" at 126 -44 size 28x28 texture 28x28 anchor center layer 3 id c12_2 run TdCellClick(player, 12, 2) keep open
-		image "td:textures/gui/tile_build.png" at 182 -44 size 28x28 texture 28x28 anchor center layer 3 id c14_2 run TdCellClick(player, 14, 2) keep open
-		image "td:textures/gui/tile_build.png" at 210 -44 size 28x28 texture 28x28 anchor center layer 3 id c15_2 run TdCellClick(player, 15, 2) keep open
-		image "td:textures/gui/tile_build.png" at -210 -16 size 28x28 texture 28x28 anchor center layer 3 id c0_3 run TdCellClick(player, 0, 3) keep open
-		image "td:textures/gui/tile_build.png" at -182 -16 size 28x28 texture 28x28 anchor center layer 3 id c1_3 run TdCellClick(player, 1, 3) keep open
-		image "td:textures/gui/tile_build.png" at -154 -16 size 28x28 texture 28x28 anchor center layer 3 id c2_3 run TdCellClick(player, 2, 3) keep open
-		image "td:textures/gui/tile_build.png" at -126 -16 size 28x28 texture 28x28 anchor center layer 3 id c3_3 run TdCellClick(player, 3, 3) keep open
-		image "td:textures/gui/tile_build.png" at -70 -16 size 28x28 texture 28x28 anchor center layer 3 id c5_3 run TdCellClick(player, 5, 3) keep open
-		image "td:textures/gui/tile_build.png" at -42 -16 size 28x28 texture 28x28 anchor center layer 3 id c6_3 run TdCellClick(player, 6, 3) keep open
-		image "td:textures/gui/tile_build.png" at -14 -16 size 28x28 texture 28x28 anchor center layer 3 id c7_3 run TdCellClick(player, 7, 3) keep open
-		image "td:textures/gui/tile_build.png" at 14 -16 size 28x28 texture 28x28 anchor center layer 3 id c8_3 run TdCellClick(player, 8, 3) keep open
-		image "td:textures/gui/tile_build.png" at 70 -16 size 28x28 texture 28x28 anchor center layer 3 id c10_3 run TdCellClick(player, 10, 3) keep open
-		image "td:textures/gui/tile_build.png" at 98 -16 size 28x28 texture 28x28 anchor center layer 3 id c11_3 run TdCellClick(player, 11, 3) keep open
-		image "td:textures/gui/tile_build.png" at 126 -16 size 28x28 texture 28x28 anchor center layer 3 id c12_3 run TdCellClick(player, 12, 3) keep open
-		image "td:textures/gui/tile_build.png" at 182 -16 size 28x28 texture 28x28 anchor center layer 3 id c14_3 run TdCellClick(player, 14, 3) keep open
-		image "td:textures/gui/tile_build.png" at 210 -16 size 28x28 texture 28x28 anchor center layer 3 id c15_3 run TdCellClick(player, 15, 3) keep open
-		image "td:textures/gui/tile_build.png" at -210 12 size 28x28 texture 28x28 anchor center layer 3 id c0_4 run TdCellClick(player, 0, 4) keep open
-		image "td:textures/gui/tile_build.png" at -182 12 size 28x28 texture 28x28 anchor center layer 3 id c1_4 run TdCellClick(player, 1, 4) keep open
-		image "td:textures/gui/tile_build.png" at -154 12 size 28x28 texture 28x28 anchor center layer 3 id c2_4 run TdCellClick(player, 2, 4) keep open
-		image "td:textures/gui/tile_build.png" at -126 12 size 28x28 texture 28x28 anchor center layer 3 id c3_4 run TdCellClick(player, 3, 4) keep open
-		image "td:textures/gui/tile_build.png" at -70 12 size 28x28 texture 28x28 anchor center layer 3 id c5_4 run TdCellClick(player, 5, 4) keep open
-		image "td:textures/gui/tile_build.png" at -42 12 size 28x28 texture 28x28 anchor center layer 3 id c6_4 run TdCellClick(player, 6, 4) keep open
-		image "td:textures/gui/tile_build.png" at -14 12 size 28x28 texture 28x28 anchor center layer 3 id c7_4 run TdCellClick(player, 7, 4) keep open
-		image "td:textures/gui/tile_build.png" at 14 12 size 28x28 texture 28x28 anchor center layer 3 id c8_4 run TdCellClick(player, 8, 4) keep open
-		image "td:textures/gui/tile_build.png" at 70 12 size 28x28 texture 28x28 anchor center layer 3 id c10_4 run TdCellClick(player, 10, 4) keep open
-		image "td:textures/gui/tile_build.png" at 98 12 size 28x28 texture 28x28 anchor center layer 3 id c11_4 run TdCellClick(player, 11, 4) keep open
-		image "td:textures/gui/tile_build.png" at 126 12 size 28x28 texture 28x28 anchor center layer 3 id c12_4 run TdCellClick(player, 12, 4) keep open
-		image "td:textures/gui/tile_build.png" at 182 12 size 28x28 texture 28x28 anchor center layer 3 id c14_4 run TdCellClick(player, 14, 4) keep open
-		image "td:textures/gui/tile_build.png" at 210 12 size 28x28 texture 28x28 anchor center layer 3 id c15_4 run TdCellClick(player, 15, 4) keep open
-		image "td:textures/gui/tile_build.png" at -210 40 size 28x28 texture 28x28 anchor center layer 3 id c0_5 run TdCellClick(player, 0, 5) keep open
-		image "td:textures/gui/tile_build.png" at -182 40 size 28x28 texture 28x28 anchor center layer 3 id c1_5 run TdCellClick(player, 1, 5) keep open
-		image "td:textures/gui/tile_build.png" at -154 40 size 28x28 texture 28x28 anchor center layer 3 id c2_5 run TdCellClick(player, 2, 5) keep open
-		image "td:textures/gui/tile_build.png" at -126 40 size 28x28 texture 28x28 anchor center layer 3 id c3_5 run TdCellClick(player, 3, 5) keep open
-		image "td:textures/gui/tile_build.png" at -70 40 size 28x28 texture 28x28 anchor center layer 3 id c5_5 run TdCellClick(player, 5, 5) keep open
-		image "td:textures/gui/tile_build.png" at -42 40 size 28x28 texture 28x28 anchor center layer 3 id c6_5 run TdCellClick(player, 6, 5) keep open
-		image "td:textures/gui/tile_build.png" at -14 40 size 28x28 texture 28x28 anchor center layer 3 id c7_5 run TdCellClick(player, 7, 5) keep open
-		image "td:textures/gui/tile_build.png" at 14 40 size 28x28 texture 28x28 anchor center layer 3 id c8_5 run TdCellClick(player, 8, 5) keep open
-		image "td:textures/gui/tile_build.png" at 70 40 size 28x28 texture 28x28 anchor center layer 3 id c10_5 run TdCellClick(player, 10, 5) keep open
-		image "td:textures/gui/tile_build.png" at 98 40 size 28x28 texture 28x28 anchor center layer 3 id c11_5 run TdCellClick(player, 11, 5) keep open
-		image "td:textures/gui/tile_build.png" at 126 40 size 28x28 texture 28x28 anchor center layer 3 id c12_5 run TdCellClick(player, 12, 5) keep open
-		image "td:textures/gui/tile_build.png" at -210 68 size 28x28 texture 28x28 anchor center layer 3 id c0_6 run TdCellClick(player, 0, 6) keep open
-		image "td:textures/gui/tile_build.png" at -182 68 size 28x28 texture 28x28 anchor center layer 3 id c1_6 run TdCellClick(player, 1, 6) keep open
-		image "td:textures/gui/tile_build.png" at -154 68 size 28x28 texture 28x28 anchor center layer 3 id c2_6 run TdCellClick(player, 2, 6) keep open
-		image "td:textures/gui/tile_build.png" at -126 68 size 28x28 texture 28x28 anchor center layer 3 id c3_6 run TdCellClick(player, 3, 6) keep open
-		image "td:textures/gui/tile_build.png" at 70 68 size 28x28 texture 28x28 anchor center layer 3 id c10_6 run TdCellClick(player, 10, 6) keep open
-		image "td:textures/gui/tile_build.png" at 98 68 size 28x28 texture 28x28 anchor center layer 3 id c11_6 run TdCellClick(player, 11, 6) keep open
-		image "td:textures/gui/tile_build.png" at 126 68 size 28x28 texture 28x28 anchor center layer 3 id c12_6 run TdCellClick(player, 12, 6) keep open
-		image "td:textures/gui/tile_build.png" at 154 68 size 28x28 texture 28x28 anchor center layer 3 id c13_6 run TdCellClick(player, 13, 6) keep open
-		image "td:textures/gui/tile_build.png" at 182 68 size 28x28 texture 28x28 anchor center layer 3 id c14_6 run TdCellClick(player, 14, 6) keep open
-		image "td:textures/gui/tile_build.png" at 210 68 size 28x28 texture 28x28 anchor center layer 3 id c15_6 run TdCellClick(player, 15, 6) keep open
-		image "td:textures/gui/tile_build.png" at -210 96 size 28x28 texture 28x28 anchor center layer 3 id c0_7 run TdCellClick(player, 0, 7) keep open
-		image "td:textures/gui/tile_build.png" at -182 96 size 28x28 texture 28x28 anchor center layer 3 id c1_7 run TdCellClick(player, 1, 7) keep open
-		image "td:textures/gui/tile_build.png" at -154 96 size 28x28 texture 28x28 anchor center layer 3 id c2_7 run TdCellClick(player, 2, 7) keep open
-		image "td:textures/gui/tile_build.png" at -126 96 size 28x28 texture 28x28 anchor center layer 3 id c3_7 run TdCellClick(player, 3, 7) keep open
-		image "td:textures/gui/tile_build.png" at -98 96 size 28x28 texture 28x28 anchor center layer 3 id c4_7 run TdCellClick(player, 4, 7) keep open
-		image "td:textures/gui/tile_build.png" at -70 96 size 28x28 texture 28x28 anchor center layer 3 id c5_7 run TdCellClick(player, 5, 7) keep open
-		image "td:textures/gui/tile_build.png" at -42 96 size 28x28 texture 28x28 anchor center layer 3 id c6_7 run TdCellClick(player, 6, 7) keep open
-		image "td:textures/gui/tile_build.png" at -14 96 size 28x28 texture 28x28 anchor center layer 3 id c7_7 run TdCellClick(player, 7, 7) keep open
-		image "td:textures/gui/tile_build.png" at 14 96 size 28x28 texture 28x28 anchor center layer 3 id c8_7 run TdCellClick(player, 8, 7) keep open
-		image "td:textures/gui/tile_build.png" at 42 96 size 28x28 texture 28x28 anchor center layer 3 id c9_7 run TdCellClick(player, 9, 7) keep open
-		image "td:textures/gui/tile_build.png" at 70 96 size 28x28 texture 28x28 anchor center layer 3 id c10_7 run TdCellClick(player, 10, 7) keep open
-		image "td:textures/gui/tile_build.png" at 98 96 size 28x28 texture 28x28 anchor center layer 3 id c11_7 run TdCellClick(player, 11, 7) keep open
-		image "td:textures/gui/tile_build.png" at 126 96 size 28x28 texture 28x28 anchor center layer 3 id c12_7 run TdCellClick(player, 12, 7) keep open
-		image "td:textures/gui/tile_build.png" at 154 96 size 28x28 texture 28x28 anchor center layer 3 id c13_7 run TdCellClick(player, 13, 7) keep open
-		image "td:textures/gui/tile_build.png" at 182 96 size 28x28 texture 28x28 anchor center layer 3 id c14_7 run TdCellClick(player, 14, 7) keep open
-		image "td:textures/gui/tile_build.png" at 210 96 size 28x28 texture 28x28 anchor center layer 3 id c15_7 run TdCellClick(player, 15, 7) keep open
+		# Свободная сетка постройки 16x8 (клетка 28x28, тултипы обновляются автоматически!)
+		image "td:textures/gui/tile_build.png" at -70 -100 size 28x28 texture 28x28 anchor center layer 3 id c5_0 run TdCellClick(player, 5, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -42 -100 size 28x28 texture 28x28 anchor center layer 3 id c6_0 run TdCellClick(player, 6, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -14 -100 size 28x28 texture 28x28 anchor center layer 3 id c7_0 run TdCellClick(player, 7, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 14 -100 size 28x28 texture 28x28 anchor center layer 3 id c8_0 run TdCellClick(player, 8, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 42 -100 size 28x28 texture 28x28 anchor center layer 3 id c9_0 run TdCellClick(player, 9, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 70 -100 size 28x28 texture 28x28 anchor center layer 3 id c10_0 run TdCellClick(player, 10, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 98 -100 size 28x28 texture 28x28 anchor center layer 3 id c11_0 run TdCellClick(player, 11, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 126 -100 size 28x28 texture 28x28 anchor center layer 3 id c12_0 run TdCellClick(player, 12, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 154 -100 size 28x28 texture 28x28 anchor center layer 3 id c13_0 run TdCellClick(player, 13, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 182 -100 size 28x28 texture 28x28 anchor center layer 3 id c14_0 run TdCellClick(player, 14, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 210 -100 size 28x28 texture 28x28 anchor center layer 3 id c15_0 run TdCellClick(player, 15, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -210 -72 size 28x28 texture 28x28 anchor center layer 3 id c0_1 run TdCellClick(player, 0, 1) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -182 -72 size 28x28 texture 28x28 anchor center layer 3 id c1_1 run TdCellClick(player, 1, 1) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -154 -72 size 28x28 texture 28x28 anchor center layer 3 id c2_1 run TdCellClick(player, 2, 1) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -126 -72 size 28x28 texture 28x28 anchor center layer 3 id c3_1 run TdCellClick(player, 3, 1) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -70 -72 size 28x28 texture 28x28 anchor center layer 3 id c5_1 run TdCellClick(player, 5, 1) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -42 -72 size 28x28 texture 28x28 anchor center layer 3 id c6_1 run TdCellClick(player, 6, 1) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -14 -72 size 28x28 texture 28x28 anchor center layer 3 id c7_1 run TdCellClick(player, 7, 1) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 14 -72 size 28x28 texture 28x28 anchor center layer 3 id c8_1 run TdCellClick(player, 8, 1) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 182 -72 size 28x28 texture 28x28 anchor center layer 3 id c14_1 run TdCellClick(player, 14, 1) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 210 -72 size 28x28 texture 28x28 anchor center layer 3 id c15_1 run TdCellClick(player, 15, 1) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -210 -44 size 28x28 texture 28x28 anchor center layer 3 id c0_2 run TdCellClick(player, 0, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -182 -44 size 28x28 texture 28x28 anchor center layer 3 id c1_2 run TdCellClick(player, 1, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -154 -44 size 28x28 texture 28x28 anchor center layer 3 id c2_2 run TdCellClick(player, 2, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -126 -44 size 28x28 texture 28x28 anchor center layer 3 id c3_2 run TdCellClick(player, 3, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -70 -44 size 28x28 texture 28x28 anchor center layer 3 id c5_2 run TdCellClick(player, 5, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -42 -44 size 28x28 texture 28x28 anchor center layer 3 id c6_2 run TdCellClick(player, 6, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -14 -44 size 28x28 texture 28x28 anchor center layer 3 id c7_2 run TdCellClick(player, 7, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 14 -44 size 28x28 texture 28x28 anchor center layer 3 id c8_2 run TdCellClick(player, 8, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 70 -44 size 28x28 texture 28x28 anchor center layer 3 id c10_2 run TdCellClick(player, 10, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 98 -44 size 28x28 texture 28x28 anchor center layer 3 id c11_2 run TdCellClick(player, 11, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 126 -44 size 28x28 texture 28x28 anchor center layer 3 id c12_2 run TdCellClick(player, 12, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 182 -44 size 28x28 texture 28x28 anchor center layer 3 id c14_2 run TdCellClick(player, 14, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 210 -44 size 28x28 texture 28x28 anchor center layer 3 id c15_2 run TdCellClick(player, 15, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -210 -16 size 28x28 texture 28x28 anchor center layer 3 id c0_3 run TdCellClick(player, 0, 3) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -182 -16 size 28x28 texture 28x28 anchor center layer 3 id c1_3 run TdCellClick(player, 1, 3) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -154 -16 size 28x28 texture 28x28 anchor center layer 3 id c2_3 run TdCellClick(player, 2, 3) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -126 -16 size 28x28 texture 28x28 anchor center layer 3 id c3_3 run TdCellClick(player, 3, 3) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -70 -16 size 28x28 texture 28x28 anchor center layer 3 id c5_3 run TdCellClick(player, 5, 3) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -42 -16 size 28x28 texture 28x28 anchor center layer 3 id c6_3 run TdCellClick(player, 6, 3) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -14 -16 size 28x28 texture 28x28 anchor center layer 3 id c7_3 run TdCellClick(player, 7, 3) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 14 -16 size 28x28 texture 28x28 anchor center layer 3 id c8_3 run TdCellClick(player, 8, 3) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 70 -16 size 28x28 texture 28x28 anchor center layer 3 id c10_3 run TdCellClick(player, 10, 3) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 98 -16 size 28x28 texture 28x28 anchor center layer 3 id c11_3 run TdCellClick(player, 11, 3) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 126 -16 size 28x28 texture 28x28 anchor center layer 3 id c12_3 run TdCellClick(player, 12, 3) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 182 -16 size 28x28 texture 28x28 anchor center layer 3 id c14_3 run TdCellClick(player, 14, 3) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 210 -16 size 28x28 texture 28x28 anchor center layer 3 id c15_3 run TdCellClick(player, 15, 3) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -210 12 size 28x28 texture 28x28 anchor center layer 3 id c0_4 run TdCellClick(player, 0, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -182 12 size 28x28 texture 28x28 anchor center layer 3 id c1_4 run TdCellClick(player, 1, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -154 12 size 28x28 texture 28x28 anchor center layer 3 id c2_4 run TdCellClick(player, 2, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -126 12 size 28x28 texture 28x28 anchor center layer 3 id c3_4 run TdCellClick(player, 3, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -70 12 size 28x28 texture 28x28 anchor center layer 3 id c5_4 run TdCellClick(player, 5, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -42 12 size 28x28 texture 28x28 anchor center layer 3 id c6_4 run TdCellClick(player, 6, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -14 12 size 28x28 texture 28x28 anchor center layer 3 id c7_4 run TdCellClick(player, 7, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 14 12 size 28x28 texture 28x28 anchor center layer 3 id c8_4 run TdCellClick(player, 8, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 70 12 size 28x28 texture 28x28 anchor center layer 3 id c10_4 run TdCellClick(player, 10, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 98 12 size 28x28 texture 28x28 anchor center layer 3 id c11_4 run TdCellClick(player, 11, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 126 12 size 28x28 texture 28x28 anchor center layer 3 id c12_4 run TdCellClick(player, 12, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 182 12 size 28x28 texture 28x28 anchor center layer 3 id c14_4 run TdCellClick(player, 14, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 210 12 size 28x28 texture 28x28 anchor center layer 3 id c15_4 run TdCellClick(player, 15, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -210 40 size 28x28 texture 28x28 anchor center layer 3 id c0_5 run TdCellClick(player, 0, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -182 40 size 28x28 texture 28x28 anchor center layer 3 id c1_5 run TdCellClick(player, 1, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -154 40 size 28x28 texture 28x28 anchor center layer 3 id c2_5 run TdCellClick(player, 2, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -126 40 size 28x28 texture 28x28 anchor center layer 3 id c3_5 run TdCellClick(player, 3, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -70 40 size 28x28 texture 28x28 anchor center layer 3 id c5_5 run TdCellClick(player, 5, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -42 40 size 28x28 texture 28x28 anchor center layer 3 id c6_5 run TdCellClick(player, 6, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -14 40 size 28x28 texture 28x28 anchor center layer 3 id c7_5 run TdCellClick(player, 7, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 14 40 size 28x28 texture 28x28 anchor center layer 3 id c8_5 run TdCellClick(player, 8, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 70 40 size 28x28 texture 28x28 anchor center layer 3 id c10_5 run TdCellClick(player, 10, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 98 40 size 28x28 texture 28x28 anchor center layer 3 id c11_5 run TdCellClick(player, 11, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 126 40 size 28x28 texture 28x28 anchor center layer 3 id c12_5 run TdCellClick(player, 12, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -210 68 size 28x28 texture 28x28 anchor center layer 3 id c0_6 run TdCellClick(player, 0, 6) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -182 68 size 28x28 texture 28x28 anchor center layer 3 id c1_6 run TdCellClick(player, 1, 6) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -154 68 size 28x28 texture 28x28 anchor center layer 3 id c2_6 run TdCellClick(player, 2, 6) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -126 68 size 28x28 texture 28x28 anchor center layer 3 id c3_6 run TdCellClick(player, 3, 6) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 70 68 size 28x28 texture 28x28 anchor center layer 3 id c10_6 run TdCellClick(player, 10, 6) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 98 68 size 28x28 texture 28x28 anchor center layer 3 id c11_6 run TdCellClick(player, 11, 6) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 126 68 size 28x28 texture 28x28 anchor center layer 3 id c12_6 run TdCellClick(player, 12, 6) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 154 68 size 28x28 texture 28x28 anchor center layer 3 id c13_6 run TdCellClick(player, 13, 6) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 182 68 size 28x28 texture 28x28 anchor center layer 3 id c14_6 run TdCellClick(player, 14, 6) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 210 68 size 28x28 texture 28x28 anchor center layer 3 id c15_6 run TdCellClick(player, 15, 6) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -210 96 size 28x28 texture 28x28 anchor center layer 3 id c0_7 run TdCellClick(player, 0, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -182 96 size 28x28 texture 28x28 anchor center layer 3 id c1_7 run TdCellClick(player, 1, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -154 96 size 28x28 texture 28x28 anchor center layer 3 id c2_7 run TdCellClick(player, 2, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -126 96 size 28x28 texture 28x28 anchor center layer 3 id c3_7 run TdCellClick(player, 3, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -98 96 size 28x28 texture 28x28 anchor center layer 3 id c4_7 run TdCellClick(player, 4, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -70 96 size 28x28 texture 28x28 anchor center layer 3 id c5_7 run TdCellClick(player, 5, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -42 96 size 28x28 texture 28x28 anchor center layer 3 id c6_7 run TdCellClick(player, 6, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -14 96 size 28x28 texture 28x28 anchor center layer 3 id c7_7 run TdCellClick(player, 7, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 14 96 size 28x28 texture 28x28 anchor center layer 3 id c8_7 run TdCellClick(player, 8, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 42 96 size 28x28 texture 28x28 anchor center layer 3 id c9_7 run TdCellClick(player, 9, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 70 96 size 28x28 texture 28x28 anchor center layer 3 id c10_7 run TdCellClick(player, 10, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 98 96 size 28x28 texture 28x28 anchor center layer 3 id c11_7 run TdCellClick(player, 11, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 126 96 size 28x28 texture 28x28 anchor center layer 3 id c12_7 run TdCellClick(player, 12, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 154 96 size 28x28 texture 28x28 anchor center layer 3 id c13_7 run TdCellClick(player, 13, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 182 96 size 28x28 texture 28x28 anchor center layer 3 id c14_7 run TdCellClick(player, 14, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 210 96 size 28x28 texture 28x28 anchor center layer 3 id c15_7 run TdCellClick(player, 15, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
 
 		# Пул звёзд уровней и эволюций (до 28 башен)
 		text "" at 0 0 anchor center shadow layer 6 id st1 hidden
@@ -895,19 +1050,31 @@ function TdOpenMap2(p: player):
 		text "" at 0 0 anchor center shadow layer 6 id st27 hidden
 		text "" at 0 0 anchor center shadow layer 6 id st28 hidden
 
-		# 11 слотов обычных врагов + 1 слот Босса (HD 40x40 / 56x56)
+		# 11 слотов обычных врагов + 1 слот Босса + тонкие полоски HP над каждым мобом
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e1 hidden
+		bar "ehp1" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e2 hidden
+		bar "ehp2" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e3 hidden
+		bar "ehp3" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e4 hidden
+		bar "ehp4" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e5 hidden
+		bar "ehp5" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e6 hidden
+		bar "ehp6" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e7 hidden
+		bar "ehp7" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e8 hidden
+		bar "ehp8" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e9 hidden
+		bar "ehp9" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e10 hidden
+		bar "ehp10" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e11 hidden
+		bar "ehp11" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_boss.png" at -210 -72 size 32x32 texture 56x56 anchor center layer 8 id e12 hidden
+		bar "ehp12" value 100 max 100 at -210 -91 size 30x4 anchor center color #FFEF4444 background #CC1A0A0A layer 9 hidden
 
 		# 6 летающих HD прожектайлов + вспышка взрыва
 		image "td:textures/gui/proj_arrow.png" at 0 0 size 11x11 texture 20x20 anchor center layer 9 id pr1 hidden
@@ -918,30 +1085,41 @@ function TdOpenMap2(p: player):
 		image "td:textures/gui/proj_arrow.png" at 0 0 size 11x11 texture 20x20 anchor center layer 9 id pr6 hidden
 		image "td:textures/gui/fx_boom.png" at 0 0 size 20x20 texture 32x32 anchor center layer 10 id fx hidden
 
-		# Информационная строка (между картой и нижней панелью — ничего не перекрывает)
-		bar "bg_stat" value 0 max 1 at 0 119 size 456x14 anchor center background #DD0F172A layer 11
-		text "&eВыбран: &fЛучник (50з) &7— клик по траве строит, по башне улучшает/показывает радиус!" at 0 119 anchor center shadow layer 12 id status_txt
+		# Современная инфо-строка статуса
+		bar "bg_stat" value 0 max 1 at 0 119 size 458x15 anchor center background #E60B1220 layer 11
+		bar "stat_acc" value 1 max 1 at -227 119 size 3x15 anchor center color #FF38BDF8 background #FF38BDF8 layer 12
+		text "&eВыбран: &fЛучник (50з) &7— наведи на башню для инфо, ЛКМ для постройки/апгрейда!" at 0 119 anchor center shadow layer 12 id status_txt
 		text "&c&lБАЗА ПАЛА!" at 0 -16 anchor center shadow layer 20 id end_title hidden
 		text "&fНажми &eR &f(рестарт) или &eM &f(меню)" at 0 2 anchor center shadow layer 20 id end_sub hidden
 
-		# Нижняя панель инструментов (8 HD башен + 3 кнопки + Авто-волна)
-		bar "bg_bar" value 0 max 1 at 0 148 size 456x40 anchor center background #EE0B1220 layer 11
-		image "td:textures/gui/tower_archer.png" at -208 140 size 22x22 texture 48x48 anchor center layer 12 id ico1 run TdSelectTool(player, 1) keep open tooltip "&e[1] Лучник &7(50з)\n&7Урон: 15 | Очень быстрый | Дальн: 98\n&6✦5★ Шквал: &fстреляет сразу по 2 целям!"
-		text "&e[1]50" at -208 158 anchor center shadow layer 12 id lbl1
-		image "td:textures/gui/tower_cannon.png" at -172 140 size 22x22 texture 48x48 anchor center layer 12 id ico2 run TdSelectTool(player, 2) keep open tooltip "&6[2] Пушка &7(95з)\n&7Урон: 36 + &cСплеш | Дальн: 92\n&6✦5★ Напалм: &fмега-сплеш + поджог врагов!"
-		text "&7[2]95" at -172 158 anchor center shadow layer 12 id lbl2
-		image "td:textures/gui/tower_frost.png" at -136 140 size 22x22 texture 48x48 anchor center layer 12 id ico3 run TdSelectTool(player, 3) keep open tooltip "&b[3] Лёд &7(85з)\n&7Урон: 11 + &bЗамедление 45% | Дальн: 96\n&6✦5★ Мерзлота: &f65% замедл. + 25% заморозка!"
-		text "&7[3]85" at -136 158 anchor center shadow layer 12 id lbl3
-		image "td:textures/gui/tower_mage.png" at -100 140 size 22x22 texture 48x48 anchor center layer 12 id ico4 run TdSelectTool(player, 4) keep open tooltip "&d[4] Маг &7(130з)\n&7Урон: 32 | &dДальность 132\n&6✦5★ Убийца Боссов: &fx2 Боссам + 4% макс.HP!"
-		text "&7[4]130" at -100 158 anchor center shadow layer 12 id lbl4
-		image "td:textures/gui/tower_tesla.png" at -64 140 size 22x22 texture 48x48 anchor center layer 12 id ico5 run TdSelectTool(player, 5) keep open tooltip "&b[5] Тесла &7(115з)\n&7Урон: 20 | &bЦепная молния (3 цели) | Дальн: 108\n&6✦5★ Шторм: &f5 целей + 90% урон + стан!"
-		text "&7[5]115" at -64 158 anchor center shadow layer 12 id lbl5
-		image "td:textures/gui/tower_sniper.png" at -28 140 size 22x22 texture 48x48 anchor center layer 12 id ico6 run TdSelectTool(player, 6) keep open tooltip "&c[6] Снайпер &7(150з)\n&7Урон: 56 | &cКрит 25% | Дальн: 215\n&6✦5★ Казнь: &fкрит 45% x2.5 + казнь <20% HP!"
-		text "&7[6]150" at -28 158 anchor center shadow layer 12 id lbl6
-		image "td:textures/gui/tower_poison.png" at 8 140 size 22x22 texture 48x48 anchor center layer 12 id ico7 run TdSelectTool(player, 7) keep open tooltip "&a[7] Алхимик &7(105з)\n&7Урон: 12 + &aЯд (урон в сек.) | Дальн: 100\n&6✦5★ Чума: &fяд заражает всех врагов вокруг!"
-		text "&7[7]105" at 8 158 anchor center shadow layer 12 id lbl7
-		image "td:textures/gui/tower_farm.png" at 44 140 size 22x22 texture 48x48 anchor center layer 12 id ico8 run TdSelectTool(player, 8) keep open tooltip "&6[8] Банк &7(140з)\n&7Доход: &6+28/+50/+80/+120з &7каждую волну!\n&6✦5★ Дворец: &f+180з за волну и +1 HP базе!"
-		text "&7[8]140" at 44 158 anchor center shadow layer 12 id lbl8
+		# Нижняя панель инструментов (карточки слотов + индикатор выбора + 8 башен)
+		bar "bg_bar" value 0 max 1 at 0 148 size 458x42 anchor center background #F2090E1A layer 11
+		bar "bar_line" value 1 max 1 at 0 127 size 458x1 anchor center color #FF1E293B background #FF1E293B layer 12
+		bar "slot_bg1" value 0 max 1 at -208 148 size 32x34 anchor center background #CC162032 layer 11
+		bar "slot_bg2" value 0 max 1 at -172 148 size 32x34 anchor center background #CC162032 layer 11
+		bar "slot_bg3" value 0 max 1 at -136 148 size 32x34 anchor center background #CC162032 layer 11
+		bar "slot_bg4" value 0 max 1 at -100 148 size 32x34 anchor center background #CC162032 layer 11
+		bar "slot_bg5" value 0 max 1 at -64 148 size 32x34 anchor center background #CC162032 layer 11
+		bar "slot_bg6" value 0 max 1 at -28 148 size 32x34 anchor center background #CC162032 layer 11
+		bar "slot_bg7" value 0 max 1 at 8 148 size 32x34 anchor center background #CC162032 layer 11
+		bar "slot_bg8" value 0 max 1 at 44 148 size 32x34 anchor center background #CC162032 layer 11
+		bar "sel_bar" value 1 max 1 at -208 131 size 32x2 anchor center color #FFFACC15 background #FFFACC15 layer 13
+		image "td:textures/gui/tower_archer.png" at -208 142 size 22x22 texture 48x48 anchor center layer 12 id ico1 run TdSelectTool(player, 1) keep open tooltip "&e[1] Лучник &7(50з)\n&7Урон: 15 | Очень быстрый | Дальн: 98\n&6✦5★ Шквал: &fстреляет сразу по 2 целям!"
+		text "&e[1]50" at -208 159 anchor center shadow layer 12 id lbl1
+		image "td:textures/gui/tower_cannon.png" at -172 142 size 22x22 texture 48x48 anchor center layer 12 id ico2 run TdSelectTool(player, 2) keep open tooltip "&6[2] Пушка &7(95з)\n&7Урон: 36 + &cСплеш | Дальн: 92\n&6✦5★ Напалм: &fмега-сплеш + поджог врагов!"
+		text "&7[2]95" at -172 159 anchor center shadow layer 12 id lbl2
+		image "td:textures/gui/tower_frost.png" at -136 142 size 22x22 texture 48x48 anchor center layer 12 id ico3 run TdSelectTool(player, 3) keep open tooltip "&b[3] Лёд &7(85з)\n&7Урон: 8 | &bАура замедления 40% по радиусу | Дальн: 96\n&6✦5★ Стужа: &f50% замедл. + 12% заморозка (0.5с, не боссов)"
+		text "&7[3]85" at -136 159 anchor center shadow layer 12 id lbl3
+		image "td:textures/gui/tower_mage.png" at -100 142 size 22x22 texture 48x48 anchor center layer 12 id ico4 run TdSelectTool(player, 4) keep open tooltip "&d[4] Маг &7(130з)\n&7Урон: 32 | &dДальность 132\n&6✦5★ Убийца Боссов: &fx2 Боссам + 4% макс.HP!"
+		text "&7[4]130" at -100 159 anchor center shadow layer 12 id lbl4
+		image "td:textures/gui/tower_tesla.png" at -64 142 size 22x22 texture 48x48 anchor center layer 12 id ico5 run TdSelectTool(player, 5) keep open tooltip "&b[5] Тесла &7(115з)\n&7Урон: 20 | &bЦепная молния (3 цели) | Дальн: 108\n&6✦5★ Шторм: &f5 целей + 90% урон + стан!"
+		text "&7[5]115" at -64 159 anchor center shadow layer 12 id lbl5
+		image "td:textures/gui/tower_sniper.png" at -28 142 size 22x22 texture 48x48 anchor center layer 12 id ico6 run TdSelectTool(player, 6) keep open tooltip "&c[6] Снайпер &7(150з)\n&7Урон: 56 | &cКрит 25% | Дальн: 215\n&6✦5★ Казнь: &fкрит 45% x2.5 + казнь <20% HP!"
+		text "&7[6]150" at -28 159 anchor center shadow layer 12 id lbl6
+		image "td:textures/gui/tower_poison.png" at 8 142 size 22x22 texture 48x48 anchor center layer 12 id ico7 run TdSelectTool(player, 7) keep open tooltip "&a[7] Алхимик &7(105з)\n&7Урон: 12 + &aЯд (урон в сек.) | Дальн: 100\n&6✦5★ Чума: &fяд заражает всех врагов вокруг!"
+		text "&7[7]105" at 8 159 anchor center shadow layer 12 id lbl7
+		image "td:textures/gui/tower_farm.png" at 44 142 size 22x22 texture 48x48 anchor center layer 12 id ico8 run TdSelectTool(player, 8) keep open tooltip "&6[8] Банк &7(140з)\n&7Доход: &6+28/+50/+80/+120з &7каждую волну!\n&6✦5★ Дворец: &f+180з за волну и +1 HP базе!"
+		text "&7[8]140" at 44 159 anchor center shadow layer 12 id lbl8
 		button "&aСтарт/x2" at 118 139 size 68x16 anchor center run TdWaveOrSpeed(player) keep open tooltip "&aЗапустить волну &7(Space)\n&bВо время волны: скорость x1 / x2"
 		toggle "Авто" id autowave at 192 139 size 58x16 anchor center value false color #22C55E tooltip "&aАвто-волна\n&7Авто-старт следующей волны через 1.5с"
 		button "&cПродать" at 118 158 size 68x16 anchor center run TdToggleSell(player) keep open tooltip "&cПродать свою башню &7(X)\n&7Возврат 70% стоимости"
@@ -949,128 +1127,135 @@ function TdOpenMap2(p: player):
 
 function TdOpenMap3(p: player):
 	open screen "Tower Defense" to p:
-		# Верхняя HUD-панель (без PNG — не бывает битых текстур!)
-		bar "bg_hud" value 0 max 1 at 0 -131 size 456x22 anchor center background #DD0F172A layer 11
-		image "td:textures/gui/icon_wave.png" at -214 -131 size 12x12 texture 32x32 anchor center layer 12 tooltip "&eТекущая волна"
-		text "&f0/20" at -188 -131 anchor center shadow layer 12 id hud_wave
-		image "td:textures/gui/icon_coin.png" at -142 -131 size 12x12 texture 32x32 anchor center layer 12 tooltip "&6Ваше личное золото"
-		text "&6120" at -116 -131 anchor center shadow layer 12 id hud_gold
-		image "td:textures/gui/icon_heart.png" at -68 -131 size 12x12 texture 32x32 anchor center layer 12 tooltip "&cЗдоровье базы"
-		text "&c10" at -48 -131 anchor center shadow layer 12 id hud_hp
-		image "td:textures/gui/icon_trophy.png" at -12 -131 size 12x12 texture 32x32 anchor center layer 12 tooltip "&aОбщий счёт"
-		text "&a0" at 16 -131 anchor center shadow layer 12 id hud_score
-		text "&7Соло &7[x1]" at 142 -131 anchor center shadow layer 12 id hud_team
+		# Современный верхний HUD (стеклянная панель + карточки + неоновый акцент)
+		bar "bg_hud" value 0 max 1 at 0 -132 size 458x24 anchor center background #EE090E1A layer 11
+		bar "hud_line" value 1 max 1 at 0 -120 size 458x1 anchor center color #FF38BDF8 background #FF38BDF8 layer 12
+		bar "pill_w" value 0 max 1 at -198 -132 size 56x16 anchor center background #CC162032 layer 11
+		bar "pill_g" value 0 max 1 at -126 -132 size 64x16 anchor center background #CC162032 layer 11
+		bar "pill_h" value 0 max 1 at -58 -132 size 50x16 anchor center background #CC162032 layer 11
+		bar "pill_s" value 0 max 1 at 10 -132 size 68x16 anchor center background #CC162032 layer 11
+		bar "pill_t" value 0 max 1 at 140 -132 size 166x16 anchor center background #CC162032 layer 11
+		image "td:textures/gui/icon_wave.png" at -216 -132 size 11x11 texture 32x32 anchor center layer 12 tooltip "&eТекущая волна"
+		text "&f0/20" at -190 -132 anchor center shadow layer 12 id hud_wave
+		image "td:textures/gui/icon_coin.png" at -148 -132 size 11x11 texture 32x32 anchor center layer 12 tooltip "&6Ваше личное золото"
+		text "&6120" at -118 -132 anchor center shadow layer 12 id hud_gold
+		image "td:textures/gui/icon_heart.png" at -72 -132 size 11x11 texture 32x32 anchor center layer 12 tooltip "&cЗдоровье базы"
+		text "&c10" at -50 -132 anchor center shadow layer 12 id hud_hp
+		image "td:textures/gui/icon_trophy.png" at -14 -132 size 11x11 texture 32x32 anchor center layer 12 tooltip "&aОбщий счёт"
+		text "&a0" at 18 -132 anchor center shadow layer 12 id hud_score
+		text "&7Соло &7[x1]" at 140 -132 anchor center shadow layer 12 id hud_team
 
-		# Большая HD карта 448x224 (текстура 896x448)
-		image "td:textures/gui/map_ice.png" at 0 -2 size 448x224 texture 896x448 anchor center layer 0 id map
-		bar "boss_bar" value 100 max 100 at 0 -106 size 220x8 anchor center color #E74C3C background #AA1A0A0A text "&c&lБОСС: %value%/%max%" shadow layer 14 hidden
+		# Тактическая рамка + большая HD карта 448x224 (текстура 896x448)
+		bar "map_frame" value 0 max 1 at 0 -2 size 452x228 anchor center background #8838BDF8 layer 0
+		image "td:textures/gui/map_ice.png" at 0 -2 size 448x224 texture 896x448 anchor center layer 1 id map
+		bar "boss_bar" value 100 max 100 at 0 -106 size 230x9 anchor center color #FFEF4444 background #CC1A0A0A text "&c&l☠ БОСС: %value%/%max%" shadow layer 14 hidden
 
 		# Круги радиуса башни (малый / средний / снайпер)
 		image "td:textures/gui/range_circle.png" at 0 0 size 196x196 texture 192x192 anchor center layer 2 id rng_s hidden
 		image "td:textures/gui/range_circle.png" at 0 0 size 260x260 texture 192x192 anchor center layer 2 id rng_m hidden
 		image "td:textures/gui/range_circle.png" at 0 0 size 390x390 texture 192x192 anchor center layer 2 id rng_l hidden
 
-		# Свободная сетка постройки 16x8 (клетка 28x28)
-		image "td:textures/gui/tile_build.png" at -210 -100 size 28x28 texture 28x28 anchor center layer 3 id c0_0 run TdCellClick(player, 0, 0) keep open
-		image "td:textures/gui/tile_build.png" at -182 -100 size 28x28 texture 28x28 anchor center layer 3 id c1_0 run TdCellClick(player, 1, 0) keep open
-		image "td:textures/gui/tile_build.png" at -154 -100 size 28x28 texture 28x28 anchor center layer 3 id c2_0 run TdCellClick(player, 2, 0) keep open
-		image "td:textures/gui/tile_build.png" at -126 -100 size 28x28 texture 28x28 anchor center layer 3 id c3_0 run TdCellClick(player, 3, 0) keep open
-		image "td:textures/gui/tile_build.png" at -98 -100 size 28x28 texture 28x28 anchor center layer 3 id c4_0 run TdCellClick(player, 4, 0) keep open
-		image "td:textures/gui/tile_build.png" at -70 -100 size 28x28 texture 28x28 anchor center layer 3 id c5_0 run TdCellClick(player, 5, 0) keep open
-		image "td:textures/gui/tile_build.png" at -42 -100 size 28x28 texture 28x28 anchor center layer 3 id c6_0 run TdCellClick(player, 6, 0) keep open
-		image "td:textures/gui/tile_build.png" at -14 -100 size 28x28 texture 28x28 anchor center layer 3 id c7_0 run TdCellClick(player, 7, 0) keep open
-		image "td:textures/gui/tile_build.png" at 14 -100 size 28x28 texture 28x28 anchor center layer 3 id c8_0 run TdCellClick(player, 8, 0) keep open
-		image "td:textures/gui/tile_build.png" at 42 -100 size 28x28 texture 28x28 anchor center layer 3 id c9_0 run TdCellClick(player, 9, 0) keep open
-		image "td:textures/gui/tile_build.png" at 70 -100 size 28x28 texture 28x28 anchor center layer 3 id c10_0 run TdCellClick(player, 10, 0) keep open
-		image "td:textures/gui/tile_build.png" at 98 -100 size 28x28 texture 28x28 anchor center layer 3 id c11_0 run TdCellClick(player, 11, 0) keep open
-		image "td:textures/gui/tile_build.png" at 126 -100 size 28x28 texture 28x28 anchor center layer 3 id c12_0 run TdCellClick(player, 12, 0) keep open
-		image "td:textures/gui/tile_build.png" at 154 -100 size 28x28 texture 28x28 anchor center layer 3 id c13_0 run TdCellClick(player, 13, 0) keep open
-		image "td:textures/gui/tile_build.png" at 182 -100 size 28x28 texture 28x28 anchor center layer 3 id c14_0 run TdCellClick(player, 14, 0) keep open
-		image "td:textures/gui/tile_build.png" at 210 -100 size 28x28 texture 28x28 anchor center layer 3 id c15_0 run TdCellClick(player, 15, 0) keep open
-		image "td:textures/gui/tile_build.png" at -210 -72 size 28x28 texture 28x28 anchor center layer 3 id c0_1 run TdCellClick(player, 0, 1) keep open
-		image "td:textures/gui/tile_build.png" at -182 -72 size 28x28 texture 28x28 anchor center layer 3 id c1_1 run TdCellClick(player, 1, 1) keep open
-		image "td:textures/gui/tile_build.png" at -154 -72 size 28x28 texture 28x28 anchor center layer 3 id c2_1 run TdCellClick(player, 2, 1) keep open
-		image "td:textures/gui/tile_build.png" at 14 -72 size 28x28 texture 28x28 anchor center layer 3 id c8_1 run TdCellClick(player, 8, 1) keep open
-		image "td:textures/gui/tile_build.png" at 42 -72 size 28x28 texture 28x28 anchor center layer 3 id c9_1 run TdCellClick(player, 9, 1) keep open
-		image "td:textures/gui/tile_build.png" at 70 -72 size 28x28 texture 28x28 anchor center layer 3 id c10_1 run TdCellClick(player, 10, 1) keep open
-		image "td:textures/gui/tile_build.png" at 98 -72 size 28x28 texture 28x28 anchor center layer 3 id c11_1 run TdCellClick(player, 11, 1) keep open
-		image "td:textures/gui/tile_build.png" at 126 -72 size 28x28 texture 28x28 anchor center layer 3 id c12_1 run TdCellClick(player, 12, 1) keep open
-		image "td:textures/gui/tile_build.png" at 154 -72 size 28x28 texture 28x28 anchor center layer 3 id c13_1 run TdCellClick(player, 13, 1) keep open
-		image "td:textures/gui/tile_build.png" at 182 -72 size 28x28 texture 28x28 anchor center layer 3 id c14_1 run TdCellClick(player, 14, 1) keep open
-		image "td:textures/gui/tile_build.png" at 210 -72 size 28x28 texture 28x28 anchor center layer 3 id c15_1 run TdCellClick(player, 15, 1) keep open
-		image "td:textures/gui/tile_build.png" at -210 -44 size 28x28 texture 28x28 anchor center layer 3 id c0_2 run TdCellClick(player, 0, 2) keep open
-		image "td:textures/gui/tile_build.png" at -182 -44 size 28x28 texture 28x28 anchor center layer 3 id c1_2 run TdCellClick(player, 1, 2) keep open
-		image "td:textures/gui/tile_build.png" at -154 -44 size 28x28 texture 28x28 anchor center layer 3 id c2_2 run TdCellClick(player, 2, 2) keep open
-		image "td:textures/gui/tile_build.png" at -98 -44 size 28x28 texture 28x28 anchor center layer 3 id c4_2 run TdCellClick(player, 4, 2) keep open
-		image "td:textures/gui/tile_build.png" at -70 -44 size 28x28 texture 28x28 anchor center layer 3 id c5_2 run TdCellClick(player, 5, 2) keep open
-		image "td:textures/gui/tile_build.png" at -42 -44 size 28x28 texture 28x28 anchor center layer 3 id c6_2 run TdCellClick(player, 6, 2) keep open
-		image "td:textures/gui/tile_build.png" at 14 -44 size 28x28 texture 28x28 anchor center layer 3 id c8_2 run TdCellClick(player, 8, 2) keep open
-		image "td:textures/gui/tile_build.png" at 42 -44 size 28x28 texture 28x28 anchor center layer 3 id c9_2 run TdCellClick(player, 9, 2) keep open
-		image "td:textures/gui/tile_build.png" at 70 -44 size 28x28 texture 28x28 anchor center layer 3 id c10_2 run TdCellClick(player, 10, 2) keep open
-		image "td:textures/gui/tile_build.png" at -210 -16 size 28x28 texture 28x28 anchor center layer 3 id c0_3 run TdCellClick(player, 0, 3) keep open
-		image "td:textures/gui/tile_build.png" at -182 -16 size 28x28 texture 28x28 anchor center layer 3 id c1_3 run TdCellClick(player, 1, 3) keep open
-		image "td:textures/gui/tile_build.png" at -154 -16 size 28x28 texture 28x28 anchor center layer 3 id c2_3 run TdCellClick(player, 2, 3) keep open
-		image "td:textures/gui/tile_build.png" at -98 -16 size 28x28 texture 28x28 anchor center layer 3 id c4_3 run TdCellClick(player, 4, 3) keep open
-		image "td:textures/gui/tile_build.png" at -70 -16 size 28x28 texture 28x28 anchor center layer 3 id c5_3 run TdCellClick(player, 5, 3) keep open
-		image "td:textures/gui/tile_build.png" at -42 -16 size 28x28 texture 28x28 anchor center layer 3 id c6_3 run TdCellClick(player, 6, 3) keep open
-		image "td:textures/gui/tile_build.png" at 14 -16 size 28x28 texture 28x28 anchor center layer 3 id c8_3 run TdCellClick(player, 8, 3) keep open
-		image "td:textures/gui/tile_build.png" at 42 -16 size 28x28 texture 28x28 anchor center layer 3 id c9_3 run TdCellClick(player, 9, 3) keep open
-		image "td:textures/gui/tile_build.png" at 70 -16 size 28x28 texture 28x28 anchor center layer 3 id c10_3 run TdCellClick(player, 10, 3) keep open
-		image "td:textures/gui/tile_build.png" at 126 -16 size 28x28 texture 28x28 anchor center layer 3 id c12_3 run TdCellClick(player, 12, 3) keep open
-		image "td:textures/gui/tile_build.png" at 154 -16 size 28x28 texture 28x28 anchor center layer 3 id c13_3 run TdCellClick(player, 13, 3) keep open
-		image "td:textures/gui/tile_build.png" at 182 -16 size 28x28 texture 28x28 anchor center layer 3 id c14_3 run TdCellClick(player, 14, 3) keep open
-		image "td:textures/gui/tile_build.png" at 210 -16 size 28x28 texture 28x28 anchor center layer 3 id c15_3 run TdCellClick(player, 15, 3) keep open
-		image "td:textures/gui/tile_build.png" at -98 12 size 28x28 texture 28x28 anchor center layer 3 id c4_4 run TdCellClick(player, 4, 4) keep open
-		image "td:textures/gui/tile_build.png" at -70 12 size 28x28 texture 28x28 anchor center layer 3 id c5_4 run TdCellClick(player, 5, 4) keep open
-		image "td:textures/gui/tile_build.png" at -42 12 size 28x28 texture 28x28 anchor center layer 3 id c6_4 run TdCellClick(player, 6, 4) keep open
-		image "td:textures/gui/tile_build.png" at 14 12 size 28x28 texture 28x28 anchor center layer 3 id c8_4 run TdCellClick(player, 8, 4) keep open
-		image "td:textures/gui/tile_build.png" at 42 12 size 28x28 texture 28x28 anchor center layer 3 id c9_4 run TdCellClick(player, 9, 4) keep open
-		image "td:textures/gui/tile_build.png" at 70 12 size 28x28 texture 28x28 anchor center layer 3 id c10_4 run TdCellClick(player, 10, 4) keep open
-		image "td:textures/gui/tile_build.png" at 126 12 size 28x28 texture 28x28 anchor center layer 3 id c12_4 run TdCellClick(player, 12, 4) keep open
-		image "td:textures/gui/tile_build.png" at 154 12 size 28x28 texture 28x28 anchor center layer 3 id c13_4 run TdCellClick(player, 13, 4) keep open
-		image "td:textures/gui/tile_build.png" at 182 12 size 28x28 texture 28x28 anchor center layer 3 id c14_4 run TdCellClick(player, 14, 4) keep open
-		image "td:textures/gui/tile_build.png" at 210 12 size 28x28 texture 28x28 anchor center layer 3 id c15_4 run TdCellClick(player, 15, 4) keep open
-		image "td:textures/gui/tile_build.png" at -210 40 size 28x28 texture 28x28 anchor center layer 3 id c0_5 run TdCellClick(player, 0, 5) keep open
-		image "td:textures/gui/tile_build.png" at -182 40 size 28x28 texture 28x28 anchor center layer 3 id c1_5 run TdCellClick(player, 1, 5) keep open
-		image "td:textures/gui/tile_build.png" at -154 40 size 28x28 texture 28x28 anchor center layer 3 id c2_5 run TdCellClick(player, 2, 5) keep open
-		image "td:textures/gui/tile_build.png" at -126 40 size 28x28 texture 28x28 anchor center layer 3 id c3_5 run TdCellClick(player, 3, 5) keep open
-		image "td:textures/gui/tile_build.png" at -98 40 size 28x28 texture 28x28 anchor center layer 3 id c4_5 run TdCellClick(player, 4, 5) keep open
-		image "td:textures/gui/tile_build.png" at -70 40 size 28x28 texture 28x28 anchor center layer 3 id c5_5 run TdCellClick(player, 5, 5) keep open
-		image "td:textures/gui/tile_build.png" at -42 40 size 28x28 texture 28x28 anchor center layer 3 id c6_5 run TdCellClick(player, 6, 5) keep open
-		image "td:textures/gui/tile_build.png" at 14 40 size 28x28 texture 28x28 anchor center layer 3 id c8_5 run TdCellClick(player, 8, 5) keep open
-		image "td:textures/gui/tile_build.png" at 42 40 size 28x28 texture 28x28 anchor center layer 3 id c9_5 run TdCellClick(player, 9, 5) keep open
-		image "td:textures/gui/tile_build.png" at 70 40 size 28x28 texture 28x28 anchor center layer 3 id c10_5 run TdCellClick(player, 10, 5) keep open
-		image "td:textures/gui/tile_build.png" at 126 40 size 28x28 texture 28x28 anchor center layer 3 id c12_5 run TdCellClick(player, 12, 5) keep open
-		image "td:textures/gui/tile_build.png" at 154 40 size 28x28 texture 28x28 anchor center layer 3 id c13_5 run TdCellClick(player, 13, 5) keep open
-		image "td:textures/gui/tile_build.png" at 182 40 size 28x28 texture 28x28 anchor center layer 3 id c14_5 run TdCellClick(player, 14, 5) keep open
-		image "td:textures/gui/tile_build.png" at 210 40 size 28x28 texture 28x28 anchor center layer 3 id c15_5 run TdCellClick(player, 15, 5) keep open
-		image "td:textures/gui/tile_build.png" at -210 68 size 28x28 texture 28x28 anchor center layer 3 id c0_6 run TdCellClick(player, 0, 6) keep open
-		image "td:textures/gui/tile_build.png" at -182 68 size 28x28 texture 28x28 anchor center layer 3 id c1_6 run TdCellClick(player, 1, 6) keep open
-		image "td:textures/gui/tile_build.png" at -154 68 size 28x28 texture 28x28 anchor center layer 3 id c2_6 run TdCellClick(player, 2, 6) keep open
-		image "td:textures/gui/tile_build.png" at -126 68 size 28x28 texture 28x28 anchor center layer 3 id c3_6 run TdCellClick(player, 3, 6) keep open
-		image "td:textures/gui/tile_build.png" at -98 68 size 28x28 texture 28x28 anchor center layer 3 id c4_6 run TdCellClick(player, 4, 6) keep open
-		image "td:textures/gui/tile_build.png" at -70 68 size 28x28 texture 28x28 anchor center layer 3 id c5_6 run TdCellClick(player, 5, 6) keep open
-		image "td:textures/gui/tile_build.png" at -42 68 size 28x28 texture 28x28 anchor center layer 3 id c6_6 run TdCellClick(player, 6, 6) keep open
-		image "td:textures/gui/tile_build.png" at 126 68 size 28x28 texture 28x28 anchor center layer 3 id c12_6 run TdCellClick(player, 12, 6) keep open
-		image "td:textures/gui/tile_build.png" at 154 68 size 28x28 texture 28x28 anchor center layer 3 id c13_6 run TdCellClick(player, 13, 6) keep open
-		image "td:textures/gui/tile_build.png" at 182 68 size 28x28 texture 28x28 anchor center layer 3 id c14_6 run TdCellClick(player, 14, 6) keep open
-		image "td:textures/gui/tile_build.png" at 210 68 size 28x28 texture 28x28 anchor center layer 3 id c15_6 run TdCellClick(player, 15, 6) keep open
-		image "td:textures/gui/tile_build.png" at -210 96 size 28x28 texture 28x28 anchor center layer 3 id c0_7 run TdCellClick(player, 0, 7) keep open
-		image "td:textures/gui/tile_build.png" at -182 96 size 28x28 texture 28x28 anchor center layer 3 id c1_7 run TdCellClick(player, 1, 7) keep open
-		image "td:textures/gui/tile_build.png" at -154 96 size 28x28 texture 28x28 anchor center layer 3 id c2_7 run TdCellClick(player, 2, 7) keep open
-		image "td:textures/gui/tile_build.png" at -126 96 size 28x28 texture 28x28 anchor center layer 3 id c3_7 run TdCellClick(player, 3, 7) keep open
-		image "td:textures/gui/tile_build.png" at -98 96 size 28x28 texture 28x28 anchor center layer 3 id c4_7 run TdCellClick(player, 4, 7) keep open
-		image "td:textures/gui/tile_build.png" at -70 96 size 28x28 texture 28x28 anchor center layer 3 id c5_7 run TdCellClick(player, 5, 7) keep open
-		image "td:textures/gui/tile_build.png" at -42 96 size 28x28 texture 28x28 anchor center layer 3 id c6_7 run TdCellClick(player, 6, 7) keep open
-		image "td:textures/gui/tile_build.png" at -14 96 size 28x28 texture 28x28 anchor center layer 3 id c7_7 run TdCellClick(player, 7, 7) keep open
-		image "td:textures/gui/tile_build.png" at 14 96 size 28x28 texture 28x28 anchor center layer 3 id c8_7 run TdCellClick(player, 8, 7) keep open
-		image "td:textures/gui/tile_build.png" at 42 96 size 28x28 texture 28x28 anchor center layer 3 id c9_7 run TdCellClick(player, 9, 7) keep open
-		image "td:textures/gui/tile_build.png" at 70 96 size 28x28 texture 28x28 anchor center layer 3 id c10_7 run TdCellClick(player, 10, 7) keep open
-		image "td:textures/gui/tile_build.png" at 98 96 size 28x28 texture 28x28 anchor center layer 3 id c11_7 run TdCellClick(player, 11, 7) keep open
-		image "td:textures/gui/tile_build.png" at 126 96 size 28x28 texture 28x28 anchor center layer 3 id c12_7 run TdCellClick(player, 12, 7) keep open
-		image "td:textures/gui/tile_build.png" at 154 96 size 28x28 texture 28x28 anchor center layer 3 id c13_7 run TdCellClick(player, 13, 7) keep open
-		image "td:textures/gui/tile_build.png" at 182 96 size 28x28 texture 28x28 anchor center layer 3 id c14_7 run TdCellClick(player, 14, 7) keep open
-		image "td:textures/gui/tile_build.png" at 210 96 size 28x28 texture 28x28 anchor center layer 3 id c15_7 run TdCellClick(player, 15, 7) keep open
+		# Свободная сетка постройки 16x8 (клетка 28x28, тултипы обновляются автоматически!)
+		image "td:textures/gui/tile_build.png" at -210 -100 size 28x28 texture 28x28 anchor center layer 3 id c0_0 run TdCellClick(player, 0, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -182 -100 size 28x28 texture 28x28 anchor center layer 3 id c1_0 run TdCellClick(player, 1, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -154 -100 size 28x28 texture 28x28 anchor center layer 3 id c2_0 run TdCellClick(player, 2, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -126 -100 size 28x28 texture 28x28 anchor center layer 3 id c3_0 run TdCellClick(player, 3, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -98 -100 size 28x28 texture 28x28 anchor center layer 3 id c4_0 run TdCellClick(player, 4, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -70 -100 size 28x28 texture 28x28 anchor center layer 3 id c5_0 run TdCellClick(player, 5, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -42 -100 size 28x28 texture 28x28 anchor center layer 3 id c6_0 run TdCellClick(player, 6, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -14 -100 size 28x28 texture 28x28 anchor center layer 3 id c7_0 run TdCellClick(player, 7, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 14 -100 size 28x28 texture 28x28 anchor center layer 3 id c8_0 run TdCellClick(player, 8, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 42 -100 size 28x28 texture 28x28 anchor center layer 3 id c9_0 run TdCellClick(player, 9, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 70 -100 size 28x28 texture 28x28 anchor center layer 3 id c10_0 run TdCellClick(player, 10, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 98 -100 size 28x28 texture 28x28 anchor center layer 3 id c11_0 run TdCellClick(player, 11, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 126 -100 size 28x28 texture 28x28 anchor center layer 3 id c12_0 run TdCellClick(player, 12, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 154 -100 size 28x28 texture 28x28 anchor center layer 3 id c13_0 run TdCellClick(player, 13, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 182 -100 size 28x28 texture 28x28 anchor center layer 3 id c14_0 run TdCellClick(player, 14, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 210 -100 size 28x28 texture 28x28 anchor center layer 3 id c15_0 run TdCellClick(player, 15, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -210 -72 size 28x28 texture 28x28 anchor center layer 3 id c0_1 run TdCellClick(player, 0, 1) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -182 -72 size 28x28 texture 28x28 anchor center layer 3 id c1_1 run TdCellClick(player, 1, 1) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -154 -72 size 28x28 texture 28x28 anchor center layer 3 id c2_1 run TdCellClick(player, 2, 1) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 14 -72 size 28x28 texture 28x28 anchor center layer 3 id c8_1 run TdCellClick(player, 8, 1) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 42 -72 size 28x28 texture 28x28 anchor center layer 3 id c9_1 run TdCellClick(player, 9, 1) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 70 -72 size 28x28 texture 28x28 anchor center layer 3 id c10_1 run TdCellClick(player, 10, 1) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 98 -72 size 28x28 texture 28x28 anchor center layer 3 id c11_1 run TdCellClick(player, 11, 1) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 126 -72 size 28x28 texture 28x28 anchor center layer 3 id c12_1 run TdCellClick(player, 12, 1) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 154 -72 size 28x28 texture 28x28 anchor center layer 3 id c13_1 run TdCellClick(player, 13, 1) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 182 -72 size 28x28 texture 28x28 anchor center layer 3 id c14_1 run TdCellClick(player, 14, 1) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 210 -72 size 28x28 texture 28x28 anchor center layer 3 id c15_1 run TdCellClick(player, 15, 1) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -210 -44 size 28x28 texture 28x28 anchor center layer 3 id c0_2 run TdCellClick(player, 0, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -182 -44 size 28x28 texture 28x28 anchor center layer 3 id c1_2 run TdCellClick(player, 1, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -154 -44 size 28x28 texture 28x28 anchor center layer 3 id c2_2 run TdCellClick(player, 2, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -98 -44 size 28x28 texture 28x28 anchor center layer 3 id c4_2 run TdCellClick(player, 4, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -70 -44 size 28x28 texture 28x28 anchor center layer 3 id c5_2 run TdCellClick(player, 5, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -42 -44 size 28x28 texture 28x28 anchor center layer 3 id c6_2 run TdCellClick(player, 6, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 14 -44 size 28x28 texture 28x28 anchor center layer 3 id c8_2 run TdCellClick(player, 8, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 42 -44 size 28x28 texture 28x28 anchor center layer 3 id c9_2 run TdCellClick(player, 9, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 70 -44 size 28x28 texture 28x28 anchor center layer 3 id c10_2 run TdCellClick(player, 10, 2) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -210 -16 size 28x28 texture 28x28 anchor center layer 3 id c0_3 run TdCellClick(player, 0, 3) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -182 -16 size 28x28 texture 28x28 anchor center layer 3 id c1_3 run TdCellClick(player, 1, 3) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -154 -16 size 28x28 texture 28x28 anchor center layer 3 id c2_3 run TdCellClick(player, 2, 3) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -98 -16 size 28x28 texture 28x28 anchor center layer 3 id c4_3 run TdCellClick(player, 4, 3) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -70 -16 size 28x28 texture 28x28 anchor center layer 3 id c5_3 run TdCellClick(player, 5, 3) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -42 -16 size 28x28 texture 28x28 anchor center layer 3 id c6_3 run TdCellClick(player, 6, 3) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 14 -16 size 28x28 texture 28x28 anchor center layer 3 id c8_3 run TdCellClick(player, 8, 3) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 42 -16 size 28x28 texture 28x28 anchor center layer 3 id c9_3 run TdCellClick(player, 9, 3) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 70 -16 size 28x28 texture 28x28 anchor center layer 3 id c10_3 run TdCellClick(player, 10, 3) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 126 -16 size 28x28 texture 28x28 anchor center layer 3 id c12_3 run TdCellClick(player, 12, 3) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 154 -16 size 28x28 texture 28x28 anchor center layer 3 id c13_3 run TdCellClick(player, 13, 3) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 182 -16 size 28x28 texture 28x28 anchor center layer 3 id c14_3 run TdCellClick(player, 14, 3) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 210 -16 size 28x28 texture 28x28 anchor center layer 3 id c15_3 run TdCellClick(player, 15, 3) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -98 12 size 28x28 texture 28x28 anchor center layer 3 id c4_4 run TdCellClick(player, 4, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -70 12 size 28x28 texture 28x28 anchor center layer 3 id c5_4 run TdCellClick(player, 5, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -42 12 size 28x28 texture 28x28 anchor center layer 3 id c6_4 run TdCellClick(player, 6, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 14 12 size 28x28 texture 28x28 anchor center layer 3 id c8_4 run TdCellClick(player, 8, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 42 12 size 28x28 texture 28x28 anchor center layer 3 id c9_4 run TdCellClick(player, 9, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 70 12 size 28x28 texture 28x28 anchor center layer 3 id c10_4 run TdCellClick(player, 10, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 126 12 size 28x28 texture 28x28 anchor center layer 3 id c12_4 run TdCellClick(player, 12, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 154 12 size 28x28 texture 28x28 anchor center layer 3 id c13_4 run TdCellClick(player, 13, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 182 12 size 28x28 texture 28x28 anchor center layer 3 id c14_4 run TdCellClick(player, 14, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 210 12 size 28x28 texture 28x28 anchor center layer 3 id c15_4 run TdCellClick(player, 15, 4) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -210 40 size 28x28 texture 28x28 anchor center layer 3 id c0_5 run TdCellClick(player, 0, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -182 40 size 28x28 texture 28x28 anchor center layer 3 id c1_5 run TdCellClick(player, 1, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -154 40 size 28x28 texture 28x28 anchor center layer 3 id c2_5 run TdCellClick(player, 2, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -126 40 size 28x28 texture 28x28 anchor center layer 3 id c3_5 run TdCellClick(player, 3, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -98 40 size 28x28 texture 28x28 anchor center layer 3 id c4_5 run TdCellClick(player, 4, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -70 40 size 28x28 texture 28x28 anchor center layer 3 id c5_5 run TdCellClick(player, 5, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -42 40 size 28x28 texture 28x28 anchor center layer 3 id c6_5 run TdCellClick(player, 6, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 14 40 size 28x28 texture 28x28 anchor center layer 3 id c8_5 run TdCellClick(player, 8, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 42 40 size 28x28 texture 28x28 anchor center layer 3 id c9_5 run TdCellClick(player, 9, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 70 40 size 28x28 texture 28x28 anchor center layer 3 id c10_5 run TdCellClick(player, 10, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 126 40 size 28x28 texture 28x28 anchor center layer 3 id c12_5 run TdCellClick(player, 12, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 154 40 size 28x28 texture 28x28 anchor center layer 3 id c13_5 run TdCellClick(player, 13, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 182 40 size 28x28 texture 28x28 anchor center layer 3 id c14_5 run TdCellClick(player, 14, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 210 40 size 28x28 texture 28x28 anchor center layer 3 id c15_5 run TdCellClick(player, 15, 5) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -210 68 size 28x28 texture 28x28 anchor center layer 3 id c0_6 run TdCellClick(player, 0, 6) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -182 68 size 28x28 texture 28x28 anchor center layer 3 id c1_6 run TdCellClick(player, 1, 6) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -154 68 size 28x28 texture 28x28 anchor center layer 3 id c2_6 run TdCellClick(player, 2, 6) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -126 68 size 28x28 texture 28x28 anchor center layer 3 id c3_6 run TdCellClick(player, 3, 6) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -98 68 size 28x28 texture 28x28 anchor center layer 3 id c4_6 run TdCellClick(player, 4, 6) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -70 68 size 28x28 texture 28x28 anchor center layer 3 id c5_6 run TdCellClick(player, 5, 6) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -42 68 size 28x28 texture 28x28 anchor center layer 3 id c6_6 run TdCellClick(player, 6, 6) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 126 68 size 28x28 texture 28x28 anchor center layer 3 id c12_6 run TdCellClick(player, 12, 6) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 154 68 size 28x28 texture 28x28 anchor center layer 3 id c13_6 run TdCellClick(player, 13, 6) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 182 68 size 28x28 texture 28x28 anchor center layer 3 id c14_6 run TdCellClick(player, 14, 6) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 210 68 size 28x28 texture 28x28 anchor center layer 3 id c15_6 run TdCellClick(player, 15, 6) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -210 96 size 28x28 texture 28x28 anchor center layer 3 id c0_7 run TdCellClick(player, 0, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -182 96 size 28x28 texture 28x28 anchor center layer 3 id c1_7 run TdCellClick(player, 1, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -154 96 size 28x28 texture 28x28 anchor center layer 3 id c2_7 run TdCellClick(player, 2, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -126 96 size 28x28 texture 28x28 anchor center layer 3 id c3_7 run TdCellClick(player, 3, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -98 96 size 28x28 texture 28x28 anchor center layer 3 id c4_7 run TdCellClick(player, 4, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -70 96 size 28x28 texture 28x28 anchor center layer 3 id c5_7 run TdCellClick(player, 5, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -42 96 size 28x28 texture 28x28 anchor center layer 3 id c6_7 run TdCellClick(player, 6, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at -14 96 size 28x28 texture 28x28 anchor center layer 3 id c7_7 run TdCellClick(player, 7, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 14 96 size 28x28 texture 28x28 anchor center layer 3 id c8_7 run TdCellClick(player, 8, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 42 96 size 28x28 texture 28x28 anchor center layer 3 id c9_7 run TdCellClick(player, 9, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 70 96 size 28x28 texture 28x28 anchor center layer 3 id c10_7 run TdCellClick(player, 10, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 98 96 size 28x28 texture 28x28 anchor center layer 3 id c11_7 run TdCellClick(player, 11, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 126 96 size 28x28 texture 28x28 anchor center layer 3 id c12_7 run TdCellClick(player, 12, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 154 96 size 28x28 texture 28x28 anchor center layer 3 id c13_7 run TdCellClick(player, 13, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 182 96 size 28x28 texture 28x28 anchor center layer 3 id c14_7 run TdCellClick(player, 14, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
+		image "td:textures/gui/tile_build.png" at 210 96 size 28x28 texture 28x28 anchor center layer 3 id c15_7 run TdCellClick(player, 15, 7) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
 
 		# Пул звёзд уровней и эволюций (до 28 башен)
 		text "" at 0 0 anchor center shadow layer 6 id st1 hidden
@@ -1102,19 +1287,31 @@ function TdOpenMap3(p: player):
 		text "" at 0 0 anchor center shadow layer 6 id st27 hidden
 		text "" at 0 0 anchor center shadow layer 6 id st28 hidden
 
-		# 11 слотов обычных врагов + 1 слот Босса (HD 40x40 / 56x56)
+		# 11 слотов обычных врагов + 1 слот Босса + тонкие полоски HP над каждым мобом
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e1 hidden
+		bar "ehp1" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e2 hidden
+		bar "ehp2" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e3 hidden
+		bar "ehp3" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e4 hidden
+		bar "ehp4" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e5 hidden
+		bar "ehp5" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e6 hidden
+		bar "ehp6" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e7 hidden
+		bar "ehp7" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e8 hidden
+		bar "ehp8" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e9 hidden
+		bar "ehp9" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e10 hidden
+		bar "ehp10" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e11 hidden
+		bar "ehp11" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_boss.png" at -210 -72 size 32x32 texture 56x56 anchor center layer 8 id e12 hidden
+		bar "ehp12" value 100 max 100 at -210 -91 size 30x4 anchor center color #FFEF4444 background #CC1A0A0A layer 9 hidden
 
 		# 6 летающих HD прожектайлов + вспышка взрыва
 		image "td:textures/gui/proj_arrow.png" at 0 0 size 11x11 texture 20x20 anchor center layer 9 id pr1 hidden
@@ -1125,30 +1322,41 @@ function TdOpenMap3(p: player):
 		image "td:textures/gui/proj_arrow.png" at 0 0 size 11x11 texture 20x20 anchor center layer 9 id pr6 hidden
 		image "td:textures/gui/fx_boom.png" at 0 0 size 20x20 texture 32x32 anchor center layer 10 id fx hidden
 
-		# Информационная строка (между картой и нижней панелью — ничего не перекрывает)
-		bar "bg_stat" value 0 max 1 at 0 119 size 456x14 anchor center background #DD0F172A layer 11
-		text "&eВыбран: &fЛучник (50з) &7— клик по траве строит, по башне улучшает/показывает радиус!" at 0 119 anchor center shadow layer 12 id status_txt
+		# Современная инфо-строка статуса
+		bar "bg_stat" value 0 max 1 at 0 119 size 458x15 anchor center background #E60B1220 layer 11
+		bar "stat_acc" value 1 max 1 at -227 119 size 3x15 anchor center color #FF38BDF8 background #FF38BDF8 layer 12
+		text "&eВыбран: &fЛучник (50з) &7— наведи на башню для инфо, ЛКМ для постройки/апгрейда!" at 0 119 anchor center shadow layer 12 id status_txt
 		text "&c&lБАЗА ПАЛА!" at 0 -16 anchor center shadow layer 20 id end_title hidden
 		text "&fНажми &eR &f(рестарт) или &eM &f(меню)" at 0 2 anchor center shadow layer 20 id end_sub hidden
 
-		# Нижняя панель инструментов (8 HD башен + 3 кнопки + Авто-волна)
-		bar "bg_bar" value 0 max 1 at 0 148 size 456x40 anchor center background #EE0B1220 layer 11
-		image "td:textures/gui/tower_archer.png" at -208 140 size 22x22 texture 48x48 anchor center layer 12 id ico1 run TdSelectTool(player, 1) keep open tooltip "&e[1] Лучник &7(50з)\n&7Урон: 15 | Очень быстрый | Дальн: 98\n&6✦5★ Шквал: &fстреляет сразу по 2 целям!"
-		text "&e[1]50" at -208 158 anchor center shadow layer 12 id lbl1
-		image "td:textures/gui/tower_cannon.png" at -172 140 size 22x22 texture 48x48 anchor center layer 12 id ico2 run TdSelectTool(player, 2) keep open tooltip "&6[2] Пушка &7(95з)\n&7Урон: 36 + &cСплеш | Дальн: 92\n&6✦5★ Напалм: &fмега-сплеш + поджог врагов!"
-		text "&7[2]95" at -172 158 anchor center shadow layer 12 id lbl2
-		image "td:textures/gui/tower_frost.png" at -136 140 size 22x22 texture 48x48 anchor center layer 12 id ico3 run TdSelectTool(player, 3) keep open tooltip "&b[3] Лёд &7(85з)\n&7Урон: 11 + &bЗамедление 45% | Дальн: 96\n&6✦5★ Мерзлота: &f65% замедл. + 25% заморозка!"
-		text "&7[3]85" at -136 158 anchor center shadow layer 12 id lbl3
-		image "td:textures/gui/tower_mage.png" at -100 140 size 22x22 texture 48x48 anchor center layer 12 id ico4 run TdSelectTool(player, 4) keep open tooltip "&d[4] Маг &7(130з)\n&7Урон: 32 | &dДальность 132\n&6✦5★ Убийца Боссов: &fx2 Боссам + 4% макс.HP!"
-		text "&7[4]130" at -100 158 anchor center shadow layer 12 id lbl4
-		image "td:textures/gui/tower_tesla.png" at -64 140 size 22x22 texture 48x48 anchor center layer 12 id ico5 run TdSelectTool(player, 5) keep open tooltip "&b[5] Тесла &7(115з)\n&7Урон: 20 | &bЦепная молния (3 цели) | Дальн: 108\n&6✦5★ Шторм: &f5 целей + 90% урон + стан!"
-		text "&7[5]115" at -64 158 anchor center shadow layer 12 id lbl5
-		image "td:textures/gui/tower_sniper.png" at -28 140 size 22x22 texture 48x48 anchor center layer 12 id ico6 run TdSelectTool(player, 6) keep open tooltip "&c[6] Снайпер &7(150з)\n&7Урон: 56 | &cКрит 25% | Дальн: 215\n&6✦5★ Казнь: &fкрит 45% x2.5 + казнь <20% HP!"
-		text "&7[6]150" at -28 158 anchor center shadow layer 12 id lbl6
-		image "td:textures/gui/tower_poison.png" at 8 140 size 22x22 texture 48x48 anchor center layer 12 id ico7 run TdSelectTool(player, 7) keep open tooltip "&a[7] Алхимик &7(105з)\n&7Урон: 12 + &aЯд (урон в сек.) | Дальн: 100\n&6✦5★ Чума: &fяд заражает всех врагов вокруг!"
-		text "&7[7]105" at 8 158 anchor center shadow layer 12 id lbl7
-		image "td:textures/gui/tower_farm.png" at 44 140 size 22x22 texture 48x48 anchor center layer 12 id ico8 run TdSelectTool(player, 8) keep open tooltip "&6[8] Банк &7(140з)\n&7Доход: &6+28/+50/+80/+120з &7каждую волну!\n&6✦5★ Дворец: &f+180з за волну и +1 HP базе!"
-		text "&7[8]140" at 44 158 anchor center shadow layer 12 id lbl8
+		# Нижняя панель инструментов (карточки слотов + индикатор выбора + 8 башен)
+		bar "bg_bar" value 0 max 1 at 0 148 size 458x42 anchor center background #F2090E1A layer 11
+		bar "bar_line" value 1 max 1 at 0 127 size 458x1 anchor center color #FF1E293B background #FF1E293B layer 12
+		bar "slot_bg1" value 0 max 1 at -208 148 size 32x34 anchor center background #CC162032 layer 11
+		bar "slot_bg2" value 0 max 1 at -172 148 size 32x34 anchor center background #CC162032 layer 11
+		bar "slot_bg3" value 0 max 1 at -136 148 size 32x34 anchor center background #CC162032 layer 11
+		bar "slot_bg4" value 0 max 1 at -100 148 size 32x34 anchor center background #CC162032 layer 11
+		bar "slot_bg5" value 0 max 1 at -64 148 size 32x34 anchor center background #CC162032 layer 11
+		bar "slot_bg6" value 0 max 1 at -28 148 size 32x34 anchor center background #CC162032 layer 11
+		bar "slot_bg7" value 0 max 1 at 8 148 size 32x34 anchor center background #CC162032 layer 11
+		bar "slot_bg8" value 0 max 1 at 44 148 size 32x34 anchor center background #CC162032 layer 11
+		bar "sel_bar" value 1 max 1 at -208 131 size 32x2 anchor center color #FFFACC15 background #FFFACC15 layer 13
+		image "td:textures/gui/tower_archer.png" at -208 142 size 22x22 texture 48x48 anchor center layer 12 id ico1 run TdSelectTool(player, 1) keep open tooltip "&e[1] Лучник &7(50з)\n&7Урон: 15 | Очень быстрый | Дальн: 98\n&6✦5★ Шквал: &fстреляет сразу по 2 целям!"
+		text "&e[1]50" at -208 159 anchor center shadow layer 12 id lbl1
+		image "td:textures/gui/tower_cannon.png" at -172 142 size 22x22 texture 48x48 anchor center layer 12 id ico2 run TdSelectTool(player, 2) keep open tooltip "&6[2] Пушка &7(95з)\n&7Урон: 36 + &cСплеш | Дальн: 92\n&6✦5★ Напалм: &fмега-сплеш + поджог врагов!"
+		text "&7[2]95" at -172 159 anchor center shadow layer 12 id lbl2
+		image "td:textures/gui/tower_frost.png" at -136 142 size 22x22 texture 48x48 anchor center layer 12 id ico3 run TdSelectTool(player, 3) keep open tooltip "&b[3] Лёд &7(85з)\n&7Урон: 8 | &bАура замедления 40% по радиусу | Дальн: 96\n&6✦5★ Стужа: &f50% замедл. + 12% заморозка (0.5с, не боссов)"
+		text "&7[3]85" at -136 159 anchor center shadow layer 12 id lbl3
+		image "td:textures/gui/tower_mage.png" at -100 142 size 22x22 texture 48x48 anchor center layer 12 id ico4 run TdSelectTool(player, 4) keep open tooltip "&d[4] Маг &7(130з)\n&7Урон: 32 | &dДальность 132\n&6✦5★ Убийца Боссов: &fx2 Боссам + 4% макс.HP!"
+		text "&7[4]130" at -100 159 anchor center shadow layer 12 id lbl4
+		image "td:textures/gui/tower_tesla.png" at -64 142 size 22x22 texture 48x48 anchor center layer 12 id ico5 run TdSelectTool(player, 5) keep open tooltip "&b[5] Тесла &7(115з)\n&7Урон: 20 | &bЦепная молния (3 цели) | Дальн: 108\n&6✦5★ Шторм: &f5 целей + 90% урон + стан!"
+		text "&7[5]115" at -64 159 anchor center shadow layer 12 id lbl5
+		image "td:textures/gui/tower_sniper.png" at -28 142 size 22x22 texture 48x48 anchor center layer 12 id ico6 run TdSelectTool(player, 6) keep open tooltip "&c[6] Снайпер &7(150з)\n&7Урон: 56 | &cКрит 25% | Дальн: 215\n&6✦5★ Казнь: &fкрит 45% x2.5 + казнь <20% HP!"
+		text "&7[6]150" at -28 159 anchor center shadow layer 12 id lbl6
+		image "td:textures/gui/tower_poison.png" at 8 142 size 22x22 texture 48x48 anchor center layer 12 id ico7 run TdSelectTool(player, 7) keep open tooltip "&a[7] Алхимик &7(105з)\n&7Урон: 12 + &aЯд (урон в сек.) | Дальн: 100\n&6✦5★ Чума: &fяд заражает всех врагов вокруг!"
+		text "&7[7]105" at 8 159 anchor center shadow layer 12 id lbl7
+		image "td:textures/gui/tower_farm.png" at 44 142 size 22x22 texture 48x48 anchor center layer 12 id ico8 run TdSelectTool(player, 8) keep open tooltip "&6[8] Банк &7(140з)\n&7Доход: &6+28/+50/+80/+120з &7каждую волну!\n&6✦5★ Дворец: &f+180з за волну и +1 HP базе!"
+		text "&7[8]140" at 44 159 anchor center shadow layer 12 id lbl8
 		button "&aСтарт/x2" at 118 139 size 68x16 anchor center run TdWaveOrSpeed(player) keep open tooltip "&aЗапустить волну &7(Space)\n&bВо время волны: скорость x1 / x2"
 		toggle "Авто" id autowave at 192 139 size 58x16 anchor center value false color #22C55E tooltip "&aАвто-волна\n&7Авто-старт следующей волны через 1.5с"
 		button "&cПродать" at 118 158 size 68x16 anchor center run TdToggleSell(player) keep open tooltip "&cПродать свою башню &7(X)\n&7Возврат 70% стоимости"
@@ -1184,6 +1392,8 @@ function TdSelectTool(p: player, tool: number):
 	set text of screen element "lbl6" for p to "&7[6]150"
 	set text of screen element "lbl7" for p to "&7[7]105"
 	set text of screen element "lbl8" for p to "&7[8]140"
+	set {-sx} to -208 + (tool - 1) * 36
+	set position of screen element "sel_bar" for p to {-sx} 131
 	if tool is 1:
 		set text of screen element "lbl1" for p to "&e[1]50"
 		set text of screen element "status_txt" for p to "&eЛучник (50з) &7| &6✦5★: &fШквал по 2 целям!"
@@ -1192,7 +1402,7 @@ function TdSelectTool(p: player, tool: number):
 		set text of screen element "status_txt" for p to "&6Пушка (95з) &7| &6✦5★: &fНапалм (поджог + мега-сплеш)!"
 	else if tool is 3:
 		set text of screen element "lbl3" for p to "&b[3]85"
-		set text of screen element "status_txt" for p to "&bЛёд (85з) &7| &6✦5★: &fМерзлота (заморозка на месте)!"
+		set text of screen element "status_txt" for p to "&bЛёд (85з) &7| Аура замедления по радиусу | &6✦5★: &fСтужа (50%% + 12%% фриз)"
 	else if tool is 4:
 		set text of screen element "lbl4" for p to "&d[4]130"
 		set text of screen element "status_txt" for p to "&dМаг (130з) &7| &6✦5★: &fУбийца Боссов (x2 + 4%% HP)!"
@@ -1279,6 +1489,8 @@ function TdCellClick(p: player, col: integer, row: integer):
 		if {-own} is not %p% and %p% is not {-g}:
 			set text of screen element "status_txt" for p to "&cЭто башня игрока &f%{-own}%&c! Продавать может владелец"
 			stop
+		set {-tx} to {-td-tx::%{-g}%::%{-tid}%}
+		set {-ty} to {-td-ty::%{-g}%::%{-tid}%}
 		set {-ref} to round({-td-tcost::%{-g}%::%{-tid}%} * 0.7)
 		add {-ref} to {-td-gold::%p%}
 		set {-td-ta::%{-g}%::%{-tid}%} to 0
@@ -1289,14 +1501,14 @@ function TdCellClick(p: player, col: integer, row: integer):
 		set {-td-grid::%{-g}%::%col%_%row%} to 0
 		set {-td-sell::%p%} to 0
 		TdShowRange(p, 0, 0, 0)
-		TdSyncImg({-g}, "c%col%_%row%", "td:textures/gui/tile_build.png")
+		TdSyncCell({-g}, col, row, {-tx}, {-ty}, "td:textures/gui/tile_build.png", "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню")
 		TdSyncHide({-g}, "st%{-tid}%")
 		TdSyncStatus({-g}, "&e%p% продал башню (+%{-ref}%з)")
 		TdSyncSound({-g}, "entity.experience_orb.pickup", 0.6, 0.9)
-		TdSyncHud({-g})
+		TdSyncGoldScore({-g})
 		stop
 
-	# Клик по построенной башне -> показываем её круг радиуса + владельца + улучшаем/эволюционируем!
+	# Клик по построенной башне -> показываем её круг радиуса + улучшаем/эволюционируем!
 	if {-tid} > 0:
 		set {-lvl} to {-td-tl::%{-g}%::%{-tid}%}
 		set {-tt} to {-td-tt::%{-g}%::%{-tid}%}
@@ -1330,25 +1542,22 @@ function TdCellClick(p: player, col: integer, row: integer):
 		set {-nl} to {-td-tl::%{-g}%::%{-tid}%}
 		TdTowerRange({-tt}, {-nl})
 		TdShowRange(p, {-tx}, {-ty}, {-td-tmp-rng})
+		TdSyncTowerVisual({-g}, {-tid})
 		if {-nl} is 2:
-			TdSyncTxt({-g}, "st%{-tid}%", "&6★★")
 			TdSyncStatus({-g}, "&a%p% улучшил башню (%{-own}%) → ур.2! (-%{-up}%з)")
 			TdSyncSound({-g}, "entity.player.levelup", 0.5, 1.35)
 		else if {-nl} is 3:
-			TdSyncTxt({-g}, "st%{-tid}%", "&d★★★")
 			TdSyncStatus({-g}, "&a%p% улучшил башню (%{-own}%) → ур.3! (-%{-up}%з)")
 			TdSyncSound({-g}, "entity.player.levelup", 0.5, 1.45)
 		else if {-nl} is 4:
-			TdSyncTxt({-g}, "st%{-tid}%", "&b★★★★")
 			TdSyncStatus({-g}, "&b%p% поднял ур.4! След. клик (570з) → &6&l✦5★ ЭВОЛЮЦИЯ!")
 			TdSyncSound({-g}, "entity.player.levelup", 0.55, 1.6)
 		else:
-			TdSyncTxt({-g}, "st%{-tid}%", "&6&l✦5★")
 			set {-evo} to "Шквал (2 цели!)"
 			if {-tt} is 2:
 				set {-evo} to "Напалм (поджог + мега-сплеш!)"
 			else if {-tt} is 3:
-				set {-evo} to "Вечная мерзлота (заморозка!)"
+				set {-evo} to "Стужа (50%% замедл. по радиусу + 12%% фриз!)"
 			else if {-tt} is 4:
 				set {-evo} to "Убийца Боссов (x2 + 4%% HP!)"
 			else if {-tt} is 5:
@@ -1361,7 +1570,7 @@ function TdCellClick(p: player, col: integer, row: integer):
 				set {-evo} to "Золотой Дворец (+180з и +1 HP!)"
 			TdSyncStatus({-g}, "&6&l✦ ЭВОЛЮЦИЯ 5★! &f%p% открыл: &e%{-evo}%")
 			TdSyncSound({-g}, "ui.toast.challenge_complete", 0.75, 1.2)
-		TdSyncHud({-g})
+		TdSyncGoldScore({-g})
 		stop
 
 	# Постройка новой башни (до 28 на карте)
@@ -1376,28 +1585,20 @@ function TdCellClick(p: player, col: integer, row: integer):
 
 	set {-tool} to {-td-tool::%p%}
 	set {-cost} to 50
-	set {-tex} to "td:textures/gui/tower_archer.png"
 	if {-tool} is 2:
 		set {-cost} to 95
-		set {-tex} to "td:textures/gui/tower_cannon.png"
 	else if {-tool} is 3:
 		set {-cost} to 85
-		set {-tex} to "td:textures/gui/tower_frost.png"
 	else if {-tool} is 4:
 		set {-cost} to 130
-		set {-tex} to "td:textures/gui/tower_mage.png"
 	else if {-tool} is 5:
 		set {-cost} to 115
-		set {-tex} to "td:textures/gui/tower_tesla.png"
 	else if {-tool} is 6:
 		set {-cost} to 150
-		set {-tex} to "td:textures/gui/tower_sniper.png"
 	else if {-tool} is 7:
 		set {-cost} to 105
-		set {-tex} to "td:textures/gui/tower_poison.png"
 	else if {-tool} is 8:
 		set {-cost} to 140
-		set {-tex} to "td:textures/gui/tower_farm.png"
 
 	if {-td-gold::%p%} < {-cost}:
 		TdShowRange(p, 0, 0, 0)
@@ -1422,14 +1623,10 @@ function TdCellClick(p: player, col: integer, row: integer):
 
 	TdTowerRange({-tool}, 1)
 	TdShowRange(p, {-cx}, {-cy}, {-td-tmp-rng})
-	TdSyncImg({-g}, "c%col%_%row%", {-tex})
-	set {-sy} to {-cy} + 11
-	TdSyncPos({-g}, "st%{-slot}%", {-cx}, {-sy})
-	TdSyncTxt({-g}, "st%{-slot}%", "&e★")
-	TdSyncShow({-g}, "st%{-slot}%")
-	TdSyncStatus({-g}, "&a%p% построил башню! Клик по ней покажет радиус и улучшит (до ✦5★)")
+	TdSyncTowerVisual({-g}, {-slot})
+	TdSyncStatus({-g}, "&a%p% построил башню! Наведи курсор для статов, ЛКМ — апгрейд")
 	TdSyncSound({-g}, "block.anvil.use", 0.35, 1.5)
-	TdSyncHud({-g})
+	TdSyncGoldScore({-g})
 
 # ==========================================================
 #  ВОЛНЫ И СПАВН (13 ВИДОВ МОБОВ + СКЕЙЛИНГ НА 1..4 ИГРОКОВ)
@@ -1502,6 +1699,7 @@ function TdTick(g: player):
 			if {-td-eregen::%g%::%{-ei}%} > 0:
 				if {-td-ehp::%g%::%{-ei}%} < {-td-emhp::%g%::%{-ei}%}:
 					add {-td-eregen::%g%::%{-ei}%} to {-td-ehp::%g%::%{-ei}%}
+					TdSyncBar(g, "ehp%{-ei}%", {-td-ehp::%g%::%{-ei}%}, 0)
 			if {-td-eburn::%g%::%{-ei}%} > 0:
 				remove 1 from {-td-eburn::%g%::%{-ei}%}
 				TdDamageEnemy(g, {-ei}, {-td-eburn-d::%g%::%{-ei}%}, 0, 0)
@@ -1513,7 +1711,8 @@ function TdTick(g: player):
 			if {-td-ea::%g%::%{-ei}%} is 1 and {-td-eboss::%g%::%{-ei}%} is 1:
 				set {-boss-alive} to 1
 				TdSyncBossBar(g, {-td-ehp::%g%::%{-ei}%}, 0)
-	if {-boss-alive} is 0:
+	if {-boss-alive} is 0 and {-td-boss-vis::%g%} is 1:
+		set {-td-boss-vis::%g%} to 0
 		TdSyncHide(g, "boss_bar")
 
 	# 3. Полёт прожектайлов
@@ -1615,52 +1814,43 @@ function TdSpawnNext(g: player):
 		# 10 видов обычных мобов с уникальными свойствами!
 		set {-m10} to {-w} % 10
 		if {-m10} is 2:
-			# Гоблин-бегун (сверхбыстрый!)
 			set {-tex} to "td:textures/gui/mob_goblin.png"
 			set {-hp} to round({-hp} * 0.7)
 			set {-spd} to {-spd} + 1.65
 			set {-cd} to 3
 		else if {-m10} is 3:
-			# Орк-воин
 			set {-tex} to "td:textures/gui/mob_orc.png"
 			set {-hp} to round({-hp} * 1.15)
 		else if {-m10} is 4:
-			# Пещерный паук (быстрая плотная стая)
 			set {-tex} to "td:textures/gui/mob_spider.png"
 			set {-hp} to round({-hp} * 0.8)
 			set {-spd} to {-spd} + 1.35
 			set {-cd} to 3
 		else if {-m10} is 5:
-			# Тёмный рыцарь (броня)
 			set {-tex} to "td:textures/gui/mob_knight.png"
 			set {-hp} to round({-hp} * 1.35)
 			set {-spd} to {-spd} - 0.35
 		else if {-m10} is 6:
-			# Призрак (быстрый разведчик)
 			set {-tex} to "td:textures/gui/mob_ghost.png"
 			set {-hp} to round({-hp} * 0.88)
 			set {-spd} to {-spd} + 1.2
 		else if {-m10} is 7:
-			# Некромант (регенерирует HP на ходу!)
 			set {-tex} to "td:textures/gui/mob_necromancer.png"
 			set {-hp} to round({-hp} * 1.1)
 			set {-reg} to round({-hp} * 0.015)
 			add 4 to {-rew}
 		else if {-m10} is 8:
-			# Ифрит (ИММУНИТЕТ к замедлению льда!)
 			set {-tex} to "td:textures/gui/mob_blaze.png"
 			set {-hp} to round({-hp} * 1.05)
 			set {-spd} to {-spd} + 0.65
 			set {-imm} to 1
 			add 4 to {-rew}
 		else if {-m10} is 9:
-			# Лавовый голем (жирный танк)
 			set {-tex} to "td:textures/gui/mob_golem.png"
 			set {-hp} to round({-hp} * 1.7)
 			set {-spd} to {-spd} - 0.8
 			add 6 to {-rew}
 		else if {-m10} is 0:
-			# Разоритель (элитный танк, бьёт базу на 2 HP!)
 			set {-tex} to "td:textures/gui/mob_ravager.png"
 			set {-hp} to round({-hp} * 1.85)
 			set {-spd} to {-spd} - 0.5
@@ -1681,7 +1871,7 @@ function TdSpawnNext(g: player):
 		set {-td-eregen::%g%::%{-slot}%} to {-reg}
 		set {-td-eimm::%g%::%{-slot}%} to {-imm}
 		set {-td-eslow::%g%::%{-slot}%} to 0
-		set {-td-eslow-f::%g%::%{-slot}%} to 0.55
+		set {-td-eslow-f::%g%::%{-slot}%} to 0.6
 		set {-td-efreeze::%g%::%{-slot}%} to 0
 		set {-td-eburn::%g%::%{-slot}%} to 0
 		set {-td-epoison::%g%::%{-slot}%} to 0
@@ -1689,6 +1879,10 @@ function TdSpawnNext(g: player):
 		TdSyncImg(g, "e%{-slot}%", {-tex})
 		TdSyncPos(g, "e%{-slot}%", {-sx}, {-sy})
 		TdSyncShow(g, "e%{-slot}%")
+		set {-hy} to {-sy} - 13
+		TdSyncBar(g, "ehp%{-slot}%", {-hp}, {-hp})
+		TdSyncPos(g, "ehp%{-slot}%", {-sx}, {-hy})
+		TdSyncShow(g, "ehp%{-slot}%")
 		stop
 
 	# Спавн Босса (слот 12 — 3 вида боссов!)
@@ -1718,14 +1912,19 @@ function TdSpawnNext(g: player):
 		set {-td-eregen::%g%::12} to 0
 		set {-td-eimm::%g%::12} to 0
 		set {-td-eslow::%g%::12} to 0
-		set {-td-eslow-f::%g%::12} to 0.55
+		set {-td-eslow-f::%g%::12} to 0.6
 		set {-td-efreeze::%g%::12} to 0
 		set {-td-eburn::%g%::12} to 0
 		set {-td-epoison::%g%::12} to 0
 		set {-td-etex::%g%::12} to {-btex}
+		set {-td-boss-vis::%g%} to 1
 		TdSyncImg(g, "e12", {-btex})
 		TdSyncPos(g, "e12", {-sx}, {-sy})
 		TdSyncShow(g, "e12")
+		set {-bhy} to {-sy} - 19
+		TdSyncBar(g, "ehp12", {-bhp}, {-bhp})
+		TdSyncPos(g, "ehp12", {-sx}, {-bhy})
+		TdSyncShow(g, "ehp12")
 		TdSyncBossBar(g, {-bhp}, {-bhp})
 		TdSyncShow(g, "boss_bar")
 
@@ -1754,13 +1953,15 @@ function TdMoveEnemy(g: player, i: number):
 		if {-seg} > {-td-wpcnt::%g%}:
 			set {-td-ea::%g%::%i%} to 0
 			TdSyncHide(g, "e%i%")
+			TdSyncHide(g, "ehp%i%")
 			set {-dmg} to {-td-ebdmg::%g%::%i%}
 			remove {-dmg} from {-td-hp::%g%}
 			TdSyncSound(g, "entity.iron_golem.damage", 0.7, 0.8)
 			loop {-td-team::%g%::*}:
 				set {-tp} to %loop-value%
-				shake camera of {-tp} with intensity 1.6 for 8 ticks
-				fade screen of {-tp} to #FF1100 in 2 stay 2 out 8 ticks
+				if {-tp} is online and {-tp} has screen "Tower Defense" open:
+					shake camera of {-tp} with intensity 1.6 for 8 ticks
+					fade screen of {-tp} to #FF1100 in 2 stay 2 out 8 ticks
 			TdSyncHud(g)
 			if {-td-hp::%g%} <= 0:
 				TdLose(g)
@@ -1773,6 +1974,10 @@ function TdMoveEnemy(g: player, i: number):
 	set {-td-ey::%g%::%i%} to {-y}
 	set {-td-eseg::%g%::%i%} to {-seg}
 	TdSyncPos(g, "e%i%", {-x}, {-y})
+	set {-hy} to {-y} - 13
+	if {-td-eboss::%g%::%i%} is 1:
+		set {-hy} to {-y} - 19
+	TdSyncPos(g, "ehp%i%", {-x}, {-hy})
 
 # ==========================================================
 #  БАШНИ, ЭВОЛЮЦИИ ✦5★ И ЛЕТАЮЩИЕ ПРОЖЕКТАЙЛЫ
@@ -1793,6 +1998,7 @@ function TdTowerTick(g: player, tid: number):
 
 	TdTowerRange({-type}, {-lvl})
 	set {-range} to {-td-tmp-rng}
+	set {-r2} to {-range} * {-range}
 
 	set {-dmg} to 15
 	set {-cd} to 4
@@ -1804,8 +2010,8 @@ function TdTowerTick(g: player, tid: number):
 		set {-pspd} to 20
 		set {-ptex} to "td:textures/gui/proj_cannon.png"
 	else if {-type} is 3:
-		set {-dmg} to 11
-		set {-cd} to 7
+		set {-dmg} to 8
+		set {-cd} to 9
 		set {-pspd} to 24
 		set {-ptex} to "td:textures/gui/proj_frost.png"
 	else if {-type} is 4:
@@ -1833,6 +2039,30 @@ function TdTowerTick(g: player, tid: number):
 	if {-evo} is 1:
 		set {-dmg} to round({-dmg} * 1.4)
 
+	# Ледяная башня (#3): аура замедления/заморозки по ВСЕМУ радиусу вокруг башни!
+	if {-type} is 3:
+		set {-hit-any} to 0
+		loop 12 times:
+			set {-ei} to %loop-number%
+			if {-td-ea::%g%::%{-ei}%} is 1:
+				set {-dx} to {-td-ex::%g%::%{-ei}%} - {-tx}
+				set {-dy} to {-td-ey::%g%::%{-ei}%} - {-ty}
+				if {-dx} * {-dx} + {-dy} * {-dy} <= {-r2}:
+					set {-hit-any} to 1
+					set {-frz} to 0
+					if {-evo} is 1:
+						set {-td-eslow-f::%g%::%{-ei}%} to 0.5
+						if {-td-eboss::%g%::%{-ei}%} is 0 and {-td-eimm::%g%::%{-ei}%} is 0:
+							chance of 12%:
+								set {-frz} to 5
+					else:
+						set {-td-eslow-f::%g%::%{-ei}%} to 0.6
+					TdDamageEnemy(g, {-ei}, {-dmg}, 18, {-frz})
+		if {-hit-any} is 1:
+			set {-td-tcd::%g%::%tid%} to {-cd}
+			TdSyncSound(g, "block.glass.break", 0.14, 1.85)
+		stop
+
 	set {-best} to 0
 	set {-best-prog} to -1
 	set {-second} to 0
@@ -1841,7 +2071,7 @@ function TdTowerTick(g: player, tid: number):
 		if {-td-ea::%g%::%{-ei}%} is 1:
 			set {-dx} to {-td-ex::%g%::%{-ei}%} - {-tx}
 			set {-dy} to {-td-ey::%g%::%{-ei}%} - {-ty}
-			if sqrt({-dx} * {-dx} + {-dy} * {-dy}) <= {-range}:
+			if {-dx} * {-dx} + {-dy} * {-dy} <= {-r2}:
 				set {-prog} to {-td-eseg::%g%::%{-ei}%} * 1000
 				if {-prog} > {-best-prog}:
 					set {-second} to {-best}
@@ -1920,29 +2150,19 @@ function TdImpact(g: player, tgt: number, ptype: number, evo: number, dmg: numbe
 		TdSyncShow(g, "fx")
 		set {-td-fx-cd::%g%} to 2
 		TdSyncSound(g, "entity.generic.explode", 0.15, 1.65)
-		set {-rad} to 48
+		set {-rad2} to 2304
 		if evo is 1:
-			set {-rad} to 68
+			set {-rad2} to 4624
 		loop 12 times:
 			set {-si} to %loop-number%
 			if {-td-ea::%g%::%{-si}%} is 1:
 				set {-sdx} to {-td-ex::%g%::%{-si}%} - hx
 				set {-sdy} to {-td-ey::%g%::%{-si}%} - hy
-				if sqrt({-sdx} * {-sdx} + {-sdy} * {-sdy}) <= {-rad}:
+				if {-sdx} * {-sdx} + {-sdy} * {-sdy} <= {-rad2}:
 					TdDamageEnemy(g, {-si}, dmg, 0, 0)
 					if evo is 1 and {-td-ea::%g%::%{-si}%} is 1:
 						set {-td-eburn::%g%::%{-si}%} to 12
 						set {-td-eburn-d::%g%::%{-si}%} to round(dmg * 0.14)
-	else if ptype is 3:
-		TdSyncSound(g, "block.glass.break", 0.17, 1.75)
-		set {-frz} to 0
-		if evo is 1:
-			set {-td-eslow-f::%g%::%tgt%} to 0.35
-			chance of 25%:
-				set {-frz} to 12
-		else:
-			set {-td-eslow-f::%g%::%tgt%} to 0.55
-		TdDamageEnemy(g, tgt, dmg, 20, {-frz})
 	else if ptype is 4:
 		set {-fdmg} to dmg
 		if evo is 1:
@@ -1954,12 +2174,12 @@ function TdImpact(g: player, tgt: number, ptype: number, evo: number, dmg: numbe
 	else if ptype is 5:
 		TdSyncSound(g, "entity.lightning_bolt.impact", 0.13, 1.9)
 		set {-maxh} to 3
-		set {-crad} to 74
+		set {-crad2} to 5476
 		set {-cmul} to 0.75
 		set {-stun} to 0
 		if evo is 1:
 			set {-maxh} to 5
-			set {-crad} to 96
+			set {-crad2} to 9216
 			set {-cmul} to 0.9
 			set {-stun} to 4
 		TdDamageEnemy(g, tgt, dmg, 0, {-stun})
@@ -1969,7 +2189,7 @@ function TdImpact(g: player, tgt: number, ptype: number, evo: number, dmg: numbe
 			if {-si} is not tgt and {-hits} < {-maxh} and {-td-ea::%g%::%{-si}%} is 1:
 				set {-sdx} to {-td-ex::%g%::%{-si}%} - hx
 				set {-sdy} to {-td-ey::%g%::%{-si}%} - hy
-				if sqrt({-sdx} * {-sdx} + {-sdy} * {-sdy}) <= {-crad}:
+				if {-sdx} * {-sdx} + {-sdy} * {-sdy} <= {-crad2}:
 					TdDamageEnemy(g, {-si}, round(dmg * {-cmul}), 0, {-stun})
 					add 1 to {-hits}
 	else if ptype is 6:
@@ -2003,7 +2223,7 @@ function TdImpact(g: player, tgt: number, ptype: number, evo: number, dmg: numbe
 				if {-si} is not tgt and {-td-ea::%g%::%{-si}%} is 1:
 					set {-sdx} to {-td-ex::%g%::%{-si}%} - hx
 					set {-sdy} to {-td-ey::%g%::%{-si}%} - hy
-					if sqrt({-sdx} * {-sdx} + {-sdy} * {-sdy}) <= 58:
+					if {-sdx} * {-sdx} + {-sdy} * {-sdy} <= 3364:
 						set {-td-epoison::%g%::%{-si}%} to 20
 						set {-td-epoison-d::%g%::%{-si}%} to round(dmg * 0.3)
 	else:
@@ -2021,6 +2241,7 @@ function TdDamageEnemy(g: player, i: number, dmg: number, slow: number, freeze: 
 	if {-td-ehp::%g%::%i%} <= 0:
 		set {-td-ea::%g%::%i%} to 0
 		TdSyncHide(g, "e%i%")
+		TdSyncHide(g, "ehp%i%")
 		set {-rew} to {-td-erew::%g%::%i%}
 		set {-pcnt} to size of {-td-team::%g%::*}
 		set {-share} to {-rew}
@@ -2035,9 +2256,12 @@ function TdDamageEnemy(g: player, i: number, dmg: number, slow: number, freeze: 
 			add {-share} to {-td-gold::%{-tp}%}
 		add {-rew} to {-td-score::%g%}
 		if {-td-eboss::%g%::%i%} is 1:
+			set {-td-boss-vis::%g%} to 0
 			TdSyncHide(g, "boss_bar")
 			TdSyncSound(g, "ui.toast.challenge_complete", 0.7, 1.1)
-		TdSyncHud(g)
+		TdSyncGoldScore(g)
+	else:
+		TdSyncBar(g, "ehp%i%", {-td-ehp::%g%::%i%}, 0)
 
 # ==========================================================
 #  ПОБЕДА, ПОРАЖЕНИЕ И РЕКОРДЫ
@@ -2064,7 +2288,8 @@ function TdWin(g: player):
 	TdSyncShow(g, "end_sub")
 	loop {-td-team::%g%::*}:
 		set {-tp} to %loop-value%
-		fade screen of {-tp} to #FFD700 in 3 stay 4 out 14 ticks
+		if {-tp} is online and {-tp} has screen "Tower Defense" open:
+			fade screen of {-tp} to #FFD700 in 3 stay 4 out 14 ticks
 	TdSyncSound(g, "ui.toast.challenge_complete", 0.9, 1.0)
 	TdSaveScore(g)
 
