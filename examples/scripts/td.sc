@@ -137,34 +137,34 @@ function TdOnLeave(p: player):
 # ==========================================================
 
 function TdSyncPos(g: player, id: text, x: number, y: number):
-	set position of screen element id for g to x y
+	set position of screen element "%id%" for g to x y
 	set {-p2} to {-td-coop::%g%}
 	if {-p2} is set and {-p2} is not "":
-		set position of screen element id for {-p2} to x y
+		set position of screen element "%id%" for {-p2} to x y
 
 function TdSyncImg(g: player, id: text, tex: text):
-	set image of screen element id for g to tex
+	set image of screen element "%id%" for g to tex
 	set {-p2} to {-td-coop::%g%}
 	if {-p2} is set and {-p2} is not "":
-		set image of screen element id for {-p2} to tex
+		set image of screen element "%id%" for {-p2} to tex
 
 function TdSyncTxt(g: player, id: text, txt: text):
-	set text of screen element id for g to txt
+	set text of screen element "%id%" for g to txt
 	set {-p2} to {-td-coop::%g%}
 	if {-p2} is set and {-p2} is not "":
-		set text of screen element id for {-p2} to txt
+		set text of screen element "%id%" for {-p2} to txt
 
 function TdSyncShow(g: player, id: text):
-	show screen element id to g
+	show screen element "%id%" to g
 	set {-p2} to {-td-coop::%g%}
 	if {-p2} is set and {-p2} is not "":
-		show screen element id to {-p2}
+		show screen element "%id%" to {-p2}
 
 function TdSyncHide(g: player, id: text):
-	hide screen element id from g
+	hide screen element "%id%" from g
 	set {-p2} to {-td-coop::%g%}
 	if {-p2} is set and {-p2} is not "":
-		hide screen element id from {-p2}
+		hide screen element "%id%" from {-p2}
 
 function TdSyncStatus(g: player, txt: text):
 	TdSyncTxt(g, "status_txt", txt)
