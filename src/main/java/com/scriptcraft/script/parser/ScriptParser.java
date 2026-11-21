@@ -2255,17 +2255,19 @@ public final class ScriptParser {
     }
 
     /** Какие параметры допустимы у каждого вида элемента (лишний параметр — понятная ошибка, а не тихое игнорирование). */
-    private static final Map<String, Set<String>> ELEMENT_OPTIONS = Map.of(
-            "text", Set.of("at", "anchor", "color", "shadow", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "tooltip", "hover"),
-            "button", Set.of("at", "size", "anchor", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "layer", "id", "tooltip", "hover"),
-            "image", Set.of("at", "size", "texture", "anchor", "color", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "tooltip", "hover"),
-            "slot", Set.of("at", "size", "anchor", "color", "no", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "tooltip", "hover"),
-            "bar", Set.of("at", "size", "texture", "anchor", "color", "layer", "id", "value", "max", "direction",
-                    "background", "fill", "text", "shadow", "hidden", "tooltip", "hover"),
-            "hotbar", Set.of("at", "size", "anchor", "color", "no", "layer", "id", "spacing"),
-            "input", Set.of("at", "size", "anchor", "color", "layer", "id", "value", "placeholder", "hint", "max", "length", "run", "function", "hidden", "tooltip", "hover"),
-            "slider", Set.of("at", "size", "anchor", "color", "layer", "id", "from", "to", "min", "max", "value", "step", "run", "function", "hidden", "tooltip", "hover"),
-            "toggle", Set.of("at", "size", "anchor", "color", "layer", "id", "value", "checked", "run", "function", "hidden", "tooltip", "hover"));
+    private static final Map<String, Set<String>> ELEMENT_OPTIONS = Map.ofEntries(
+            Map.entry("text", Set.of("at", "anchor", "color", "shadow", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "tooltip", "hover")),
+            Map.entry("button", Set.of("at", "size", "anchor", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "layer", "id", "tooltip", "hover")),
+            Map.entry("image", Set.of("at", "size", "texture", "anchor", "color", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "tooltip", "hover")),
+            Map.entry("box", Set.of("at", "size", "anchor", "color", "gradient", "to", "horizontal", "vertical", "border", "border_width", "border-width",
+                    "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "tooltip", "hover")),
+            Map.entry("slot", Set.of("at", "size", "anchor", "color", "no", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "tooltip", "hover")),
+            Map.entry("bar", Set.of("at", "size", "texture", "anchor", "color", "layer", "id", "value", "max", "direction",
+                    "background", "fill", "text", "shadow", "hidden", "tooltip", "hover")),
+            Map.entry("hotbar", Set.of("at", "size", "anchor", "color", "no", "layer", "id", "spacing")),
+            Map.entry("input", Set.of("at", "size", "anchor", "color", "layer", "id", "value", "placeholder", "hint", "max", "length", "run", "function", "hidden", "tooltip", "hover")),
+            Map.entry("slider", Set.of("at", "size", "anchor", "color", "layer", "id", "from", "to", "min", "max", "value", "step", "run", "function", "hidden", "tooltip", "hover")),
+            Map.entry("toggle", Set.of("at", "size", "anchor", "color", "layer", "id", "value", "checked", "run", "function", "hidden", "tooltip", "hover")));
 
     /**
      * Элемент экрана или HUD (одна строка; "hotbar" раскладывается в 9 слотов):
@@ -2380,7 +2382,7 @@ public final class ScriptParser {
         boolean boxHoriz = false;
         while (idx < t.size()) {
             String opt = word(t, idx);
-            if (!allowed.contains(opt)) {
+            if (allowed == null || !allowed.contains(opt)) {
                 throw new ParseException(opt.isEmpty() ? "лишний текст в кавычках: \"" + t.get(idx).value() + "\""
                         : "у элемента '" + kind + "' нет параметра '" + opt + "'");
             }
