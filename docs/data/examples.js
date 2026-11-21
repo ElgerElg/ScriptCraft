@@ -2861,13 +2861,13 @@ function TdCellClick(p: player, col: integer, row: integer):
 		if {-lvl} >= 5:
 			set text of screen element "status_txt" for p to "&6&l✦5★ MAX &7| Владелец: &f%{-own}% &7| Дальность: &b%{-td-tmp-rng}%"
 			stop
-		set {-up} to 115
+		set {-up} to 95
 		if {-lvl} is 2:
-			set {-up} to 250
+			set {-up} to 210
 		else if {-lvl} is 3:
-			set {-up} to 430
+			set {-up} to 360
 		else if {-lvl} is 4:
-			set {-up} to 685
+			set {-up} to 570
 		if {-td-gold::%p%} < {-up}:
 			if {-lvl} is 4:
 				set text of screen element "status_txt" for p to "&7Владелец: &f%{-own}% &7(ур.4) | Для &6✦5★ ЭВОЛЮЦИИ &7нужно &6%{-up}%з!"
@@ -2892,7 +2892,7 @@ function TdCellClick(p: player, col: integer, row: integer):
 			TdSyncSound({-g}, "entity.player.levelup", 0.5, 1.45)
 		else if {-nl} is 4:
 			TdSyncTxt({-g}, "st%{-tid}%", "&b★★★★")
-			TdSyncStatus({-g}, "&b%p% поднял ур.4! След. клик (685з) → &6&l✦5★ ЭВОЛЮЦИЯ!")
+			TdSyncStatus({-g}, "&b%p% поднял ур.4! След. клик (570з) → &6&l✦5★ ЭВОЛЮЦИЯ!")
 			TdSyncSound({-g}, "entity.player.levelup", 0.55, 1.6)
 		else:
 			TdSyncTxt({-g}, "st%{-tid}%", "&6&l✦5★")
