@@ -1967,6 +1967,10 @@ public final class ScriptParser {
         int x = 0, y = 0, w = 120, h = 140, layer = 0;
         int color = 0xFFFFFFFF;
         Anchor anchor = Anchor.CENTER;
+        int boxGrad = 0;
+        int boxBorder = 0;
+        int boxBorderW = 1;
+        boolean boxHoriz = false;
         while (idx < t.size()) {
             String opt = word(t, idx);
             switch (opt) {
@@ -2108,6 +2112,10 @@ public final class ScriptParser {
         String action = "";
         boolean keepOpen = false;
         int idx = 2;
+        int boxGrad = 0;
+        int boxBorder = 0;
+        int boxBorderW = 1;
+        boolean boxHoriz = false;
         while (idx < t.size()) {
             String opt = word(t, idx);
             if (opt.equals("run") || opt.equals("function")) {
@@ -2283,6 +2291,10 @@ public final class ScriptParser {
                 main = quoted(t, 1);
                 idx = 2;
             }
+            case "box", "rect" -> {
+                kind = "box";
+                idx = 1;
+            }
             case "slot" -> {
                 String what = word(t, 1);
                 idx = 2;
@@ -2362,6 +2374,10 @@ public final class ScriptParser {
         int backgroundColor = 0x80000000;
 
         Set<String> allowed = ELEMENT_OPTIONS.get(kind);
+        int boxGrad = 0;
+        int boxBorder = 0;
+        int boxBorderW = 1;
+        boolean boxHoriz = false;
         while (idx < t.size()) {
             String opt = word(t, idx);
             if (!allowed.contains(opt)) {
@@ -2450,8 +2466,12 @@ public final class ScriptParser {
                     idx += 2;
                 }
                 case "to" -> {
-                    if (idx + 1 >= t.size()) throw new ParseException("нужно: to <число>");
-                    sliderMax = parseDouble(t.get(idx + 1).value());
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: to <значение>");
+                    if (kind.equals("box")) {
+                        boxGrad = parseColor(t.get(idx + 1).value());
+                    } else {
+                        sliderMax = parseDouble(t.get(idx + 1).value());
+                    }
                     idx += 2;
                 }
                 case "step" -> {
@@ -2548,6 +2568,26 @@ public final class ScriptParser {
                     barText = quoted(t, idx + 1);
                     idx += 2;
                 }
+                case "gradient" -> {
+                    boxGrad = parseColor(idx + 1 < t.size() ? t.get(idx + 1).value() : "");
+                    idx += 2;
+                }
+                case "horizontal" -> {
+                    boxHoriz = true;
+                    idx++;
+                }
+                case "vertical" -> {
+                    boxHoriz = false;
+                    idx++;
+                }
+                case "border" -> {
+                    boxBorder = parseColor(idx + 1 < t.size() ? t.get(idx + 1).value() : "");
+                    idx += 2;
+                }
+                case "border_width", "border-width" -> {
+                    boxBorderW = parseInt(idx + 1 < t.size() ? t.get(idx + 1).value() : "1");
+                    idx += 2;
+                }
                 default -> throw new ParseException("неизвестный параметр элемента: " + opt);
             }
         }
@@ -2558,6 +2598,13 @@ public final class ScriptParser {
         if (kind.equals("bar") && !colorSet) {
             color = 0xFF4CAF50;
         }
+        if (kind.equals("box")) {
+            if (!colorSet) {
+                color = 0xCC111827;
+            }
+            if (w <= 0) w = 100;
+            if (h <= 0) h = 60;
+        }
         Layout layout = new Layout(x, y, w, h, anchor, color, layer);
         boolean effectiveKeep = keepOpen || kind.equals("input") || kind.equals("slider") || kind.equals("toggle");
         String packedAction = com.scriptcraft.screen.ScreenMeta.pack(id, effectiveKeep, hotkey, hidden, tooltip, action);
@@ -2565,6 +2612,12 @@ public final class ScriptParser {
             case "text" -> new TextElement(layout, main, shadow, packedAction);
             case "button" -> new ButtonElement(layout, main, packedAction);
             case "slot" -> new SlotElement(layout, slotContent, main, count, frame, packedAction);
+            case "box" -> {
+                String spec = "box:" + (boxGrad == 0 ? "0" : Integer.toHexString(boxGrad))
+                        + ":" + (boxBorder == 0 ? "0" : Integer.toHexString(boxBorder))
+                        + ":" + (boxHoriz ? "h" : "v") + ":" + boxBorderW;
+                yield new ImageElement(layout, spec, 0, 0, packedAction);
+            }
             case "bar" -> new BarElement(layout, com.scriptcraft.screen.ScreenMeta.packBarId(id, hidden, tooltip),
                     value, max != null ? max : defaultMax(value), direction,
                     backgroundColor, fillTexture, backgroundTexture, texW, texH, barText, shadow);
@@ -2765,6 +2818,10 @@ public final class ScriptParser {
         String snbt = null;
         java.util.Map<net.minecraft.world.entity.EquipmentSlot, String> equip = new java.util.EnumMap<>(net.minecraft.world.entity.EquipmentSlot.class);
 
+        int boxGrad = 0;
+        int boxBorder = 0;
+        int boxBorderW = 1;
+        boolean boxHoriz = false;
         while (idx < t.size()) {
             String w = word(t, idx);
             if (w.equals("named") || w.equals("name")) {

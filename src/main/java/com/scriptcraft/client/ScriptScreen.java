@@ -54,7 +54,28 @@ public class ScriptScreen extends Screen {
     private long lastSliderSendMs;
     private final Map<ListElement, Integer> scroll = new IdentityHashMap<>();
     private final Map<Integer, String> heldKeys = new LinkedHashMap<>();
+    private final Map<String, ActiveTween> tweens = new LinkedHashMap<>();
     private boolean serverClosed;
+
+    private record ActiveTween(float fromX, float fromY, float toX, float toY, long startMs, int durationMs) {
+        float progress(long nowMs) {
+            if (durationMs <= 0) return 1f;
+            float t = Math.max(0f, Math.min(1f, (nowMs - startMs) / (float) durationMs));
+            return durationMs <= 200 ? t : 1f - (1f - t) * (1f - t);
+        }
+
+        float curX(long nowMs) {
+            return fromX + (toX - fromX) * progress(nowMs);
+        }
+
+        float curY(long nowMs) {
+            return fromY + (toY - fromY) * progress(nowMs);
+        }
+
+        boolean done(long nowMs) {
+            return nowMs - startMs >= durationMs;
+        }
+    }
 
     public ScriptScreen(ScreenDescription description) {
         super(Component.literal(description.title()));
@@ -106,8 +127,32 @@ public class ScriptScreen extends Screen {
                 }
             }
         }
+        long nowMs = System.currentTimeMillis();
+        Map<String, float[]> prevPosById = new LinkedHashMap<>();
+        for (ScreenElement element : ordered) {
+            String eid = ScreenMeta.elementId(element);
+            if (!eid.isEmpty()) {
+                ActiveTween active = tweens.get(eid);
+                if (active != null && !active.done(nowMs)) {
+                    prevPosById.put(eid, new float[]{active.curX(nowMs), active.curY(nowMs)});
+                } else {
+                    prevPosById.put(eid, new float[]{element.layout().x(), element.layout().y()});
+                }
+            }
+        }
         this.description = next;
         this.ordered = ElementRenderer.sortedByLayer(next.elements(), e -> e.layout().layer());
+        for (ScreenElement e : next.elements()) {
+            String eid = ScreenMeta.elementId(e);
+            if (eid.isEmpty()) continue;
+            int durMs = ScreenMeta.tweenMs(e);
+            if (durMs > 0) {
+                float[] prev = prevPosById.get(eid);
+                if (prev != null) {
+                    tweens.put(eid, new ActiveTween(prev[0], prev[1], e.layout().x(), e.layout().y(), nowMs, durMs));
+                }
+            }
+        }
         // Обновляем локальные значения для изменённых с сервера контролов, кроме активного поля ввода
         for (ScreenElement e : next.elements()) {
             String id = ScreenMeta.elementId(e);
@@ -247,25 +292,52 @@ public class ScriptScreen extends Screen {
 
         ItemStack hoveredItem = ItemStack.EMPTY;
         String hoveredTooltip = "";
+        long nowMs = System.currentTimeMillis();
         float z = 0f;
-        for (ScreenElement element : ordered) {
-            if (ScreenMeta.isHidden(element)) {
+        for (ScreenElement rawElement : ordered) {
+            if (ScreenMeta.isHidden(rawElement)) {
                 continue;
+            }
+            ScreenElement element = rawElement;
+            String tweenId = ScreenMeta.elementId(rawElement);
+            if (!tweenId.isEmpty()) {
+                ActiveTween tw = tweens.get(tweenId);
+                if (tw != null) {
+                    if (tw.done(nowMs)) {
+                        tweens.remove(tweenId);
+                    } else {
+                        element = ScreenMeta.withPosition(rawElement, Math.round(tw.curX(nowMs)), Math.round(tw.curY(nowMs)));
+                    }
+                }
             }
             graphics.pose().pushPose();
             graphics.pose().translate(0f, 0f, z);
-            Button btn = buttons.get(element);
-            EditBox box = inputs.get(element);
+            Button btn = buttons.get(rawElement);
+            EditBox box = inputs.get(rawElement);
             if (btn != null) {
+                if (element != rawElement) {
+                    Layout l = element.layout();
+                    int bw = l.width() > 0 ? l.width() : 100;
+                    int bh = l.height() > 0 ? l.height() : 20;
+                    btn.setX(l.anchor().resolveX(this.width, bw, l.x()));
+                    btn.setY(l.anchor().resolveY(this.height, bh, l.y()));
+                }
                 btn.render(graphics, mouseX, mouseY, partialTick);
             } else if (box != null) {
+                if (element != rawElement) {
+                    Layout l = element.layout();
+                    int bw = l.width() > 0 ? l.width() : 120;
+                    int bh = l.height() > 0 ? l.height() : 18;
+                    box.setX(l.anchor().resolveX(this.width, bw, l.x()));
+                    box.setY(l.anchor().resolveY(this.height, bh, l.y()));
+                }
                 box.render(graphics, mouseX, mouseY, partialTick);
             } else if (element instanceof SliderElement sl) {
                 renderSlider(graphics, sl, mouseX, mouseY);
             } else if (element instanceof ToggleElement tg) {
                 renderToggle(graphics, tg, mouseX, mouseY);
             } else {
-                int listScroll = element instanceof ListElement list ? scroll.getOrDefault(list, 0) : 0;
+                int listScroll = rawElement instanceof ListElement list ? scroll.getOrDefault(list, 0) : 0;
                 ItemStack stack = ElementRenderer.render(graphics, this.font, element, this.width, this.height, mouseX, mouseY, listScroll);
                 if (!stack.isEmpty()) {
                     hoveredItem = stack;

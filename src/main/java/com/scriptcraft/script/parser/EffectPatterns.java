@@ -51,6 +51,7 @@ final class EffectPatterns {
         setter("gamemode", (t, v) -> new Effects.SetGameMode(t, gameMode(v)));
         setter("game mode", (t, v) -> new Effects.SetGameMode(t, gameMode(v)));
         setterExpr("health", Effects.SetHealth::new);
+        setterExpr("max health", Effects.SetMaxHealth::new);
         setterExpr("food level", Effects.SetFood::new);
         setterExpr("hunger", Effects.SetFood::new);
         setterExpr("saturation", Effects.SetSaturation::new);
@@ -461,6 +462,164 @@ final class EffectPatterns {
         rule("stop", c -> new Actions.Stop());
         rule("cancel event", c -> new Actions.CancelEvent());
         rule("cancel the event", c -> new Actions.CancelEvent());
+
+        // --- строковые операции
+        rule("replace %piece% with %piece% in %var%", c -> {
+            String raw = c.raw(2).value();
+            if (!raw.startsWith("{") || !raw.endsWith("}")) {
+                throw new ParseException("ожидается переменная {имя}, а не '" + raw + "'");
+            }
+            return new Effects.ReplaceInVar(c.exprValue(0), c.exprValue(1), raw.substring(1, raw.length() - 1));
+        });
+        rule("split %piece% by %piece% into %var%", c -> {
+            String raw = c.raw(2).value();
+            if (!raw.startsWith("{") || !raw.endsWith("::*}")) {
+                throw new ParseException("ожидается список {имя::*}, а не '" + raw + "'");
+            }
+            return new Effects.SplitIntoList(c.exprValue(0), c.exprValue(1), raw.substring(1, raw.length() - 2));
+        });
+
+        // --- плавные клиентские анимации (tween) элементов экрана
+        rule("animate|tween screen element %piece% for|to|of %target% to %piece% %piece% in %piece% " + SECONDS,
+                c -> new Effects.AnimateScreenElement(c.exprValue(0), c.target(1), c.exprValue(2), c.exprValue(3),
+                        new Expression.MathBinary(c.exprValue(4), "*", new Expression.Literal(20.0))));
+        rule("animate|tween screen element %piece% for|to|of %target% to %piece% %piece% in %piece% ticks|tick",
+                c -> new Effects.AnimateScreenElement(c.exprValue(0), c.target(1), c.exprValue(2), c.exprValue(3), c.exprValue(4)));
+        rule("animate|tween screen element %piece% for|to|of %target% to %piece% %piece%",
+                c -> new Effects.AnimateScreenElement(c.exprValue(0), c.target(1), c.exprValue(2), c.exprValue(3), null));
+        rule("animate|tween screen element %piece% to %piece% %piece% in %piece% " + SECONDS,
+                c -> new Effects.AnimateScreenElement(c.exprValue(0), null, c.exprValue(1), c.exprValue(2),
+                        new Expression.MathBinary(c.exprValue(3), "*", new Expression.Literal(20.0))));
+        rule("animate|tween screen element %piece% to %piece% %piece% in %piece% ticks|tick",
+                c -> new Effects.AnimateScreenElement(c.exprValue(0), null, c.exprValue(1), c.exprValue(2), c.exprValue(3)));
+        rule("animate|tween screen element %piece% to %piece% %piece%",
+                c -> new Effects.AnimateScreenElement(c.exprValue(0), null, c.exprValue(1), c.exprValue(2), null));
+        rule("animate|tween screen %piece% for|to|of %target% to %piece% %piece% in %piece% " + SECONDS,
+                c -> new Effects.AnimateScreenElement(c.exprValue(0), c.target(1), c.exprValue(2), c.exprValue(3),
+                        new Expression.MathBinary(c.exprValue(4), "*", new Expression.Literal(20.0))));
+        rule("animate|tween screen %piece% for|to|of %target% to %piece% %piece% in %piece% ticks|tick",
+                c -> new Effects.AnimateScreenElement(c.exprValue(0), c.target(1), c.exprValue(2), c.exprValue(3), c.exprValue(4)));
+        rule("animate|tween screen %piece% for|to|of %target% to %piece% %piece%",
+                c -> new Effects.AnimateScreenElement(c.exprValue(0), c.target(1), c.exprValue(2), c.exprValue(3), null));
+        rule("animate|tween screen %piece% to %piece% %piece% in %piece% " + SECONDS,
+                c -> new Effects.AnimateScreenElement(c.exprValue(0), null, c.exprValue(1), c.exprValue(2),
+                        new Expression.MathBinary(c.exprValue(3), "*", new Expression.Literal(20.0))));
+        rule("animate|tween screen %piece% to %piece% %piece% in %piece% ticks|tick",
+                c -> new Effects.AnimateScreenElement(c.exprValue(0), null, c.exprValue(1), c.exprValue(2), c.exprValue(3)));
+        rule("animate|tween screen %piece% to %piece% %piece%",
+                c -> new Effects.AnimateScreenElement(c.exprValue(0), null, c.exprValue(1), c.exprValue(2), null));
+
+        // --- лор и зачарования предметов
+        rule("set lore of player's tool to %expr%",
+                c -> new Effects.ItemLore(new Target.Self(), null, false, true, "set", List.of(c.expr(0))));
+        rule("set lore of slot hotbar %piece% of %target% to %expr%",
+                c -> new Effects.ItemLore(c.target(1), c.exprValue(0), true, false, "set", List.of(c.expr(2))));
+        rule("set lore of slot %piece% of %target% to %expr%",
+                c -> new Effects.ItemLore(c.target(1), c.exprValue(0), false, false, "set", List.of(c.expr(2))));
+        rule("add lore %piece% to player's tool",
+                c -> new Effects.ItemLore(new Target.Self(), null, false, true, "add", List.of(c.exprValue(0))));
+        rule("add lore %piece% to slot hotbar %piece% of %target%",
+                c -> new Effects.ItemLore(c.target(2), c.exprValue(1), true, false, "add", List.of(c.exprValue(0))));
+        rule("add lore %piece% to slot %piece% of %target%",
+                c -> new Effects.ItemLore(c.target(2), c.exprValue(1), false, false, "add", List.of(c.exprValue(0))));
+        rule("clear lore of player's tool",
+                c -> new Effects.ItemLore(new Target.Self(), null, false, true, "clear", List.of()));
+        rule("clear lore of slot hotbar %piece% of %target%",
+                c -> new Effects.ItemLore(c.target(1), c.exprValue(0), true, false, "clear", List.of()));
+        rule("clear lore of slot %piece% of %target%",
+                c -> new Effects.ItemLore(c.target(1), c.exprValue(0), false, false, "clear", List.of()));
+
+        rule("enchant player's tool with %piece% level|lvl %expr%",
+                c -> new Effects.EnchantItem(new Target.Self(), null, false, true, c.exprValue(0), c.expr(1)));
+        rule("enchant player's tool with %expr%",
+                c -> new Effects.EnchantItem(new Target.Self(), null, false, true, c.expr(0), null));
+        rule("enchant slot hotbar %piece% of %target% with %piece% level|lvl %expr%",
+                c -> new Effects.EnchantItem(c.target(1), c.exprValue(0), true, false, c.exprValue(2), c.expr(3)));
+        rule("enchant slot hotbar %piece% of %target% with %expr%",
+                c -> new Effects.EnchantItem(c.target(1), c.exprValue(0), true, false, c.expr(2), null));
+        rule("enchant slot %piece% of %target% with %piece% level|lvl %expr%",
+                c -> new Effects.EnchantItem(c.target(1), c.exprValue(0), false, false, c.exprValue(2), c.expr(3)));
+        rule("enchant slot %piece% of %target% with %expr%",
+                c -> new Effects.EnchantItem(c.target(1), c.exprValue(0), false, false, c.expr(2), null));
+
+        // --- 3D-голограммы (TextDisplay 1.20.1)
+        rule("create hologram %piece% text %piece% at %num% %num% %num% scale %piece% billboard %word%",
+                c -> new Effects.HologramAction("create", c.exprValue(0), c.exprValue(1), null, null,
+                        c.num(2), c.num(3), c.num(4), c.exprValue(5), c.raw(6).value()));
+        rule("create hologram %piece% text %piece% at %num% %num% %num% scale %expr%",
+                c -> new Effects.HologramAction("create", c.exprValue(0), c.exprValue(1), null, null,
+                        c.num(2), c.num(3), c.num(4), c.expr(5), "center"));
+        rule("create hologram %piece% text %piece% at %num% %num% %num%",
+                c -> new Effects.HologramAction("create", c.exprValue(0), c.exprValue(1), null, null,
+                        c.num(2), c.num(3), c.num(4), null, "center"));
+        rule("create hologram %piece% text %piece% at %target% scale %piece% billboard %word%",
+                c -> new Effects.HologramAction("create", c.exprValue(0), c.exprValue(1), null, c.target(2),
+                        null, null, null, c.exprValue(3), c.raw(4).value()));
+        rule("create hologram %piece% text %piece% at %target% scale %expr%",
+                c -> new Effects.HologramAction("create", c.exprValue(0), c.exprValue(1), null, c.target(2),
+                        null, null, null, c.expr(3), "center"));
+        rule("create hologram %piece% text %piece% at %target%",
+                c -> new Effects.HologramAction("create", c.exprValue(0), c.exprValue(1), null, c.target(2),
+                        null, null, null, null, "center"));
+        rule("create hologram %piece% text %piece% at %piece% scale %piece% billboard %word%",
+                c -> new Effects.HologramAction("create", c.exprValue(0), c.exprValue(1), c.exprValue(2), null,
+                        null, null, null, c.exprValue(3), c.raw(4).value()));
+        rule("create hologram %piece% text %piece% at %piece% scale %expr%",
+                c -> new Effects.HologramAction("create", c.exprValue(0), c.exprValue(1), c.exprValue(2), null,
+                        null, null, null, c.expr(3), "center"));
+        rule("create hologram %piece% text %piece% at %expr%",
+                c -> new Effects.HologramAction("create", c.exprValue(0), c.exprValue(1), c.expr(2), null,
+                        null, null, null, null, "center"));
+        rule("set text of hologram %piece% to %expr%",
+                c -> new Effects.HologramAction("text", c.exprValue(0), c.expr(1), null, null, null, null, null, null, null));
+        rule("move hologram %piece% to %num% %num% %num%",
+                c -> new Effects.HologramAction("move", c.exprValue(0), null, null, null, c.num(1), c.num(2), c.num(3), null, null));
+        rule("move hologram %piece% to %target%",
+                c -> new Effects.HologramAction("move", c.exprValue(0), null, null, c.target(1), null, null, null, null, null));
+        rule("move hologram %piece% to %expr%",
+                c -> new Effects.HologramAction("move", c.exprValue(0), null, c.expr(1), null, null, null, null, null, null));
+        rule("remove|delete hologram %expr%",
+                c -> new Effects.HologramAction("remove", c.expr(0), null, null, null, null, null, null, null, null));
+        rule("clear all holograms",
+                c -> new Effects.HologramAction("clear", null, null, null, null, null, null, null, null, null));
+        rule("clear holograms",
+                c -> new Effects.HologramAction("clear", null, null, null, null, null, null, null, null, null));
+
+        // --- ванильные боссбары
+        rule("create bossbar %piece% title %piece% color %word% style %word% progress %piece% for|to %target%",
+                c -> new Effects.BossBarAction("create", c.exprValue(0), c.exprValue(1), c.raw(2).value(), c.raw(3).value(), c.exprValue(4), c.target(5)));
+        rule("create bossbar %piece% title %piece% color %word% progress %piece% for|to %target%",
+                c -> new Effects.BossBarAction("create", c.exprValue(0), c.exprValue(1), c.raw(2).value(), "progress", c.exprValue(3), c.target(4)));
+        rule("create bossbar %piece% title %piece% color %word% for|to %target%",
+                c -> new Effects.BossBarAction("create", c.exprValue(0), c.exprValue(1), c.raw(2).value(), "progress", null, c.target(3)));
+        rule("create bossbar %piece% title %piece% progress %piece% for|to %target%",
+                c -> new Effects.BossBarAction("create", c.exprValue(0), c.exprValue(1), "red", "progress", c.exprValue(2), c.target(3)));
+        rule("create bossbar %piece% title %piece% for|to %target%",
+                c -> new Effects.BossBarAction("create", c.exprValue(0), c.exprValue(1), "red", "progress", null, c.target(2)));
+        rule("create bossbar %piece% title %piece% color %word% progress %expr%",
+                c -> new Effects.BossBarAction("create", c.exprValue(0), c.exprValue(1), c.raw(2).value(), "progress", c.expr(3), null));
+        rule("create bossbar %piece% title %piece% color %word%",
+                c -> new Effects.BossBarAction("create", c.exprValue(0), c.exprValue(1), c.raw(2).value(), "progress", null, null));
+        rule("create bossbar %piece% title %expr%",
+                c -> new Effects.BossBarAction("create", c.exprValue(0), c.expr(1), "red", "progress", null, null));
+        rule("set title of bossbar %piece% to %expr%",
+                c -> new Effects.BossBarAction("title", c.exprValue(0), c.expr(1), null, null, null, null));
+        rule("set progress|value of bossbar %piece% to %expr%",
+                c -> new Effects.BossBarAction("progress", c.exprValue(0), null, null, null, c.expr(1), null));
+        rule("set color of bossbar %piece% to %word%",
+                c -> new Effects.BossBarAction("color", c.exprValue(0), null, c.raw(1).value(), null, null, null));
+        rule("set style of bossbar %piece% to %word%",
+                c -> new Effects.BossBarAction("style", c.exprValue(0), null, null, c.raw(1).value(), null, null));
+        rule("show bossbar %piece% to|for %target%",
+                c -> new Effects.BossBarAction("show", c.exprValue(0), null, null, null, null, c.target(1)));
+        rule("hide bossbar %piece% from|for %target%",
+                c -> new Effects.BossBarAction("hide", c.exprValue(0), null, null, null, null, c.target(1)));
+        rule("remove|delete bossbar %expr%",
+                c -> new Effects.BossBarAction("remove", c.expr(0), null, null, null, null, null));
+        rule("clear all bossbars",
+                c -> new Effects.BossBarAction("clear", null, null, null, null, null, null));
+        rule("clear bossbars",
+                c -> new Effects.BossBarAction("clear", null, null, null, null, null, null));
 
         // --- команды (выключаются allowCommandEffects = false)
         rule("execute console command %text%", c -> new Effects.ConsoleCommand(c.text(0)));

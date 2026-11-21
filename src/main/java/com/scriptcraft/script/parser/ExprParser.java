@@ -249,6 +249,42 @@ final class ExprParser {
             Parsed hi = parseAtom(t, lo.end());
             return new Parsed(new Expression.MathClamp(v.expression(), lo.expression(), hi.expression()), hi.end());
         }
+        if (w.equals("lowercase") || w.equals("uppercase") || w.equals("trim")) {
+            int next = word(t, i + 1).equals("of") ? i + 2 : i + 1;
+            Parsed arg = parseAtom(t, next);
+            return new Parsed(new Expression.StringOp(w, arg.expression(), null, null), arg.end());
+        }
+        if (w.equals("substring")) {
+            int next = word(t, i + 1).equals("of") ? i + 2 : i + 1;
+            Parsed src = parseAtom(t, next);
+            int p = src.end();
+            if (!word(t, p).equals("from")) {
+                throw new ParseException("expected 'from' in substring", "ожидается 'from' в substring");
+            }
+            Parsed from = parseAtom(t, p + 1);
+            int q = from.end();
+            Expression toExpr = null;
+            if (word(t, q).equals("to")) {
+                Parsed to = parseAtom(t, q + 1);
+                toExpr = to.expression();
+                q = to.end();
+            }
+            return new Parsed(new Expression.StringOp("substring", src.expression(), from.expression(), toExpr), q);
+        }
+        if (w.equals("replace")) {
+            Parsed find = parseAtom(t, i + 1);
+            int p = find.end();
+            if (!word(t, p).equals("with")) {
+                throw new ParseException("expected 'with' in replace", "ожидается 'with' в replace");
+            }
+            Parsed repl = parseAtom(t, p + 1);
+            int q = repl.end();
+            if (!word(t, q).equals("in")) {
+                throw new ParseException("expected 'in' in replace", "ожидается 'in' в replace");
+            }
+            Parsed src = parseAtom(t, q + 1);
+            return new Parsed(new Expression.StringOp("replace", src.expression(), find.expression(), repl.expression()), src.end());
+        }
         if (w.equals("random")) {
             return parseRandom(t, i);
         }

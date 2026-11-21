@@ -105,6 +105,46 @@ public record ScreenMeta(String id, boolean keepOpen, String hotkey, boolean hid
         return false;
     }
 
+    public static int tweenMs(ScreenElement e) {
+        String packed = elementPackedAction(e);
+        if (packed == null || packed.isEmpty() || packed.charAt(0) != MARK) {
+            return 0;
+        }
+        int end = packed.indexOf(MARK, 1);
+        if (end < 0) {
+            return 0;
+        }
+        String[] parts = packed.substring(1, end).split(String.valueOf(SEP), -1);
+        if (parts.length > 5 && parts[5].startsWith("tw")) {
+            try {
+                return Integer.parseInt(parts[5].substring(2));
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return 0;
+    }
+
+    public static ScreenElement withTween(ScreenElement e, int durationMs) {
+        if (durationMs <= 0) {
+            return e;
+        }
+        String packed = elementPackedAction(e);
+        if (packed == null) {
+            return e;
+        }
+        ScreenMeta m = unpack(packed);
+        String nextPacked = MARK + m.id() + SEP + (m.keepOpen() ? '1' : '0') + SEP + m.hotkey()
+                + SEP + (m.hidden() ? '1' : '0') + SEP + m.tooltip() + SEP + "tw" + durationMs + MARK + m.rawAction();
+        if (e instanceof ButtonElement b) return new ButtonElement(b.layout(), b.label(), nextPacked);
+        if (e instanceof TextElement t) return new TextElement(t.layout(), t.text(), t.shadow(), nextPacked);
+        if (e instanceof ImageElement i) return new ImageElement(i.layout(), i.texture(), i.textureWidth(), i.textureHeight(), nextPacked);
+        if (e instanceof SlotElement s) return new SlotElement(s.layout(), s.content(), s.value(), s.count(), s.frame(), nextPacked);
+        if (e instanceof InputElement in) return new InputElement(in.layout(), in.value(), in.placeholder(), in.maxLength(), nextPacked);
+        if (e instanceof SliderElement sl) return new SliderElement(sl.layout(), sl.label(), sl.min(), sl.max(), sl.value(), sl.step(), nextPacked);
+        if (e instanceof ToggleElement tg) return new ToggleElement(tg.layout(), tg.label(), tg.value(), nextPacked);
+        return e;
+    }
+
     public static boolean hasListScrollbar(ListElement list) {
         return !"noslider".equals(unpack(list.header()).hotkey());
     }

@@ -1547,6 +1547,279 @@ public final class Effects {
         }
     }
 
+    /** Преобразует &-цвета в Component. */
+    public static Component colored(@Nullable String raw) {
+        if (raw == null || raw.isEmpty()) {
+            return Component.empty();
+        }
+        return Component.literal(raw.replace('&', '\u00a7'));
+    }
+
+    /** replace <find> with <repl> in {<var>} */
+    public record ReplaceInVar(Expression find, Expression repl, String varName) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            String key = ctx.format(varName);
+            Object raw = com.scriptcraft.script.variables.VariableStore.get(key);
+            if (raw == null) {
+                return;
+            }
+            String src = Expression.toText(raw);
+            String f = Expression.toText(find.evaluate(ctx));
+            String r = Expression.toText(repl.evaluate(ctx));
+            if (!f.isEmpty()) {
+                com.scriptcraft.script.variables.VariableStore.set(key, src.replace(f, r));
+            }
+        }
+    }
+
+    /** split <text> by <sep> into {<list>::*} */
+    public record SplitIntoList(Expression text, Expression sep, String listPrefix) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            String prefix = ctx.format(listPrefix);
+            com.scriptcraft.script.variables.VariableStore.deleteChildren(prefix);
+            String src = Expression.toText(text.evaluate(ctx));
+            String delimiter = Expression.toText(sep.evaluate(ctx));
+            String[] parts = delimiter.isEmpty()
+                    ? src.split("")
+                    : src.split(java.util.regex.Pattern.quote(delimiter), -1);
+            int idx = 1;
+            for (String part : parts) {
+                com.scriptcraft.script.variables.VariableStore.set(prefix + idx, part);
+                idx++;
+            }
+        }
+    }
+
+    /** set max health of <target> to <N> */
+    public record SetMaxHealth(Target target, Expression value) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            double maxHp = Math.max(1.0, Math.min(2048.0, number(value, ctx)));
+            for (ServerPlayer p : target.resolve(ctx)) {
+                AttributeInstance attr = p.getAttribute(Attributes.MAX_HEALTH);
+                if (attr != null) {
+                    attr.setBaseValue(maxHp);
+                    if (p.getHealth() > maxHp) {
+                        p.setHealth((float) maxHp);
+                    }
+                }
+            }
+        }
+    }
+
+    /** set / add / clear lore of slot / player's tool */
+    public record ItemLore(Target target, @Nullable Expression slot, boolean hotbar, boolean heldTool,
+                           String mode, List<Expression> lines) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            List<String> resolved = new java.util.ArrayList<>();
+            for (Expression lineExpr : lines) {
+                String txt = Expression.toText(lineExpr.evaluate(ctx)).replace("\\n", "\n");
+                for (String piece : txt.split("\n")) {
+                    resolved.add(piece);
+                }
+            }
+            for (ServerPlayer p : target.resolve(ctx)) {
+                ItemStack stack = resolveTargetStack(p, slot, hotbar, heldTool, ctx);
+                if (stack.isEmpty()) {
+                    continue;
+                }
+                if ("clear".equals(mode)) {
+                    CompoundTag display = stack.getTagElement("display");
+                    if (display != null) {
+                        display.remove("Lore");
+                    }
+                    continue;
+                }
+                CompoundTag display = stack.getOrCreateTagElement("display");
+                net.minecraft.nbt.ListTag loreTag = "add".equals(mode) && display.contains("Lore", 9)
+                        ? display.getList("Lore", 8)
+                        : new net.minecraft.nbt.ListTag();
+                for (String line : resolved) {
+                    Component comp = colored(line).copy().withStyle(s -> s.withItalic(false));
+                    loreTag.add(net.minecraft.nbt.StringTag.valueOf(Component.Serializer.toJson(comp)));
+                }
+                display.put("Lore", loreTag);
+            }
+        }
+    }
+
+    /** enchant slot / player's tool with <id> [level <N>] */
+    public record EnchantItem(Target target, @Nullable Expression slot, boolean hotbar, boolean heldTool,
+                              Expression enchantId, @Nullable Expression level) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            String rawId = Expression.toText(enchantId.evaluate(ctx)).strip().toLowerCase(java.util.Locale.ROOT);
+            if (!rawId.contains(":")) {
+                rawId = "minecraft:" + rawId;
+            }
+            ResourceLocation rl = ResourceLocation.tryParse(rawId);
+            if (rl == null) {
+                throw new ScriptRuntimeException("неизвестное зачарование: " + rawId);
+            }
+            net.minecraft.world.item.enchantment.Enchantment ench =
+                    net.minecraftforge.registries.ForgeRegistries.ENCHANTMENTS.getValue(rl);
+            if (ench == null) {
+                throw new ScriptRuntimeException("зачарование не найдено: " + rawId);
+            }
+            int lvl = level == null ? 1 : Math.max(1, Math.min(255, (int) Math.round(number(level, ctx))));
+            for (ServerPlayer p : target.resolve(ctx)) {
+                ItemStack stack = resolveTargetStack(p, slot, hotbar, heldTool, ctx);
+                if (!stack.isEmpty()) {
+                    stack.enchant(ench, lvl);
+                }
+            }
+        }
+    }
+
+    private static ItemStack resolveTargetStack(ServerPlayer p, @Nullable Expression slot, boolean hotbar,
+                                                boolean heldTool, ExecutionContext ctx) {
+        if (heldTool || slot == null) {
+            return p.getMainHandItem();
+        }
+        int idx = resolveSlotIdx(slot.evaluate(ctx), hotbar, p);
+        if (idx < 0) {
+            return ItemStack.EMPTY;
+        }
+        return p.getInventory().getItem(idx);
+    }
+
+    private static int resolveSlotIdx(@Nullable Object raw, boolean hotbar, ServerPlayer p) {
+        if (hotbar) {
+            Double n = Expression.toNumber(raw);
+            if (n == null) return -1;
+            int idx = (int) Math.round(n) - 1;
+            return (idx >= 0 && idx <= 8) ? idx : -1;
+        }
+        String text = Expression.toText(raw).strip().toLowerCase(java.util.Locale.ROOT);
+        return switch (text) {
+            case "boots" -> 36;
+            case "leggings" -> 37;
+            case "chestplate" -> 38;
+            case "helmet" -> 39;
+            case "offhand" -> 40;
+            case "mainhand" -> p.getInventory().selected;
+            default -> {
+                Double n = Expression.toNumber(raw);
+                if (n == null) yield -1;
+                int idx = (int) Math.round(n);
+                yield (idx >= 0 && idx <= 40) ? idx : -1;
+            }
+        };
+    }
+
+    /** animate screen "<id>" [for <target>] to <X> <Y> [in <T> ticks|seconds] */
+    public record AnimateScreenElement(Expression id, @Nullable Target target, Expression x, Expression y,
+                                       @Nullable Expression durationTicks) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            String elemId = Expression.toText(id.evaluate(ctx));
+            int tx = (int) Math.round(number(x, ctx));
+            int ty = (int) Math.round(number(y, ctx));
+            int ticks = durationTicks == null ? 6 : Math.max(1, Math.min(400, (int) Math.round(number(durationTicks, ctx))));
+            int durMs = ticks * 50;
+            List<ServerPlayer> players = target == null
+                    ? (ctx.player() == null ? List.of() : List.of(ctx.player()))
+                    : target.resolve(ctx);
+            for (ServerPlayer p : players) {
+                com.scriptcraft.screen.ScreenManager.animatePosition(p, elemId, tx, ty, durMs);
+            }
+        }
+    }
+
+    /** 3D-голограммы TextDisplay (1.20.1). */
+    public record HologramAction(String op, @Nullable Expression id, @Nullable Expression text,
+                                 @Nullable Expression location, @Nullable Target target,
+                                 @Nullable Expression x, @Nullable Expression y, @Nullable Expression z,
+                                 @Nullable Expression scale, @Nullable String billboard) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            if ("clear".equals(op)) {
+                HologramManager.clearAll(ctx.server());
+                return;
+            }
+            String holoId = id == null ? "" : Expression.toText(id.evaluate(ctx));
+            if ("remove".equals(op)) {
+                HologramManager.remove(ctx.server(), holoId);
+                return;
+            }
+            if ("text".equals(op)) {
+                HologramManager.setText(ctx.server(), holoId, text == null ? "" : Expression.toText(text.evaluate(ctx)));
+                return;
+            }
+            ServerLevel level = levelOf(ctx);
+            double px, py, pz;
+            if (location != null) {
+                ScriptLocation loc = Places.require(location.evaluate(ctx));
+                ServerLevel resolved = Places.level(ctx.server(), loc);
+                if (resolved != null) {
+                    level = resolved;
+                }
+                px = loc.x();
+                py = loc.y();
+                pz = loc.z();
+            } else if (target != null) {
+                ServerPlayer p = target.first(ctx);
+                if (p == null) {
+                    return;
+                }
+                level = p.serverLevel();
+                px = p.getX();
+                py = p.getY() + 2.2;
+                pz = p.getZ();
+            } else {
+                px = number(x, ctx);
+                py = number(y, ctx);
+                pz = number(z, ctx);
+            }
+            if ("move".equals(op)) {
+                HologramManager.move(ctx.server(), level, holoId, px, py, pz);
+            } else if ("create".equals(op)) {
+                float sc = scale == null ? 1.0f : (float) number(scale, ctx);
+                String txt = text == null ? "" : Expression.toText(text.evaluate(ctx));
+                HologramManager.create(ctx.server(), level, holoId, txt, px, py, pz, sc, billboard == null ? "center" : billboard);
+            }
+        }
+    }
+
+    /** Ванильные боссбары (ServerBossEvent). */
+    public record BossBarAction(String op, @Nullable Expression id, @Nullable Expression title,
+                                @Nullable String color, @Nullable String style,
+                                @Nullable Expression progress, @Nullable Target target) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            if ("clear".equals(op)) {
+                BossBarManager.clearAll();
+                return;
+            }
+            String barId = id == null ? "" : Expression.toText(id.evaluate(ctx));
+            if ("remove".equals(op)) {
+                BossBarManager.remove(barId);
+                return;
+            }
+            List<ServerPlayer> players = target == null
+                    ? (ctx.player() == null ? List.of() : List.of(ctx.player()))
+                    : target.resolve(ctx);
+            switch (op) {
+                case "create" -> {
+                    String t = title == null ? barId : Expression.toText(title.evaluate(ctx));
+                    double prog = progress == null ? 1.0 : number(progress, ctx);
+                    BossBarManager.create(barId, t, color == null ? "red" : color, style == null ? "progress" : style, prog, players);
+                }
+                case "title" -> BossBarManager.setTitle(barId, title == null ? "" : Expression.toText(title.evaluate(ctx)));
+                case "progress" -> BossBarManager.setProgress(barId, progress == null ? 1.0 : number(progress, ctx));
+                case "color" -> BossBarManager.setColor(barId, color == null ? "red" : color);
+                case "style" -> BossBarManager.setStyle(barId, style == null ? "progress" : style);
+                case "show" -> BossBarManager.show(barId, players);
+                case "hide" -> BossBarManager.hide(barId, players);
+                default -> {
+                }
+            }
+        }
+    }
+
     private static void motion(ServerPlayer p, double x, double y, double z) {
         p.setDeltaMovement(x, y, z);
         p.hurtMarked = true;

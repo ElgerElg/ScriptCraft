@@ -188,15 +188,19 @@ public final class ElementRenderer {
     }
 
     private static void renderImage(GuiGraphics g, ImageElement image, int sw, int sh) {
-        ResourceLocation texture = texture(image.texture());
-        if (texture == null) {
-            return;
-        }
         Layout l = image.layout();
         int w = l.width() > 0 ? l.width() : 16;
         int h = l.height() > 0 ? l.height() : 16;
         int x = l.anchor().resolveX(sw, w, l.x());
         int y = l.anchor().resolveY(sh, h, l.y());
+        if (image.texture() != null && image.texture().startsWith("box:")) {
+            renderBox(g, image.texture(), l.color(), x, y, w, h);
+            return;
+        }
+        ResourceLocation texture = texture(image.texture());
+        if (texture == null) {
+            return;
+        }
         int texW = image.textureWidth() > 0 ? image.textureWidth() : w;
         int texH = image.textureHeight() > 0 ? image.textureHeight() : h;
         // Цвет элемента используется как оттенок картинки (белый = без изменений).
@@ -204,6 +208,58 @@ public final class ElementRenderer {
         // Рисуем всю текстуру (texW x texH), растянутую до w x h.
         g.blit(texture, x, y, w, h, 0f, 0f, texW, texH, texW, texH);
         resetTint();
+    }
+
+    /** Прямоугольник / карточка без текстуры с поддержкой вертикального или горизонтального градиента и рамки. */
+    private static void renderBox(GuiGraphics g, String spec, int color1, int x, int y, int w, int h) {
+        // Формат: box:<gradHex>:<borderHex>:<v|h>:<borderW>
+        String[] parts = spec.substring(4).split(":", -1);
+        int color2 = parts.length > 0 ? parseHexArgb(parts[0]) : 0;
+        int border = parts.length > 1 ? parseHexArgb(parts[1]) : 0;
+        boolean horiz = parts.length > 2 && "h".equals(parts[2]);
+        int bw = 1;
+        if (parts.length > 3 && !parts[3].isEmpty()) {
+            try {
+                bw = Math.max(0, Math.min(16, Integer.parseInt(parts[3])));
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        if (color2 == 0) {
+            g.fill(x, y, x + w, y + h, color1);
+        } else if (!horiz) {
+            g.fillGradient(x, y, x + w, y + h, color1, color2);
+        } else {
+            int step = w > 180 ? 2 : 1;
+            int a1 = (color1 >>> 24) & 0xFF, r1 = (color1 >> 16) & 0xFF, g1 = (color1 >> 8) & 0xFF, b1 = color1 & 0xFF;
+            int a2 = (color2 >>> 24) & 0xFF, r2 = (color2 >> 16) & 0xFF, g2 = (color2 >> 8) & 0xFF, b2 = color2 & 0xFF;
+            int denom = Math.max(1, w - 1);
+            for (int dx = 0; dx < w; dx += step) {
+                float t = (float) dx / denom;
+                int a = Math.round(a1 + (a2 - a1) * t);
+                int r = Math.round(r1 + (r2 - r1) * t);
+                int gr = Math.round(g1 + (g2 - g1) * t);
+                int b = Math.round(b1 + (b2 - b1) * t);
+                int col = (a << 24) | (r << 16) | (gr << 8) | b;
+                g.fill(x + dx, y, Math.min(x + w, x + dx + step), y + h, col);
+            }
+        }
+        if (border != 0 && bw > 0) {
+            g.fill(x, y, x + w, y + bw, border);
+            g.fill(x, y + h - bw, x + w, y + h, border);
+            g.fill(x, y + bw, x + bw, y + h - bw, border);
+            g.fill(x + w - bw, y + bw, x + w, y + h - bw, border);
+        }
+    }
+
+    private static int parseHexArgb(String raw) {
+        if (raw == null || raw.isEmpty() || "0".equals(raw)) {
+            return 0;
+        }
+        try {
+            return (int) Long.parseLong(raw, 16);
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 
     /** Оттенок ARGB для следующих blit; альфа 0 считается непрозрачным (цвет без альфы). */

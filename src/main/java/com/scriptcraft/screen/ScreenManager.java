@@ -212,6 +212,31 @@ public final class ScreenManager {
         }
     }
 
+    public static void animatePosition(ServerPlayer player, String id, int x, int y, int durationMs) {
+        if (player == null || id == null || id.isEmpty()) {
+            return;
+        }
+        PlayerScreen ps = OPEN.get(player.getUUID());
+        if (ps == null) {
+            return;
+        }
+        int idx = findIndex(ps.elements, id);
+        if (idx < 0) {
+            return;
+        }
+        ScreenElement old = ps.elements.get(idx);
+        ScreenElement moved = ScreenMeta.withPosition(old, x, y);
+        if (moved.equals(old)) {
+            return;
+        }
+        ps.elements.set(idx, moved);
+        List<ScreenElement> packetList = new ArrayList<>(ps.elements);
+        if (durationMs > 0) {
+            packetList.set(idx, ScreenMeta.withTween(moved, durationMs));
+        }
+        ModNetwork.sendTo(player, new OpenScreenPacket(new ScreenDescription(PATCH_PREFIX + ps.title, packetList)));
+    }
+
     public static void mutateElement(ServerPlayer player, String id, UnaryOperator<ScreenElement> mutator) {
         if (player == null || id == null || id.isEmpty()) {
             return;

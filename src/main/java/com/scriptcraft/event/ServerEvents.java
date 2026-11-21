@@ -112,6 +112,7 @@ public final class ServerEvents {
             ResourceSync.onLogout(player);
             com.scriptcraft.studio.StudioRooms.onQuit(player);
             com.scriptcraft.screen.ScreenManager.onQuit(player);
+            com.scriptcraft.script.runtime.BossBarManager.onQuit(player);
             ScoreboardManager.onQuit(player);
             SNEAK_STATE.remove(player.getUUID());
             SPRINT_STATE.remove(player.getUUID());

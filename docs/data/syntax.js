@@ -4464,6 +4464,155 @@ command /camreset:
 	scriptHistoryRetentionDays = 3
 	profilerEnabled = true`,
     since: "0.6.8", related: []
+  },
+  {
+    id: "expr-string-ops", category: "expressions",
+    name: { ru: "Строковые функции (replace, split, lowercase, substring)", en: "String functions (replace, split, lowercase, substring)" },
+    syntax: [
+      "replace <что> with <на_что> in {<переменная>}",
+      "replace <что> with <на_что> in <выражение>",
+      "split <текст> by <разделитель> into {<список>::*}",
+      "lowercase [of] <выражение>",
+      "uppercase [of] <выражение>",
+      "trim [of] <выражение>",
+      "substring [of] <выражение> from <начало> [to <конец>]"
+    ],
+    desc: {
+      ru: "Полный набор работы со строками:\n• `replace \"a\" with \"b\" in {-s}` — заменяет все вхождения прямо в переменной (или как выражение в `set {-out} to replace ...`).\n• `split {-s} by \",\" into {-arr::*}` — разбивает текст по разделителю и сохраняет части в список `{-arr::1}`, `{-arr::2}`…\n• `lowercase` / `uppercase` / `trim` — перевод в нижний/верхний регистр и обрезка пробелов.\n• `substring of {-s} from 1 to 5` — вырезает подстроку (нумерация с `1`; без `to` — до конца строки).",
+      en: "Complete string manipulation:\n• `replace \"a\" with \"b\" in {-s}` — replaces all occurrences in-place (or as an expression in `set`).\n• `split {-s} by \",\" into {-arr::*}` — splits into `{-arr::1}`, `{-arr::2}`…\n• `lowercase` / `uppercase` / `trim` — case conversion and whitespace trimming.\n• `substring of {-s} from 1 to 5` — 1-based slice (omit `to` for end of string)."
+    },
+    example: `# Замена, регистр, обрезка и подстрока
+set {-msg} to "  Привет, Мир!  "
+set {-clean} to trim of {-msg}
+set {-low} to lowercase {-clean}
+replace "мир" with "ScriptCraft" in {-low}
+set {-part} to substring of {-clean} from 1 to 6
+
+# Разбиение строки в список
+split "яблоко,груша,вишня" by "," into {-fruits::*}
+loop {-fruits::*}:
+\tsend "&e%loop-index%: &f%loop-value%" to player`,
+    since: "0.7.6", related: ["cond-text-match", "list-operations"]
+  },
+  {
+    id: "screen-box", category: "screen",
+    name: { ru: "Панель / прямоугольник с градиентом (box / rect)", en: "Panel / gradient box (box / rect)" },
+    syntax: [
+      "box|rect [at <X> <Y>] [size <W>x<H>] [anchor <A>] [color #AARRGGBB] [gradient|to #AARRGGBB] [horizontal|vertical] [border #AARRGGBB] [border_width <N>] [id <id>] [layer <N>] [hidden] [tooltip \"...\"] [run ... | close]"
+    ],
+    desc: {
+      ru: "Рисует панель, карточку или разделитель прямо в `open screen` и `create hud` **без PNG-текстур**:\n• `color #AARRGGBB` — основной цвет (поддерживает прозрачность AA, по умолчанию `#CC111827`).\n• `gradient #AARRGGBB` (или `to #AARRGGBB`) — второй цвет для плавного градиента.\n• `vertical` (по умолчанию, сверху вниз) или `horizontal` (слева направо).\n• `border #AARRGGBB` и `border_width <N>` — цвет и толщина рамки.\n• Поддерживает `id`, `layer`, `hidden`, `tooltip`, `run`, `close` и плавные анимации `animate screen`.",
+      en: "Draws a rectangle/card in `open screen` or `create hud` **without PNG textures**:\n• `color #AARRGGBB` — fill color with alpha (default `#CC111827`).\n• `gradient #AARRGGBB` (`to #AARRGGBB`) — second gradient color.\n• `vertical` (default) or `horizontal` gradient direction.\n• `border #AARRGGBB` and `border_width <N>` — crisp border.\n• Supports `id`, `layer`, `hidden`, `tooltip`, `run`, `close`, and `animate screen`."
+    },
+    example: `command /card:
+\topen screen "Профиль" to player:
+\t\t# Карточка с вертикальным градиентом и синей рамкой
+\t\tbox at 0 0 size 240x130 color #EE0F172A gradient #EE1E293B border #FF3B82F6 border_width 2 layer 0
+\t\t# Горизонтальная градиентная полоса-заголовок
+\t\trect at 0 -54 size 236x20 color #FF2563EB to #FF7C3AED horizontal layer 1
+\t\ttext "&f&lПрофиль %player%" at 0 -54 anchor center shadow layer 2`,
+    since: "0.7.6", related: ["eff-open-screen", "screen-animate", "hud-create"]
+  },
+  {
+    id: "screen-animate", category: "screen",
+    name: { ru: "Плавная анимация элемента (animate / tween)", en: "Smooth client animation (animate / tween)" },
+    syntax: [
+      "animate|tween screen \"<id>\" [for <цель>] to <X> <Y> [in <T> ticks|seconds]",
+      "animate|tween screen element \"<id>\" [for <цель>] to <X> <Y> [in <T> ticks|seconds]"
+    ],
+    desc: {
+      ru: "Плавно перемещает любой элемент открытого экрана (`image`, `box`, `text`, `button`, `slot`, `input` и т.д.) в новые координаты `<X> <Y>` прямо на клиенте со скоростью **60+ FPS** без лишней нагрузки на сеть. Длительность задаётся в `ticks` (по умолчанию `6` тиков = 0.3с) или `seconds`.",
+      en: "Smoothly animates any open screen element (`image`, `box`, `text`, `button`, `slot`, `input`, etc.) to new `(X, Y)` coordinates on the client at **60+ FPS** with a single network packet. Duration in `ticks` (default `6`) or `seconds`."
+    },
+    example: `# Плавный выезд панели и полёт снаряда за 1 пакет
+animate screen "menu_panel" for player to 0 0 in 10 ticks
+animate screen "projectile_1" for player to 120 -30 in 6 ticks
+tween screen "popup" to 0 -60 in 0.5 seconds`,
+    since: "0.7.6", related: ["screen-dynamic", "screen-box", "eff-open-screen"]
+  },
+  {
+    id: "eff-hologram", category: "effects",
+    name: { ru: "3D-голограммы в мире (TextDisplay)", en: "3D World Holograms (TextDisplay)" },
+    syntax: [
+      "create hologram \"<id>\" text \"<текст>\" at <x y z|локация|цель> [scale <N>] [billboard center|vertical|horizontal|fixed]",
+      "set text of hologram \"<id>\" to \"<текст>\"",
+      "move hologram \"<id>\" to <x y z|локация|цель>",
+      "remove|delete hologram \"<id>\"",
+      "clear holograms"
+    ],
+    desc: {
+      ru: "Создаёт нативные 3D-голограммы Minecraft 1.20.1 (`TextDisplay`) с поддержкой цветов `&`, многострочного текста `\\n`, масштаба `scale` (по умолчанию `1.0`) и режима поворота `billboard`: `center` (всегда к камере, по умолчанию), `vertical`, `horizontal`, `fixed`. Голограммы управляются по строковому `id`.",
+      en: "Spawns native Minecraft 1.20.1 `TextDisplay` 3D holograms with `&` colors, `\\n` multiline text, `scale` (default `1.0`), and `billboard` mode (`center`, `vertical`, `horizontal`, `fixed`). Managed by string `id`."
+    },
+    example: `# Создать 3D-голограмму над игроком
+command /holo:
+\tcreate hologram "shop" text "&6&lМАГАЗИН\\n&7Нажмите ПКМ по торговцу" at player scale 1.4 billboard center
+
+# Обновить текст, переместить или удалить
+set text of hologram "shop" to "&a&lСКИДКА 50%!"
+move hologram "shop" to 10 66 -5
+remove hologram "shop"`,
+    since: "0.7.6", related: ["expr-location", "eff-bossbar"]
+  },
+  {
+    id: "eff-bossbar", category: "effects",
+    name: { ru: "Ванильные боссбары сверху экрана (bossbar)", en: "Vanilla BossBars (bossbar)" },
+    syntax: [
+      "create bossbar \"<id>\" title \"<текст>\" [color pink|blue|red|green|yellow|purple|white] [style progress|notched_6|notched_10|notched_12|notched_20] [progress <0..1|0..100>] [for <цель>]",
+      "set title of bossbar \"<id>\" to \"<текст>\"",
+      "set progress of bossbar \"<id>\" to <число>",
+      "set color of bossbar \"<id>\" to <цвет>",
+      "set style of bossbar \"<id>\" to <стиль>",
+      "show bossbar \"<id>\" to <цель>",
+      "hide bossbar \"<id>\" from <цель>",
+      "remove|delete bossbar \"<id>\"",
+      "clear bossbars"
+    ],
+    desc: {
+      ru: "Управляет ванильными боссбарами вверху экрана (`ServerBossEvent`).\n• Цвета (`color`): `red`, `blue`, `green`, `yellow`, `pink`, `purple`, `white`.\n• Стили (`style`): `progress` (сплошной), `notched_6`, `notched_10`, `notched_12`, `notched_20` (деления).\n• Прогресс (`progress`): от `0.0` до `1.0` (числа больше `1` автоматически делятся на `100`, например `75` = `0.75`).",
+      en: "Controls vanilla top-of-screen BossBars (`ServerBossEvent`).\n• `color`: `red`, `blue`, `green`, `yellow`, `pink`, `purple`, `white`.\n• `style`: `progress`, `notched_6`, `notched_10`, `notched_12`, `notched_20`.\n• `progress`: `0.0`–`1.0` (values > `1` auto-divide by `100`, e.g. `75` → `0.75`)."
+    },
+    example: `# Показать боссбар события всем игрокам
+create bossbar "raid" title "&c&lРЕЙД БОССА" color red style notched_10 progress 1.0 for all players
+
+# Обновить прогресс и заголовок
+set progress of bossbar "raid" to 0.45
+set title of bossbar "raid" to "&6&lФАЗА 2 — 45%"
+set color of bossbar "raid" to yellow
+
+# Скрыть или удалить
+hide bossbar "raid" from player
+remove bossbar "raid"`,
+    since: "0.7.6", related: ["hud-bar", "eff-hologram"]
+  },
+  {
+    id: "eff-item-lore-enchant", category: "effects",
+    name: { ru: "Лор, зачарования и макс. здоровье (lore / enchant / max health)", en: "Item Lore, Enchants & Max Health" },
+    syntax: [
+      "set lore of player's tool to \"<строка1\\nстрока2>\"",
+      "set lore of slot [hotbar] <слот> of <цель> to \"<текст>\"",
+      "add lore \"<строка>\" to player's tool | slot [hotbar] <слот> of <цель>",
+      "clear lore of player's tool | slot [hotbar] <слот> of <цель>",
+      "enchant player's tool | slot [hotbar] <слот> of <цель> with <id> [level <N>]",
+      "set max health of <цель> to <число>",
+      "set player's max health to <число>"
+    ],
+    desc: {
+      ru: "Удобное редактирование предметов и характеристик игрока без сложного SNBT:\n• `set lore` / `add lore` / `clear lore` — задаёт описание (лор) предмета в руке (`player's tool`) или любом слоте (`slot 0`, `slot hotbar 1`, `slot helmet`). Поддерживает цвета `&` (без ванильного курсива) и `\\n` для нескольких строк.\n• `enchant ... with <id> [level <N>]` — накладывает любое ванильное или модовое зачарование (`sharpness`, `unbreaking`, `mending`, `efficiency`, `protection`, `fire_aspect`, `looting`, `fortune`, `silk_touch`, `power`, `infinity`, `frost_walker` и др.) с уровнем `1`–`255`.\n• `set max health of <цель> to <N>` — меняет максимальное здоровье игрока (`Attributes.MAX_HEALTH`, например `40` = 20 сердец).",
+      en: "Clean item & attribute editing without raw SNBT:\n• `set lore` / `add lore` / `clear lore` — sets non-italic `&`-colored lore lines (`\\n` separates lines) on `player's tool` or any inventory/hotbar slot.\n• `enchant ... with <id> [level <N>]` — applies any vanilla or modded enchantment (`sharpness`, `unbreaking`, `mending`, `efficiency`, `protection`, etc., level `1`–`255`).\n• `set max health of <target> to <N>` — changes `Attributes.MAX_HEALTH` (`40` = 20 hearts)."
+    },
+    example: `# Легендарный меч с лором и зачарованиями
+command /legend:
+\tgive player diamond_sword 1
+\tset lore of player's tool to "&6Легендарный клинок\\n&7Урон: &c+15\\n&8Привязан к %player%"
+\tadd lore "&a★ Уровень 1" to player's tool
+\tenchant player's tool with sharpness level 5
+\tenchant player's tool with unbreaking level 3
+
+# Увеличить максимальное здоровье игрока до 20 сердец (40 HP)
+set max health of player to 40
+heal player`,
+    since: "0.7.6", related: ["eff-set-slot", "eff-give-item", "eff-set-health"]
   }
   ]
 };

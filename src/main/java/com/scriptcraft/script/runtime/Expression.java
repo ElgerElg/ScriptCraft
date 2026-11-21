@@ -613,6 +613,37 @@ public interface Expression {
         }
     }
 
+    /** Строковые функции: lowercase, uppercase, trim, substring, replace. */
+    record StringOp(String op, Expression text, @Nullable Expression a, @Nullable Expression b) implements Expression {
+        @Override
+        public Object evaluate(ExecutionContext ctx) {
+            Object raw = text.evaluate(ctx);
+            String s = raw == null ? "" : toText(raw);
+            return switch (op) {
+                case "lowercase" -> s.toLowerCase(java.util.Locale.ROOT);
+                case "uppercase" -> s.toUpperCase(java.util.Locale.ROOT);
+                case "trim" -> s.strip();
+                case "substring" -> {
+                    int len = s.length();
+                    if (len == 0) {
+                        yield "";
+                    }
+                    Double fromNum = a == null ? 1.0 : toNumber(a.evaluate(ctx));
+                    Double toNum = b == null ? (double) len : toNumber(b.evaluate(ctx));
+                    int start = Math.max(0, Math.min(len, (fromNum == null ? 1 : (int) Math.round(fromNum)) - 1));
+                    int end = Math.max(start, Math.min(len, toNum == null ? len : (int) Math.round(toNum)));
+                    yield s.substring(start, end);
+                }
+                case "replace" -> {
+                    String find = a == null ? "" : toText(a.evaluate(ctx));
+                    String repl = b == null ? "" : toText(b.evaluate(ctx));
+                    yield find.isEmpty() ? s : s.replace(find, repl);
+                }
+                default -> s;
+            };
+        }
+    }
+
     /** Значение -> текст для вывода: 5.0 -> "5", null -> "<none>" (как в Skript). */
     static String toText(@Nullable Object value) {
         if (value == null) {
