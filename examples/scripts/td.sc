@@ -110,9 +110,9 @@ every 2 ticks:
 	loop all players:
 		if {-td-active::%loop-player%} is 1:
 			if loop-player has screen "Tower Defense" open:
-				TdTick(%loop-player%)
+				TdTick(loop-player)
 				if {-td-speed::%loop-player%} is 2 and {-td-in-wave::%loop-player%} is 1 and {-td-over::%loop-player%} is 0:
-					TdTick(%loop-player%)
+					TdTick(loop-player)
 			else:
 				TdOnLeave(loop-player)
 
@@ -136,46 +136,46 @@ function TdOnLeave(p: player):
 #  ХЕЛПЕРЫ СИНХРОНИЗАЦИИ ЭКРАНА ДЛЯ 1 ИЛИ 2 ИГРОКОВ
 # ==========================================================
 
-function TdSyncPos(g: text, id: text, x: number, y: number):
+function TdSyncPos(g: player, id: text, x: number, y: number):
 	set position of screen element id for g to x y
 	set {-p2} to {-td-coop::%g%}
 	if {-p2} is set and {-p2} is not "":
 		set position of screen element id for {-p2} to x y
 
-function TdSyncImg(g: text, id: text, tex: text):
+function TdSyncImg(g: player, id: text, tex: text):
 	set image of screen element id for g to tex
 	set {-p2} to {-td-coop::%g%}
 	if {-p2} is set and {-p2} is not "":
 		set image of screen element id for {-p2} to tex
 
-function TdSyncTxt(g: text, id: text, txt: text):
+function TdSyncTxt(g: player, id: text, txt: text):
 	set text of screen element id for g to txt
 	set {-p2} to {-td-coop::%g%}
 	if {-p2} is set and {-p2} is not "":
 		set text of screen element id for {-p2} to txt
 
-function TdSyncShow(g: text, id: text):
+function TdSyncShow(g: player, id: text):
 	show screen element id to g
 	set {-p2} to {-td-coop::%g%}
 	if {-p2} is set and {-p2} is not "":
 		show screen element id to {-p2}
 
-function TdSyncHide(g: text, id: text):
+function TdSyncHide(g: player, id: text):
 	hide screen element id from g
 	set {-p2} to {-td-coop::%g%}
 	if {-p2} is set and {-p2} is not "":
 		hide screen element id from {-p2}
 
-function TdSyncStatus(g: text, txt: text):
+function TdSyncStatus(g: player, txt: text):
 	TdSyncTxt(g, "status_txt", txt)
 
-function TdSyncSound(g: text, snd: text, vol: number, pit: number):
-	play sound snd to g with volume vol pitch pit
+function TdSyncSound(g: player, snd: text, vol: number, pit: number):
+	play sound %snd% to g with volume vol pitch pit
 	set {-p2} to {-td-coop::%g%}
 	if {-p2} is set and {-p2} is not "":
-		play sound snd to {-p2} with volume vol pitch pit
+		play sound %snd% to {-p2} with volume vol pitch pit
 
-function TdSyncBossBar(g: text, val: number, mx: number):
+function TdSyncBossBar(g: player, val: number, mx: number):
 	if mx > 0:
 		set max of screen bar "boss_bar" for g to mx
 	set value of screen bar "boss_bar" for g to val
@@ -185,7 +185,7 @@ function TdSyncBossBar(g: text, val: number, mx: number):
 			set max of screen bar "boss_bar" for {-p2} to mx
 		set value of screen bar "boss_bar" for {-p2} to val
 
-function TdSyncHud(g: text):
+function TdSyncHud(g: player):
 	set {-sp} to "x1"
 	if {-td-speed::%g%} is 2:
 		set {-sp} to "&b&lx2"
@@ -369,7 +369,7 @@ function TdStartSession(host: player, partnerName: text):
 	if partnerName is not "":
 		TdSyncStatus({-g}, "&d&lКООП НА ДВОИХ! &f%{-g}% &7+ &f%partnerName% &7— стройте башни вместе!")
 
-function TdLoadWaypoints(g: text, mapId: number):
+function TdLoadWaypoints(g: player, mapId: number):
 	if mapId is 1:
 		set {-td-wpcnt::%g%} to 6
 		set {-td-wpx::%g%::1} to -180
@@ -1157,7 +1157,7 @@ function TdCellClick(p: player, col: integer, row: integer):
 #  ВОЛНЫ И СПАВН
 # ==========================================================
 
-function TdNextWave(g: text):
+function TdNextWave(g: player):
 	if {-td-wave::%g%} >= {-td-maxw::%g%}:
 		stop
 	add 1 to {-td-wave::%g%}
@@ -1193,7 +1193,7 @@ function TdNextWave(g: text):
 #  ОСНОВНОЙ ТИК ИГРЫ
 # ==========================================================
 
-function TdTick(g: text):
+function TdTick(g: player):
 	if {-td-over::%g%} is 1:
 		stop
 
@@ -1264,7 +1264,7 @@ function TdTick(g: text):
 				TdSyncStatus(g, "&aВолна %{-td-wave::%g%}%/%{-td-maxw::%g%}% пройдена! +%{-bonus}%з. Жмите &eSpace!")
 				TdSyncSound(g, "entity.player.levelup", 0.5, 1.25)
 
-function TdSpawnNext(g: text):
+function TdSpawnNext(g: player):
 	set {-w} to {-td-wave::%g%}
 	set {-d} to {-td-diff::%g%}
 	set {-dmul} to 1.0
@@ -1370,7 +1370,7 @@ function TdSpawnNext(g: text):
 		TdSyncBossBar(g, {-bhp}, {-bhp})
 		TdSyncShow(g, "boss_bar")
 
-function TdMoveEnemy(g: text, i: number):
+function TdMoveEnemy(g: player, i: number):
 	if {-td-efreeze::%g%::%i%} > 0:
 		remove 1 from {-td-efreeze::%g%::%i%}
 		stop
@@ -1422,7 +1422,7 @@ function TdMoveEnemy(g: text, i: number):
 #  БАШНИ, ЭВОЛЮЦИИ ✦5★ И ЛЕТАЮЩИЕ ПРОЖЕКТАЙЛЫ
 # ==========================================================
 
-function TdTowerTick(g: text, tid: number):
+function TdTowerTick(g: player, tid: number):
 	if {-td-tcd::%g%::%tid%} > 0:
 		remove 1 from {-td-tcd::%g%::%tid%}
 		stop
@@ -1505,7 +1505,7 @@ function TdTowerTick(g: text, tid: number):
 	if {-type} is 1 and {-evo} is 1 and {-second} > 0:
 		TdSpawnProjectile(g, {-tx}, {-ty}, {-second}, 1, 1, {-dmg}, {-pspd}, {-ptex})
 
-function TdSpawnProjectile(g: text, sx: number, sy: number, tgt: number, ptype: number, evo: number, dmg: number, spd: number, tex: text):
+function TdSpawnProjectile(g: player, sx: number, sy: number, tgt: number, ptype: number, evo: number, dmg: number, spd: number, tex: text):
 	set {-ps} to 0
 	loop 6 times:
 		set {-k} to %loop-number%
@@ -1526,7 +1526,7 @@ function TdSpawnProjectile(g: text, sx: number, sy: number, tgt: number, ptype: 
 	TdSyncPos(g, "pr%{-ps}%", sx, sy)
 	TdSyncShow(g, "pr%{-ps}%")
 
-function TdMoveProjectiles(g: text):
+function TdMoveProjectiles(g: player):
 	loop 6 times:
 		set {-k} to %loop-number%
 		if {-td-pra::%g%::%{-k}%} is 1:
@@ -1554,13 +1554,13 @@ function TdMoveProjectiles(g: text):
 					set {-td-pry::%g%::%{-k}%} to {-ny}
 					TdSyncPos(g, "pr%{-k}%", {-nx}, {-ny})
 
-function TdClearProjectiles(g: text):
+function TdClearProjectiles(g: player):
 	loop 6 times:
 		set {-k} to %loop-number%
 		set {-td-pra::%g%::%{-k}%} to 0
 		TdSyncHide(g, "pr%{-k}%")
 
-function TdImpact(g: text, tgt: number, ptype: number, evo: number, dmg: number, hx: number, hy: number):
+function TdImpact(g: player, tgt: number, ptype: number, evo: number, dmg: number, hx: number, hy: number):
 	if ptype is 2:
 		# Пушка: сплеш (+ ✦5★ Напалм: радиус 62 и поджог!)
 		TdSyncPos(g, "fx", hx, hy)
@@ -1645,7 +1645,7 @@ function TdImpact(g: text, tgt: number, ptype: number, evo: number, dmg: number,
 		TdSyncSound(g, "entity.arrow.shoot", 0.18, 1.45)
 		TdDamageEnemy(g, tgt, dmg, 0, 0)
 
-function TdDamageEnemy(g: text, i: number, dmg: number, slow: number, freeze: number):
+function TdDamageEnemy(g: player, i: number, dmg: number, slow: number, freeze: number):
 	if {-td-ea::%g%::%i%} is not 1:
 		stop
 	remove dmg from {-td-ehp::%g%::%i%}
@@ -1674,7 +1674,7 @@ function TdDamageEnemy(g: text, i: number, dmg: number, slow: number, freeze: nu
 #  ПОБЕДА, ПОРАЖЕНИЕ И РЕКОРДЫ
 # ==========================================================
 
-function TdLose(g: text):
+function TdLose(g: player):
 	set {-td-over::%g%} to 1
 	set {-td-in-wave::%g%} to 0
 	TdClearProjectiles(g)
@@ -1684,7 +1684,7 @@ function TdLose(g: text):
 	TdSyncShow(g, "end_sub")
 	TdSaveScore(g)
 
-function TdWin(g: text):
+function TdWin(g: player):
 	set {-td-over::%g%} to 1
 	set {-wbon} to {-td-hp::%g%} * 100 * {-td-diff::%g%}
 	add {-wbon} to {-td-score::%g%}
@@ -1700,7 +1700,7 @@ function TdWin(g: text):
 	TdSyncSound(g, "ui.toast.challenge_complete", 0.9, 1.0)
 	TdSaveScore(g)
 
-function TdSaveScore(g: text):
+function TdSaveScore(g: player):
 	set {-sc} to {-td-score::%g%}
 	if {td::lb::%g%} is not set:
 		set {td::lb::%g%} to {-sc}
