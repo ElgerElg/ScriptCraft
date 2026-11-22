@@ -15,7 +15,7 @@
  */
 window.SC_DOCS = window.SC_DOCS || {};
 window.SC_DOCS.syntax = {
-  version: "0.8.3",
+  version: "0.8.8",
   categories: [
     { id: "events", ru: "События", en: "Events" },
     { id: "structures", ru: "Структуры", en: "Structures" },
@@ -3898,7 +3898,56 @@ on jump:
 on jump:
 	if {-frozen::%player%} is true:
 		cancel event`,
-    since: "0.5.3", related: ["eff-push"]
+    since: "0.5.3", related: ["eff-push", "event-move"]
+  },
+  {
+    id: "event-move", category: "events",
+    name: { ru: "Движение игрока (on move)", en: "Player move (on move)" },
+    syntax: ["on move:"],
+    desc: {
+      ru: "Срабатывает в каждом тике, когда изменились координаты игрока (`x`, `y`, `z`). Можно отменить (`cancel event`) — игрок вернётся на прежнюю позицию с обнулением скорости. Плейсхолдеры: `%x%`, `%y%`, `%z%`, `%from_x%`, `%from_y%`, `%from_z%`, `%yaw%`, `%pitch%`, `%distance%`, `%moved%`, `%turned%`.",
+      en: "Fires each tick when the player's position (`x`, `y`, `z`) changes. Cancelable (`cancel event` reverts position and clears velocity). Placeholders: `%x%`, `%y%`, `%z%`, `%from_x%`, `%from_y%`, `%from_z%`, `%yaw%`, `%pitch%`, `%distance%`, `%moved%`, `%turned%`."
+    },
+    example: `# Заморозка игрока на месте (можно осматриваться, но нельзя ходить)
+on move:
+	if {-frozen::%player%} is true:
+		cancel event
+		send action bar "&bВы заморожены!" to player`,
+    since: "0.8.8", related: ["event-turning-around", "event-move-or-turning-around", "event-jump"]
+  },
+  {
+    id: "event-turning-around", category: "events",
+    name: { ru: "Поворот камеры (on turning around)", en: "Turning around (on turning around)" },
+    syntax: ["on turning around:", "on turn around:", "on turn:", "on look:"],
+    desc: {
+      ru: "Срабатывает, когда игрок повернул голову/камеру (`yaw` или `pitch`). Можно отменить (`cancel event`) — углы обзора вернутся к прежним. Плейсхолдеры: `%yaw%`, `%pitch%`, `%from_yaw%`, `%from_pitch%`, `%x%`, `%y%`, `%z%`, `%moved%`, `%turned%`.",
+      en: "Fires when the player rotates their camera (`yaw` or `pitch`). Cancelable (`cancel event` restores previous rotation). Placeholders: `%yaw%`, `%pitch%`, `%from_yaw%`, `%from_pitch%`, `%x%`, `%y%`, `%z%`, `%moved%`, `%turned%`."
+    },
+    example: `# Блокировка поворота камеры во время кат-сцены
+on turning around:
+	if {-cutscene::%player%} is true:
+		cancel event`,
+    since: "0.8.8", related: ["event-move", "event-move-or-turning-around"]
+  },
+  {
+    id: "event-move-or-turning-around", category: "events",
+    name: { ru: "Движение или поворот (on move or turning around)", en: "Move or turning around" },
+    syntax: ["on move or turning around:"],
+    desc: {
+      ru: "Срабатывает **один раз за тик**, если игрок сдвинулся с места и/или повернул камеру. Можно отменить (`cancel event` откатывает то, что изменилось — позицию, поворот или оба). Удобно для полной заморозки, отмены телепортации при движении или снятия AFK. Плейсхолдеры: `%moved%`, `%turned%`, `%distance%`, `%x%`, `%y%`, `%z%`, `%yaw%`, `%pitch%`.",
+      en: "Fires **once per tick** when the player moves and/or rotates the camera. Cancelable (`cancel event` reverts whichever changed). Great for full freeze, cancelling teleport warmup, or clearing AFK. Placeholders: `%moved%`, `%turned%`, `%distance%`, `%x%`, `%y%`, `%z%`, `%yaw%`, `%pitch%`."
+    },
+    example: `# Отмена телепортации на спавн, если игрок шевельнулся или повернулся
+on move or turning around:
+	if {-tp-wait::%player%} is true:
+		delete {-tp-wait::%player%}
+		send "&cТелепортация отменена — вы пошевелились!" to player
+
+# Полный стан (нельзя ни ходить, ни крутить камерой)
+on move or turning around:
+	if {-stunned::%player%} is true:
+		cancel event`,
+    since: "0.8.8", related: ["event-move", "event-turning-around"]
   },
   {
     id: "event-command", category: "events",
@@ -4055,18 +4104,31 @@ command /hidesb:
   },
   {
     id: "eff-push", category: "effects",
-    name: { ru: "Толчок игрока (push)", en: "Push player" },
-    syntax: ["push <цель> upwards|downwards|forwards|backwards|north|south|east|west [with force <N>]"],
+    name: { ru: "Толчок сущности/игрока (push)", en: "Push entity / player" },
+    syntax: [
+      "push <цель-сущность> away from|from|towards|in direction of <источник> [with force <N>]",
+      "push <цель-сущность> upwards|downwards|forwards|backwards|north|south|east|west [with force <N>]"
+    ],
     desc: {
-      ru: "Добавляет импульс игроку в выбранном направлении. Все направления: `upwards` (`up`), `downwards` (`down`), `forwards` (`forward` — по взгляду), `backwards` (`backward` — от взгляда), `north`, `south`, `east`, `west`. Сила задаётся через `with force <N>`.",
-      en: "Adds a velocity impulse in a direction. All directions: `upwards` (`up`), `downwards` (`down`), `forwards` (`forward`), `backwards` (`backward`), `north`, `south`, `east`, `west`. Strength via `with force <N>`."
+      ru: "Добавляет импульс игроку или любой сущности (`player`, `targeted player`, `targeted entity`, `entities in radius N of player`, `@e[...]`). Поддерживает два режима:\n• **Относительно источника** (игрока, другой сущности или локации): `away from` / `from` (оттолкнуть от источника), `towards` (притянуть к источнику), `in direction of` (толкнуть по направлению взгляда источника).\n• **По направлению**: `upwards` (`up`), `downwards` (`down`), `forwards` (`forward`), `backwards` (`backward`), `north`, `south`, `east`, `west`.\nСила задаётся через `with force <N>` (или `with speed <N>`, `with <N>`).",
+      en: "Adds a velocity impulse to a player or any entity (`player`, `targeted player`, `targeted entity`, `entities in radius N of player`, `@e[...]`). Supports two modes:\n• **Relative to a source** (player, entity, or location): `away from` / `from` (knock back from source), `towards` (pull toward source), `in direction of` (push along source's look vector).\n• **Directional**: `upwards` (`up`), `downwards` (`down`), `forwards` (`forward`), `backwards` (`backward`), `north`, `south`, `east`, `west`.\nStrength via `with force <N>` (or `with speed <N>`, `with <N>`)."
     },
-    example: `# Двойной прыжок, отбрасывание назад и ветровой поток на север
+    example: `# Оттолкнуть цель в прицеле (моба или игрока) от игрока
+push targeted entity away from player with force 1.5
+push targeted player from player with force 2
+
+# Оттолкнуть игрока от сущности или всех мобов вокруг себя
+push player away from targeted entity with force 1.2
+push entities in radius 5 of player away from player with force 1.5
+
+# Притянуть к себе или толкнуть по взгляду игрока
+push targeted entity towards player with force 1.2
+push targeted entity in direction of player with force 2
+
+# Классические направления
 push player upwards with force 1.2
-push player forwards with force 1.8
-push targeted player backwards with force 1.4
-push player north with force 0.9`,
-    since: "0.5.3", related: []
+push targeted entity upwards with force 1.4`,
+    since: "0.8.8", related: ["event-jump", "event-move"]
   },
   {
     id: "eff-spawn-entity", category: "effects",
