@@ -180,6 +180,7 @@ public final class ServerEvents {
         VariableStore.shutdown();
         ResourceSync.onServerStopped();
         HudManager.onServerStopped();
+        com.scriptcraft.screen.ScreenManager.clearAll();
         InventoryWatch.clear();
         SlotMigration.onServerStopped();
         BindingStore.onServerStopped();
@@ -199,6 +200,7 @@ public final class ServerEvents {
             ResourceSync.tick(event.getServer());
             SlotMigration.tick(event.getServer());
             ScriptLoader.tick(event.getServer());
+            com.scriptcraft.screen.ScreenManager.flushDirty(event.getServer());
             InventoryWatch.tick(event.getServer());
             com.scriptcraft.script.ScriptProfiler.tick(event.getServer());
             com.scriptcraft.studio.ScriptHistory.tick();

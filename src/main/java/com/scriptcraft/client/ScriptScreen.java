@@ -106,6 +106,101 @@ public class ScriptScreen extends Screen {
         this.serverClosed = true;
     }
 
+    /**
+     * Быстрое дельта-обновление: заменяет только пришедшие по id элементы без пересылки всего экрана
+     * и без пересоздания кнопок/полей ввода, если они не менялись.
+     */
+    public void applyDelta(List<ScreenElement> delta) {
+        if (delta == null || delta.isEmpty()) {
+            return;
+        }
+        List<ScreenElement> merged = new ArrayList<>(this.description.elements());
+        Map<String, Integer> idxById = new LinkedHashMap<>(merged.size() * 2);
+        for (int i = 0; i < merged.size(); i++) {
+            String eid = ScreenMeta.elementId(merged.get(i));
+            if (!eid.isEmpty()) {
+                idxById.putIfAbsent(eid.toLowerCase(Locale.ROOT), i);
+            }
+        }
+        long nowMs = System.currentTimeMillis();
+        boolean widgetsAffected = false;
+        boolean layerChanged = false;
+        for (ScreenElement nextEl : delta) {
+            String eid = ScreenMeta.elementId(nextEl);
+            if (eid.isEmpty()) {
+                continue;
+            }
+            String key = eid.toLowerCase(Locale.ROOT);
+            Integer idx = idxById.get(key);
+            if (idx != null) {
+                ScreenElement oldEl = merged.get(idx);
+                if (oldEl.layout().layer() != nextEl.layout().layer()) {
+                    layerChanged = true;
+                }
+                int durMs = ScreenMeta.tweenMs(nextEl);
+                if (durMs > 0) {
+                    ActiveTween active = tweens.get(eid);
+                    float fromX = (active != null && !active.done(nowMs)) ? active.curX(nowMs) : oldEl.layout().x();
+                    float fromY = (active != null && !active.done(nowMs)) ? active.curY(nowMs) : oldEl.layout().y();
+                    tweens.put(eid, new ActiveTween(fromX, fromY, nextEl.layout().x(), nextEl.layout().y(), nowMs, durMs));
+                }
+                merged.set(idx, nextEl);
+                if (oldEl instanceof ButtonElement || nextEl instanceof ButtonElement
+                        || oldEl instanceof InputElement || nextEl instanceof InputElement) {
+                    widgetsAffected = true;
+                }
+            } else {
+                idxById.put(key, merged.size());
+                merged.add(nextEl);
+                layerChanged = true;
+                if (nextEl instanceof ButtonElement || nextEl instanceof InputElement) {
+                    widgetsAffected = true;
+                }
+            }
+            if (nextEl instanceof InputElement in) {
+                inputDrafts.put(eid, in.value());
+            } else if (nextEl instanceof SliderElement sl) {
+                if (draggingSlider == null || !eid.equals(ScreenMeta.elementId(draggingSlider))) {
+                    sliderValues.put(eid, sl.value());
+                }
+            } else if (nextEl instanceof ToggleElement tg) {
+                toggleValues.put(eid, tg.value());
+            }
+        }
+        this.description = new ScreenDescription(this.description.title(), merged);
+        if (layerChanged) {
+            this.ordered = ElementRenderer.sortedByLayer(merged, e -> e.layout().layer());
+        } else {
+            // Быстрая замена на месте в ordered без пересортировки
+            Map<String, ScreenElement> deltaByKey = new LinkedHashMap<>(delta.size() * 2);
+            for (ScreenElement e : delta) {
+                String eid = ScreenMeta.elementId(e);
+                if (!eid.isEmpty()) {
+                    deltaByKey.put(eid.toLowerCase(Locale.ROOT), e);
+                }
+            }
+            List<ScreenElement> nextOrdered = new ArrayList<>(this.ordered.size());
+            for (ScreenElement cur : this.ordered) {
+                String eid = ScreenMeta.elementId(cur);
+                ScreenElement rep = eid.isEmpty() ? null : deltaByKey.get(eid.toLowerCase(Locale.ROOT));
+                nextOrdered.add(rep != null ? rep : cur);
+            }
+            this.ordered = nextOrdered;
+        }
+        if (widgetsAffected) {
+            String focusedInputId = null;
+            int focusedCursor = 0;
+            for (Map.Entry<ScreenElement, EditBox> entry : inputs.entrySet()) {
+                if (entry.getValue().isFocused()) {
+                    focusedInputId = ScreenMeta.elementId(entry.getKey());
+                    focusedCursor = entry.getValue().getCursorPosition();
+                    break;
+                }
+            }
+            rebuildWidgets(focusedInputId, focusedCursor);
+        }
+    }
+
     public void applyUpdate(ScreenDescription next) {
         String focusedInputId = null;
         int focusedCursor = 0;

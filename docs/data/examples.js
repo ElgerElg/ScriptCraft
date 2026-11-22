@@ -1783,13 +1783,13 @@ on toggle "autowave":
 every 2 ticks:
 	loop all players:
 		if {-td-active::%loop-player%} is 1:
-			# Проверяем, открыт ли экран хоть у кого-то из команды (чтобы кооп не падал при вылете 1 игрока)
-			set {-any-open} to 0
+			# Собираем активных онлайн-игроков с открытым экраном 1 раз за тик (экономия ЦП!)
+			clear {-td-online::%loop-player%::*}
 			loop {-td-team::%loop-player%::*}:
 				set {-tp} to %loop-value%
 				if {-tp} is online and {-tp} has screen "Tower Defense" open:
-					set {-any-open} to 1
-			if {-any-open} is 1:
+					add {-tp} to {-td-online::%loop-player%::*}
+			if size of {-td-online::%loop-player%::*} > 0:
 				TdTick(loop-player)
 				if {-td-speed::%loop-player%} is 2 and {-td-in-wave::%loop-player%} is 1 and {-td-over::%loop-player%} is 0:
 					TdTick(loop-player)
@@ -1820,6 +1820,8 @@ function TdReconnect(g: player, p: player):
 	set {-m} to {-td-map::%g%}
 	if {-td-team::%g%::*} does not contain %p%:
 		add %p% to {-td-team::%g%::*}
+	if {-td-online::%g%::*} does not contain %p%:
+		add %p% to {-td-online::%g%::*}
 	set {-td-host::%p%} to %g%
 	if {-td-gold::%p%} is not set:
 		set {-td-gold::%p%} to 120
@@ -1864,70 +1866,61 @@ function TdReconnect(g: player, p: player):
 # ==========================================================
 
 function TdSyncPos(g: player, id: text, x: number, y: number):
-	loop {-td-team::%g%::*}:
+	loop {-td-online::%g%::*}:
 		set {-tp} to %loop-value%
-		if {-tp} is online and {-tp} has screen "Tower Defense" open:
-			set position of screen element "%id%" for {-tp} to x y
+		set position of screen element "%id%" for {-tp} to x y
 
 function TdSyncImg(g: player, id: text, tex: text):
-	loop {-td-team::%g%::*}:
+	loop {-td-online::%g%::*}:
 		set {-tp} to %loop-value%
-		if {-tp} is online and {-tp} has screen "Tower Defense" open:
-			set image of screen element "%id%" for {-tp} to tex
+		set image of screen element "%id%" for {-tp} to tex
 
 function TdSyncTxt(g: player, id: text, txt: text):
-	loop {-td-team::%g%::*}:
+	loop {-td-online::%g%::*}:
 		set {-tp} to %loop-value%
-		if {-tp} is online and {-tp} has screen "Tower Defense" open:
-			set text of screen element "%id%" for {-tp} to txt
+		set text of screen element "%id%" for {-tp} to txt
 
 function TdSyncShow(g: player, id: text):
-	loop {-td-team::%g%::*}:
+	loop {-td-online::%g%::*}:
 		set {-tp} to %loop-value%
-		if {-tp} is online and {-tp} has screen "Tower Defense" open:
-			show screen element "%id%" to {-tp}
+		show screen element "%id%" to {-tp}
 
 function TdSyncHide(g: player, id: text):
-	loop {-td-team::%g%::*}:
+	loop {-td-online::%g%::*}:
 		set {-tp} to %loop-value%
-		if {-tp} is online and {-tp} has screen "Tower Defense" open:
-			hide screen element "%id%" from {-tp}
+		hide screen element "%id%" from {-tp}
 
 function TdSyncCell(g: player, col: integer, row: integer, cx: number, cy: number, tex: text, tip: text):
-	loop {-td-team::%g%::*}:
+	loop {-td-online::%g%::*}:
 		set {-tp} to %loop-value%
-		if {-tp} is online and {-tp} has screen "Tower Defense" open:
-			update screen "Tower Defense" for {-tp}:
-				image "td:textures/gui/tile_build.png" at 0 0 size 28x28 texture 28x28 anchor center layer 3 id "c%col%_%row%" run TdCellClick(player, %col%, %row%) keep open tooltip "%tip%"
-			set image of screen element "c%col%_%row%" for {-tp} to tex
-			set position of screen element "c%col%_%row%" for {-tp} to cx cy
+		update screen "Tower Defense" for {-tp}:
+			image "td:textures/gui/tile_build.png" at 0 0 size 28x28 texture 28x28 anchor center layer 3 id "c%col%_%row%" run TdCellClick(player, %col%, %row%) keep open tooltip "%tip%"
+		set image of screen element "c%col%_%row%" for {-tp} to tex
+		set position of screen element "c%col%_%row%" for {-tp} to cx cy
 
 function TdSyncStatus(g: player, txt: text):
 	TdSyncTxt(g, "status_txt", txt)
 
 function TdSyncSound(g: player, snd: text, vol: number, pit: number):
-	loop {-td-team::%g%::*}:
+	loop {-td-online::%g%::*}:
 		set {-tp} to %loop-value%
-		if {-tp} is online and {-tp} has screen "Tower Defense" open:
-			play sound %snd% to {-tp} with volume vol pitch pit
+		play sound %snd% to {-tp} with volume vol pitch pit
 
 function TdSyncBar(g: player, id: text, val: number, mx: number):
-	loop {-td-team::%g%::*}:
+	loop {-td-online::%g%::*}:
 		set {-tp} to %loop-value%
-		if {-tp} is online and {-tp} has screen "Tower Defense" open:
-			if mx > 0:
-				set max of screen bar "%id%" for {-tp} to mx
-			set value of screen bar "%id%" for {-tp} to val
+		if mx > 0:
+			set max of screen bar "%id%" for {-tp} to mx
+		set value of screen bar "%id%" for {-tp} to val
 
 function TdSyncBossBar(g: player, val: number, mx: number):
 	TdSyncBar(g, "boss_bar", val, mx)
 
 function TdSyncGoldScore(g: player):
-	loop {-td-team::%g%::*}:
+	loop {-td-online::%g%::*}:
 		set {-tp} to %loop-value%
-		if {-tp} is online and {-tp} has screen "Tower Defense" open:
-			set text of screen element "hud_gold" for {-tp} to "&6%{-td-gold::%{-tp}%}%"
-			set text of screen element "hud_score" for {-tp} to "&a%{-td-score::%g%}%"
+		set text of screen element "hud_gold" for {-tp} to "&6%{-td-gold::%{-tp}%}%"
+		set text of screen element "hud_score" for {-tp} to "&a%{-td-score::%g%}%"
 
 function TdSyncHud(g: player):
 	set {-sp} to "x1"
@@ -1938,14 +1931,13 @@ function TdSyncHud(g: player):
 	set {-tstr} to "&7Соло &7[%{-sp}%&7]"
 	if {-pcnt} > 1:
 		set {-tstr} to "&dКооп(%{-pcnt}%): &f%{-names}% &7[%{-sp}%&7]"
-	loop {-td-team::%g%::*}:
+	loop {-td-online::%g%::*}:
 		set {-tp} to %loop-value%
-		if {-tp} is online and {-tp} has screen "Tower Defense" open:
-			set text of screen element "hud_wave" for {-tp} to "&f%{-td-wave::%g%}%/%{-td-maxw::%g%}%"
-			set text of screen element "hud_gold" for {-tp} to "&6%{-td-gold::%{-tp}%}%"
-			set text of screen element "hud_hp" for {-tp} to "&c%{-td-hp::%g%}%"
-			set text of screen element "hud_score" for {-tp} to "&a%{-td-score::%g%}%"
-			set text of screen element "hud_team" for {-tp} to {-tstr}
+		set text of screen element "hud_wave" for {-tp} to "&f%{-td-wave::%g%}%/%{-td-maxw::%g%}%"
+		set text of screen element "hud_gold" for {-tp} to "&6%{-td-gold::%{-tp}%}%"
+		set text of screen element "hud_hp" for {-tp} to "&c%{-td-hp::%g%}%"
+		set text of screen element "hud_score" for {-tp} to "&a%{-td-score::%g%}%"
+		set text of screen element "hud_team" for {-tp} to {-tstr}
 
 function TdShowRange(p: player, tx: number, ty: number, rng: number):
 	hide screen element "rng_s" from p
@@ -2182,8 +2174,10 @@ function TdStartGame(host: player):
 			if size of {-tmp-team::*} < 4:
 				add {-cand} to {-tmp-team::*}
 	clear {-td-team::%host%::*}
+	clear {-td-online::%host%::*}
 	loop {-tmp-team::*}:
 		add %loop-value% to {-td-team::%host%::*}
+		add %loop-value% to {-td-online::%host%::*}
 
 	set {-td-active::%host%} to 1
 	set {-td-over::%host%} to 0
@@ -2198,6 +2192,8 @@ function TdStartGame(host: player):
 	set {-td-spawn-cd::%host%} to 0
 	set {-td-fx-cd::%host%} to 0
 	set {-td-boss-vis::%host%} to 0
+	set {-td-tmax::%host%} to 0
+	set {-td-prcnt::%host%} to 0
 
 	if {-d} is 1:
 		set {-td-maxw::%host%} to 10
@@ -3261,6 +3257,8 @@ function TdCellClick(p: player, col: integer, row: integer):
 	set {-td-tx::%{-g}%::%{-slot}%} to {-cx}
 	set {-td-ty::%{-g}%::%{-slot}%} to {-cy}
 	set {-td-grid::%{-g}%::%col%_%row%} to {-slot}
+	if {-slot} > {-td-tmax::%{-g}%}:
+		set {-td-tmax::%{-g}%} to {-slot}
 
 	TdTowerRange({-tool}, 1)
 	TdShowRange(p, {-cx}, {-cy}, {-td-tmp-rng})
@@ -3356,14 +3354,20 @@ function TdTick(g: player):
 		set {-td-boss-vis::%g%} to 0
 		TdSyncHide(g, "boss_bar")
 
-	# 3. Полёт прожектайлов
-	TdMoveProjectiles(g)
+	# 3. Полёт прожектайлов (только если есть активные снаряды)
+	if {-td-prcnt::%g%} > 0:
+		TdMoveProjectiles(g)
 
-	# 4. Стрельба всех башен (кроме Банка)
-	loop 28 times:
-		set {-ti} to %loop-number%
-		if {-td-ta::%g%::%{-ti}%} is 1 and {-td-tt::%g%::%{-ti}%} is not 8:
-			TdTowerTick(g, {-ti})
+	# 4. Стрельба всех башен (кроме Банка; тикаем кд прямо здесь и не перебираем пустые слоты!)
+	set {-tmax} to {-td-tmax::%g%}
+	if {-tmax} > 0:
+		loop {-tmax} times:
+			set {-ti} to %loop-number%
+			if {-td-ta::%g%::%{-ti}%} is 1 and {-td-tt::%g%::%{-ti}%} is not 8:
+				if {-td-tcd::%g%::%{-ti}%} > 0:
+					remove 1 from {-td-tcd::%g%::%{-ti}%}
+				else:
+					TdTowerTick(g, {-ti})
 
 	# 5. Завершение волны + доход от всех Банков!
 	if {-td-to-spawn::%g%} <= 0 and {-td-spawn-boss::%g%} <= 0:
@@ -3740,6 +3744,7 @@ function TdSpawnProjectile(g: player, sx: number, sy: number, tgt: number, ptype
 		TdImpact(g, tgt, ptype, evo, dmg, {-td-ex::%g%::%tgt%}, {-td-ey::%g%::%tgt%})
 		stop
 	set {-td-pra::%g%::%{-ps}%} to 1
+	add 1 to {-td-prcnt::%g%}
 	set {-td-prx::%g%::%{-ps}%} to sx
 	set {-td-pry::%g%::%{-ps}%} to sy
 	set {-td-prtgt::%g%::%{-ps}%} to tgt
@@ -3758,6 +3763,7 @@ function TdMoveProjectiles(g: player):
 			set {-tgt} to {-td-prtgt::%g%::%{-k}%}
 			if {-td-ea::%g%::%{-tgt}%} is not 1:
 				set {-td-pra::%g%::%{-k}%} to 0
+				remove 1 from {-td-prcnt::%g%}
 				TdSyncHide(g, "pr%{-k}%")
 			else:
 				set {-px} to {-td-prx::%g%::%{-k}%}
@@ -3770,6 +3776,7 @@ function TdMoveProjectiles(g: player):
 				set {-dist} to sqrt({-dx} * {-dx} + {-dy} * {-dy})
 				if {-dist} <= {-spd}:
 					set {-td-pra::%g%::%{-k}%} to 0
+					remove 1 from {-td-prcnt::%g%}
 					TdSyncHide(g, "pr%{-k}%")
 					TdImpact(g, {-tgt}, {-td-prtype::%g%::%{-k}%}, {-td-prevo::%g%::%{-k}%}, {-td-prdmg::%g%::%{-k}%}, {-tx}, {-ty})
 				else:
@@ -3780,6 +3787,7 @@ function TdMoveProjectiles(g: player):
 					TdSyncPos(g, "pr%{-k}%", {-nx}, {-ny})
 
 function TdClearProjectiles(g: player):
+	set {-td-prcnt::%g%} to 0
 	loop 6 times:
 		set {-k} to %loop-number%
 		set {-td-pra::%g%::%{-k}%} to 0

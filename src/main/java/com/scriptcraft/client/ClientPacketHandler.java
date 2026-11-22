@@ -25,6 +25,12 @@ public final class ClientPacketHandler {
             }
             return;
         }
+        if (title.startsWith(com.scriptcraft.screen.ScreenManager.DELTA_PREFIX)) {
+            if (mc.screen instanceof ScriptScreen current) {
+                current.applyDelta(description.elements());
+            }
+            return;
+        }
         if (title.startsWith(com.scriptcraft.screen.ScreenManager.PATCH_PREFIX)) {
             String realTitle = title.substring(com.scriptcraft.screen.ScreenManager.PATCH_PREFIX.length());
             ScreenDescription clean = new ScreenDescription(realTitle, description.elements());
