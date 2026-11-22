@@ -1,6 +1,7 @@
 package com.scriptcraft.client;
 
 import com.scriptcraft.lang.Messages;
+import com.scriptcraft.network.StudioLivePacket;
 import com.scriptcraft.screen.Anchor;
 import com.scriptcraft.screen.BarDirection;
 import com.scriptcraft.screen.BarElement;
@@ -21,6 +22,9 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.client.resources.DefaultPlayerSkin;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import org.lwjgl.glfw.GLFW;
@@ -162,6 +166,8 @@ public final class StudioGuiEditor {
         // Preserved script comments above this element or raw unparsed line
         public final List<String> leadingComments = new ArrayList<>();
         public String rawUnparsedLine = null;
+        /** 0-based индекс строки этого элемента в открытом ScriptDocument (для совместного редактирования). */
+        public int sourceLine = -1;
 
         public GuiNode copy() {
             GuiNode c = new GuiNode();
@@ -226,6 +232,7 @@ public final class StudioGuiEditor {
             c.editorVisible = editorVisible;
             c.editorLocked = editorLocked;
             c.rawUnparsedLine = rawUnparsedLine;
+            c.sourceLine = sourceLine;
             return c;
         }
     }
@@ -346,9 +353,15 @@ public final class StudioGuiEditor {
     private static final FloatingDock layersDock = new FloatingDock("layers", 184, 186);
     private static final FloatingDock inspectorDock = new FloatingDock("inspector", 198, 330);
 
-    // Ввод текста в инспекторе
+    // Ввод текста в инспекторе (полноценное поле с курсором, мышкой и выделением)
     private static String focusedField = null;
-    private static String fieldBuffer = "";
+    private static boolean fieldUndoPushed = false;
+    private static final StudioTextField activeField = new StudioTextField().maxLength(1024);
+    // Раскрываемый редактор полной строки для длинных текстов (текст, тултип, run и т.д.)
+    private static String expandedField = null;
+    private static String expandedBeforeVal = "";
+    private static final StudioTextField expandedInput = new StudioTextField().maxLength(2048);
+    private static int expX, expY, expW, expH, expOkX, expOkY, expCancelX;
 
     // Перетаскивание
     private static DragMode dragMode = DragMode.NONE;
@@ -407,11 +420,60 @@ public final class StudioGuiEditor {
             return;
         }
         String text = doc.text();
-        if (doc.name.equals(parsedDocName) && text.equals(parsedDocSnapshot) && !screens.isEmpty()) {
+        boolean sameDoc = doc.name.equals(parsedDocName);
+        if (sameDoc && text.equals(parsedDocSnapshot) && !screens.isEmpty()) {
+            return;
+        }
+        // Во время перетаскивания, ввода в поле или локальных неприменённых правок не откатываем холст из-за чужих правок
+        if (sameDoc && !screens.isEmpty() && (dragMode != DragMode.NONE || focusedField != null || expandedField != null || dirtyOnCanvas)) {
+            return;
+        }
+        if (sameDoc && !screens.isEmpty()) {
+            // Аккуратная пересинхронизация от удалённой правки другого игрока с сохранением выбора, undo и слоёв
+            String keepId = selectedNode() != null ? selectedNode().id : "";
+            int keepScreen = activeScreenIdx;
+            int keepNode = selectedNodeIdx;
+            Integer keepFilter = layerFilter;
+            Map<String, boolean[]> keepLayerFlags = new LinkedHashMap<>();
+            ParsedScreenBlock curScr = activeScreen();
+            if (curScr != null) {
+                for (int i = 0; i < curScr.nodes.size(); i++) {
+                    GuiNode n = curScr.nodes.get(i);
+                    String k = !n.id.isEmpty() ? "id:" + n.id : "idx:" + i;
+                    keepLayerFlags.put(k, new boolean[]{n.editorVisible, n.editorLocked});
+                }
+            }
+            parseDocument(doc, false);
+            activeScreenIdx = Math.max(0, Math.min(keepScreen, screens.size() - 1));
+            layerFilter = keepFilter;
+            ParsedScreenBlock nextScr = activeScreen();
+            if (nextScr != null) {
+                for (int i = 0; i < nextScr.nodes.size(); i++) {
+                    GuiNode n = nextScr.nodes.get(i);
+                    boolean[] fl = !n.id.isEmpty() ? keepLayerFlags.get("id:" + n.id) : keepLayerFlags.get("idx:" + i);
+                    if (fl != null) {
+                        n.editorVisible = fl[0];
+                        n.editorLocked = fl[1];
+                    }
+                }
+                int matched = -1;
+                if (!keepId.isEmpty()) {
+                    for (int i = 0; i < nextScr.nodes.size(); i++) {
+                        if (keepId.equals(nextScr.nodes.get(i).id)) {
+                            matched = i;
+                            break;
+                        }
+                    }
+                }
+                if (matched < 0 && keepNode >= 0 && keepNode < nextScr.nodes.size()) {
+                    matched = keepNode;
+                }
+                selectedNodeIdx = matched;
+            }
             return;
         }
         int prevLine = doc.line;
-        parseDocument(doc);
+        parseDocument(doc, true);
         // Если курсор в текстовом редакторе стоял внутри какого-то open screen, выбираем его автоматически
         for (int i = 0; i < screens.size(); i++) {
             ParsedScreenBlock b = screens.get(i);
@@ -425,7 +487,28 @@ public final class StudioGuiEditor {
     /** Принудительно перечитывает экраны из текста документа, выбирая блок рядом со строкой курсора. */
     public static void reloadFromDocument(ScriptDocument doc) {
         parsedDocSnapshot = "";
+        dirtyOnCanvas = false;
         ensureSynced(doc);
+    }
+
+    private static void selectNode(ScriptDocument doc, int idx) {
+        selectedNodeIdx = idx;
+        ParsedScreenBlock scr = activeScreen();
+        if (doc != null && scr != null && idx >= 0 && idx < scr.nodes.size()) {
+            GuiNode n = scr.nodes.get(idx);
+            if (n.sourceLine >= 0 && n.sourceLine < doc.lines.size()) {
+                doc.line = n.sourceLine;
+                doc.col = 0;
+                doc.anchorLine = -1;
+                doc.box = false;
+            }
+        }
+    }
+
+    private static void syncLiveIfNeeded(ScriptDocument doc) {
+        if (doc != null && doc.live && dirtyOnCanvas) {
+            applyToDocumentInternal(doc, false);
+        }
     }
 
     public static ParsedScreenBlock activeScreen() {
@@ -455,7 +538,7 @@ public final class StudioGuiEditor {
         redoStack.clear();
     }
 
-    private static void undo() {
+    public static void undo(ScriptDocument doc) {
         ParsedScreenBlock scr = activeScreen();
         if (scr == null || undoStack.isEmpty()) return;
         List<GuiNode> cur = new ArrayList<>(scr.nodes.size());
@@ -466,9 +549,11 @@ public final class StudioGuiEditor {
         scr.nodes.addAll(prev);
         selectedNodeIdx = Math.min(selectedNodeIdx, scr.nodes.size() - 1);
         focusedField = null;
+        dirtyOnCanvas = true;
+        syncLiveIfNeeded(doc);
     }
 
-    private static void redo() {
+    public static void redo(ScriptDocument doc) {
         ParsedScreenBlock scr = activeScreen();
         if (scr == null || redoStack.isEmpty()) return;
         List<GuiNode> cur = new ArrayList<>(scr.nodes.size());
@@ -479,22 +564,26 @@ public final class StudioGuiEditor {
         scr.nodes.addAll(next);
         selectedNodeIdx = Math.min(selectedNodeIdx, scr.nodes.size() - 1);
         focusedField = null;
+        dirtyOnCanvas = true;
+        syncLiveIfNeeded(doc);
     }
 
     // =========================================================================
     // 1. ПАРСЕР СУЩЕСТВУЮЩИХ СКРИПТОВ (находит все open screen / create hud)
     // =========================================================================
 
-    private static void parseDocument(ScriptDocument doc) {
+    private static void parseDocument(ScriptDocument doc, boolean resetHistory) {
         parsedDocName = doc.name;
         parsedDocSnapshot = doc.text();
         screens.clear();
         fileOptions.clear();
-        undoStack.clear();
-        redoStack.clear();
-        selectedNodeIdx = -1;
+        if (resetHistory) {
+            undoStack.clear();
+            redoStack.clear();
+            selectedNodeIdx = -1;
+            layerFilter = null;
+        }
         focusedField = null;
-        layerFilter = null;
         dirtyOnCanvas = false;
 
         List<String> lines = doc.lines;
@@ -722,6 +811,7 @@ public final class StudioGuiEditor {
                 }
             }
             GuiNode node = parseSingleElementLine(expanded, nestedRows);
+            node.sourceLine = i;
             node.leadingComments.addAll(pendingComments);
             pendingComments.clear();
             // Автоблокировка гигантских прозрачных фонов-ловушек клика (как 2000x2000 в td.sc), чтобы они не мешали кликать на холсте
@@ -1362,6 +1452,10 @@ public final class StudioGuiEditor {
 
     /** Применяет текущий экран обратно в открытый {@link ScriptDocument} (с поддержкой Ctrl+Z в документе). */
     public static void applyToDocument(ScriptDocument doc) {
+        applyToDocumentInternal(doc, true);
+    }
+
+    private static void applyToDocumentInternal(ScriptDocument doc, boolean notifyToast) {
         ParsedScreenBlock block = activeScreen();
         if (doc == null || !doc.loaded || doc.isImage || block == null) return;
         List<String> generated = generateScreenCodeLines(block);
@@ -1386,6 +1480,9 @@ public final class StudioGuiEditor {
                     other.headerLine += delta;
                     other.bodyStartLine += delta;
                     other.bodyEndLine += delta;
+                    for (GuiNode gn : other.nodes) {
+                        if (gn.sourceLine >= 0) gn.sourceLine += delta;
+                    }
                 }
             }
         } else {
@@ -1413,10 +1510,29 @@ public final class StudioGuiEditor {
                 block.bodyEndLine = insertAt + generated.size();
             }
         }
+        // Обновляем sourceLine каждого элемента, чтобы совместное редактирование показывало точный элемент
+        int curLine = block.headerLine + 1;
+        for (GuiNode n : block.nodes) {
+            curLine += n.leadingComments.size();
+            n.sourceLine = curLine;
+            curLine++;
+            if ("list".equals(n.kind)) {
+                curLine += !n.listRawRows.isEmpty() ? n.listRawRows.size() : (n.listFrom.isEmpty() ? 1 : 0);
+            }
+        }
+        // Ставим курсор документа на выбранный элемент, чтобы пиры видели, что мы редактируем
+        GuiNode sel = selectedNode();
+        if (sel != null && sel.sourceLine >= 0 && sel.sourceLine < doc.lines.size()) {
+            doc.line = sel.sourceLine;
+            doc.col = 0;
+            doc.anchorLine = -1;
+        }
         parsedDocSnapshot = doc.text();
         dirtyOnCanvas = false;
-        ClientToasts.push(tr("&aЭкран обновлён в скрипте (" + generated.size() + " стр.)",
-                "&aScreen applied to script (" + generated.size() + " lines)"));
+        if (notifyToast) {
+            ClientToasts.push(tr("&aЭкран обновлён в скрипте (" + generated.size() + " стр.)",
+                    "&aScreen applied to script (" + generated.size() + " lines)"));
+        }
     }
 
     // =========================================================================
@@ -1646,6 +1762,36 @@ public final class StudioGuiEditor {
                 g.drawString(font, badge, badgeX + 4, badgeY + 2, selCol, false);
                 g.pose().popPose();
             }
+
+            // Совместное редактирование: рамки и бейджи других редакторов на их выбранных элементах
+            if (doc != null && doc.live) {
+                java.util.UUID selfId = Minecraft.getInstance().player != null ? Minecraft.getInstance().player.getUUID() : null;
+                List<StudioLivePacket.Peer> peers = StudioSession.peers(doc.name);
+                if (!peers.isEmpty()) {
+                    g.pose().pushPose();
+                    g.pose().translate(0f, 0f, z + 25f);
+                    for (StudioLivePacket.Peer peer : peers) {
+                        if (selfId != null && selfId.equals(peer.id())) continue;
+                        GuiNode peerNode = findPeerNode(scr, peer.line());
+                        if (peerNode == null || !peerNode.editorVisible) continue;
+                        int pc = StudioScreen.peerColor(peer);
+                        int[] pb = nodeBounds(font, peerNode, virtualW, virtualH);
+                        int pbx = pb[0], pby = pb[1], pbw = pb[2], pbh = pb[3];
+                        // Двойная цветная рамка вокруг элемента, который редактирует пир
+                        border(g, pbx - 2, pby - 2, pbw + 4, pbh + 4, pc);
+                        border(g, pbx - 1, pby - 1, pbw + 2, pbh + 2, pc);
+                        String pTag = peer.name();
+                        int pTagW = font.width(pTag) + 16;
+                        int pTagX = Math.max(2, Math.min(pbx, virtualW - pTagW - 2));
+                        int pTagY = pby - 15 >= 2 ? pby - 15 : pby + pbh + 4;
+                        g.fill(pTagX, pTagY, pTagX + pTagW, pTagY + 12, 0xF0101724);
+                        border(g, pTagX, pTagY, pTagW, 12, pc);
+                        blitPeerHead(g, peer.id(), pTagX + 2, pTagY + 2, 8);
+                        g.drawString(font, pTag, pTagX + 12, pTagY + 2, pc, false);
+                    }
+                    g.pose().popPose();
+                }
+            }
             g.pose().popPose();
         }
 
@@ -1657,7 +1803,7 @@ public final class StudioGuiEditor {
         // 3. Плавающие панели инструментов (Палитра, Слои Photoshop, Инспектор)
         if (!allPanelsHiddenTab) {
             if (paletteDock.open) renderPaletteDock(g, font, mx, my);
-            if (layersDock.open) renderLayersDock(g, font, mx, my);
+            if (layersDock.open) renderLayersDock(g, font, doc, mx, my);
             if (inspectorDock.open) renderInspectorDock(g, font, mx, my);
         }
 
@@ -1666,7 +1812,10 @@ public final class StudioGuiEditor {
         // 4. Верхняя панель управления GUI-редактором + выпадающий список экранов
         renderTopBar(g, font, doc, x, y, w, mx, my);
         if (screenDropdownOpen && scr != null) {
-            renderScreenDropdown(g, font, x + 6, y + TOP_BAR_H + 1, mx, my);
+            renderScreenDropdown(g, font, doc, x + 6, y + TOP_BAR_H + 1, mx, my);
+        }
+        if (expandedField != null) {
+            renderExpandedEditor(g, font, mx, my);
         }
 
         // Тултип поверх всего
@@ -1843,13 +1992,15 @@ public final class StudioGuiEditor {
         }
     }
 
-    private static void renderScreenDropdown(GuiGraphics g, Font font, int x, int y, int mx, int my) {
-        int w = 290;
+    private static void renderScreenDropdown(GuiGraphics g, Font font, ScriptDocument doc, int x, int y, int mx, int my) {
+        int w = 310;
         int rowH = 16;
         int h = screens.size() * rowH + 6;
         g.fill(x + 2, y + 2, x + w + 2, y + h + 2, 0x77000000);
         g.fill(x, y, x + w, y + h, 0xFA121926);
         border(g, x, y, w, h, ACCENT);
+        List<StudioLivePacket.Peer> peers = doc != null && doc.live ? StudioSession.peers(doc.name) : List.of();
+        java.util.UUID selfId = Minecraft.getInstance().player != null ? Minecraft.getInstance().player.getUUID() : null;
         for (int i = 0; i < screens.size(); i++) {
             ParsedScreenBlock b = screens.get(i);
             int ry = y + 3 + i * rowH;
@@ -1859,8 +2010,19 @@ public final class StudioGuiEditor {
                 g.fill(x + 2, ry, x + w - 2, ry + rowH, sel ? ROW_SEL : ROW_HOT);
                 if (sel) g.fill(x + 2, ry + 1, x + 4, ry + rowH - 1, GOLD);
             }
+            int rightLim = x + w - 6;
+            for (StudioLivePacket.Peer p : peers) {
+                if (selfId != null && selfId.equals(p.id())) continue;
+                if (b.headerLine >= 0 && p.line() >= b.headerLine && p.line() <= b.bodyEndLine) {
+                    rightLim -= 12;
+                    int pc = StudioScreen.peerColor(p);
+                    g.fill(rightLim - 1, ry + 3, rightLim + 9, ry + 13, pc);
+                    blitPeerHead(g, p.id(), rightLim, ry + 4, 8);
+                    rightLim -= 2;
+                }
+            }
             String lbl = b.displayName(i, screens.size()) + "  [" + b.nodes.size() + "]";
-            g.drawString(font, trimWidth(font, lbl, w - 14), x + 8, ry + 4, sel ? GOLD : TEXT, false);
+            g.drawString(font, trimWidth(font, lbl, Math.max(40, rightLim - x - 12)), x + 8, ry + 4, sel ? GOLD : TEXT, false);
             dropdownHits.add(new HitBtn(x + 2, ry, w - 4, rowH, "pick_scr:" + i, null));
         }
     }
@@ -1930,7 +2092,7 @@ public final class StudioGuiEditor {
     // 7. ПАНЕЛЬ 2: СЛОИ В СТИЛЕ PHOTOSHOP (👁 Видимость, 🔒 Блокировка, Фильтр L:N)
     // =========================================================================
 
-    private static void renderLayersDock(GuiGraphics g, Font font, int mx, int my) {
+    private static void renderLayersDock(GuiGraphics g, Font font, ScriptDocument doc, int mx, int my) {
         ParsedScreenBlock scr = activeScreen();
         String title = tr("◫ Слои (Photoshop)", "◫ Layers") + (scr == null ? "" : " [" + scr.nodes.size() + "]");
         drawDockFrame(g, font, layersDock, title, mx, my, layerBtnHits);
@@ -2014,13 +2176,32 @@ public final class StudioGuiEditor {
                 int lbX = ix + 25;
                 g.drawString(font, lBadge, lbX, ry + 3, ACCENT, false);
 
-                // 4) Тип и имя/ID элемента
+                // 4) Тип и имя/ID элемента (+ голова пира, если кто-то редактирует этот слой)
                 int nameX = lbX + font.width(lBadge) + 4;
                 int upX = ix + iw - 24;
                 int downX = ix + iw - 13;
+                int nameRight = upX - 3;
+                if (doc != null && doc.live && n.sourceLine >= 0) {
+                    java.util.UUID selfId = Minecraft.getInstance().player != null ? Minecraft.getInstance().player.getUUID() : null;
+                    for (StudioLivePacket.Peer p : StudioSession.peers(doc.name)) {
+                        if (selfId != null && selfId.equals(p.id())) continue;
+                        if (p.line() == n.sourceLine) {
+                            nameRight -= 11;
+                            int pc = StudioScreen.peerColor(p);
+                            g.fill(nameRight - 1, ry + 2, nameRight + 9, ry + 12, pc);
+                            blitPeerHead(g, p.id(), nameRight, ry + 3, 8);
+                            if (hover(mx, my, nameRight - 1, ry + 2, 10, 10)) {
+                                hoverTip = p.name();
+                                hoverTipX = mx + 8;
+                                hoverTipY = my + 14;
+                            }
+                            nameRight -= 2;
+                        }
+                    }
+                }
                 String label = "[" + shortKind(n.kind) + "] " + (!n.id.isEmpty() ? "#" + n.id : n.text);
                 if (n.scriptHidden) label = "(hid) " + label;
-                g.drawString(font, trimWidth(font, label, Math.max(20, upX - nameX - 3)),
+                g.drawString(font, trimWidth(font, label, Math.max(16, nameRight - nameX)),
                         nameX, ry + 3, sel ? GOLD : (vis ? TEXT : MUTED), false);
 
                 // 5) Кнопки перемещения слоя вверх/вниз (▲ / ▼)
@@ -2321,24 +2502,119 @@ public final class StudioGuiEditor {
         return cy + 22;
     }
 
+    private static boolean isExpandableField(String fieldId) {
+        return switch (fieldId) {
+            case "text", "tooltip", "runAction", "placeholder", "inputValue",
+                    "listHeader", "listFrom", "scr_title", "scr_target" -> true;
+            default -> false;
+        };
+    }
+
     private static int drawField(GuiGraphics g, Font font, int mx, int my,
                                  int x, int y, int w, String fieldId, String value, List<HitBtn> hits) {
+        boolean expandable = isExpandableField(fieldId) && w >= 42;
+        int fw = expandable ? w - 15 : w;
         boolean focused = fieldId.equals(focusedField);
-        boolean hot = hover(mx, my, x, y, w, 14);
-        g.fill(x, y, x + w, y + 14, 0xFF0B1018);
-        border(g, x, y, w, 14, focused ? GOLD : (hot ? ACCENT : EDGE));
-        String shown = focused ? (fieldBuffer + "_") : (value == null ? "" : value);
-        // Если текст длинный и поле в фокусе — показываем хвост строки
-        if (focused && font.width(shown) > w - 6) {
-            while (shown.length() > 1 && font.width(shown) > w - 6) {
-                shown = shown.substring(1);
-            }
+        boolean hot = hover(mx, my, x, y, fw, 14);
+        if (focused) {
+            activeField.render(g, font, x, y, fw, 14, true, "", 0xFF0B1018, GOLD, GOLD, MUTED);
         } else {
-            shown = trimWidth(font, shown, w - 6);
+            g.fill(x, y, x + fw, y + 14, 0xFF0B1018);
+            border(g, x, y, fw, 14, hot ? ACCENT : EDGE);
+            String shown = trimWidth(font, value == null ? "" : value, fw - 6);
+            g.drawString(font, shown, x + 3, y + 3, TEXT, false);
         }
-        g.drawString(font, shown, x + 3, y + 3, focused ? GOLD : TEXT, false);
-        hits.add(new HitBtn(x, y, w, 14, "field:" + fieldId, null));
+        hits.add(new HitBtn(x, y, fw, 14, "field:" + fieldId, null));
+        if (expandable) {
+            int ex = x + fw + 1;
+            drawDockBtn(g, font, mx, my, ex, y, 14, 14, "⤢", "expand:" + fieldId,
+                    tr("Раскрыть и редактировать всю строку", "Expand full text editor"), false, hits);
+        }
         return y + 14;
+    }
+
+    private static void renderExpandedEditor(GuiGraphics g, Font font, int mx, int my) {
+        g.fill(viewX, viewY, viewX + viewW, viewY + viewH, 0x99000000);
+        expW = Math.min(540, Math.max(260, viewW - 40));
+        expH = 114;
+        expX = viewX + (viewW - expW) / 2;
+        expY = viewY + (viewH - expH) / 2;
+
+        g.fill(expX + 3, expY + 3, expX + expW + 3, expY + expH + 3, 0x77000000);
+        g.fill(expX, expY, expX + expW, expY + expH, 0xFA131B28);
+        border(g, expX, expY, expW, expH, GOLD);
+        g.fill(expX + 1, expY + 1, expX + expW - 1, expY + 18, PANEL_HDR);
+        g.drawString(font, tr("Редактирование поля: ", "Edit field: ") + expandedField, expX + 8, expY + 5, GOLD, false);
+
+        // Полноценное широкое поле ввода с курсором, мышкой и выделением
+        expandedInput.render(g, font, expX + 8, expY + 24, expW - 16, 18, true, "", 0xFF0B1018, ACCENT, TEXT, MUTED);
+
+        // Предпросмотр полной строки с переносом и цветовыми кодами &
+        int pvX = expX + 8;
+        int pvY = expY + 46;
+        int pvW = expW - 16;
+        int pvH = 42;
+        g.fill(pvX, pvY, pvX + pvW, pvY + pvH, 0xFF0D121B);
+        border(g, pvX, pvY, pvW, pvH, EDGE);
+        String preview = colorize(expandedInput.value()).replace("%nl%", "\n").replace("%newline%", "\n");
+        g.enableScissor(pvX + 2, pvY + 2, pvX + pvW - 2, pvY + pvH - 2);
+        int py = pvY + 4;
+        for (String line : preview.split("\n", -1)) {
+            for (var seq : font.split(net.minecraft.network.chat.Component.literal(line), Math.max(40, pvW - 8))) {
+                if (py > pvY + pvH - 8) break;
+                g.drawString(font, seq, pvX + 4, py, TEXT, false);
+                py += 10;
+            }
+        }
+        g.disableScissor();
+
+        // Кнопки Готово / Отмена
+        expOkY = expY + expH - 21;
+        String okLbl = tr("✔ Готово (Enter)", "✔ Done (Enter)");
+        String canLbl = tr("Отмена (Esc)", "Cancel (Esc)");
+        int okW = font.width(okLbl) + 14;
+        int canW = font.width(canLbl) + 14;
+        expOkX = expX + expW - okW - 8;
+        expCancelX = expOkX - canW - 6;
+        boolean okHot = hover(mx, my, expOkX, expOkY, okW, 15);
+        boolean canHot = hover(mx, my, expCancelX, expOkY, canW, 15);
+        g.fill(expOkX, expOkY, expOkX + okW, expOkY + 15, okHot ? 0xFF1F4E38 : 0xFF173A2B);
+        border(g, expOkX, expOkY, okW, 15, GREEN);
+        g.drawString(font, okLbl, expOkX + 7, expOkY + 4, GREEN, false);
+
+        g.fill(expCancelX, expOkY, expCancelX + canW, expOkY + 15, canHot ? ROW_HOT : ROW_BG);
+        border(g, expCancelX, expOkY, canW, 15, EDGE_HOT);
+        g.drawString(font, canLbl, expCancelX + 7, expOkY + 4, TEXT, false);
+    }
+
+    private static GuiNode findPeerNode(ParsedScreenBlock scr, int peerLine) {
+        if (scr == null || scr.headerLine < 0 || peerLine < scr.headerLine || peerLine > scr.bodyEndLine) {
+            return null;
+        }
+        GuiNode best = null;
+        int bestDist = Integer.MAX_VALUE;
+        for (GuiNode n : scr.nodes) {
+            if (n.sourceLine == peerLine) return n;
+            if (n.sourceLine >= 0) {
+                int d = Math.abs(n.sourceLine - peerLine);
+                if (d < bestDist && d <= 2) {
+                    bestDist = d;
+                    best = n;
+                }
+            }
+        }
+        return best;
+    }
+
+    private static void blitPeerHead(GuiGraphics g, java.util.UUID id, int x, int y, int size) {
+        Minecraft mc = Minecraft.getInstance();
+        ResourceLocation skin = DefaultPlayerSkin.getDefaultSkin(id);
+        if (mc.getConnection() != null) {
+            PlayerInfo info = mc.getConnection().getPlayerInfo(id);
+            if (info != null) skin = info.getSkinLocation();
+        }
+        g.blit(skin, x, y, size, size, 8, 8, 8, 8, 64, 64);
+        g.blit(skin, x, y, size, size, 40, 8, 8, 8, 64, 64);
     }
 
     // =========================================================================
@@ -2350,7 +2626,34 @@ public final class StudioGuiEditor {
         if (mx < viewX || mx >= viewX + viewW || my < viewY || my >= viewY + viewH) {
             return false;
         }
-        commitFocusedField();
+
+        // 0. Раскрытое модальное окно редактирования строки
+        if (expandedField != null) {
+            if (!hover(mx, my, expX, expY, expW, expH)) {
+                closeExpandedEditor(doc, true);
+                return true;
+            }
+            String okLbl = tr("✔ Готово (Enter)", "✔ Done (Enter)");
+            String canLbl = tr("Отмена (Esc)", "Cancel (Esc)");
+            int okW = font.width(okLbl) + 14;
+            int canW = font.width(canLbl) + 14;
+            if (hover(mx, my, expOkX, expOkY, okW, 15)) {
+                closeExpandedEditor(doc, true);
+                return true;
+            }
+            if (hover(mx, my, expCancelX, expOkY, canW, 15)) {
+                closeExpandedEditor(doc, false);
+                return true;
+            }
+            expandedInput.mouseClicked(font, mx, my, button);
+            return true;
+        }
+
+        // Если кликнули внутри уже активного поля — перемещаем курсор мышкой / выделяем
+        if (focusedField != null && activeField.mouseClicked(font, mx, my, button)) {
+            return true;
+        }
+        commitFocusedField(doc);
 
         // 1. Выпадающий список экранов
         if (screenDropdownOpen) {
@@ -2451,7 +2754,7 @@ public final class StudioGuiEditor {
                     pickIdx = hitsUnderMouse.get((curPos + 1) % hitsUnderMouse.size());
                 }
             }
-            selectedNodeIdx = pickIdx;
+            selectNode(doc, pickIdx);
             GuiNode picked = scr.nodes.get(pickIdx);
             if (!picked.editorLocked) {
                 pushUndo();
@@ -2473,7 +2776,7 @@ public final class StudioGuiEditor {
         // Кнопки в шапке и внутри панели
         for (HitBtn hit : hits) {
             if (hover(mx, my, hit.x, hit.y, hit.w, hit.h)) {
-                handleActionId(doc, hit.id);
+                handleActionId(doc, hit.id, mx, my);
                 return true;
             }
         }
@@ -2517,14 +2820,14 @@ public final class StudioGuiEditor {
                         return true;
                     }
                     if (mx >= row.upX - 1 && mx < row.upX + 10) {
-                        moveNodeInStack(scr, row.nodeIndex, true);
+                        moveNodeInStack(doc, scr, row.nodeIndex, true);
                         return true;
                     }
                     if (mx >= row.downX - 1 && mx < row.downX + 10) {
-                        moveNodeInStack(scr, row.nodeIndex, false);
+                        moveNodeInStack(doc, scr, row.nodeIndex, false);
                         return true;
                     }
-                    selectedNodeIdx = row.nodeIndex;
+                    selectNode(doc, row.nodeIndex);
                     return true;
                 }
             }
@@ -2532,7 +2835,7 @@ public final class StudioGuiEditor {
         return clickDock(layersDock, List.of(), doc, mx, my);
     }
 
-    private static void moveNodeInStack(ParsedScreenBlock scr, int idx, boolean upVisual) {
+    private static void moveNodeInStack(ScriptDocument doc, ParsedScreenBlock scr, int idx, boolean upVisual) {
         if (idx < 0 || idx >= scr.nodes.size()) return;
         pushUndo();
         GuiNode node = scr.nodes.get(idx);
@@ -2560,9 +2863,12 @@ public final class StudioGuiEditor {
                 selectedNodeIdx = idx;
             }
         }
+        syncLiveIfNeeded(doc);
     }
 
-    public static boolean mouseDragged(int mx, int my, int button) {
+    public static boolean mouseDragged(Font font, int mx, int my, int button) {
+        if (expandedField != null && expandedInput.mouseDragged(font, mx)) return true;
+        if (focusedField != null && activeField.mouseDragged(font, mx)) return true;
         if (dragMode == DragMode.NONE) return false;
         if (dragMode == DragMode.DOCK_MOVE && draggedDock != null) {
             draggedDock.x = mx - dragStartMouseX;
@@ -2629,10 +2935,16 @@ public final class StudioGuiEditor {
         return true;
     }
 
-    public static boolean mouseReleased() {
+    public static boolean mouseReleased(ScriptDocument doc) {
+        activeField.mouseReleased();
+        expandedInput.mouseReleased();
         if (dragMode != DragMode.NONE) {
+            boolean wasNodeEdit = dragMode != DragMode.DOCK_MOVE && dragMode != DragMode.DOCK_RESIZE_H && dragMode != DragMode.CANVAS_PAN;
             dragMode = DragMode.NONE;
             draggedDock = null;
+            if (wasNodeEdit) {
+                syncLiveIfNeeded(doc);
+            }
             return true;
         }
         return false;
@@ -2661,31 +2973,35 @@ public final class StudioGuiEditor {
     }
 
     public static boolean keyPressed(ScriptDocument doc, int key) {
+        if (expandedField != null) {
+            if (key == GLFW.GLFW_KEY_ESCAPE) {
+                closeExpandedEditor(doc, false);
+                return true;
+            }
+            if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
+                closeExpandedEditor(doc, true);
+                return true;
+            }
+            if (expandedInput.keyPressed(key)) {
+                applyFieldLive(expandedField, expandedInput.value());
+            }
+            return true;
+        }
         if (focusedField != null) {
             if (key == GLFW.GLFW_KEY_ESCAPE) {
                 focusedField = null;
                 return true;
             }
             if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER || key == GLFW.GLFW_KEY_TAB) {
-                commitFocusedField();
+                commitFocusedField(doc);
                 return true;
             }
-            if (key == GLFW.GLFW_KEY_BACKSPACE) {
-                if (Screen.hasControlDown()) {
-                    fieldBuffer = "";
-                } else if (!fieldBuffer.isEmpty()) {
-                    fieldBuffer = fieldBuffer.substring(0, fieldBuffer.length() - 1);
+            if (activeField.keyPressed(key)) {
+                if (!fieldUndoPushed) {
+                    pushUndo();
+                    fieldUndoPushed = true;
                 }
-                applyFieldLive(focusedField, fieldBuffer);
-                return true;
-            }
-            if (Screen.hasControlDown() && key == GLFW.GLFW_KEY_V) {
-                String clip = Minecraft.getInstance().keyboardHandler.getClipboard();
-                if (clip != null) {
-                    fieldBuffer += clip.replace("\r", "").replace("\n", "");
-                    applyFieldLive(focusedField, fieldBuffer);
-                }
-                return true;
+                applyFieldLive(focusedField, activeField.value());
             }
             return true;
         }
@@ -2696,44 +3012,49 @@ public final class StudioGuiEditor {
         }
         boolean ctrl = Screen.hasControlDown();
         boolean shift = Screen.hasShiftDown();
+        boolean alt = Screen.hasAltDown();
 
-        if (ctrl && key == GLFW.GLFW_KEY_Z) {
-            undo();
+        if (ClientUiSettings.matches("undo", key, ctrl, shift, alt) || (ctrl && !shift && key == GLFW.GLFW_KEY_Z)) {
+            undo(doc);
             return true;
         }
-        if (ctrl && (key == GLFW.GLFW_KEY_Y || (shift && key == GLFW.GLFW_KEY_Z))) {
-            redo();
+        if (ClientUiSettings.matches("redo", key, ctrl, shift, alt) || (ctrl && key == GLFW.GLFW_KEY_Y) || (ctrl && shift && key == GLFW.GLFW_KEY_Z)) {
+            redo(doc);
             return true;
         }
         if (ctrl && key == GLFW.GLFW_KEY_D) {
-            duplicateSelected();
+            duplicateSelected(doc);
             return true;
         }
         GuiNode sel = selectedNode();
         if (sel != null && !sel.editorLocked) {
             int step = shift ? 5 : 1;
             if (key == GLFW.GLFW_KEY_DELETE || key == GLFW.GLFW_KEY_BACKSPACE) {
-                deleteSelected();
+                deleteSelected(doc);
                 return true;
             }
             if (key == GLFW.GLFW_KEY_LEFT) {
                 pushUndo();
                 sel.x -= step;
+                syncLiveIfNeeded(doc);
                 return true;
             }
             if (key == GLFW.GLFW_KEY_RIGHT) {
                 pushUndo();
                 sel.x += step;
+                syncLiveIfNeeded(doc);
                 return true;
             }
             if (key == GLFW.GLFW_KEY_UP) {
                 pushUndo();
                 sel.y -= step;
+                syncLiveIfNeeded(doc);
                 return true;
             }
             if (key == GLFW.GLFW_KEY_DOWN) {
                 pushUndo();
                 sel.y += step;
+                syncLiveIfNeeded(doc);
                 return true;
             }
         }
@@ -2741,14 +3062,34 @@ public final class StudioGuiEditor {
     }
 
     public static boolean charTyped(char ch) {
+        if (expandedField != null) {
+            if (expandedInput.charTyped(ch)) {
+                applyFieldLive(expandedField, expandedInput.value());
+            }
+            return true;
+        }
         if (focusedField != null) {
-            if (ch >= 32 && !Screen.hasControlDown()) {
-                fieldBuffer += ch;
-                applyFieldLive(focusedField, fieldBuffer);
+            if (activeField.charTyped(ch)) {
+                if (!fieldUndoPushed) {
+                    pushUndo();
+                    fieldUndoPushed = true;
+                }
+                applyFieldLive(focusedField, activeField.value());
             }
             return true;
         }
         return false;
+    }
+
+    private static void closeExpandedEditor(ScriptDocument doc, boolean save) {
+        if (expandedField == null) return;
+        if (save) {
+            applyFieldLive(expandedField, expandedInput.value());
+            syncLiveIfNeeded(doc);
+        } else {
+            applyFieldLive(expandedField, expandedBeforeVal);
+        }
+        expandedField = null;
     }
 
     // =========================================================================
@@ -2756,17 +3097,34 @@ public final class StudioGuiEditor {
     // =========================================================================
 
     private static void handleActionId(ScriptDocument doc, String id) {
+        handleActionId(doc, id, -1, -1);
+    }
+
+    private static void handleActionId(ScriptDocument doc, String id, int clickX, int clickY) {
         ParsedScreenBlock scr = activeScreen();
         GuiNode sel = selectedNode();
 
+        if (id.startsWith("expand:")) {
+            String f = id.substring("expand:".length());
+            focusedField = null;
+            expandedField = f;
+            expandedBeforeVal = readFieldString(scr, sel, f);
+            pushUndo();
+            expandedInput.setValue(expandedBeforeVal);
+            return;
+        }
         if (id.startsWith("field:")) {
             String f = id.substring("field:".length());
             focusedField = f;
-            fieldBuffer = readFieldString(scr, sel, f);
+            fieldUndoPushed = false;
+            activeField.setValue(readFieldString(scr, sel, f));
+            if (clickX >= 0 && clickY >= 0) {
+                activeField.mouseClicked(Minecraft.getInstance().font, clickX, clickY, 0);
+            }
             return;
         }
         if (id.startsWith("add:")) {
-            addNewNode(id.substring("add:".length()));
+            addNewNode(doc, id.substring("add:".length()));
             return;
         }
         if (id.startsWith("lfilt:")) {
@@ -2784,6 +3142,7 @@ public final class StudioGuiEditor {
                 pushUndo();
                 int col = Integer.parseInt(parts[2]);
                 applyColorField(sel, parts[1], col);
+                syncLiveIfNeeded(doc);
             }
             return;
         }
@@ -2805,6 +3164,7 @@ public final class StudioGuiEditor {
                     sel.x = b[0] - baseX;
                     sel.y = b[1] - baseY;
                 }
+                syncLiveIfNeeded(doc);
             }
             return;
         }
@@ -2830,6 +3190,7 @@ public final class StudioGuiEditor {
                     case "rotation" -> sel.rotation += delta * 5;
                     case "slotCount" -> sel.slotCount = Math.max(1, Math.min(64, sel.slotCount + delta));
                 }
+                syncLiveIfNeeded(doc);
             }
             return;
         }
@@ -2848,6 +3209,7 @@ public final class StudioGuiEditor {
                 case "keepOpen" -> sel.keepOpen = !sel.keepOpen;
                 case "scriptHidden" -> sel.scriptHidden = !sel.scriptHidden;
             }
+            syncLiveIfNeeded(doc);
             return;
         }
         if (id.startsWith("cycle:") && sel != null) {
@@ -2860,6 +3222,7 @@ public final class StudioGuiEditor {
                 SlotElement.Content[] cs = SlotElement.Content.values();
                 sel.slotContent = cs[(sel.slotContent.ordinal() + 1) % cs.length];
             }
+            syncLiveIfNeeded(doc);
             return;
         }
 
@@ -2928,20 +3291,22 @@ public final class StudioGuiEditor {
             case "dock_close:palette" -> paletteDock.open = false;
             case "dock_close:layers" -> layersDock.open = false;
             case "dock_close:inspector" -> inspectorDock.open = false;
-            case "node:dup" -> duplicateSelected();
-            case "node:del" -> deleteSelected();
-            case "edit:undo" -> undo();
-            case "edit:redo" -> redo();
+            case "node:dup" -> duplicateSelected(doc);
+            case "node:del" -> deleteSelected(doc);
+            case "edit:undo" -> undo(doc);
+            case "edit:redo" -> redo(doc);
             case "layer:inc" -> {
                 if (sel != null) {
                     pushUndo();
                     sel.layer++;
+                    syncLiveIfNeeded(doc);
                 }
             }
             case "layer:dec" -> {
                 if (sel != null) {
                     pushUndo();
                     sel.layer--;
+                    syncLiveIfNeeded(doc);
                 }
             }
             case "layer:vis_all" -> {
@@ -2974,7 +3339,7 @@ public final class StudioGuiEditor {
         }
     }
 
-    private static void addNewNode(String kind) {
+    private static void addNewNode(ScriptDocument doc, String kind) {
         ParsedScreenBlock scr = activeScreen();
         if (scr == null) return;
         pushUndo();
@@ -3059,9 +3424,10 @@ public final class StudioGuiEditor {
         }
         scr.nodes.add(n);
         selectedNodeIdx = scr.nodes.size() - 1;
+        syncLiveIfNeeded(doc);
     }
 
-    private static void duplicateSelected() {
+    private static void duplicateSelected(ScriptDocument doc) {
         ParsedScreenBlock scr = activeScreen();
         GuiNode sel = selectedNode();
         if (scr == null || sel == null) return;
@@ -3072,14 +3438,16 @@ public final class StudioGuiEditor {
         if (!copy.id.isEmpty()) copy.id = copy.id + "_copy";
         scr.nodes.add(selectedNodeIdx + 1, copy);
         selectedNodeIdx = selectedNodeIdx + 1;
+        syncLiveIfNeeded(doc);
     }
 
-    private static void deleteSelected() {
+    private static void deleteSelected(ScriptDocument doc) {
         ParsedScreenBlock scr = activeScreen();
         if (scr == null || selectedNodeIdx < 0 || selectedNodeIdx >= scr.nodes.size()) return;
         pushUndo();
         scr.nodes.remove(selectedNodeIdx);
         selectedNodeIdx = Math.min(selectedNodeIdx, scr.nodes.size() - 1);
+        syncLiveIfNeeded(doc);
     }
 
     private static String readFieldString(ParsedScreenBlock scr, GuiNode n, String field) {
@@ -3125,10 +3493,12 @@ public final class StudioGuiEditor {
         };
     }
 
-    private static void commitFocusedField() {
+    private static void commitFocusedField(ScriptDocument doc) {
         if (focusedField != null) {
-            applyFieldLive(focusedField, fieldBuffer);
+            applyFieldLive(focusedField, activeField.value());
             focusedField = null;
+            fieldUndoPushed = false;
+            syncLiveIfNeeded(doc);
         }
     }
 

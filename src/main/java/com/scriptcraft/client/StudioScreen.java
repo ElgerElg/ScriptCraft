@@ -73,11 +73,12 @@ public class StudioScreen extends Screen {
     private boolean catalog;
     private boolean catalogRequested;
     private boolean naming;
-    private String nameBuf = "";
+    private final StudioTextField nameField = new StudioTextField().filenameFilter(64);
     private boolean gotoOpen;
-    private String gotoBuf = "";
-    private String find = "";
-    private String replace = "";
+    private final StudioTextField gotoField = new StudioTextField().digitsOnly(6);
+    private final StudioTextField findField = new StudioTextField().maxLength(256);
+    private final StudioTextField replaceField = new StudioTextField().maxLength(256);
+    private int setColorX, setColorY;
     /** 0 — нет фокуса, 1 — поле "Найти", 2 — поле "Заменить". */
     private int panelFocus;
     private long panelOpenedAt;
@@ -525,7 +526,7 @@ public class StudioScreen extends Screen {
                 if (rx < x + 30) {
                     break;
                 }
-                int pc = peerColor(peer.name());
+                int pc = peerColor(peer);
                 int hy = y + 6;
                 g.fill(rx - 1, hy - 1, rx + 11, hy + 11, pc);
                 blitHead(g, peer.id(), rx, hy, 10);
@@ -1008,7 +1009,7 @@ public class StudioScreen extends Screen {
                         if (span != null && span[1] > span[0]) {
                             int x0 = textX + journalWidth(lineStr, span[0], false);
                             int x1 = textX + journalWidth(lineStr, span[1], false);
-                            g.fill(x0, ly - 1, Math.max(x1, x0 + 2), ly + LINE_H - 1, (peerColor(peer.name()) & 0xFFFFFF) | 0x55000000);
+                            g.fill(x0, ly - 1, Math.max(x1, x0 + 2), ly + LINE_H - 1, (peerColor(peer) & 0xFFFFFF) | 0x55000000);
                         }
                     }
                 }
@@ -1017,7 +1018,7 @@ public class StudioScreen extends Screen {
                     g.drawString(this.font, num, codeX + 32 - this.font.width(num), ly, number == highlight ? RED : MUTED, false);
                     for (StudioLivePacket.Peer peer : filePeers) {
                         if (peer.line() != zeroLine) continue;
-                        int pc = peerColor(peer.name());
+                        int pc = peerColor(peer);
                         g.fill(codeX + 1, ly, codeX + 11, ly + 10, pc);
                         blitHead(g, peer.id(), codeX + 2, ly + 1, 8);
                         if (hover(mx, my, codeX + 1, ly, 10, 10)) {
@@ -1033,7 +1034,7 @@ public class StudioScreen extends Screen {
                 if (visible && numbers && !filePeers.isEmpty()) {
                     for (StudioLivePacket.Peer peer : filePeers) {
                         if (peer.line() != zeroLine) continue;
-                        int pc = peerColor(peer.name());
+                        int pc = peerColor(peer);
                         int cx = textX + journalWidth(lineStr, Math.min(Math.max(0, peer.col()), lineStr.length()), false);
                         g.fill(cx, ly - 1, cx + 2, ly + LINE_H - 1, pc);
                         g.fill(cx - 1, ly - 2, cx + 3, ly, pc);
@@ -1301,8 +1302,8 @@ public class StudioScreen extends Screen {
                     errorHover = lineErrors.get(i);
                 }
             }
-            List<int[]> searchMatches = (StudioSession.toolPanelOpen && !find.isEmpty())
-                    ? doc.findAllMatches(find, StudioSession.optMatchCase, StudioSession.optWholeWord)
+            List<int[]> searchMatches = (StudioSession.toolPanelOpen && !findField.value().isEmpty())
+                    ? doc.findAllMatches(findField.value(), StudioSession.optMatchCase, StudioSession.optWholeWord)
                     : List.of();
             List<StudioLivePacket.Peer> roomPeers = StudioSession.peers(doc.name);
             UUID selfId = this.minecraft.player == null ? null : this.minecraft.player.getUUID();
@@ -1334,7 +1335,7 @@ public class StudioScreen extends Screen {
                     if (span != null && span[1] > span[0]) {
                         int x0 = textX(line, span[0]);
                         int x1 = textX(line, span[1]);
-                        g.fill(x0, ly - 1, Math.max(x1, x0 + 2), ly + LINE_H - 1, (peerColor(peer.name()) & 0xFFFFFF) | 0x55000000);
+                        g.fill(x0, ly - 1, Math.max(x1, x0 + 2), ly + LINE_H - 1, (peerColor(peer) & 0xFFFFFF) | 0x55000000);
                     }
                 }
                 if (!searchMatches.isEmpty()) {
@@ -1407,7 +1408,7 @@ public class StudioScreen extends Screen {
                     if ((selfId != null && selfId.equals(peer.id())) || peer.line() != i) {
                         continue;
                     }
-                    int pc = peerColor(peer.name());
+                    int pc = peerColor(peer);
                     int cx = textX(line, Math.min(Math.max(0, peer.col()), line.length()));
                     g.fill(cx, ly - 1, cx + 2, ly + LINE_H - 1, pc);
                     g.fill(cx - 1, ly - 2, cx + 3, ly, pc);
@@ -1432,7 +1433,7 @@ public class StudioScreen extends Screen {
                     if ((selfId != null && selfId.equals(peer.id())) || peer.line() != i) {
                         continue;
                     }
-                    int pc = peerColor(peer.name());
+                    int pc = peerColor(peer);
                     g.fill(editorX + 2, ly, editorX + 12, ly + 10, pc);
                     blitHead(g, peer.id(), editorX + 3, ly + 1, 8);
                     drewPeer = true;
@@ -1456,7 +1457,7 @@ public class StudioScreen extends Screen {
                 int tw = this.font.width(peerHover) + (hoveredPeer != null ? 14 : 0);
                 int nameX = Math.min(mx + 10, px + pw - tw - 10);
                 int nameY = Math.max(py + 2, errorHover != null ? my - 31 : my - 15);
-                int accent = hoveredPeer != null ? peerColor(hoveredPeer.name()) : ACCENT;
+                int accent = hoveredPeer != null ? peerColor(hoveredPeer) : ACCENT;
                 g.fill(nameX - 4, nameY - 2, nameX + tw + 4, nameY + 11, 0xF5111722);
                 border(g, nameX - 4, nameY - 2, tw + 8, 13, accent);
                 int tx = nameX;
@@ -1854,8 +1855,7 @@ public class StudioScreen extends Screen {
         g.fill(x + 2, y + 2, x + 170, y + 38, 0x55000000);
         g.fill(x, y, x + 168, y + 36, 0xF7121824);
         border(g, x, y, 168, 36, ACCENT);
-        String shown = gotoBuf.isEmpty() ? Messages.get("studio.goto") + "..." : gotoBuf + "_";
-        g.drawString(this.font, shown, x + 10, y + 14, gotoBuf.isEmpty() ? MUTED : TEXT, false);
+        gotoField.render(g, this.font, x + 8, y + 10, 152, 16, true, Messages.get("studio.goto") + "...", 0xFF0B1018, ACCENT, TEXT, MUTED);
     }
 
     private void renderSettings(GuiGraphics g, int mx, int my) {
@@ -1925,6 +1925,29 @@ public class StudioScreen extends Screen {
         setProfX = x;
         setProfY = y;
         drawSettingsCheck(g, mx, my, x, y, midX - x - 18, "set:prof", Messages.get("studio.set.profiler"), ClientUiSettings.showProfiler());
+        y += 20;
+
+        // Палитра цвета редактора для совместной работы
+        g.drawString(this.font, Messages.get("studio.set.editor_color"), x, y, MUTED, false);
+        y += 12;
+        setColorX = x;
+        setColorY = y;
+        int curEdCol = ClientUiSettings.editorColor();
+        int[] pal = ClientUiSettings.EDITOR_COLORS;
+        for (int i = 0; i < pal.length; i++) {
+            int sx = x + i * 18;
+            int sc = pal[i];
+            boolean on = curEdCol == sc;
+            boolean hot = hover(mx, my, sx, y, 15, 14);
+            g.fill(sx, y, sx + 15, y + 14, sc == 0 ? 0xFF1F2937 : sc);
+            if (sc == 0) {
+                g.drawString(this.font, "A", sx + 5, y + 3, on ? GOLD : TEXT, false);
+            }
+            border(g, sx, y, 15, 14, on ? GOLD : (hot ? 0xFFFFFFFF : EDGE));
+            if (on && sc != 0) {
+                g.fill(sx + 5, y + 5, sx + 10, y + 9, 0xFF0A0E15);
+            }
+        }
 
         // --- Правая колонка: Все горячие клавиши клиента ---
         int rx = midX + 6;
@@ -2077,7 +2100,7 @@ public class StudioScreen extends Screen {
         border(g, x, y, 192, 36, GOLD);
         String hint = "mkdir".equals(namingMode) ? Messages.get("studio.exp.folder_name")
                 : ("rename".equals(namingMode) ? Messages.get("studio.exp.rename") : Messages.get("studio.new_name"));
-        g.drawString(this.font, nameBuf.isEmpty() ? hint : nameBuf + "_", x + 10, y + 14, nameBuf.isEmpty() ? MUTED : TEXT, false);
+        nameField.render(g, this.font, x + 8, y + 10, 176, 16, true, hint, 0xFF0B1018, GOLD, TEXT, MUTED);
     }
 
     private void layoutToolPanel() {
@@ -2170,22 +2193,22 @@ public class StudioScreen extends Screen {
 
         // Поле "Найти" + счётчик совпадений + кнопки ↑ ↓
         ScriptDocument doc = script();
-        List<int[]> matches = doc != null && !find.isEmpty()
-                ? doc.findAllMatches(find, StudioSession.optMatchCase, StudioSession.optWholeWord)
+        String findVal = findField.value();
+        List<int[]> matches = doc != null && !findVal.isEmpty()
+                ? doc.findAllMatches(findVal, StudioSession.optMatchCase, StudioSession.optWholeWord)
                 : List.of();
-        String countText = find.isEmpty() ? "" : (matches.isEmpty() ? "0" : Integer.toString(matches.size()));
+        String countText = findVal.isEmpty() ? "" : (matches.isEmpty() ? "0" : Integer.toString(matches.size()));
         int navW = 36;
         pFindX = innerX;
         pFindY = cy;
         pFindW = Math.max(60, innerW - navW - 4);
-        g.fill(pFindX, pFindY, pFindX + pFindW, pFindY + 15, 0xFF0D121B);
-        border(g, pFindX, pFindY, pFindW, 15, panelFocus == 1 ? ACCENT : EDGE);
-        String findShown = find.isEmpty() ? Messages.get("studio.find") : find + (panelFocus == 1 ? "_" : "");
         int cntW = countText.isEmpty() ? 0 : this.font.width(countText) + 6;
-        g.drawString(this.font, trim(findShown, Math.max(20, pFindW - 8 - cntW)), pFindX + 4, pFindY + 4,
-                find.isEmpty() ? MUTED : TEXT, false);
+        findField.render(g, this.font, pFindX, pFindY, Math.max(30, pFindW - cntW), 15,
+                panelFocus == 1, Messages.get("studio.find"), 0xFF0D121B, panelFocus == 1 ? ACCENT : EDGE, TEXT, MUTED);
         if (!countText.isEmpty()) {
-            g.drawString(this.font, countText, pFindX + pFindW - cntW + 2, pFindY + 4, matches.isEmpty() ? RED : GOLD, false);
+            g.fill(pFindX + pFindW - cntW, pFindY, pFindX + pFindW, pFindY + 15, 0xFF0D121B);
+            border(g, pFindX + pFindW - cntW, pFindY, cntW, 15, panelFocus == 1 ? ACCENT : EDGE);
+            g.drawString(this.font, countText, pFindX + pFindW - cntW + 3, pFindY + 4, matches.isEmpty() ? RED : GOLD, false);
         }
         pPrevX = pFindX + pFindW + 4;
         pNextX = pPrevX + 18;
@@ -2198,11 +2221,8 @@ public class StudioScreen extends Screen {
         pRepX = innerX;
         pRepY = cy;
         pRepW = innerW;
-        g.fill(pRepX, pRepY, pRepX + pRepW, pRepY + 15, 0xFF0D121B);
-        border(g, pRepX, pRepY, pRepW, 15, panelFocus == 2 ? ACCENT : EDGE);
-        String repShown = replace.isEmpty() && panelFocus != 2 ? Messages.get("studio.replace") : replace + (panelFocus == 2 ? "_" : "");
-        g.drawString(this.font, trim(repShown, Math.max(20, pRepW - 8)), pRepX + 4, pRepY + 4,
-                replace.isEmpty() && panelFocus != 2 ? MUTED : TEXT, false);
+        replaceField.render(g, this.font, pRepX, pRepY, pRepW, 15,
+                panelFocus == 2, Messages.get("studio.replace"), 0xFF0D121B, panelFocus == 2 ? ACCENT : EDGE, TEXT, MUTED);
         cy += 19;
 
         // Кнопки "Заменить" и "Все"
@@ -2395,7 +2415,12 @@ public class StudioScreen extends Screen {
             originH = StudioSession.h;
             return true;
         }
-        if (naming || gotoOpen) {
+        if (naming) {
+            nameField.mouseClicked(this.font, mx, my, button);
+            return true;
+        }
+        if (gotoOpen) {
+            gotoField.mouseClicked(this.font, mx, my, button);
             return true;
         }
         if (acMatch != null && !acMatch.items().isEmpty() && hover(mx, my, acX, acY, acW, acH)) {
@@ -2447,10 +2472,12 @@ public class StudioScreen extends Screen {
                 }
                 if (hover(mx, my, pFindX, pFindY, pFindW, 15)) {
                     panelFocus = 1;
+                    findField.mouseClicked(this.font, mx, my, button);
                     return true;
                 }
                 if (hover(mx, my, pRepX, pRepY, pRepW, 15)) {
                     panelFocus = 2;
+                    replaceField.mouseClicked(this.font, mx, my, button);
                     return true;
                 }
                 if (hover(mx, my, pPrevX, pNavY, 16, 15)) {
@@ -2635,13 +2662,13 @@ public class StudioScreen extends Screen {
                 if (sbNewX >= 0 && hover(mx, my, sbNewX, sbBarY + 2, 14, 13)) {
                     naming = true;
                     namingMode = "file";
-                    nameBuf = "";
+                    nameField.setValue("");
                     return true;
                 }
                 if (sbMkdirX >= 0 && hover(mx, my, sbMkdirX, sbBarY + 2, 14, 13)) {
                     naming = true;
                     namingMode = "mkdir";
-                    nameBuf = "";
+                    nameField.setValue("");
                     return true;
                 }
                 if (sbRenX >= 0 && hover(mx, my, sbRenX, sbBarY + 2, 14, 13) && StudioSession.selectedExplorerPath != null) {
@@ -2719,8 +2746,12 @@ public class StudioScreen extends Screen {
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dx, double dy) {
         int mx = (int) mouseX;
         int my = (int) mouseY;
+        if (naming && nameField.mouseDragged(this.font, mx)) return true;
+        if (gotoOpen && gotoField.mouseDragged(this.font, mx)) return true;
+        if (StudioSession.toolPanelOpen && panelFocus == 1 && findField.mouseDragged(this.font, mx)) return true;
+        if (StudioSession.toolPanelOpen && panelFocus == 2 && replaceField.mouseDragged(this.font, mx)) return true;
         if (StudioSession.guiEditorMode && script() != null && !script().genericFile && !script().isImage && !settings) {
-            if (StudioGuiEditor.mouseDragged(mx, my, button)) {
+            if (StudioGuiEditor.mouseDragged(this.font, mx, my, button)) {
                 return true;
             }
         }
@@ -2836,7 +2867,11 @@ public class StudioScreen extends Screen {
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        StudioGuiEditor.mouseReleased();
+        nameField.mouseReleased();
+        gotoField.mouseReleased();
+        findField.mouseReleased();
+        replaceField.mouseReleased();
+        StudioGuiEditor.mouseReleased(script());
         drag = Drag.NONE;
         slider = 0;
         return true;
@@ -2921,20 +2956,20 @@ public class StudioScreen extends Screen {
         if (gotoOpen) {
             if (key == GLFW.GLFW_KEY_ESCAPE) {
                 gotoOpen = false;
-                gotoBuf = "";
+                gotoField.setValue("");
             } else if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
                 ScriptDocument d = script();
-                if (d != null && !gotoBuf.isEmpty()) {
+                if (d != null && !gotoField.value().isEmpty()) {
                     try {
-                        int target = Math.max(1, Integer.parseInt(gotoBuf)) - 1;
+                        int target = Math.max(1, Integer.parseInt(gotoField.value())) - 1;
                         d.move(target, 0, false);
                     } catch (NumberFormatException ignored) {
                     }
                 }
                 gotoOpen = false;
-                gotoBuf = "";
-            } else if (key == GLFW.GLFW_KEY_BACKSPACE && !gotoBuf.isEmpty()) {
-                gotoBuf = gotoBuf.substring(0, gotoBuf.length() - 1);
+                gotoField.setValue("");
+            } else {
+                gotoField.keyPressed(key);
             }
             return true;
         }
@@ -2943,8 +2978,8 @@ public class StudioScreen extends Screen {
                 naming = false;
             } else if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
                 createScript();
-            } else if (key == GLFW.GLFW_KEY_BACKSPACE && !nameBuf.isEmpty()) {
-                nameBuf = nameBuf.substring(0, nameBuf.length() - 1);
+            } else {
+                nameField.keyPressed(key);
             }
             return true;
         }
@@ -3016,22 +3051,10 @@ public class StudioScreen extends Screen {
                 }
                 return true;
             }
-            if (key == GLFW.GLFW_KEY_BACKSPACE) {
-                if (panelFocus == 1 && !find.isEmpty()) {
-                    find = ctrl ? "" : find.substring(0, find.length() - 1);
-                } else if (panelFocus == 2 && !replace.isEmpty()) {
-                    replace = ctrl ? "" : replace.substring(0, replace.length() - 1);
-                }
-                return true;
-            }
-            if (ctrl && key == GLFW.GLFW_KEY_V) {
-                String clip = clipboard().replace("\r", "").replace("\n", "");
-                if (panelFocus == 1) {
-                    find += clip;
-                } else {
-                    replace += clip;
-                }
-                return true;
+            if (panelFocus == 1) {
+                findField.keyPressed(key);
+            } else {
+                replaceField.keyPressed(key);
             }
             return true;
         }
@@ -3104,7 +3127,7 @@ public class StudioScreen extends Screen {
         }
         if (ClientUiSettings.matches("gotoLine", key, ctrl, shift, alt)) {
             gotoOpen = true;
-            gotoBuf = "";
+            gotoField.setValue("");
             acMatch = null;
             return true;
         }
@@ -3229,24 +3252,18 @@ public class StudioScreen extends Screen {
             return true;
         }
         if (gotoOpen) {
-            if (ch >= '0' && ch <= '9' && gotoBuf.length() < 6) {
-                gotoBuf += ch;
-            }
+            gotoField.charTyped(ch);
             return true;
         }
         if (naming) {
-            if (ch >= 32 && nameBuf.length() < 64 && ch != '/' && ch != '\\' && ch != ':') {
-                nameBuf += ch;
-            }
+            nameField.charTyped(ch);
             return true;
         }
         if (StudioSession.toolPanelOpen && panelFocus != 0) {
-            if (ch >= 32 && !hasControlDown()) {
-                if (panelFocus == 1) {
-                    find += ch;
-                } else {
-                    replace += ch;
-                }
+            if (panelFocus == 1) {
+                findField.charTyped(ch);
+            } else {
+                replaceField.charTyped(ch);
             }
             return true;
         }
@@ -3346,7 +3363,8 @@ public class StudioScreen extends Screen {
         if (sel == null || sel.isEmpty()) return;
         int slash = sel.lastIndexOf('/');
         renameTarget = sel;
-        nameBuf = slash < 0 ? sel : sel.substring(slash + 1);
+        nameField.setValue(slash < 0 ? sel : sel.substring(slash + 1));
+        nameField.selectAll();
         namingMode = "rename";
         naming = true;
     }
@@ -3391,9 +3409,9 @@ public class StudioScreen extends Screen {
     }
 
     private void createScript() {
-        String raw = nameBuf.strip();
+        String raw = nameField.value().strip();
         naming = false;
-        nameBuf = "";
+        nameField.setValue("");
         if (raw.isEmpty()) {
             return;
         }
@@ -3606,6 +3624,7 @@ public class StudioScreen extends Screen {
     }
 
     private void findNext(ScriptDocument doc) {
+        String find = findField.value();
         if (doc == null || find.isEmpty()) {
             return;
         }
@@ -3626,6 +3645,7 @@ public class StudioScreen extends Screen {
     }
 
     private void findPrev(ScriptDocument doc) {
+        String find = findField.value();
         if (doc == null || find.isEmpty()) {
             return;
         }
@@ -3649,6 +3669,8 @@ public class StudioScreen extends Screen {
     }
 
     private void replaceOne(ScriptDocument doc) {
+        String find = findField.value();
+        String replace = replaceField.value();
         if (doc == null || find.isEmpty()) {
             return;
         }
@@ -3661,6 +3683,8 @@ public class StudioScreen extends Screen {
     }
 
     private void replaceAll(ScriptDocument doc) {
+        String find = findField.value();
+        String replace = replaceField.value();
         if (doc == null || find.isEmpty()) {
             return;
         }
@@ -3712,6 +3736,13 @@ public class StudioScreen extends Screen {
     private static final int[] PEER_COLORS = {
             0xFFE06C75, 0xFF61AFEF, 0xFF98C379, 0xFFE5C07B, 0xFFC678DD, 0xFF56B6C2
     };
+
+    public static int peerColor(StudioLivePacket.Peer peer) {
+        if (peer != null && peer.color() != 0) {
+            return 0xFF000000 | peer.color();
+        }
+        return peerColor(peer == null ? "" : peer.name());
+    }
 
     private static int peerColor(String name) {
         int index = (name == null ? 0 : name.hashCode() & 0x7fffffff) % PEER_COLORS.length;
@@ -3823,7 +3854,8 @@ public class StudioScreen extends Screen {
         switch (id) {
             case "new" -> {
                 naming = true;
-                nameBuf = "";
+                namingMode = "file";
+                nameField.setValue("");
             }
             case "open" -> {
                 catalog = true;
@@ -3860,12 +3892,16 @@ public class StudioScreen extends Screen {
                 }
             }
             case "undo" -> {
-                if (doc != null) {
+                if (StudioSession.guiEditorMode && doc != null && !doc.genericFile && !doc.isImage) {
+                    StudioGuiEditor.undo(doc);
+                } else if (doc != null) {
                     doc.undo();
                 }
             }
             case "redo" -> {
-                if (doc != null) {
+                if (StudioSession.guiEditorMode && doc != null && !doc.genericFile && !doc.isImage) {
+                    StudioGuiEditor.redo(doc);
+                } else if (doc != null) {
                     doc.redo();
                 }
             }
@@ -3909,7 +3945,8 @@ public class StudioScreen extends Screen {
             case "file" -> {
                 if (index == 0) {
                     naming = true;
-                    nameBuf = "";
+                    namingMode = "file";
+                    nameField.setValue("");
                 } else if (index == 1) {
                     catalog = true;
                     catalogOpenedAt = System.currentTimeMillis();
@@ -4187,6 +4224,14 @@ public class StudioScreen extends Screen {
                 StudioSession.active = StudioSession.HOME;
             }
             return;
+        }
+        int[] pal = ClientUiSettings.EDITOR_COLORS;
+        for (int i = 0; i < pal.length; i++) {
+            int sx = setColorX + i * 18;
+            if (hover(mx, my, sx, setColorY, 15, 14)) {
+                ClientUiSettings.setEditorColor(pal[i]);
+                return;
+            }
         }
         if (hover(mx, my, hkResetX, hkResetY, hkResetW, 14)) {
             ClientUiSettings.resetKeyBinds();

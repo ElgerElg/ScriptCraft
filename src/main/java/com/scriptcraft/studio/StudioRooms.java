@@ -406,7 +406,7 @@ public final class StudioRooms {
             if (seat.id.equals(player.getUUID()) || peers.size() >= 32) {
                 continue;
             }
-            peers.add(new StudioLivePacket.Peer(seat.id, seat.name, seat.line, seat.col, seat.anchorLine, seat.anchorCol, seat.box));
+            peers.add(new StudioLivePacket.Peer(seat.id, seat.name, seat.line, seat.col, seat.anchorLine, seat.anchorCol, seat.box, seat.color));
         }
         String text = replace ? room.text : "";
         ModNetwork.sendTo(player, new StudioLivePacket.View(file, room.revision, replace, stale, ack, text, peers));
@@ -438,6 +438,7 @@ public final class StudioRooms {
         seat.anchorLine = edit.anchorLine() < 0 ? -1 : clamp(edit.anchorLine());
         seat.anchorCol = clamp(edit.anchorCol());
         seat.box = edit.box();
+        seat.color = edit.color();
     }
 
     private static int clamp(int value) {
@@ -626,6 +627,7 @@ public final class StudioRooms {
         private int anchorLine = -1;
         private int anchorCol;
         private boolean box;
+        private int color;
 
         private Seat(UUID id, String name) {
             this.id = id;

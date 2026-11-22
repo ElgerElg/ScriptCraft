@@ -306,6 +306,7 @@ public final class Messages {
         add("studio.profiler.empty", "No script executions recorded yet", "Пока нет данных о выполнении скриптов");
         add("studio.profiler.disabled", "Server profiler is paused", "Серверный профайлер выключен");
         add("studio.set.profiler", "Show Profiler in Studio", "Показывать профайлер в студии");
+        add("studio.set.editor_color", "Editor color", "Цвет редактора");
         add("studio.history", "History", "История");
         add("studio.history.title", "History: %s (%d d.)", "История: %s (%d дн.)");
         add("studio.history.title_forever", "History: %s (forever)", "История: %s (без автоудаления)");

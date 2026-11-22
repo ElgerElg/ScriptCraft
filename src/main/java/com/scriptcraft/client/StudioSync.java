@@ -32,6 +32,7 @@ public final class StudioSync {
     private static int lastAnchorLine = -1;
     private static int lastAnchorCol;
     private static boolean lastBox;
+    private static int lastColor;
     private static boolean announced;
     private static long lastSend;
     private static long inFlightSince;
@@ -89,7 +90,7 @@ public final class StudioSync {
             send(doc, true);
             lastSent = doc.text();
         }
-        ModNetwork.sendToServer(new StudioLivePacket.Edit(name, 0, -1, 0, -1, 0, false, false, ""));
+        ModNetwork.sendToServer(new StudioLivePacket.Edit(name, 0, -1, 0, -1, 0, false, false, "", 0));
     }
 
     public static void leaveFile(String name) {
@@ -101,7 +102,7 @@ public final class StudioSync {
             return;
         }
         if (online()) {
-            ModNetwork.sendToServer(new StudioLivePacket.Edit(name, 0, -1, 0, -1, 0, false, false, ""));
+            ModNetwork.sendToServer(new StudioLivePacket.Edit(name, 0, -1, 0, -1, 0, false, false, "", 0));
         }
     }
 
@@ -229,7 +230,8 @@ public final class StudioSync {
         String current = doc.text();
         boolean textChanged = !current.equals(inFlight != null ? inFlight : shadow);
         boolean caretChanged = doc.line != lastLine || doc.col != lastCol
-                || doc.anchorLine != lastAnchorLine || doc.anchorCol != lastAnchorCol || doc.box != lastBox;
+                || doc.anchorLine != lastAnchorLine || doc.anchorCol != lastAnchorCol || doc.box != lastBox
+                || ClientUiSettings.editorColor() != lastColor;
         if (textChanged && inFlight == null) {
             if (now - lastSend < 55) {
                 return;
@@ -367,7 +369,7 @@ public final class StudioSync {
             return;
         }
         ModNetwork.sendToServer(new StudioLivePacket.Edit(doc.name, doc.revision, doc.line, doc.col,
-                doc.anchorLine, doc.anchorCol, doc.box, text, body));
+                doc.anchorLine, doc.anchorCol, doc.box, text, body, ClientUiSettings.editorColor()));
     }
 
     private static void remember(ScriptDocument doc) {
@@ -376,5 +378,6 @@ public final class StudioSync {
         lastAnchorLine = doc.anchorLine;
         lastAnchorCol = doc.anchorCol;
         lastBox = doc.box;
+        lastColor = ClientUiSettings.editorColor();
     }
 }

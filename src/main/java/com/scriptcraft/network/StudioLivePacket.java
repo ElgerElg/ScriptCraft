@@ -18,13 +18,13 @@ public final class StudioLivePacket {
     private StudioLivePacket() {
     }
 
-    /** Чужой курсор в открытом скрипте. */
-    public record Peer(UUID id, String name, int line, int col, int anchorLine, int anchorCol, boolean box) {
+    /** Чужой курсор в открытом скрипте. color == 0 означает авто-цвет по нику. */
+    public record Peer(UUID id, String name, int line, int col, int anchorLine, int anchorCol, boolean box, int color) {
     }
 
     /** Клиент -> сервер: курсор или весь текст. line < 0 — ушёл из файла. */
     public record Edit(String file, long revision, int line, int col, int anchorLine, int anchorCol, boolean box,
-                       boolean text, String body) {
+                       boolean text, String body, int color) {
         public static void encode(Edit packet, FriendlyByteBuf buf) {
             buf.writeUtf(packet.file, 200);
             buf.writeLong(packet.revision);
@@ -35,11 +35,12 @@ public final class StudioLivePacket {
             buf.writeBoolean(packet.box);
             buf.writeBoolean(packet.text);
             ScriptPayload.write(buf, packet.body == null ? "" : packet.body);
+            buf.writeInt(packet.color);
         }
 
         public static Edit decode(FriendlyByteBuf buf) {
             return new Edit(buf.readUtf(200), buf.readLong(), buf.readInt(), buf.readInt(), buf.readInt(), buf.readInt(),
-                    buf.readBoolean(), buf.readBoolean(), ScriptPayload.read(buf));
+                    buf.readBoolean(), buf.readBoolean(), ScriptPayload.read(buf), buf.readInt());
         }
 
         public static void handle(Edit packet, Supplier<NetworkEvent.Context> ctx) {
@@ -71,6 +72,7 @@ public final class StudioLivePacket {
                 buf.writeInt(peer.anchorLine);
                 buf.writeInt(peer.anchorCol);
                 buf.writeBoolean(peer.box);
+                buf.writeInt(peer.color);
             }
         }
 
@@ -85,7 +87,7 @@ public final class StudioLivePacket {
             List<Peer> peers = new ArrayList<>();
             for (int i = 0; i < count && i < 32; i++) {
                 peers.add(new Peer(buf.readUUID(), buf.readUtf(64), buf.readInt(), buf.readInt(), buf.readInt(), buf.readInt(),
-                        buf.readBoolean()));
+                        buf.readBoolean(), buf.readInt()));
             }
             return new View(file, revision, replace, stale, ack, text, peers);
         }

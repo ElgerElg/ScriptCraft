@@ -82,6 +82,22 @@ public final class ClientUiSettings {
     private static int sidebarWidth = 156;
     private static String language = "ru";
     private static boolean showProfiler = true;
+    /** Выбранный цвет курсора/рамки редактора для совместной работы (0 = авто по нику). */
+    private static int editorColor = 0;
+    public static final int[] EDITOR_COLORS = {
+            0x00000000, // Авто
+            0xFF58A6FF, // Небесный
+            0xFF4CC38A, // Изумрудный
+            0xFFF0B85B, // Золотой
+            0xFFE06C75, // Коралловый
+            0xFFC678DD, // Фиолетовый
+            0xFF56B6C2, // Бирюзовый
+            0xFFF97316, // Оранжевый
+            0xFFEC4899, // Розовый
+            0xFF22D3EE, // Циан
+            0xFFA3E635, // Лаймовый
+            0xFFFFFFFF  // Белый
+    };
     private static final Map<String, KeyBind> DEFAULTS = defaultBinds();
     private static final Map<String, KeyBind> BINDS = new LinkedHashMap<>(DEFAULTS);
 
@@ -177,6 +193,17 @@ public final class ClientUiSettings {
     public static void setShowProfiler(boolean value) {
         load();
         showProfiler = value;
+        save();
+    }
+
+    public static int editorColor() {
+        load();
+        return editorColor;
+    }
+
+    public static void setEditorColor(int color) {
+        load();
+        editorColor = color;
         save();
     }
 
@@ -343,6 +370,7 @@ public final class ClientUiSettings {
         sidebarWidth = Math.max(110, Math.min(320, parseInt(p.getProperty("sidebarWidth"), sidebarWidth)));
         language = normalizeLang(p.getProperty("language", language));
         showProfiler = Boolean.parseBoolean(p.getProperty("showProfiler", "true"));
+        editorColor = parseInt(p.getProperty("editorColor"), editorColor);
         com.scriptcraft.lang.Messages.setClientLanguage(language);
         for (var entry : DEFAULTS.entrySet()) {
             BINDS.put(entry.getKey(), KeyBind.decode(p.getProperty("bind." + entry.getKey()), entry.getValue()));
@@ -366,6 +394,7 @@ public final class ClientUiSettings {
             sb.append("sidebarWidth=").append(sidebarWidth).append('\n');
             sb.append("language=").append(language).append('\n');
             sb.append("showProfiler=").append(showProfiler).append('\n');
+            sb.append("editorColor=").append(editorColor).append('\n');
             for (var entry : BINDS.entrySet()) {
                 sb.append("bind.").append(entry.getKey()).append('=').append(entry.getValue().encode()).append('\n');
             }

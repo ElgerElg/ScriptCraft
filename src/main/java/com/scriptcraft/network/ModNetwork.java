@@ -24,7 +24,8 @@ public final class ModNetwork {
     // 13: студия — проводник по scriptcraft/, картинки, загрузка файлов, активные редакторы.
     // 14: интерактивные контролы GUI (input/slider/toggle/tooltip), эффекты камеры, профайлер, история версий.
     // 15: клиентские GUI-частицы и всплывающие цифры (GuiFxPacket).
-    private static final String PROTOCOL_VERSION = "15";
+    // 16: цвет редактора в StudioLivePacket (совместное редактирование и GUI-редактор).
+    private static final String PROTOCOL_VERSION = "16";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(ScriptCraft.MODID, "main"),
