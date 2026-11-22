@@ -269,11 +269,13 @@ public class StudioScreen extends Screen {
             renderProfiler(g, mouseX, mouseY - slideY);
         } else if (script() != null) {
             renderEditor(g, mouseX, mouseY - slideY);
-            if (StudioSession.toolPanelOpen) {
-                renderToolPanel(g, mouseX, mouseY - slideY);
-            }
-            if (ctxOpen) {
-                renderCtxMenu(g, mouseX, mouseY - slideY);
+            if (!StudioSession.guiEditorMode) {
+                if (StudioSession.toolPanelOpen) {
+                    renderToolPanel(g, mouseX, mouseY - slideY);
+                }
+                if (ctxOpen) {
+                    renderCtxMenu(g, mouseX, mouseY - slideY);
+                }
             }
         }
         if (menu != null) {
@@ -478,6 +480,7 @@ public class StudioScreen extends Screen {
         x += 8;
         x = tool(g, mx, my, x, y, "find", Messages.get("studio.find_replace"));
         histBtnX = -1000;
+        guiBtnX = -1000;
         ScriptDocument curDoc = script();
         if (curDoc != null && !curDoc.genericFile && !curDoc.isImage) {
             g.fill(x + 2, y + 4, x + 3, y + TOOL_H - 4, EDGE);
@@ -488,6 +491,22 @@ public class StudioScreen extends Screen {
             histBtnY = y + 3;
             paintMiniBtn(g, mx, my, histBtnX, histBtnY, histBtnW, 16, histLbl, "tool:history");
             x += histBtnW + 4;
+
+            int scrCnt = StudioGuiEditor.countScreensIn(curDoc);
+            String guiLbl = StudioSession.guiEditorMode
+                    ? Messages.get("studio.gui.code_btn")
+                    : (Messages.get("studio.gui.btn") + (scrCnt > 0 ? " (" + scrCnt + ")" : ""));
+            guiBtnW = this.font.width(guiLbl) + 12;
+            guiBtnX = x;
+            guiBtnY = y + 3;
+            boolean gHot = hover(mx, my, guiBtnX, guiBtnY, guiBtnW, 16);
+            int gBg = StudioSession.guiEditorMode ? 0xFF233856 : (gHot ? ROW_HOT : ROW);
+            int gBrd = StudioSession.guiEditorMode ? GOLD : (gHot ? ACCENT : EDGE);
+            g.fill(guiBtnX, guiBtnY, guiBtnX + guiBtnW, guiBtnY + 16, gBg);
+            border(g, guiBtnX, guiBtnY, guiBtnW, 16, gBrd);
+            g.drawString(this.font, guiLbl, guiBtnX + 6, guiBtnY + 4,
+                    StudioSession.guiEditorMode ? GOLD : (gHot ? GOLD : ACCENT), false);
+            x += guiBtnW + 4;
         }
 
         // Аватары участников совместной правки в правой части тулбара (клик -> переход на их строку)
@@ -1213,6 +1232,8 @@ public class StudioScreen extends Screen {
         border(g, editorX, editorY, editorW, editorH, 0xFF212B3C);
         if (!doc.loaded) {
             g.drawString(this.font, Messages.get("studio.loading"), editorX + 10, editorY + 10, MUTED, false);
+        } else if (StudioSession.guiEditorMode && !doc.genericFile && !doc.isImage) {
+            StudioGuiEditor.render(g, this.font, doc, editorX, editorY, editorW, editorH, this.width, this.height, mx, my);
         } else if (doc.isImage && doc.imageId != null) {
             int maxW = Math.max(32, editorW - 32);
             int maxH = Math.max(32, editorH - 40);
@@ -2565,6 +2586,16 @@ public class StudioScreen extends Screen {
                 }
                 return true;
             }
+            if (guiBtnX >= 0 && hover(mx, my, guiBtnX, guiBtnY, guiBtnW, 16)) {
+                ScriptDocument d = script();
+                if (d != null && !d.genericFile && !d.isImage) {
+                    StudioSession.guiEditorMode = !StudioSession.guiEditorMode;
+                    if (StudioSession.guiEditorMode) {
+                        StudioGuiEditor.reloadFromDocument(d);
+                    }
+                }
+                return true;
+            }
             toolClick(mx);
             return true;
         }
@@ -2650,6 +2681,10 @@ public class StudioScreen extends Screen {
             return true;
         }
         if (doc != null && doc.loaded && hover(mx, my, editorX, editorY, editorW, editorH)) {
+            if (StudioSession.guiEditorMode && !doc.genericFile && !doc.isImage) {
+                StudioGuiEditor.mouseClicked(this.font, doc, mx, my, button);
+                return true;
+            }
             panelFocus = 0;
             if (button == 1) {
                 ctxOpen = true;
@@ -2684,6 +2719,11 @@ public class StudioScreen extends Screen {
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dx, double dy) {
         int mx = (int) mouseX;
         int my = (int) mouseY;
+        if (StudioSession.guiEditorMode && script() != null && !script().genericFile && !script().isImage && !settings) {
+            if (StudioGuiEditor.mouseDragged(mx, my, button)) {
+                return true;
+            }
+        }
         if (drag == Drag.VSCROLL) {
             ScriptDocument doc = script();
             if (doc != null) {
@@ -2796,6 +2836,7 @@ public class StudioScreen extends Screen {
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        StudioGuiEditor.mouseReleased();
         drag = Drag.NONE;
         slider = 0;
         return true;
@@ -2803,6 +2844,11 @@ public class StudioScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+        if (StudioSession.guiEditorMode && script() != null && !script().genericFile && !script().isImage && !settings) {
+            if (StudioGuiEditor.mouseScrolled((int) mouseX, (int) mouseY, delta)) {
+                return true;
+            }
+        }
         int step = (int) Math.signum(delta) * -3;
         if (settings) {
             hotkeyScroll = Math.max(0, Math.min(hotkeyMaxScroll, hotkeyScroll + step * 12));
@@ -3013,6 +3059,11 @@ public class StudioScreen extends Screen {
         if (doc == null || !doc.loaded || doc.isImage || settings) {
             return true;
         }
+        if (StudioSession.guiEditorMode && !doc.genericFile) {
+            if (StudioGuiEditor.keyPressed(doc, key)) {
+                return true;
+            }
+        }
         if (acMatch != null && !acMatch.items().isEmpty()) {
             if (key == GLFW.GLFW_KEY_DOWN) {
                 acSel = (acSel + 1) % acMatch.items().size();
@@ -3200,6 +3251,11 @@ public class StudioScreen extends Screen {
             return true;
         }
         ScriptDocument doc = script();
+        if (StudioSession.guiEditorMode && doc != null && !doc.genericFile && !doc.isImage && !settings) {
+            if (StudioGuiEditor.charTyped(ch)) {
+                return true;
+            }
+        }
         if (doc != null && doc.loaded && !settings && !hasControlDown() && ch >= 32) {
             if (!ClientUiSettings.autoClose() || !doc.typeWithAutoClose(ch)) {
                 doc.insert(String.valueOf(ch));
@@ -3298,6 +3354,9 @@ public class StudioScreen extends Screen {
     private void save(ScriptDocument doc) {
         if (doc == null || !doc.loaded || doc.isImage) {
             return;
+        }
+        if (StudioSession.guiEditorMode && !doc.genericFile && StudioGuiEditor.isDirty()) {
+            StudioGuiEditor.applyToDocument(doc);
         }
         if (doc.genericFile) {
             String rel = doc.name.startsWith("@") ? doc.name.substring(1) : doc.name;
@@ -3833,7 +3892,7 @@ public class StudioScreen extends Screen {
                     Messages.get("studio.m.spaces_to_tabs"), Messages.get("studio.m.tabs_to_spaces"));
             case "search" -> List.of(Messages.get("studio.find_replace"));
             case "view" -> List.of(StudioSession.maximized ? Messages.get("studio.m.window") : Messages.get("studio.m.full"),
-                    Messages.get("studio.journal"), Messages.get("studio.m.tools"));
+                    Messages.get("studio.journal"), Messages.get("studio.m.tools"), Messages.get("studio.m.gui_editor"));
             case "reload" -> List.of(
                     Messages.get("studio.m.reload_scripts"),
                     Messages.get("studio.m.reload_resources"),
@@ -3902,6 +3961,11 @@ public class StudioScreen extends Screen {
                         panelFocus = 0;
                     } else {
                         openToolPanel(0);
+                    }
+                } else if (index == 3 && script() != null && !script().genericFile && !script().isImage) {
+                    StudioSession.guiEditorMode = !StudioSession.guiEditorMode;
+                    if (StudioSession.guiEditorMode) {
+                        StudioGuiEditor.reloadFromDocument(script());
                     }
                 }
             }
@@ -4328,6 +4392,7 @@ public class StudioScreen extends Screen {
 
     private int setProfX, setProfY;
     private int histBtnX = -1000, histBtnY, histBtnW;
+    private int guiBtnX = -1000, guiBtnY, guiBtnW;
     private long lastProfFetchMs;
     private int profScroll, profMaxScroll;
     private int profToggleX, profToggleY, profToggleW;

@@ -102,6 +102,8 @@ public final class StudioSession {
     public static int profilerSort = 0; // 0 = ms/s, 1 = avg, 2 = max, 3 = calls
     /** История версий открытого скрипта. */
     public static boolean historyOpen = false;
+    /** Режим визуального конструктора экранов (GUI Builder) для активного .sc скрипта. */
+    public static boolean guiEditorMode = false;
     public static String historyScript = "";
     public static int historyRetentionDays = 3;
     public static List<com.scriptcraft.network.ScriptHistoryPacket.Entry> historyEntries = List.of();
@@ -134,6 +136,7 @@ public final class StudioSession {
         selectedExplorerPath = null;
         profilerData = null;
         historyOpen = false;
+        guiEditorMode = false;
         historyScript = "";
         historyEntries = List.of();
         historySelectedId = "";

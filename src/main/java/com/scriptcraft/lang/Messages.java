@@ -314,6 +314,9 @@ public final class Messages {
         add("studio.history.delete", "Delete", "Удалить");
         add("studio.history.restored", "&aRestored version of %s", "&aВосстановлена версия %s");
         add("studio.history.lines", "%d lines", "%d строк");
+        add("studio.m.gui_editor", "Screen Builder (GUI)", "Редактор экранов (GUI)");
+        add("studio.gui.btn", "❖ GUI", "❖ GUI");
+        add("studio.gui.code_btn", "</> Code", "</> Код");
     }
 
     private static volatile String clientLanguage;

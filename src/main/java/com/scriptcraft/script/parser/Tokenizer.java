@@ -9,14 +9,14 @@ import java.util.List;
  * переменная в фигурных скобках — один токен целиком, даже с пробелами и запятыми: {my var::%player%},
  * ванильный селектор с аргументами — тоже один токен как есть: @a[distance=..10,name="Steve"].
  */
-final class Tokenizer {
-    record Token(String value, boolean quoted) {
+public final class Tokenizer {
+    public record Token(String value, boolean quoted) {
     }
 
     private Tokenizer() {
     }
 
-    static List<Token> tokenize(String line) throws ParseException {
+    public static List<Token> tokenize(String line) throws ParseException {
         List<Token> tokens = new ArrayList<>();
         StringBuilder cur = new StringBuilder();
         int i = 0;
