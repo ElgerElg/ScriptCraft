@@ -290,7 +290,7 @@ public class ScriptScreen extends Screen {
     }
 
     private static int extractHoverRange(String tip) {
-        for (String marker : new String[]{"Дальн:", "Радиус:", "Аура:"}) {
+        for (String marker : new String[]{"Дальн:", "Радиус:"}) {
             int idx = tip.indexOf(marker);
             if (idx >= 0) {
                 int i = idx + marker.length();
@@ -493,19 +493,21 @@ public class ScriptScreen extends Screen {
             }
         }
 
-        // Авто-показ круга радиуса при наведении курсора на построенную башню (без клика и без нагрузки на сеть)
+        // Авто-показ точного круга радиуса (диаметр = 2 * R) при наведении курсора на построенную башню
         if (hoveredElement != null && rangeTemplates != null && !hoveredTooltip.isEmpty()) {
             String eid = ScreenMeta.elementId(hoveredElement);
             if (eid.startsWith("c") && eid.indexOf('_') > 1) {
                 int hoverRng = extractHoverRange(hoveredTooltip);
                 if (hoverRng > 0) {
                     boolean isBuff = hoveredTooltip.contains("Маяк") || hoveredTooltip.contains("Бафф-аура");
-                    String rKey = isBuff ? "rng_b" : (hoverRng >= 170 ? "rng_l" : (hoverRng >= 115 ? "rng_m" : "rng_s"));
-                    ScreenElement tpl = rangeTemplates.get(rKey);
+                    ScreenElement tpl = isBuff ? rangeTemplates.get("rng_b") : rangeTemplates.get("rng_s");
                     if (tpl == null) tpl = rangeTemplates.get("rng_s");
                     if (tpl != null) {
-                        ScreenElement vis = ScreenMeta.withHidden(
-                                ScreenMeta.withPosition(tpl, hoveredElement.layout().x(), hoveredElement.layout().y()), false);
+                        int diam = Math.max(24, hoverRng * 2);
+                        Layout oldL = tpl.layout();
+                        Layout exactL = new Layout(hoveredElement.layout().x(), hoveredElement.layout().y(),
+                                diam, diam, oldL.anchor(), oldL.color(), oldL.layer());
+                        ScreenElement vis = ScreenMeta.withHidden(ScreenMeta.withLayout(tpl, exactL), false);
                         graphics.pose().pushPose();
                         graphics.pose().translate(0f, 0f, z + 5f);
                         ElementRenderer.render(graphics, this.font, vis, this.width, this.height, mouseX, mouseY, 0);

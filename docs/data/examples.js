@@ -1777,7 +1777,8 @@ on toggle "autowave":
 on toggle "cursortog":
 	if %value% is "true":
 		set {-td-cur-on::%player%} to 1
-		show screen element "cursor_icon" to player
+		if {-td-tool::%player%} > 0 or {-td-sell::%player%} is 1:
+			show screen element "cursor_icon" to player
 		set text of screen element "status_txt" for player to "&bИконка башни у курсора включена &8(C — переключить)"
 	else:
 		set {-td-cur-on::%player%} to 0
@@ -1788,7 +1789,8 @@ function TdToggleCursorKey(p: player):
 	if {-td-cur-on::%p%} is 0:
 		set {-td-cur-on::%p%} to 1
 		set value of screen element "cursortog" for p to true
-		show screen element "cursor_icon" to p
+		if {-td-tool::%p%} > 0 or {-td-sell::%p%} is 1:
+			show screen element "cursor_icon" to p
 		set text of screen element "status_txt" for p to "&bИконка башни у курсора включена"
 	else:
 		set {-td-cur-on::%p%} to 0
@@ -1853,7 +1855,7 @@ function TdReconnect(g: player, p: player):
 	set {-td-host::%p%} to %g%
 	if {-td-gold::%p%} is not set:
 		set {-td-gold::%p%} to 120
-	set {-td-tool::%p%} to 1
+	set {-td-tool::%p%} to 0
 	set {-td-sell::%p%} to 0
 	set {-td-cur-on::%p%} to 1
 	if {-m} is 1:
@@ -2381,7 +2383,7 @@ function TdStartGame(host: player):
 		set {-tp} to %loop-value%
 		set {-td-host::%{-tp}%} to %host%
 		set {-td-gold::%{-tp}%} to {-sgold}
-		set {-td-tool::%{-tp}%} to 1
+		set {-td-tool::%{-tp}%} to 0
 		set {-td-sell::%{-tp}%} to 0
 		set {-td-cur-on::%{-tp}%} to 1
 		if {-m} is 1:
@@ -2538,6 +2540,8 @@ function TdOpenMap1(p: player):
 	if {-g} is not set:
 		set {-g} to %p%
 	open screen "Tower Defense" to p:
+		# Невидимый фон за экраном — клик в пустое место или за экран отвязывает выбранную башню от курсора
+		box at 0 0 size 2000x2000 anchor center color #00000000 layer -1 run TdClearTool(player) keep open
 		# Верхний HUD (скруглённая стеклянная панель + пилюли показателей)
 		box at 0 -114 size 468x22 anchor center color #E6090E1A gradient #E6111C33 border #FF38BDF8 border_width 1 radius 6 shadow blur layer 11
 		box at -202 -114 size 54x15 anchor center color #CC162032 border #4438BDF8 radius 4 layer 11
@@ -2557,7 +2561,7 @@ function TdOpenMap1(p: player):
 
 		# Тактическая рамка + HD карта 352x176 (текстура 896x448)
 		box at -56 -8 size 358x182 anchor center color #AA090E1A border #AA38BDF8 border_width 2 radius 5 shadow layer 0
-		image "td:textures/gui/map_valley.png" at -56 -8 size 352x176 texture 896x448 anchor center layer 1 id map
+		image "td:textures/gui/map_valley.png" at -56 -8 size 352x176 texture 896x448 anchor center layer 1 id map run TdClearTool(player) keep open
 		bar "boss_bar" value 100 max 100 at -56 -88 size 210x8 anchor center color #FFEF4444 background #CC1A0A0A text "&c&l☠ БОСС: %value%/%max%" shadow layer 14 hidden
 
 		# Правая панель — Журнал событий (list без скроллбара)
@@ -2743,7 +2747,7 @@ function TdOpenMap1(p: player):
 		box at -26 121 size 28x32 anchor center color #CC162032 border #3338BDF8 radius 4 layer 11
 		box at 6 121 size 28x32 anchor center color #CC162032 border #3338BDF8 radius 4 layer 11
 		box at 38 121 size 28x32 anchor center color #CC162032 border #3338BDF8 radius 4 layer 11
-		box at -218 106 size 26x2 anchor center color #FFFACC15 radius 1 id sel_bar layer 13
+		box at -218 106 size 26x2 anchor center color #FFFACC15 radius 1 id sel_bar hidden layer 13
 		image "td:textures/gui/tower_archer.png" at -218 115 size 19x19 texture 64x64 anchor center hover_scale 1.15 layer 12 id ico1 run TdSelectTool(player, 1) keep open tooltip "&e&l[1] Эльфийская Баллиста &650з%nl%&8▪ &7Урон: &f15 &8| &7КД: &a0.4с &8| &7Дальн: &b78%nl%&6✦ 5★ Шквал: &fстреляет сразу по 2 целям"
 		text "&e[1]50" at -218 131 anchor center shadow scale 0.85 layer 12 id lbl1
 		image "td:textures/gui/tower_cannon.png" at -186 115 size 19x19 texture 64x64 anchor center hover_scale 1.15 layer 12 id ico2 run TdSelectTool(player, 2) keep open tooltip "&6&l[2] Мортира «Вулкан» &695з%nl%&8▪ &7Урон: &f36 &c(Сплеш) &8| &7Дальн: &b74%nl%&6✦ 5★ Напалм: &fмега-сплеш + поджог врагов"
@@ -2769,14 +2773,16 @@ function TdOpenMap1(p: player):
 		button "Заново" at 152 129 size 52x15 anchor center run TdRestartCurrent(player) keep open tooltip "&eРестарт карты &8[R]"
 		button "Меню" at 208 129 size 52x15 anchor center run TdOpenMenu(player) keep open tooltip "&eВыбор карты и кооп &8[M]"
 
-		# Привязанная к курсору иконка текущей башни (вкл/выкл тумблером «Курсор» или клавишей C)
-		image "td:textures/gui/tower_archer.png" at 0 0 size 15x15 texture 64x64 anchor center layer 24 id cursor_icon
+		# Привязанная к курсору иконка текущей башни (появляется при выборе 1..9, пропадает после постройки или клика в пустоту)
+		image "td:textures/gui/tower_archer.png" at 0 0 size 15x15 texture 64x64 anchor center layer 24 id cursor_icon hidden
 
 function TdOpenMap2(p: player):
 	set {-g} to {-td-host::%p%}
 	if {-g} is not set:
 		set {-g} to %p%
 	open screen "Tower Defense" to p:
+		# Невидимый фон за экраном — клик в пустое место или за экран отвязывает выбранную башню от курсора
+		box at 0 0 size 2000x2000 anchor center color #00000000 layer -1 run TdClearTool(player) keep open
 		# Верхний HUD (скруглённая стеклянная панель + пилюли показателей)
 		box at 0 -114 size 468x22 anchor center color #E6090E1A gradient #E6111C33 border #FF38BDF8 border_width 1 radius 6 shadow blur layer 11
 		box at -202 -114 size 54x15 anchor center color #CC162032 border #4438BDF8 radius 4 layer 11
@@ -2796,7 +2802,7 @@ function TdOpenMap2(p: player):
 
 		# Тактическая рамка + HD карта 352x176 (текстура 896x448)
 		box at -56 -8 size 358x182 anchor center color #AA090E1A border #AA38BDF8 border_width 2 radius 5 shadow layer 0
-		image "td:textures/gui/map_volcano.png" at -56 -8 size 352x176 texture 896x448 anchor center layer 1 id map
+		image "td:textures/gui/map_volcano.png" at -56 -8 size 352x176 texture 896x448 anchor center layer 1 id map run TdClearTool(player) keep open
 		bar "boss_bar" value 100 max 100 at -56 -88 size 210x8 anchor center color #FFEF4444 background #CC1A0A0A text "&c&l☠ БОСС: %value%/%max%" shadow layer 14 hidden
 
 		# Правая панель — Журнал событий (list без скроллбара)
@@ -2994,7 +3000,7 @@ function TdOpenMap2(p: player):
 		box at -26 121 size 28x32 anchor center color #CC162032 border #3338BDF8 radius 4 layer 11
 		box at 6 121 size 28x32 anchor center color #CC162032 border #3338BDF8 radius 4 layer 11
 		box at 38 121 size 28x32 anchor center color #CC162032 border #3338BDF8 radius 4 layer 11
-		box at -218 106 size 26x2 anchor center color #FFFACC15 radius 1 id sel_bar layer 13
+		box at -218 106 size 26x2 anchor center color #FFFACC15 radius 1 id sel_bar hidden layer 13
 		image "td:textures/gui/tower_archer.png" at -218 115 size 19x19 texture 64x64 anchor center hover_scale 1.15 layer 12 id ico1 run TdSelectTool(player, 1) keep open tooltip "&e&l[1] Эльфийская Баллиста &650з%nl%&8▪ &7Урон: &f15 &8| &7КД: &a0.4с &8| &7Дальн: &b78%nl%&6✦ 5★ Шквал: &fстреляет сразу по 2 целям"
 		text "&e[1]50" at -218 131 anchor center shadow scale 0.85 layer 12 id lbl1
 		image "td:textures/gui/tower_cannon.png" at -186 115 size 19x19 texture 64x64 anchor center hover_scale 1.15 layer 12 id ico2 run TdSelectTool(player, 2) keep open tooltip "&6&l[2] Мортира «Вулкан» &695з%nl%&8▪ &7Урон: &f36 &c(Сплеш) &8| &7Дальн: &b74%nl%&6✦ 5★ Напалм: &fмега-сплеш + поджог врагов"
@@ -3020,14 +3026,16 @@ function TdOpenMap2(p: player):
 		button "Заново" at 152 129 size 52x15 anchor center run TdRestartCurrent(player) keep open tooltip "&eРестарт карты &8[R]"
 		button "Меню" at 208 129 size 52x15 anchor center run TdOpenMenu(player) keep open tooltip "&eВыбор карты и кооп &8[M]"
 
-		# Привязанная к курсору иконка текущей башни (вкл/выкл тумблером «Курсор» или клавишей C)
-		image "td:textures/gui/tower_archer.png" at 0 0 size 15x15 texture 64x64 anchor center layer 24 id cursor_icon
+		# Привязанная к курсору иконка текущей башни (появляется при выборе 1..9, пропадает после постройки или клика в пустоту)
+		image "td:textures/gui/tower_archer.png" at 0 0 size 15x15 texture 64x64 anchor center layer 24 id cursor_icon hidden
 
 function TdOpenMap3(p: player):
 	set {-g} to {-td-host::%p%}
 	if {-g} is not set:
 		set {-g} to %p%
 	open screen "Tower Defense" to p:
+		# Невидимый фон за экраном — клик в пустое место или за экран отвязывает выбранную башню от курсора
+		box at 0 0 size 2000x2000 anchor center color #00000000 layer -1 run TdClearTool(player) keep open
 		# Верхний HUD (скруглённая стеклянная панель + пилюли показателей)
 		box at 0 -114 size 468x22 anchor center color #E6090E1A gradient #E6111C33 border #FF38BDF8 border_width 1 radius 6 shadow blur layer 11
 		box at -202 -114 size 54x15 anchor center color #CC162032 border #4438BDF8 radius 4 layer 11
@@ -3047,7 +3055,7 @@ function TdOpenMap3(p: player):
 
 		# Тактическая рамка + HD карта 352x176 (текстура 896x448)
 		box at -56 -8 size 358x182 anchor center color #AA090E1A border #AA38BDF8 border_width 2 radius 5 shadow layer 0
-		image "td:textures/gui/map_ice.png" at -56 -8 size 352x176 texture 896x448 anchor center layer 1 id map
+		image "td:textures/gui/map_ice.png" at -56 -8 size 352x176 texture 896x448 anchor center layer 1 id map run TdClearTool(player) keep open
 		bar "boss_bar" value 100 max 100 at -56 -88 size 210x8 anchor center color #FFEF4444 background #CC1A0A0A text "&c&l☠ БОСС: %value%/%max%" shadow layer 14 hidden
 
 		# Правая панель — Журнал событий (list без скроллбара)
@@ -3248,7 +3256,7 @@ function TdOpenMap3(p: player):
 		box at -26 121 size 28x32 anchor center color #CC162032 border #3338BDF8 radius 4 layer 11
 		box at 6 121 size 28x32 anchor center color #CC162032 border #3338BDF8 radius 4 layer 11
 		box at 38 121 size 28x32 anchor center color #CC162032 border #3338BDF8 radius 4 layer 11
-		box at -218 106 size 26x2 anchor center color #FFFACC15 radius 1 id sel_bar layer 13
+		box at -218 106 size 26x2 anchor center color #FFFACC15 radius 1 id sel_bar hidden layer 13
 		image "td:textures/gui/tower_archer.png" at -218 115 size 19x19 texture 64x64 anchor center hover_scale 1.15 layer 12 id ico1 run TdSelectTool(player, 1) keep open tooltip "&e&l[1] Эльфийская Баллиста &650з%nl%&8▪ &7Урон: &f15 &8| &7КД: &a0.4с &8| &7Дальн: &b78%nl%&6✦ 5★ Шквал: &fстреляет сразу по 2 целям"
 		text "&e[1]50" at -218 131 anchor center shadow scale 0.85 layer 12 id lbl1
 		image "td:textures/gui/tower_cannon.png" at -186 115 size 19x19 texture 64x64 anchor center hover_scale 1.15 layer 12 id ico2 run TdSelectTool(player, 2) keep open tooltip "&6&l[2] Мортира «Вулкан» &695з%nl%&8▪ &7Урон: &f36 &c(Сплеш) &8| &7Дальн: &b74%nl%&6✦ 5★ Напалм: &fмега-сплеш + поджог врагов"
@@ -3274,14 +3282,16 @@ function TdOpenMap3(p: player):
 		button "Заново" at 152 129 size 52x15 anchor center run TdRestartCurrent(player) keep open tooltip "&eРестарт карты &8[R]"
 		button "Меню" at 208 129 size 52x15 anchor center run TdOpenMenu(player) keep open tooltip "&eВыбор карты и кооп &8[M]"
 
-		# Привязанная к курсору иконка текущей башни (вкл/выкл тумблером «Курсор» или клавишей C)
-		image "td:textures/gui/tower_archer.png" at 0 0 size 15x15 texture 64x64 anchor center layer 24 id cursor_icon
+		# Привязанная к курсору иконка текущей башни (появляется при выборе 1..9, пропадает после постройки или клика в пустоту)
+		image "td:textures/gui/tower_archer.png" at 0 0 size 15x15 texture 64x64 anchor center layer 24 id cursor_icon hidden
 
 function TdOpenMap4(p: player):
 	set {-g} to {-td-host::%p%}
 	if {-g} is not set:
 		set {-g} to %p%
 	open screen "Tower Defense" to p:
+		# Невидимый фон за экраном — клик в пустое место или за экран отвязывает выбранную башню от курсора
+		box at 0 0 size 2000x2000 anchor center color #00000000 layer -1 run TdClearTool(player) keep open
 		# Верхний HUD (скруглённая стеклянная панель + пилюли показателей)
 		box at 0 -114 size 468x22 anchor center color #E6090E1A gradient #E6111C33 border #FF38BDF8 border_width 1 radius 6 shadow blur layer 11
 		box at -202 -114 size 54x15 anchor center color #CC162032 border #4438BDF8 radius 4 layer 11
@@ -3301,7 +3311,7 @@ function TdOpenMap4(p: player):
 
 		# Тактическая рамка + HD карта 352x176 (текстура 896x448)
 		box at -56 -8 size 358x182 anchor center color #AA090E1A border #AA38BDF8 border_width 2 radius 5 shadow layer 0
-		image "td:textures/gui/map_swamp.png" at -56 -8 size 352x176 texture 896x448 anchor center layer 1 id map
+		image "td:textures/gui/map_swamp.png" at -56 -8 size 352x176 texture 896x448 anchor center layer 1 id map run TdClearTool(player) keep open
 		bar "boss_bar" value 100 max 100 at -56 -88 size 210x8 anchor center color #FFEF4444 background #CC1A0A0A text "&c&l☠ БОСС: %value%/%max%" shadow layer 14 hidden
 
 		# Правая панель — Журнал событий (list без скроллбара)
@@ -3483,7 +3493,7 @@ function TdOpenMap4(p: player):
 		box at -26 121 size 28x32 anchor center color #CC162032 border #3338BDF8 radius 4 layer 11
 		box at 6 121 size 28x32 anchor center color #CC162032 border #3338BDF8 radius 4 layer 11
 		box at 38 121 size 28x32 anchor center color #CC162032 border #3338BDF8 radius 4 layer 11
-		box at -218 106 size 26x2 anchor center color #FFFACC15 radius 1 id sel_bar layer 13
+		box at -218 106 size 26x2 anchor center color #FFFACC15 radius 1 id sel_bar hidden layer 13
 		image "td:textures/gui/tower_archer.png" at -218 115 size 19x19 texture 64x64 anchor center hover_scale 1.15 layer 12 id ico1 run TdSelectTool(player, 1) keep open tooltip "&e&l[1] Эльфийская Баллиста &650з%nl%&8▪ &7Урон: &f15 &8| &7КД: &a0.4с &8| &7Дальн: &b78%nl%&6✦ 5★ Шквал: &fстреляет сразу по 2 целям"
 		text "&e[1]50" at -218 131 anchor center shadow scale 0.85 layer 12 id lbl1
 		image "td:textures/gui/tower_cannon.png" at -186 115 size 19x19 texture 64x64 anchor center hover_scale 1.15 layer 12 id ico2 run TdSelectTool(player, 2) keep open tooltip "&6&l[2] Мортира «Вулкан» &695з%nl%&8▪ &7Урон: &f36 &c(Сплеш) &8| &7Дальн: &b74%nl%&6✦ 5★ Напалм: &fмега-сплеш + поджог врагов"
@@ -3509,14 +3519,16 @@ function TdOpenMap4(p: player):
 		button "Заново" at 152 129 size 52x15 anchor center run TdRestartCurrent(player) keep open tooltip "&eРестарт карты &8[R]"
 		button "Меню" at 208 129 size 52x15 anchor center run TdOpenMenu(player) keep open tooltip "&eВыбор карты и кооп &8[M]"
 
-		# Привязанная к курсору иконка текущей башни (вкл/выкл тумблером «Курсор» или клавишей C)
-		image "td:textures/gui/tower_archer.png" at 0 0 size 15x15 texture 64x64 anchor center layer 24 id cursor_icon
+		# Привязанная к курсору иконка текущей башни (появляется при выборе 1..9, пропадает после постройки или клика в пустоту)
+		image "td:textures/gui/tower_archer.png" at 0 0 size 15x15 texture 64x64 anchor center layer 24 id cursor_icon hidden
 
 function TdOpenMap5(p: player):
 	set {-g} to {-td-host::%p%}
 	if {-g} is not set:
 		set {-g} to %p%
 	open screen "Tower Defense" to p:
+		# Невидимый фон за экраном — клик в пустое место или за экран отвязывает выбранную башню от курсора
+		box at 0 0 size 2000x2000 anchor center color #00000000 layer -1 run TdClearTool(player) keep open
 		# Верхний HUD (скруглённая стеклянная панель + пилюли показателей)
 		box at 0 -114 size 468x22 anchor center color #E6090E1A gradient #E6111C33 border #FF38BDF8 border_width 1 radius 6 shadow blur layer 11
 		box at -202 -114 size 54x15 anchor center color #CC162032 border #4438BDF8 radius 4 layer 11
@@ -3536,7 +3548,7 @@ function TdOpenMap5(p: player):
 
 		# Тактическая рамка + HD карта 352x176 (текстура 896x448)
 		box at -56 -8 size 358x182 anchor center color #AA090E1A border #AA38BDF8 border_width 2 radius 5 shadow layer 0
-		image "td:textures/gui/map_void.png" at -56 -8 size 352x176 texture 896x448 anchor center layer 1 id map
+		image "td:textures/gui/map_void.png" at -56 -8 size 352x176 texture 896x448 anchor center layer 1 id map run TdClearTool(player) keep open
 		bar "boss_bar" value 100 max 100 at -56 -88 size 210x8 anchor center color #FFEF4444 background #CC1A0A0A text "&c&l☠ БОСС: %value%/%max%" shadow layer 14 hidden
 
 		# Правая панель — Журнал событий (list без скроллбара)
@@ -3713,7 +3725,7 @@ function TdOpenMap5(p: player):
 		box at -26 121 size 28x32 anchor center color #CC162032 border #3338BDF8 radius 4 layer 11
 		box at 6 121 size 28x32 anchor center color #CC162032 border #3338BDF8 radius 4 layer 11
 		box at 38 121 size 28x32 anchor center color #CC162032 border #3338BDF8 radius 4 layer 11
-		box at -218 106 size 26x2 anchor center color #FFFACC15 radius 1 id sel_bar layer 13
+		box at -218 106 size 26x2 anchor center color #FFFACC15 radius 1 id sel_bar hidden layer 13
 		image "td:textures/gui/tower_archer.png" at -218 115 size 19x19 texture 64x64 anchor center hover_scale 1.15 layer 12 id ico1 run TdSelectTool(player, 1) keep open tooltip "&e&l[1] Эльфийская Баллиста &650з%nl%&8▪ &7Урон: &f15 &8| &7КД: &a0.4с &8| &7Дальн: &b78%nl%&6✦ 5★ Шквал: &fстреляет сразу по 2 целям"
 		text "&e[1]50" at -218 131 anchor center shadow scale 0.85 layer 12 id lbl1
 		image "td:textures/gui/tower_cannon.png" at -186 115 size 19x19 texture 64x64 anchor center hover_scale 1.15 layer 12 id ico2 run TdSelectTool(player, 2) keep open tooltip "&6&l[2] Мортира «Вулкан» &695з%nl%&8▪ &7Урон: &f36 &c(Сплеш) &8| &7Дальн: &b74%nl%&6✦ 5★ Напалм: &fмега-сплеш + поджог врагов"
@@ -3739,8 +3751,8 @@ function TdOpenMap5(p: player):
 		button "Заново" at 152 129 size 52x15 anchor center run TdRestartCurrent(player) keep open tooltip "&eРестарт карты &8[R]"
 		button "Меню" at 208 129 size 52x15 anchor center run TdOpenMenu(player) keep open tooltip "&eВыбор карты и кооп &8[M]"
 
-		# Привязанная к курсору иконка текущей башни (вкл/выкл тумблером «Курсор» или клавишей C)
-		image "td:textures/gui/tower_archer.png" at 0 0 size 15x15 texture 64x64 anchor center layer 24 id cursor_icon
+		# Привязанная к курсору иконка текущей башни (появляется при выборе 1..9, пропадает после постройки или клика в пустоту)
+		image "td:textures/gui/tower_archer.png" at 0 0 size 15x15 texture 64x64 anchor center layer 24 id cursor_icon hidden
 
 # ==========================================================
 #  УПРАВЛЕНИЕ, СТРОИТЕЛЬСТВО (ДО 32 БАШЕН), МАЯК-БАФФЕР И ✦5★
@@ -3758,6 +3770,25 @@ function TdShowTop(p: player):
 		if {-r} >= 5:
 			stop
 
+function TdClearTool(p: player):
+	set {-g} to {-td-host::%p%}
+	if {-g} is not set or {-td-active::%{-g}%} is not 1:
+		stop
+	set {-td-tool::%p%} to 0
+	set {-td-sell::%p%} to 0
+	hide screen element "cursor_icon" from p
+	hide screen element "sel_bar" from p
+	TdShowRange(p, 0, 0, 0, 0)
+	set text of screen element "lbl1" for p to "&7[1]50"
+	set text of screen element "lbl2" for p to "&7[2]95"
+	set text of screen element "lbl3" for p to "&7[3]85"
+	set text of screen element "lbl4" for p to "&7[4]130"
+	set text of screen element "lbl5" for p to "&7[5]115"
+	set text of screen element "lbl6" for p to "&7[6]150"
+	set text of screen element "lbl7" for p to "&7[7]105"
+	set text of screen element "lbl8" for p to "&7[8]140"
+	set text of screen element "lbl9" for p to "&7[9]125"
+
 function TdSelectTool(p: player, tool: number):
 	set {-g} to {-td-host::%p%}
 	if {-g} is not set or {-td-active::%{-g}%} is not 1:
@@ -3774,6 +3805,7 @@ function TdSelectTool(p: player, tool: number):
 	set text of screen element "lbl8" for p to "&7[8]140"
 	set text of screen element "lbl9" for p to "&7[9]125"
 	set {-sx} to -218 + (tool - 1) * 32
+	show screen element "sel_bar" to p
 	animate screen "sel_bar" for p to {-sx} 106 in 3 ticks
 	set {-ctex} to "td:textures/gui/tower_archer.png"
 	if tool is 1:
@@ -3812,6 +3844,8 @@ function TdSelectTool(p: player, tool: number):
 		set text of screen element "lbl9" for p to "&d[9]125"
 		set text of screen element "status_txt" for p to "&d[9] Боевой Маяк (125з) &8| Бафф +18..55%% урона соседним башням!"
 	set image of screen element "cursor_icon" for p to {-ctex}
+	if {-td-cur-on::%p%} is not 0:
+		show screen element "cursor_icon" to p
 	play sound ui.button.click to p with volume 0.4 pitch 1.3
 
 function TdToggleSell(p: player):
@@ -3819,12 +3853,15 @@ function TdToggleSell(p: player):
 	if {-g} is not set or {-td-active::%{-g}%} is not 1:
 		stop
 	if {-td-sell::%p%} is 1:
-		set {-td-sell::%p%} to 0
-		TdSelectTool(p, {-td-tool::%p%})
+		TdClearTool(p)
 	else:
 		set {-td-sell::%p%} to 1
+		set {-td-tool::%p%} to 0
+		hide screen element "sel_bar" from p
 		TdShowRange(p, 0, 0, 0, 0)
 		set image of screen element "cursor_icon" for p to "td:textures/gui/icon_sell.png"
+		if {-td-cur-on::%p%} is not 0:
+			show screen element "cursor_icon" to p
 		set text of screen element "status_txt" for p to "&c&lРЕЖИМ ПРОДАЖИ &7— клик по своей башне вернёт 70%% золота (X — отмена)"
 		play sound ui.button.click to p with volume 0.4 pitch 0.9
 
@@ -3903,8 +3940,7 @@ function TdCellClick(p: player, col: integer, row: integer):
 		set {-td-towner::%{-g}%::%{-tid}%} to ""
 		set {-td-grid::%{-g}%::%col%_%row%} to 0
 		set {-td-sell::%p%} to 0
-		TdSelectTool(p, {-td-tool::%p%})
-		TdShowRange(p, 0, 0, 0, 0)
+		TdClearTool(p)
 		TdSyncCell({-g}, col, row, {-tx}, {-ty}, "td:textures/gui/tile_build.png", "")
 		TdSyncHide({-g}, "st%{-tid}%")
 		TdRecalcBuffs({-g})
@@ -3915,18 +3951,15 @@ function TdCellClick(p: player, col: integer, row: integer):
 		TdSyncGoldScore({-g})
 		stop
 
-	# Клик по построенной башне -> апгрейд / эволюция!
+	# Клик по построенной башне -> апгрейд / эволюция! (радиус показывается сам при наведении — по клику скрываем старый)
 	if {-tid} > 0:
+		TdShowRange(p, 0, 0, 0, 0)
 		set {-lvl} to {-td-tl::%{-g}%::%{-tid}%}
 		set {-tt} to {-td-tt::%{-g}%::%{-tid}%}
 		set {-own} to {-td-towner::%{-g}%::%{-tid}%}
 		set {-tx} to {-td-tx::%{-g}%::%{-tid}%}
 		set {-ty} to {-td-ty::%{-g}%::%{-tid}%}
-		set {-isb} to 0
-		if {-tt} is 9:
-			set {-isb} to 1
 		TdTowerRange({-g}, {-tt}, {-lvl})
-		TdShowRange(p, {-tx}, {-ty}, {-td-tmp-rng}, {-isb})
 
 		if {-lvl} >= 5:
 			set text of screen element "status_txt" for p to "&6&l✦5★ MAX &8| &7Владелец: &f%{-own}% &8| &7Дальность: &b%{-td-tmp-rng}%"
@@ -3947,8 +3980,6 @@ function TdCellClick(p: player, col: integer, row: integer):
 		add {-up} to {-td-tcost::%{-g}%::%{-tid}%}
 		add 1 to {-td-tl::%{-g}%::%{-tid}%}
 		set {-nl} to {-td-tl::%{-g}%::%{-tid}%}
-		TdTowerRange({-g}, {-tt}, {-nl})
-		TdShowRange(p, {-tx}, {-ty}, {-td-tmp-rng}, {-isb})
 		TdRecalcBuffs({-g})
 		if {-nl} < 5:
 			gui particle "magic" count 10 at {-tx} {-ty} color "#38BDF8" spread 24 to {-td-online::%{-g}%::*}
@@ -3979,7 +4010,12 @@ function TdCellClick(p: player, col: integer, row: integer):
 		TdSyncGoldScore({-g})
 		stop
 
-	# Постройка новой башни (до 32 на карте!)
+	# Постройка новой башни (до 32 на карте; после постройки выбор сбрасывается!)
+	set {-tool} to {-td-tool::%p%}
+	if {-tool} is not set or {-tool} <= 0:
+		TdClearTool(p)
+		set text of screen element "status_txt" for p to "&7Сначала выберите башню &e1..9 &7на панели внизу!"
+		stop
 	set {-slot} to 0
 	loop 32 times:
 		set {-k} to %loop-number%
@@ -3989,7 +4025,6 @@ function TdCellClick(p: player, col: integer, row: integer):
 		set text of screen element "status_txt" for p to "&cЛимит 32 башни! Прокачивайте построенные до ✦5★"
 		stop
 
-	set {-tool} to {-td-tool::%p%}
 	set {-cost} to 50
 	set {-sn} to "Баллиста"
 	if {-tool} is 2:
@@ -4043,6 +4078,8 @@ function TdCellClick(p: player, col: integer, row: integer):
 		set {-td-tmax::%{-g}%} to {-slot}
 
 	TdRecalcBuffs({-g})
+	# Сразу отвязываем иконку от курсора и сбрасываем выбор после 1 постройки!
+	TdClearTool(p)
 	gui particle "spark" count 8 at {-cx} {-cy} color "#38BDF8" spread 20 to {-td-online::%{-g}%::*}
 	TdLog({-g}, "&a+ %p%: &f%{-sn}%")
 	TdSyncSound({-g}, "block.anvil.use", 0.35, 1.5)
