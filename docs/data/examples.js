@@ -3117,7 +3117,7 @@ function TdCellClick(p: player, col: integer, row: integer):
 		TdShowRange(p, 0, 0, 0)
 		TdSyncCell({-g}, col, row, {-tx}, {-ty}, "td:textures/gui/tile_build.png", "&7Свободная клетка\\n&aЛКМ: &fпостроить выбранную башню")
 		TdSyncHide({-g}, "st%{-tid}%")
-		gui float "&6+%{-ref}%з" at {-tx} {-ty} color #FACC15 for 16 ticks to {-td-online::%{-g}%::*}
+		gui float "&6+%{-ref}%з" at {-tx} {-ty} color "#FACC15" for 16 ticks to {-td-online::%{-g}%::*}
 		gui particle "gold" count 8 at {-tx} {-ty} spread 22 to {-td-online::%{-g}%::*}
 		TdSyncStatus({-g}, "&e%p% продал башню (+%{-ref}%з)")
 		TdSyncSound({-g}, "entity.experience_orb.pickup", 0.6, 0.9)
@@ -3160,7 +3160,7 @@ function TdCellClick(p: player, col: integer, row: integer):
 		TdShowRange(p, {-tx}, {-ty}, {-td-tmp-rng})
 		TdSyncTowerVisual({-g}, {-tid})
 		if {-nl} is 2:
-			gui particle "spark" count 8 at {-tx} {-ty} color #FACC15 spread 20 to {-td-online::%{-g}%::*}
+			gui particle "spark" count 8 at {-tx} {-ty} color "#FACC15" spread 20 to {-td-online::%{-g}%::*}
 			TdSyncStatus({-g}, "&a%p% улучшил башню (%{-own}%) → ур.2! (-%{-up}%з)")
 			TdSyncSound({-g}, "entity.player.levelup", 0.5, 1.35)
 		else if {-nl} is 3:
@@ -3168,7 +3168,7 @@ function TdCellClick(p: player, col: integer, row: integer):
 			TdSyncStatus({-g}, "&a%p% улучшил башню (%{-own}%) → ур.3! (-%{-up}%з)")
 			TdSyncSound({-g}, "entity.player.levelup", 0.5, 1.45)
 		else if {-nl} is 4:
-			gui particle "magic" count 12 at {-tx} {-ty} color #38BDF8 spread 28 to {-td-online::%{-g}%::*}
+			gui particle "magic" count 12 at {-tx} {-ty} color "#38BDF8" spread 28 to {-td-online::%{-g}%::*}
 			TdSyncStatus({-g}, "&b%p% поднял ур.4! След. клик (570з) → &6&l✦5★ ЭВОЛЮЦИЯ!")
 			TdSyncSound({-g}, "entity.player.levelup", 0.55, 1.6)
 		else:
@@ -3187,7 +3187,7 @@ function TdCellClick(p: player, col: integer, row: integer):
 				set {-evo} to "Чума (заразный яд по области!)"
 			else if {-tt} is 8:
 				set {-evo} to "Золотой Дворец (+180з и +1 HP!)"
-			gui float "&6&l✦ 5★ ЭВОЛЮЦИЯ!" at {-tx} {-ty} color #FACC15 for 24 ticks to {-td-online::%{-g}%::*}
+			gui float "&6&l✦ 5★ ЭВОЛЮЦИЯ!" at {-tx} {-ty} color "#FACC15" for 24 ticks to {-td-online::%{-g}%::*}
 			gui particle "gold" count 18 at {-tx} {-ty} spread 38 to {-td-online::%{-g}%::*}
 			TdSyncStatus({-g}, "&6&l✦ ЭВОЛЮЦИЯ 5★! &f%p% открыл: &e%{-evo}%")
 			TdSyncSound({-g}, "ui.toast.challenge_complete", 0.75, 1.2)
@@ -3247,7 +3247,7 @@ function TdCellClick(p: player, col: integer, row: integer):
 	TdTowerRange({-tool}, 1)
 	TdShowRange(p, {-cx}, {-cy}, {-td-tmp-rng})
 	TdSyncTowerVisual({-g}, {-slot})
-	gui particle "spark" count 8 at {-cx} {-cy} color #38BDF8 spread 22 to {-td-online::%{-g}%::*}
+	gui particle "spark" count 8 at {-cx} {-cy} color "#38BDF8" spread 22 to {-td-online::%{-g}%::*}
 	TdSyncStatus({-g}, "&a%p% построил башню! Наведи курсор для статов, ЛКМ — апгрейд")
 	TdSyncSound({-g}, "block.anvil.use", 0.35, 1.5)
 	TdSyncGoldScore({-g})
@@ -3393,7 +3393,7 @@ function TdTick(g: player):
 				TdWin(g)
 			else:
 				if {-bank-tot} > 0:
-					gui float "&6+%{-bank-tot}%з от Банков!" at 0 -30 color #FACC15 for 24 ticks to {-td-online::%g%::*}
+					gui float "&6+%{-bank-tot}%з от Банков!" at 0 -30 color "#FACC15" for 24 ticks to {-td-online::%g%::*}
 					TdSyncStatus(g, "&aВолна %{-td-wave::%g%}%/%{-td-maxw::%g%}% пройдена! +%{-bonus}%з &6(+%{-bank-tot}%з от Банков!)")
 				else:
 					TdSyncStatus(g, "&aВолна %{-td-wave::%g%}%/%{-td-maxw::%g%}% пройдена! +%{-bonus}%з. Жмите &eSpace!")
@@ -3556,7 +3556,7 @@ function TdSpawnNext(g: player):
 		TdSyncShow(g, "ehp12")
 		TdSyncBossBar(g, {-bhp}, {-bhp})
 		TdSyncShow(g, "boss_bar")
-		gui particle "explosion" count 16 at {-sx} {-sy} color #EF4444 spread 36 to {-td-online::%g%::*}
+		gui particle "explosion" count 16 at {-sx} {-sy} color "#EF4444" spread 36 to {-td-online::%g%::*}
 
 function TdMoveEnemy(g: player, i: number, anim: number):
 	if {-td-efreeze::%g%::%i%} > 0:
@@ -3589,7 +3589,7 @@ function TdMoveEnemy(g: player, i: number, anim: number):
 			TdSyncSound(g, "entity.iron_golem.damage", 0.7, 0.8)
 			shake camera of {-td-online::%g%::*} with intensity 1.6 for 8 ticks
 			fade screen of {-td-online::%g%::*} to #FF1100 in 2 stay 2 out 8 ticks
-			gui float "&c-%{-dmg}% HP!" at {-tx} {-ty} color #EF4444 for 18 ticks to {-td-online::%g%::*}
+			gui float "&c-%{-dmg}% HP!" at {-tx} {-ty} color "#EF4444" for 18 ticks to {-td-online::%g%::*}
 			TdSyncHud(g)
 			if {-td-hp::%g%} <= 0:
 				TdLose(g)
@@ -3802,7 +3802,7 @@ function TdImpact(g: player, tgt: number, ptype: number, evo: number, dmg: numbe
 		TdSyncSound(g, "entity.illusioner.cast_spell", 0.17, 1.5)
 		TdDamageEnemy(g, tgt, {-fdmg}, 0, 0)
 	else if ptype is 5:
-		gui particle "spark" count 10 at hx hy color #38BDF8 spread 28 to {-td-online::%g%::*}
+		gui particle "spark" count 10 at hx hy color "#38BDF8" spread 28 to {-td-online::%g%::*}
 		TdSyncSound(g, "entity.lightning_bolt.impact", 0.13, 1.9)
 		set {-maxh} to 3
 		set {-crad2} to 5476
@@ -3828,16 +3828,16 @@ function TdImpact(g: player, tgt: number, ptype: number, evo: number, dmg: numbe
 		if evo is 1:
 			chance of 45%:
 				set {-fdmg} to round(dmg * 2.5)
-				gui float "&c&l-%{-fdmg}% CRIT!" at hx hy color #FF4444 for 14 ticks to {-td-online::%g%::*}
-				gui particle "spark" count 10 at hx hy color #EF4444 spread 26 to {-td-online::%g%::*}
+				gui float "&c&l-%{-fdmg}% CRIT!" at hx hy color "#FF4444" for 14 ticks to {-td-online::%g%::*}
+				gui particle "spark" count 10 at hx hy color "#EF4444" spread 26 to {-td-online::%g%::*}
 			if {-td-eboss::%g%::%tgt%} is 0 and {-td-ehp::%g%::%tgt%} <= {-td-emhp::%g%::%tgt%} * 0.2:
 				set {-fdmg} to 999999
-				gui float "&4&l☠ КАЗНЬ!" at hx hy color #EF4444 for 16 ticks to {-td-online::%g%::*}
+				gui float "&4&l☠ КАЗНЬ!" at hx hy color "#EF4444" for 16 ticks to {-td-online::%g%::*}
 		else:
 			chance of 25%:
 				set {-fdmg} to dmg * 2
-				gui float "&c-%{-fdmg}%!" at hx hy color #FF6B6B for 12 ticks to {-td-online::%g%::*}
-				gui particle "spark" count 8 at hx hy color #EF4444 spread 20 to {-td-online::%g%::*}
+				gui float "&c-%{-fdmg}%!" at hx hy color "#FF6B6B" for 12 ticks to {-td-online::%g%::*}
+				gui particle "spark" count 8 at hx hy color "#EF4444" spread 20 to {-td-online::%g%::*}
 		TdSyncSound(g, "entity.arrow.hit_player", 0.22, 1.6)
 		TdDamageEnemy(g, tgt, {-fdmg}, 0, 0)
 	else if ptype is 7:
@@ -3887,7 +3887,7 @@ function TdDamageEnemy(g: player, i: number, dmg: number, slow: number, freeze: 
 			set {-tp} to %loop-value%
 			add {-share} to {-td-gold::%{-tp}%}
 		add {-rew} to {-td-score::%g%}
-		gui float "&6+%{-share}%з" at {-kx} {-ky} color #FACC15 for 14 ticks to {-td-online::%g%::*}
+		gui float "&6+%{-share}%з" at {-kx} {-ky} color "#FACC15" for 14 ticks to {-td-online::%g%::*}
 		gui particle "gold" count 6 at {-kx} {-ky} spread 18 to {-td-online::%g%::*}
 		if {-td-eboss::%g%::%i%} is 1:
 			set {-td-boss-vis::%g%} to 0
