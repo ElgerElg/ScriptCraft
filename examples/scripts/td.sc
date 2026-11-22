@@ -486,8 +486,6 @@ function TdSyncTowerVisual(g: player, tid: number):
 	set {-mapMul} to 1.0
 	if {-td-map::%g%} is 2:
 		set {-mapMul} to 1.1
-	else if {-td-map::%g%} is 5:
-		set {-mapMul} to 1.2
 
 	if {-tt} is 8:
 		set {-inc} to 28
@@ -579,7 +577,7 @@ function TdOpenMenu(p: player):
 		image "td:textures/gui/map_swamp.png" at 86 -45 size 76x38 texture 896x448 anchor center hover_scale 1.07 layer 2 run TdPickMap(player, 4) keep open tooltip "&2&l4. Проклятое болото &e[НОВАЯ!]%nl%&c⚠ 18 клеток трясины (нельзя строить!)%nl%&6✦ Бонус: &f+20% золота за убийство мобов%nl%&c⚠ Угроза: &f+15% HP у всех врагов"
 		text "&74.Болото" at 86 -5 anchor center shadow scale 0.9 layer 2 id m_lbl4
 
-		image "td:textures/gui/map_void.png" at 172 -45 size 76x38 texture 896x448 anchor center hover_scale 1.07 layer 2 run TdPickMap(player, 5) keep open tooltip "&d&l5. Небесный разлом &e[ЭКСТРИМ!]%nl%&c⚠ 24 клетки обрыва бездны (островки!)%nl%&d✦ Бонус: &f+20% урон башен и x1.5 очков!"
+		image "td:textures/gui/map_void.png" at 172 -45 size 76x38 texture 896x448 anchor center hover_scale 1.07 layer 2 run TdPickMap(player, 5) keep open tooltip "&d&l5. Небесный разлом &c[ХАРДКОР!]%nl%&c⚠ Короткий штурмовой путь + 30 обрывов!%nl%&c⚠ Враги: +20% HP и +15% скорость (без бонусов!)%nl%&d✦ Награда: &fx1.5 очков рекорда"
 		text "&75.Разлом" at 172 -5 anchor center shadow scale 0.9 layer 2 id m_lbl5
 
 		# Блок сложности и команды
@@ -630,7 +628,7 @@ function TdRefreshMenuInfo(p: player):
 		set text of screen element "m_lbl4" for p to "&2&l▶ 4.Болото"
 		animate screen "map_sel" for p to 86 -14 in 4 ticks
 	else:
-		set {-mn} to "&dРазлом (островки, +20% урон, x1.5 очк.)"
+		set {-mn} to "&dРазлом (ХАРДКОР: короткий путь, +20% HP, +15% скор.)"
 		set text of screen element "m_lbl5" for p to "&d&l▶ 5.Разлом"
 		animate screen "map_sel" for p to 172 -14 in 4 ticks
 	set {-dn} to "&eСредний (20 волн)"
@@ -838,21 +836,21 @@ function TdLoadWaypoints(g: player, mapId: number):
 	else if mapId is 5:
 		set {-td-wpcnt::%g%} to 8
 		set {-td-wpx::%g%::1} to -221
-		set {-td-wpy::%g%::1} to 47
-		set {-td-wpx::%g%::2} to -155
-		set {-td-wpy::%g%::2} to 47
-		set {-td-wpx::%g%::3} to -155
-		set {-td-wpy::%g%::3} to -63
+		set {-td-wpy::%g%::1} to -19
+		set {-td-wpx::%g%::2} to -133
+		set {-td-wpy::%g%::2} to -19
+		set {-td-wpx::%g%::3} to -133
+		set {-td-wpy::%g%::3} to 25
 		set {-td-wpx::%g%::4} to -45
-		set {-td-wpy::%g%::4} to -63
+		set {-td-wpy::%g%::4} to 25
 		set {-td-wpx::%g%::5} to -45
-		set {-td-wpy::%g%::5} to 25
-		set {-td-wpx::%g%::6} to 43
-		set {-td-wpy::%g%::6} to 25
-		set {-td-wpx::%g%::7} to 43
-		set {-td-wpy::%g%::7} to -41
+		set {-td-wpy::%g%::5} to -41
+		set {-td-wpx::%g%::6} to 21
+		set {-td-wpy::%g%::6} to -41
+		set {-td-wpx::%g%::7} to 21
+		set {-td-wpy::%g%::7} to 3
 		set {-td-wpx::%g%::8} to 109
-		set {-td-wpy::%g%::8} to -41
+		set {-td-wpy::%g%::8} to 3
 
 function TdInitBlocked(g: player, mapId: number):
 	clear {-td-blk::%g%::*}
@@ -878,28 +876,34 @@ function TdInitBlocked(g: player, mapId: number):
 	else if mapId is 5:
 		set {-td-blk::%g%::0_0} to 1
 		set {-td-blk::%g%::0_1} to 1
+		set {-td-blk::%g%::0_2} to 1
+		set {-td-blk::%g%::0_5} to 1
+		set {-td-blk::%g%::0_6} to 1
+		set {-td-blk::%g%::0_7} to 1
 		set {-td-blk::%g%::1_0} to 1
-		set {-td-blk::%g%::1_2} to 1
-		set {-td-blk::%g%::1_3} to 1
-		set {-td-blk::%g%::5_3} to 1
-		set {-td-blk::%g%::5_4} to 1
-		set {-td-blk::%g%::5_6} to 1
+		set {-td-blk::%g%::1_1} to 1
+		set {-td-blk::%g%::1_5} to 1
+		set {-td-blk::%g%::1_6} to 1
+		set {-td-blk::%g%::1_7} to 1
+		set {-td-blk::%g%::2_0} to 1
+		set {-td-blk::%g%::2_6} to 1
+		set {-td-blk::%g%::2_7} to 1
+		set {-td-blk::%g%::5_0} to 1
+		set {-td-blk::%g%::5_1} to 1
 		set {-td-blk::%g%::5_7} to 1
-		set {-td-blk::%g%::6_3} to 1
-		set {-td-blk::%g%::6_4} to 1
-		set {-td-blk::%g%::6_6} to 1
-		set {-td-blk::%g%::10_0} to 1
-		set {-td-blk::%g%::10_2} to 1
-		set {-td-blk::%g%::10_3} to 1
-		set {-td-blk::%g%::10_7} to 1
-		set {-td-blk::%g%::11_0} to 1
-		set {-td-blk::%g%::11_7} to 1
+		set {-td-blk::%g%::6_0} to 1
+		set {-td-blk::%g%::6_1} to 1
+		set {-td-blk::%g%::6_7} to 1
+		set {-td-blk::%g%::7_0} to 1
+		set {-td-blk::%g%::7_7} to 1
+		set {-td-blk::%g%::9_6} to 1
+		set {-td-blk::%g%::9_7} to 1
+		set {-td-blk::%g%::10_6} to 1
+		set {-td-blk::%g%::13_0} to 1
 		set {-td-blk::%g%::14_0} to 1
 		set {-td-blk::%g%::14_6} to 1
-		set {-td-blk::%g%::14_7} to 1
 		set {-td-blk::%g%::15_0} to 1
 		set {-td-blk::%g%::15_6} to 1
-		set {-td-blk::%g%::15_7} to 1
 
 function TdOpenMap1(p: player):
 	set {-g} to {-td-host::%p%}
@@ -1929,18 +1933,18 @@ function TdOpenMap5(p: player):
 		image "td:textures/gui/range_buff.png" at 0 0 size 150x150 texture 256x256 anchor center layer 2 id rng_b hidden
 
 		# Сетка постройки 16x8 (клетка 22x22; пустые клетки без лишних тултипов)
-		image "td:textures/gui/tile_build.png" at -177 -85 size 22x22 texture 28x28 anchor center layer 3 id c2_0 run TdCellClick(player, 2, 0) keep open
 		image "td:textures/gui/tile_build.png" at -155 -85 size 22x22 texture 28x28 anchor center layer 3 id c3_0 run TdCellClick(player, 3, 0) keep open
 		image "td:textures/gui/tile_build.png" at -133 -85 size 22x22 texture 28x28 anchor center layer 3 id c4_0 run TdCellClick(player, 4, 0) keep open
-		image "td:textures/gui/tile_build.png" at -111 -85 size 22x22 texture 28x28 anchor center layer 3 id c5_0 run TdCellClick(player, 5, 0) keep open
-		image "td:textures/gui/tile_build.png" at -89 -85 size 22x22 texture 28x28 anchor center layer 3 id c6_0 run TdCellClick(player, 6, 0) keep open
-		image "td:textures/gui/tile_build.png" at -67 -85 size 22x22 texture 28x28 anchor center layer 3 id c7_0 run TdCellClick(player, 7, 0) keep open
 		image "td:textures/gui/tile_build.png" at -45 -85 size 22x22 texture 28x28 anchor center layer 3 id c8_0 run TdCellClick(player, 8, 0) keep open
 		image "td:textures/gui/tile_build.png" at -23 -85 size 22x22 texture 28x28 anchor center layer 3 id c9_0 run TdCellClick(player, 9, 0) keep open
+		image "td:textures/gui/tile_build.png" at -1 -85 size 22x22 texture 28x28 anchor center layer 3 id c10_0 run TdCellClick(player, 10, 0) keep open
+		image "td:textures/gui/tile_build.png" at 21 -85 size 22x22 texture 28x28 anchor center layer 3 id c11_0 run TdCellClick(player, 11, 0) keep open
 		image "td:textures/gui/tile_build.png" at 43 -85 size 22x22 texture 28x28 anchor center layer 3 id c12_0 run TdCellClick(player, 12, 0) keep open
-		image "td:textures/gui/tile_build.png" at 65 -85 size 22x22 texture 28x28 anchor center layer 3 id c13_0 run TdCellClick(player, 13, 0) keep open
-		image "td:textures/gui/tile_build.png" at -199 -63 size 22x22 texture 28x28 anchor center layer 3 id c1_1 run TdCellClick(player, 1, 1) keep open
 		image "td:textures/gui/tile_build.png" at -177 -63 size 22x22 texture 28x28 anchor center layer 3 id c2_1 run TdCellClick(player, 2, 1) keep open
+		image "td:textures/gui/tile_build.png" at -155 -63 size 22x22 texture 28x28 anchor center layer 3 id c3_1 run TdCellClick(player, 3, 1) keep open
+		image "td:textures/gui/tile_build.png" at -133 -63 size 22x22 texture 28x28 anchor center layer 3 id c4_1 run TdCellClick(player, 4, 1) keep open
+		image "td:textures/gui/tile_build.png" at -67 -63 size 22x22 texture 28x28 anchor center layer 3 id c7_1 run TdCellClick(player, 7, 1) keep open
+		image "td:textures/gui/tile_build.png" at -45 -63 size 22x22 texture 28x28 anchor center layer 3 id c8_1 run TdCellClick(player, 8, 1) keep open
 		image "td:textures/gui/tile_build.png" at -23 -63 size 22x22 texture 28x28 anchor center layer 3 id c9_1 run TdCellClick(player, 9, 1) keep open
 		image "td:textures/gui/tile_build.png" at -1 -63 size 22x22 texture 28x28 anchor center layer 3 id c10_1 run TdCellClick(player, 10, 1) keep open
 		image "td:textures/gui/tile_build.png" at 21 -63 size 22x22 texture 28x28 anchor center layer 3 id c11_1 run TdCellClick(player, 11, 1) keep open
@@ -1948,63 +1952,62 @@ function TdOpenMap5(p: player):
 		image "td:textures/gui/tile_build.png" at 65 -63 size 22x22 texture 28x28 anchor center layer 3 id c13_1 run TdCellClick(player, 13, 1) keep open
 		image "td:textures/gui/tile_build.png" at 87 -63 size 22x22 texture 28x28 anchor center layer 3 id c14_1 run TdCellClick(player, 14, 1) keep open
 		image "td:textures/gui/tile_build.png" at 109 -63 size 22x22 texture 28x28 anchor center layer 3 id c15_1 run TdCellClick(player, 15, 1) keep open
-		image "td:textures/gui/tile_build.png" at -221 -41 size 22x22 texture 28x28 anchor center layer 3 id c0_2 run TdCellClick(player, 0, 2) keep open
+		image "td:textures/gui/tile_build.png" at -199 -41 size 22x22 texture 28x28 anchor center layer 3 id c1_2 run TdCellClick(player, 1, 2) keep open
 		image "td:textures/gui/tile_build.png" at -177 -41 size 22x22 texture 28x28 anchor center layer 3 id c2_2 run TdCellClick(player, 2, 2) keep open
+		image "td:textures/gui/tile_build.png" at -155 -41 size 22x22 texture 28x28 anchor center layer 3 id c3_2 run TdCellClick(player, 3, 2) keep open
 		image "td:textures/gui/tile_build.png" at -133 -41 size 22x22 texture 28x28 anchor center layer 3 id c4_2 run TdCellClick(player, 4, 2) keep open
 		image "td:textures/gui/tile_build.png" at -111 -41 size 22x22 texture 28x28 anchor center layer 3 id c5_2 run TdCellClick(player, 5, 2) keep open
 		image "td:textures/gui/tile_build.png" at -89 -41 size 22x22 texture 28x28 anchor center layer 3 id c6_2 run TdCellClick(player, 6, 2) keep open
 		image "td:textures/gui/tile_build.png" at -67 -41 size 22x22 texture 28x28 anchor center layer 3 id c7_2 run TdCellClick(player, 7, 2) keep open
-		image "td:textures/gui/tile_build.png" at -23 -41 size 22x22 texture 28x28 anchor center layer 3 id c9_2 run TdCellClick(player, 9, 2) keep open
-		image "td:textures/gui/tile_build.png" at 21 -41 size 22x22 texture 28x28 anchor center layer 3 id c11_2 run TdCellClick(player, 11, 2) keep open
-		image "td:textures/gui/tile_build.png" at -221 -19 size 22x22 texture 28x28 anchor center layer 3 id c0_3 run TdCellClick(player, 0, 3) keep open
-		image "td:textures/gui/tile_build.png" at -177 -19 size 22x22 texture 28x28 anchor center layer 3 id c2_3 run TdCellClick(player, 2, 3) keep open
-		image "td:textures/gui/tile_build.png" at -133 -19 size 22x22 texture 28x28 anchor center layer 3 id c4_3 run TdCellClick(player, 4, 3) keep open
+		image "td:textures/gui/tile_build.png" at 43 -41 size 22x22 texture 28x28 anchor center layer 3 id c12_2 run TdCellClick(player, 12, 2) keep open
+		image "td:textures/gui/tile_build.png" at 65 -41 size 22x22 texture 28x28 anchor center layer 3 id c13_2 run TdCellClick(player, 13, 2) keep open
+		image "td:textures/gui/tile_build.png" at 87 -41 size 22x22 texture 28x28 anchor center layer 3 id c14_2 run TdCellClick(player, 14, 2) keep open
+		image "td:textures/gui/tile_build.png" at 109 -41 size 22x22 texture 28x28 anchor center layer 3 id c15_2 run TdCellClick(player, 15, 2) keep open
+		image "td:textures/gui/tile_build.png" at -111 -19 size 22x22 texture 28x28 anchor center layer 3 id c5_3 run TdCellClick(player, 5, 3) keep open
+		image "td:textures/gui/tile_build.png" at -89 -19 size 22x22 texture 28x28 anchor center layer 3 id c6_3 run TdCellClick(player, 6, 3) keep open
 		image "td:textures/gui/tile_build.png" at -67 -19 size 22x22 texture 28x28 anchor center layer 3 id c7_3 run TdCellClick(player, 7, 3) keep open
 		image "td:textures/gui/tile_build.png" at -23 -19 size 22x22 texture 28x28 anchor center layer 3 id c9_3 run TdCellClick(player, 9, 3) keep open
-		image "td:textures/gui/tile_build.png" at 21 -19 size 22x22 texture 28x28 anchor center layer 3 id c11_3 run TdCellClick(player, 11, 3) keep open
+		image "td:textures/gui/tile_build.png" at -1 -19 size 22x22 texture 28x28 anchor center layer 3 id c10_3 run TdCellClick(player, 10, 3) keep open
+		image "td:textures/gui/tile_build.png" at 43 -19 size 22x22 texture 28x28 anchor center layer 3 id c12_3 run TdCellClick(player, 12, 3) keep open
 		image "td:textures/gui/tile_build.png" at 65 -19 size 22x22 texture 28x28 anchor center layer 3 id c13_3 run TdCellClick(player, 13, 3) keep open
 		image "td:textures/gui/tile_build.png" at 87 -19 size 22x22 texture 28x28 anchor center layer 3 id c14_3 run TdCellClick(player, 14, 3) keep open
 		image "td:textures/gui/tile_build.png" at 109 -19 size 22x22 texture 28x28 anchor center layer 3 id c15_3 run TdCellClick(player, 15, 3) keep open
 		image "td:textures/gui/tile_build.png" at -221 3 size 22x22 texture 28x28 anchor center layer 3 id c0_4 run TdCellClick(player, 0, 4) keep open
 		image "td:textures/gui/tile_build.png" at -199 3 size 22x22 texture 28x28 anchor center layer 3 id c1_4 run TdCellClick(player, 1, 4) keep open
 		image "td:textures/gui/tile_build.png" at -177 3 size 22x22 texture 28x28 anchor center layer 3 id c2_4 run TdCellClick(player, 2, 4) keep open
-		image "td:textures/gui/tile_build.png" at -133 3 size 22x22 texture 28x28 anchor center layer 3 id c4_4 run TdCellClick(player, 4, 4) keep open
+		image "td:textures/gui/tile_build.png" at -155 3 size 22x22 texture 28x28 anchor center layer 3 id c3_4 run TdCellClick(player, 3, 4) keep open
+		image "td:textures/gui/tile_build.png" at -111 3 size 22x22 texture 28x28 anchor center layer 3 id c5_4 run TdCellClick(player, 5, 4) keep open
+		image "td:textures/gui/tile_build.png" at -89 3 size 22x22 texture 28x28 anchor center layer 3 id c6_4 run TdCellClick(player, 6, 4) keep open
 		image "td:textures/gui/tile_build.png" at -67 3 size 22x22 texture 28x28 anchor center layer 3 id c7_4 run TdCellClick(player, 7, 4) keep open
 		image "td:textures/gui/tile_build.png" at -23 3 size 22x22 texture 28x28 anchor center layer 3 id c9_4 run TdCellClick(player, 9, 4) keep open
 		image "td:textures/gui/tile_build.png" at -1 3 size 22x22 texture 28x28 anchor center layer 3 id c10_4 run TdCellClick(player, 10, 4) keep open
-		image "td:textures/gui/tile_build.png" at 21 3 size 22x22 texture 28x28 anchor center layer 3 id c11_4 run TdCellClick(player, 11, 4) keep open
-		image "td:textures/gui/tile_build.png" at 65 3 size 22x22 texture 28x28 anchor center layer 3 id c13_4 run TdCellClick(player, 13, 4) keep open
-		image "td:textures/gui/tile_build.png" at 87 3 size 22x22 texture 28x28 anchor center layer 3 id c14_4 run TdCellClick(player, 14, 4) keep open
-		image "td:textures/gui/tile_build.png" at 109 3 size 22x22 texture 28x28 anchor center layer 3 id c15_4 run TdCellClick(player, 15, 4) keep open
-		image "td:textures/gui/tile_build.png" at -221 25 size 22x22 texture 28x28 anchor center layer 3 id c0_5 run TdCellClick(player, 0, 5) keep open
-		image "td:textures/gui/tile_build.png" at -199 25 size 22x22 texture 28x28 anchor center layer 3 id c1_5 run TdCellClick(player, 1, 5) keep open
 		image "td:textures/gui/tile_build.png" at -177 25 size 22x22 texture 28x28 anchor center layer 3 id c2_5 run TdCellClick(player, 2, 5) keep open
-		image "td:textures/gui/tile_build.png" at -133 25 size 22x22 texture 28x28 anchor center layer 3 id c4_5 run TdCellClick(player, 4, 5) keep open
-		image "td:textures/gui/tile_build.png" at -111 25 size 22x22 texture 28x28 anchor center layer 3 id c5_5 run TdCellClick(player, 5, 5) keep open
-		image "td:textures/gui/tile_build.png" at -89 25 size 22x22 texture 28x28 anchor center layer 3 id c6_5 run TdCellClick(player, 6, 5) keep open
-		image "td:textures/gui/tile_build.png" at -67 25 size 22x22 texture 28x28 anchor center layer 3 id c7_5 run TdCellClick(player, 7, 5) keep open
+		image "td:textures/gui/tile_build.png" at -155 25 size 22x22 texture 28x28 anchor center layer 3 id c3_5 run TdCellClick(player, 3, 5) keep open
+		image "td:textures/gui/tile_build.png" at -23 25 size 22x22 texture 28x28 anchor center layer 3 id c9_5 run TdCellClick(player, 9, 5) keep open
+		image "td:textures/gui/tile_build.png" at -1 25 size 22x22 texture 28x28 anchor center layer 3 id c10_5 run TdCellClick(player, 10, 5) keep open
+		image "td:textures/gui/tile_build.png" at 21 25 size 22x22 texture 28x28 anchor center layer 3 id c11_5 run TdCellClick(player, 11, 5) keep open
+		image "td:textures/gui/tile_build.png" at 43 25 size 22x22 texture 28x28 anchor center layer 3 id c12_5 run TdCellClick(player, 12, 5) keep open
 		image "td:textures/gui/tile_build.png" at 65 25 size 22x22 texture 28x28 anchor center layer 3 id c13_5 run TdCellClick(player, 13, 5) keep open
 		image "td:textures/gui/tile_build.png" at 87 25 size 22x22 texture 28x28 anchor center layer 3 id c14_5 run TdCellClick(player, 14, 5) keep open
 		image "td:textures/gui/tile_build.png" at 109 25 size 22x22 texture 28x28 anchor center layer 3 id c15_5 run TdCellClick(player, 15, 5) keep open
+		image "td:textures/gui/tile_build.png" at -155 47 size 22x22 texture 28x28 anchor center layer 3 id c3_6 run TdCellClick(player, 3, 6) keep open
 		image "td:textures/gui/tile_build.png" at -133 47 size 22x22 texture 28x28 anchor center layer 3 id c4_6 run TdCellClick(player, 4, 6) keep open
+		image "td:textures/gui/tile_build.png" at -111 47 size 22x22 texture 28x28 anchor center layer 3 id c5_6 run TdCellClick(player, 5, 6) keep open
+		image "td:textures/gui/tile_build.png" at -89 47 size 22x22 texture 28x28 anchor center layer 3 id c6_6 run TdCellClick(player, 6, 6) keep open
 		image "td:textures/gui/tile_build.png" at -67 47 size 22x22 texture 28x28 anchor center layer 3 id c7_6 run TdCellClick(player, 7, 6) keep open
 		image "td:textures/gui/tile_build.png" at -45 47 size 22x22 texture 28x28 anchor center layer 3 id c8_6 run TdCellClick(player, 8, 6) keep open
-		image "td:textures/gui/tile_build.png" at -23 47 size 22x22 texture 28x28 anchor center layer 3 id c9_6 run TdCellClick(player, 9, 6) keep open
-		image "td:textures/gui/tile_build.png" at -1 47 size 22x22 texture 28x28 anchor center layer 3 id c10_6 run TdCellClick(player, 10, 6) keep open
 		image "td:textures/gui/tile_build.png" at 21 47 size 22x22 texture 28x28 anchor center layer 3 id c11_6 run TdCellClick(player, 11, 6) keep open
 		image "td:textures/gui/tile_build.png" at 43 47 size 22x22 texture 28x28 anchor center layer 3 id c12_6 run TdCellClick(player, 12, 6) keep open
 		image "td:textures/gui/tile_build.png" at 65 47 size 22x22 texture 28x28 anchor center layer 3 id c13_6 run TdCellClick(player, 13, 6) keep open
-		image "td:textures/gui/tile_build.png" at -221 69 size 22x22 texture 28x28 anchor center layer 3 id c0_7 run TdCellClick(player, 0, 7) keep open
-		image "td:textures/gui/tile_build.png" at -199 69 size 22x22 texture 28x28 anchor center layer 3 id c1_7 run TdCellClick(player, 1, 7) keep open
-		image "td:textures/gui/tile_build.png" at -177 69 size 22x22 texture 28x28 anchor center layer 3 id c2_7 run TdCellClick(player, 2, 7) keep open
 		image "td:textures/gui/tile_build.png" at -155 69 size 22x22 texture 28x28 anchor center layer 3 id c3_7 run TdCellClick(player, 3, 7) keep open
 		image "td:textures/gui/tile_build.png" at -133 69 size 22x22 texture 28x28 anchor center layer 3 id c4_7 run TdCellClick(player, 4, 7) keep open
-		image "td:textures/gui/tile_build.png" at -89 69 size 22x22 texture 28x28 anchor center layer 3 id c6_7 run TdCellClick(player, 6, 7) keep open
-		image "td:textures/gui/tile_build.png" at -67 69 size 22x22 texture 28x28 anchor center layer 3 id c7_7 run TdCellClick(player, 7, 7) keep open
 		image "td:textures/gui/tile_build.png" at -45 69 size 22x22 texture 28x28 anchor center layer 3 id c8_7 run TdCellClick(player, 8, 7) keep open
-		image "td:textures/gui/tile_build.png" at -23 69 size 22x22 texture 28x28 anchor center layer 3 id c9_7 run TdCellClick(player, 9, 7) keep open
+		image "td:textures/gui/tile_build.png" at -1 69 size 22x22 texture 28x28 anchor center layer 3 id c10_7 run TdCellClick(player, 10, 7) keep open
+		image "td:textures/gui/tile_build.png" at 21 69 size 22x22 texture 28x28 anchor center layer 3 id c11_7 run TdCellClick(player, 11, 7) keep open
 		image "td:textures/gui/tile_build.png" at 43 69 size 22x22 texture 28x28 anchor center layer 3 id c12_7 run TdCellClick(player, 12, 7) keep open
 		image "td:textures/gui/tile_build.png" at 65 69 size 22x22 texture 28x28 anchor center layer 3 id c13_7 run TdCellClick(player, 13, 7) keep open
+		image "td:textures/gui/tile_build.png" at 87 69 size 22x22 texture 28x28 anchor center layer 3 id c14_7 run TdCellClick(player, 14, 7) keep open
+		image "td:textures/gui/tile_build.png" at 109 69 size 22x22 texture 28x28 anchor center layer 3 id c15_7 run TdCellClick(player, 15, 7) keep open
 
 		# Пул звёзд уровней и эволюций (до 32 башен)
 		text "" at 0 0 anchor center shadow scale 0.85 layer 6 id st1 hidden
@@ -2616,6 +2619,8 @@ function TdSpawnNext(g: player):
 		set {-dmul} to 1.25
 	if {-m} is 4:
 		set {-dmul} to {-dmul} * 1.15
+	else if {-m} is 5:
+		set {-dmul} to {-dmul} * 1.2
 	set {-pcnt} to size of {-td-team::%g%::*}
 	if {-pcnt} is 2:
 		set {-dmul} to {-dmul} * 1.45
@@ -2643,6 +2648,8 @@ function TdSpawnNext(g: player):
 		set {-spd} to 6.4 + {-w} * 0.14
 		if {-m} is 2:
 			set {-spd} to {-spd} * 1.08
+		else if {-m} is 5:
+			set {-spd} to {-spd} * 1.15
 		set {-rew} to 10 + round({-w} * 0.65)
 		if {-m} is 4:
 			set {-rew} to round({-rew} * 1.2)
@@ -2909,8 +2916,6 @@ function TdTowerTick(g: player, tid: number):
 	set {-mapMul} to 1.0
 	if {-td-map::%g%} is 2:
 		set {-mapMul} to 1.1
-	else if {-td-map::%g%} is 5:
-		set {-mapMul} to 1.2
 	set {-dmg} to round({-dmg} * (1 + ({-lvl} - 1) * 0.55) * {-bmul} * {-mapMul})
 	if {-evo} is 1:
 		set {-dmg} to round({-dmg} * 1.4)
