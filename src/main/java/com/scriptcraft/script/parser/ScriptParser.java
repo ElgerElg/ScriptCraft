@@ -282,19 +282,25 @@ public final class ScriptParser {
                 return;
             }
             // "on join:", "on load:", несколько событий — "on join or load:" (одно тело на все).
+            // Сначала проверяем целое имя события (например, "move or turning around"), чтобы не разбить его по "or".
             List<ScriptEvent> list = new ArrayList<>();
-            for (String part : lower.substring(3).split("\\s+or\\s+")) {
-                ScriptEvent event = ScriptEvent.byName(part);
-                if (event == null) {
-                    error(headerLine, "неизвестное событие: " + part.strip()
-                            + " (join, quit, death, respawn, chat, break, place, right click, left click, drop, pickup, receive, damage, first join, world change, gamemode change, load, unload, key <клавиша>, open <меню>)");
-                    return;
+            ScriptEvent wholeEvent = ScriptEvent.byName(lower.substring(3));
+            if (wholeEvent != null) {
+                list.add(wholeEvent);
+            } else {
+                for (String part : lower.substring(3).split("\\s+or\\s+")) {
+                    ScriptEvent event = ScriptEvent.byName(part);
+                    if (event == null) {
+                        error(headerLine, "неизвестное событие: " + part.strip()
+                                + " (join, quit, death, respawn, chat, break, place, right click, left click, drop, pickup, receive, damage, move, turning around, move or turning around, first join, world change, gamemode change, load, unload, key <клавиша>, open <меню>)");
+                        return;
+                    }
+                    if (list.contains(event)) {
+                        error(headerLine, "событие '" + event.scriptName() + "' указано дважды");
+                        return;
+                    }
+                    list.add(event);
                 }
-                if (list.contains(event)) {
-                    error(headerLine, "событие '" + event.scriptName() + "' указано дважды");
-                    return;
-                }
-                list.add(event);
             }
             // load/unload вместе с событием игрока (join/quit) выполняются для КАЖДОГО игрока онлайн:
             // "on join or load:" = при входе игрока + сразу всем, кто уже на сервере, когда скрипт загрузился.

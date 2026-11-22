@@ -1179,15 +1179,22 @@ public final class Effects {
         }
     }
 
-    /** push player upwards|downwards|forwards|backwards|north|south|east|west [with force N] */
-    public record Push(Target target, String direction, @Nullable Expression force) implements Action {
+    /** Режим относительного толчка: от источника, к источнику или по направлению взгляда источника. */
+    public enum PushMode {
+        AWAY,
+        TOWARDS,
+        LOOK
+    }
+
+    /** push <цель-сущность> upwards|downwards|forwards|backwards|north|south|east|west [with force N] */
+    public record Push(EntityTarget target, String direction, @Nullable Expression force) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
             double v = force == null ? 1.0 : Math.max(-8, Math.min(8, number(force, ctx)));
             String dir = direction.toLowerCase(java.util.Locale.ROOT);
-            for (ServerPlayer p : target.resolve(ctx)) {
-                Vec3 cur = p.getDeltaMovement();
-                Vec3 look = p.getLookAngle();
+            for (Entity e : target.resolve(ctx)) {
+                Vec3 cur = e.getDeltaMovement();
+                Vec3 look = e.getLookAngle();
                 double dx = 0, dy = 0, dz = 0;
                 switch (dir) {
                     case "up", "upwards" -> dy = v;
@@ -1200,7 +1207,71 @@ public final class Effects {
                     case "west" -> dx = -v;
                     default -> dy = v;
                 }
-                motion(p, cur.x + dx, cur.y + dy, cur.z + dz);
+                motion(e, cur.x + dx, cur.y + dy, cur.z + dz);
+            }
+        }
+    }
+
+    /**
+     * push <цель-сущность> away from|from|towards|in direction of <источник> [with force N].
+     * Позволяет толкнуть targeted entity / targeted player / player от игрока, другой сущности или точки.
+     */
+    public record PushFrom(EntityTarget target, @Nullable EntityTarget sourceEntity,
+                           @Nullable Expression sourceLocation, PushMode mode,
+                           @Nullable Expression force) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            double v = force == null ? 1.0 : Math.max(-8, Math.min(8, number(force, ctx)));
+            Entity srcEntity = null;
+            Vec3 srcPos = null;
+            Vec3 srcLook = null;
+            if (sourceEntity != null) {
+                srcEntity = sourceEntity.first(ctx);
+                if (srcEntity != null) {
+                    srcPos = srcEntity.position();
+                    srcLook = srcEntity.getLookAngle();
+                } else if (sourceEntity instanceof EntityTarget.Players players && players.target() instanceof Target.Named named) {
+                    ScriptLocation loc = Places.fromNamed(named, ctx);
+                    if (loc != null) {
+                        srcPos = new Vec3(loc.x(), loc.y(), loc.z());
+                    }
+                }
+            } else if (sourceLocation != null) {
+                ScriptLocation loc = Places.require(sourceLocation.evaluate(ctx));
+                srcPos = new Vec3(loc.x(), loc.y(), loc.z());
+            }
+            if (srcPos == null && (mode != PushMode.LOOK || srcLook == null)) {
+                return;
+            }
+            for (Entity e : target.resolve(ctx)) {
+                if (srcEntity != null && e == srcEntity && mode != PushMode.LOOK) {
+                    continue;
+                }
+                Vec3 dir;
+                if (mode == PushMode.LOOK) {
+                    dir = srcLook != null ? srcLook : e.getLookAngle();
+                } else if (mode == PushMode.AWAY) {
+                    Vec3 diff = e.position().subtract(srcPos);
+                    if (diff.lengthSqr() < 1.0e-6) {
+                        dir = srcLook != null ? srcLook : e.getLookAngle();
+                    } else {
+                        dir = diff.normalize();
+                    }
+                } else {
+                    Vec3 diff = srcPos.subtract(e.position());
+                    if (diff.lengthSqr() < 1.0e-6) {
+                        continue;
+                    }
+                    dir = diff.normalize();
+                }
+                Vec3 cur = e.getDeltaMovement();
+                double dx = dir.x * v;
+                double dy = dir.y * v;
+                double dz = dir.z * v;
+                if (mode == PushMode.AWAY && v > 0 && e.onGround() && dy < 0.25) {
+                    dy = Math.max(dy, Math.min(0.35, 0.2 * v));
+                }
+                motion(e, cur.x + dx, cur.y + dy, cur.z + dz);
             }
         }
     }
@@ -1820,10 +1891,13 @@ public final class Effects {
         }
     }
 
-    private static void motion(ServerPlayer p, double x, double y, double z) {
-        p.setDeltaMovement(x, y, z);
-        p.hurtMarked = true;
-        p.hasImpulse = true;
+    private static void motion(Entity e, double x, double y, double z) {
+        e.setDeltaMovement(x, y, z);
+        e.hurtMarked = true;
+        e.hasImpulse = true;
+        if (e instanceof ServerPlayer sp) {
+            sp.connection.send(new net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket(sp));
+        }
     }
 
     private static ServerLevel levelOf(ExecutionContext ctx) {

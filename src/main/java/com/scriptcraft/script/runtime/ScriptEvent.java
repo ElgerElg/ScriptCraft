@@ -77,6 +77,12 @@ public enum ScriptEvent {
     SPRINT("sprint", true, "toggle sprint"),
     /** Прыгнул. */
     JUMP("jump", true, "player jump"),
+    /** Игрок сдвинулся с места. Можно отменить. %x%, %y%, %z%, %from_x%, %from_y%, %from_z%, %distance%. */
+    MOVE("move", true, "player move"),
+    /** Игрок повернул камеру (yaw/pitch). Можно отменить. %yaw%, %pitch%, %from_yaw%, %from_pitch%. */
+    TURN_AROUND("turning around", true, "turn around", "turn", "look", "player turn"),
+    /** Игрок сдвинулся или повернул камеру (один вызов за тик). Можно отменить. %moved%, %turned%. */
+    MOVE_OR_TURN("move or turning around", true, "turning around or move", "move or turn around", "turn around or move", "move or turn", "turn or move"),
     /** Выполнил команду. Можно отменить. %command%, %args%. */
     COMMAND("command", true, "player command"),
     /** Сломался инструмент/броня. %item%. */

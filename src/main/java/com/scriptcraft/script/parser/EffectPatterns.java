@@ -4,6 +4,7 @@ import com.scriptcraft.script.parser.Tokenizer.Token;
 import com.scriptcraft.script.runtime.Action;
 import com.scriptcraft.script.runtime.Actions;
 import com.scriptcraft.script.runtime.Effects;
+import com.scriptcraft.script.runtime.EntityTarget;
 import com.scriptcraft.script.runtime.Expression;
 import com.scriptcraft.script.runtime.HudActions;
 import com.scriptcraft.script.runtime.Target;
@@ -408,9 +409,30 @@ final class EffectPatterns {
         rule("launch %target% upwards|up by|with %expr%", c -> new Effects.Launch(c.target(0), false, c.expr(1)));
         rule("launch %target% forwards|forward", c -> new Effects.Launch(c.target(0), true, null));
         rule("launch %target% upwards|up", c -> new Effects.Launch(c.target(0), false, null));
-        rule("push %target% %dir% with force|speed %expr%", c -> new Effects.Push(c.target(0), c.raw(1).value(), c.expr(2)));
-        rule("push %target% %dir% by|with %expr%", c -> new Effects.Push(c.target(0), c.raw(1).value(), c.expr(2)));
-        rule("push %target% %dir%", c -> new Effects.Push(c.target(0), c.raw(1).value(), null));
+        rule("push %entity% away from %entity% with force|speed %expr%", c -> new Effects.PushFrom(c.entity(0), c.entity(1), null, Effects.PushMode.AWAY, c.expr(2)));
+        rule("push %entity% away from %entity% by|with %expr%", c -> new Effects.PushFrom(c.entity(0), c.entity(1), null, Effects.PushMode.AWAY, c.expr(2)));
+        rule("push %entity% away from %entity%", c -> new Effects.PushFrom(c.entity(0), c.entity(1), null, Effects.PushMode.AWAY, null));
+        rule("push %entity% from %entity% with force|speed %expr%", c -> new Effects.PushFrom(c.entity(0), c.entity(1), null, Effects.PushMode.AWAY, c.expr(2)));
+        rule("push %entity% from %entity% by|with %expr%", c -> new Effects.PushFrom(c.entity(0), c.entity(1), null, Effects.PushMode.AWAY, c.expr(2)));
+        rule("push %entity% from %entity%", c -> new Effects.PushFrom(c.entity(0), c.entity(1), null, Effects.PushMode.AWAY, null));
+        rule("push %entity% towards|toward %entity% with force|speed %expr%", c -> new Effects.PushFrom(c.entity(0), c.entity(1), null, Effects.PushMode.TOWARDS, c.expr(2)));
+        rule("push %entity% towards|toward %entity% by|with %expr%", c -> new Effects.PushFrom(c.entity(0), c.entity(1), null, Effects.PushMode.TOWARDS, c.expr(2)));
+        rule("push %entity% towards|toward %entity%", c -> new Effects.PushFrom(c.entity(0), c.entity(1), null, Effects.PushMode.TOWARDS, null));
+        rule("push %entity% in direction of %entity% with force|speed %expr%", c -> new Effects.PushFrom(c.entity(0), c.entity(1), null, Effects.PushMode.LOOK, c.expr(2)));
+        rule("push %entity% in direction of %entity% by|with %expr%", c -> new Effects.PushFrom(c.entity(0), c.entity(1), null, Effects.PushMode.LOOK, c.expr(2)));
+        rule("push %entity% in direction of %entity%", c -> new Effects.PushFrom(c.entity(0), c.entity(1), null, Effects.PushMode.LOOK, null));
+        rule("push %entity% away from %piece% with force|speed %expr%", c -> new Effects.PushFrom(c.entity(0), null, c.exprValue(1), Effects.PushMode.AWAY, c.expr(2)));
+        rule("push %entity% away from %piece% by|with %expr%", c -> new Effects.PushFrom(c.entity(0), null, c.exprValue(1), Effects.PushMode.AWAY, c.expr(2)));
+        rule("push %entity% away from %expr%", c -> new Effects.PushFrom(c.entity(0), null, c.expr(1), Effects.PushMode.AWAY, null));
+        rule("push %entity% from %piece% with force|speed %expr%", c -> new Effects.PushFrom(c.entity(0), null, c.exprValue(1), Effects.PushMode.AWAY, c.expr(2)));
+        rule("push %entity% from %piece% by|with %expr%", c -> new Effects.PushFrom(c.entity(0), null, c.exprValue(1), Effects.PushMode.AWAY, c.expr(2)));
+        rule("push %entity% from %expr%", c -> new Effects.PushFrom(c.entity(0), null, c.expr(1), Effects.PushMode.AWAY, null));
+        rule("push %entity% towards|toward %piece% with force|speed %expr%", c -> new Effects.PushFrom(c.entity(0), null, c.exprValue(1), Effects.PushMode.TOWARDS, c.expr(2)));
+        rule("push %entity% towards|toward %piece% by|with %expr%", c -> new Effects.PushFrom(c.entity(0), null, c.exprValue(1), Effects.PushMode.TOWARDS, c.expr(2)));
+        rule("push %entity% towards|toward %expr%", c -> new Effects.PushFrom(c.entity(0), null, c.expr(1), Effects.PushMode.TOWARDS, null));
+        rule("push %entity% %dir% with force|speed %expr%", c -> new Effects.Push(c.entity(0), c.raw(1).value(), c.expr(2)));
+        rule("push %entity% %dir% by|with %expr%", c -> new Effects.Push(c.entity(0), c.raw(1).value(), c.expr(2)));
+        rule("push %entity% %dir%", c -> new Effects.Push(c.entity(0), c.raw(1).value(), null));
         rule("create safe explosion at %num% %num% %num% with force|power %expr%",
                 c -> new Effects.Explode(null, c.num(0), c.num(1), c.num(2), c.expr(3), true));
         rule("create safe explosion at %num% %num% %num%", c -> new Effects.Explode(null, c.num(0), c.num(1), c.num(2), null, true));
@@ -786,6 +808,18 @@ final class EffectPatterns {
             captures.remove(captures.size() - 1);
             return false;
         }
+        if (alts[0].equals("%entity%")) {
+            TargetParser.ParsedEntity parsed = TargetParser.parseEntity(tokens, ti);
+            if (parsed == null) {
+                return false;
+            }
+            captures.add(parsed.target());
+            if (match(parts, pi + 1, tokens, parsed.end(), captures)) {
+                return true;
+            }
+            captures.remove(captures.size() - 1);
+            return false;
+        }
         if (ti >= tokens.size()) {
             return false;
         }
@@ -891,6 +925,10 @@ final class EffectPatterns {
 
         Target target(int i) {
             return (Target) values.get(i);
+        }
+
+        EntityTarget entity(int i) {
+            return (EntityTarget) values.get(i);
         }
 
         Expression num(int i) throws ParseException {

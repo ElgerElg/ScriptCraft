@@ -68,6 +68,10 @@ import java.util.UUID;
 public final class ServerEvents {
     private static final Map<UUID, Boolean> SNEAK_STATE = new HashMap<>();
     private static final Map<UUID, Boolean> SPRINT_STATE = new HashMap<>();
+    private static final Map<UUID, MoveState> MOVE_STATE = new HashMap<>();
+
+    private record MoveState(ResourceLocation dim, double x, double y, double z, float yaw, float pitch) {
+    }
 
     private ServerEvents() {
     }
@@ -116,6 +120,7 @@ public final class ServerEvents {
             ScoreboardManager.onQuit(player);
             SNEAK_STATE.remove(player.getUUID());
             SPRINT_STATE.remove(player.getUUID());
+            MOVE_STATE.remove(player.getUUID());
         }
     }
 
@@ -189,6 +194,7 @@ public final class ServerEvents {
         ScoreboardManager.onServerStopped();
         SNEAK_STATE.clear();
         SPRINT_STATE.clear();
+        MOVE_STATE.clear();
     }
 
     /** Периодическое автосохранение (интервал — variablesSaveIntervalSeconds в конфиге). */
@@ -248,6 +254,7 @@ public final class ServerEvents {
     @SubscribeEvent
     public static void onRespawn(PlayerEvent.PlayerRespawnEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
+            MOVE_STATE.remove(player.getUUID());
             ScriptLoader.fireEvent(ScriptEvent.RESPAWN, player);
         }
     }
@@ -438,6 +445,89 @@ public final class ServerEvents {
                 SPRINT_STATE.put(id, prevSprint);
             }
         }
+
+        // on move / on turning around / on move or turning around
+        var program = ScriptLoader.getProgram();
+        boolean hasMove = !program.eventHandlers(ScriptEvent.MOVE).isEmpty();
+        boolean hasTurn = !program.eventHandlers(ScriptEvent.TURN_AROUND).isEmpty();
+        boolean hasMoveOrTurn = !program.eventHandlers(ScriptEvent.MOVE_OR_TURN).isEmpty();
+        if (hasMove || hasTurn || hasMoveOrTurn) {
+            ResourceLocation dim = player.serverLevel().dimension().location();
+            double x = player.getX();
+            double y = player.getY();
+            double z = player.getZ();
+            float yaw = player.getYRot();
+            float pitch = player.getXRot();
+            MoveState prev = MOVE_STATE.get(id);
+            if (prev == null || !prev.dim().equals(dim)) {
+                MOVE_STATE.put(id, new MoveState(dim, x, y, z, yaw, pitch));
+            } else {
+                double dx = x - prev.x();
+                double dy = y - prev.y();
+                double dz = z - prev.z();
+                double distSq = dx * dx + dy * dy + dz * dz;
+                boolean moved = distSq > 1.0e-6;
+                boolean turned = Math.abs(yaw - prev.yaw()) > 0.05f || Math.abs(pitch - prev.pitch()) > 0.05f;
+                if (moved || turned) {
+                    Map<String, String> ph = new HashMap<>();
+                    ph.put("x", Expression.toText(x));
+                    ph.put("y", Expression.toText(y));
+                    ph.put("z", Expression.toText(z));
+                    ph.put("from_x", Expression.toText(prev.x()));
+                    ph.put("from_y", Expression.toText(prev.y()));
+                    ph.put("from_z", Expression.toText(prev.z()));
+                    ph.put("yaw", Expression.toText((double) yaw));
+                    ph.put("pitch", Expression.toText((double) pitch));
+                    ph.put("from_yaw", Expression.toText((double) prev.yaw()));
+                    ph.put("from_pitch", Expression.toText((double) prev.pitch()));
+                    ph.put("distance", Expression.toText(Math.sqrt(distSq)));
+                    ph.put("moved", Boolean.toString(moved));
+                    ph.put("turned", Boolean.toString(turned));
+
+                    boolean cancelPos = false;
+                    boolean cancelRot = false;
+                    if (moved && hasMove) {
+                        ExecutionContext ctx = ScriptLoader.fireEvent(ScriptEvent.MOVE, player, ph);
+                        if (ctx != null && ctx.isCancelled()) {
+                            cancelPos = true;
+                        }
+                    }
+                    if (turned && hasTurn) {
+                        ExecutionContext ctx = ScriptLoader.fireEvent(ScriptEvent.TURN_AROUND, player, ph);
+                        if (ctx != null && ctx.isCancelled()) {
+                            cancelRot = true;
+                        }
+                    }
+                    if (hasMoveOrTurn) {
+                        ExecutionContext ctx = ScriptLoader.fireEvent(ScriptEvent.MOVE_OR_TURN, player, ph);
+                        if (ctx != null && ctx.isCancelled()) {
+                            if (moved) {
+                                cancelPos = true;
+                            }
+                            if (turned) {
+                                cancelRot = true;
+                            }
+                        }
+                    }
+                    if (cancelPos || cancelRot) {
+                        double tx = cancelPos ? prev.x() : x;
+                        double ty = cancelPos ? prev.y() : y;
+                        double tz = cancelPos ? prev.z() : z;
+                        float tyaw = cancelRot ? prev.yaw() : yaw;
+                        float tpitch = cancelRot ? prev.pitch() : pitch;
+                        player.connection.teleport(tx, ty, tz, tyaw, tpitch);
+                        if (cancelPos) {
+                            player.setDeltaMovement(0, 0, 0);
+                            player.hurtMarked = true;
+                            player.connection.send(new net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket(player));
+                        }
+                        MOVE_STATE.put(id, new MoveState(dim, tx, ty, tz, tyaw, tpitch));
+                    } else {
+                        MOVE_STATE.put(id, new MoveState(dim, x, y, z, yaw, pitch));
+                    }
+                }
+            }
+        }
     }
 
     private static String entityId(Entity entity) {
@@ -481,6 +571,7 @@ public final class ServerEvents {
     @SubscribeEvent
     public static void onWorldChange(PlayerEvent.PlayerChangedDimensionEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
+            MOVE_STATE.remove(player.getUUID());
             ScriptLoader.fireEvent(ScriptEvent.WORLD_CHANGE, player, Map.of(
                     "from", event.getFrom().location().toString(),
                     "world", event.getTo().location().toString()));

@@ -1,6 +1,7 @@
 package com.scriptcraft.script.parser;
 
 import com.scriptcraft.script.parser.Tokenizer.Token;
+import com.scriptcraft.script.runtime.EntityTarget;
 import com.scriptcraft.script.runtime.Expression;
 import com.scriptcraft.script.runtime.Target;
 import org.jetbrains.annotations.Nullable;
@@ -31,7 +32,12 @@ final class TargetParser {
     record Parsed(Target target, int end) {
     }
 
+    /** Результат разбора цели-сущности (игроки, targeted entity, entities in radius, @e). */
+    record ParsedEntity(EntityTarget target, int end) {
+    }
+
     private static final Pattern SELECTOR = Pattern.compile("@[aprs](\\[.*])?", Pattern.DOTALL);
+    private static final Pattern ENTITY_SELECTOR = Pattern.compile("@e(\\[.*])?", Pattern.DOTALL);
 
     private TargetParser() {
     }
@@ -137,6 +143,62 @@ final class TargetParser {
         }
         // Любое другое слово — имя игрока (как раньше: heal Steve, heal %args%).
         return new Parsed(new Target.Named(ScriptParser.expression(tok)), i + 1);
+    }
+
+    /**
+     * Разбор цели-сущности: targeted entity [of &lt;цель&gt;], [other] entities in radius N of &lt;цель&gt;,
+     * селектор @e[...], либо любая цель-игрок (player, targeted player, all players, ...).
+     */
+    @Nullable
+    static ParsedEntity parseEntity(List<Token> t, int i) throws ParseException {
+        if (i >= t.size()) {
+            return null;
+        }
+        Token tok = t.get(i);
+        if (!tok.quoted()) {
+            String v = tok.value();
+            String w = v.toLowerCase(Locale.ROOT);
+            if (w.equals("targeted") && word(t, i + 1).equals("entity")) {
+                if (word(t, i + 2).equals("of")) {
+                    Parsed base = required(t, i + 3, "targeted entity of <цель>");
+                    return new ParsedEntity(new EntityTarget.TargetedEntity(base.target()), base.end());
+                }
+                return new ParsedEntity(new EntityTarget.TargetedEntity(new Target.Self()), i + 2);
+            }
+            if (v.startsWith("@e") && ENTITY_SELECTOR.matcher(v).matches()) {
+                return new ParsedEntity(new EntityTarget.Selector(v), i + 1);
+            }
+            boolean other = w.equals("other") && word(t, i + 1).equals("entities");
+            int j = other ? i + 1 : i;
+            if (word(t, j).equals("entities")) {
+                int n;
+                if (word(t, j + 1).equals("in") && word(t, j + 2).equals("radius")) {
+                    n = j + 3;
+                } else if (word(t, j + 1).equals("within")) {
+                    n = j + 2;
+                } else {
+                    throw new ParseException("ожидается: entities in radius N of <цель>");
+                }
+                if (n >= t.size()) {
+                    throw new ParseException("не указан радиус: entities in radius 10 of player");
+                }
+                Expression radius = ScriptParser.expression(t.get(n));
+                if (radius instanceof Expression.Text) {
+                    throw new ParseException("радиус должен быть числом или {переменной}, а не '" + t.get(n).value() + "'");
+                }
+                int k = n + 1;
+                if (word(t, k).equals("blocks") || word(t, k).equals("block")) {
+                    k++;
+                }
+                if (!word(t, k).equals("of") && !word(t, k).equals("around")) {
+                    throw new ParseException("ожидается 'of <цель>': entities in radius 10 of player");
+                }
+                Parsed center = required(t, k + 1, "entities in radius N of <цель>");
+                return new ParsedEntity(new EntityTarget.InRadius(radius, center.target(), other), center.end());
+            }
+        }
+        Parsed playerTarget = parse(t, i);
+        return playerTarget == null ? null : new ParsedEntity(new EntityTarget.Players(playerTarget.target()), playerTarget.end());
     }
 
     /** Цель, которая должна занять ровно токены [from, size). */
