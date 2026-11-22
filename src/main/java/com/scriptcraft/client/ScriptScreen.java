@@ -289,6 +289,33 @@ public class ScriptScreen extends Screen {
         return ScreenMeta.elementId(list) + ":" + l.x() + ":" + l.y() + ":" + l.anchor().name();
     }
 
+    private static int extractHoverRange(String tip) {
+        for (String marker : new String[]{"Дальн:", "Радиус:", "Аура:"}) {
+            int idx = tip.indexOf(marker);
+            if (idx >= 0) {
+                int i = idx + marker.length();
+                int num = 0;
+                boolean found = false;
+                while (i < tip.length()) {
+                    char c = tip.charAt(i);
+                    if ((c == '&' || c == '\u00a7') && i + 1 < tip.length()) {
+                        i += 2;
+                        continue;
+                    }
+                    if (c >= '0' && c <= '9') {
+                        num = num * 10 + (c - '0');
+                        found = true;
+                    } else if (found) {
+                        break;
+                    }
+                    i++;
+                }
+                if (num > 0) return num;
+            }
+        }
+        return 0;
+    }
+
     @Override
     protected void init() {
         rebuildWidgets(null, 0);
@@ -387,21 +414,38 @@ public class ScriptScreen extends Screen {
 
         ItemStack hoveredItem = ItemStack.EMPTY;
         String hoveredTooltip = "";
+        ScreenElement hoveredElement = null;
+        Map<String, ScreenElement> rangeTemplates = null;
         long nowMs = System.currentTimeMillis();
         float z = 0f;
         for (ScreenElement rawElement : ordered) {
+            String rawId = ScreenMeta.elementId(rawElement);
+            if (!rawId.isEmpty()) {
+                String lowId = rawId.toLowerCase(Locale.ROOT);
+                if (lowId.equals("rng_s") || lowId.equals("rng_m") || lowId.equals("rng_l") || lowId.equals("rng_b")) {
+                    if (rangeTemplates == null) rangeTemplates = new LinkedHashMap<>();
+                    rangeTemplates.put(lowId, rawElement);
+                }
+            }
             if (ScreenMeta.isHidden(rawElement)) {
                 continue;
             }
             ScreenElement element = rawElement;
-            String tweenId = ScreenMeta.elementId(rawElement);
+            String tweenId = rawId;
             if (!tweenId.isEmpty()) {
-                ActiveTween tw = tweens.get(tweenId);
-                if (tw != null) {
-                    if (tw.done(nowMs)) {
-                        tweens.remove(tweenId);
-                    } else {
-                        element = ScreenMeta.withPosition(rawElement, Math.round(tw.curX(nowMs)), Math.round(tw.curY(nowMs)));
+                String lowId = tweenId.toLowerCase(Locale.ROOT);
+                if (lowId.equals("cursor") || lowId.startsWith("cursor_")) {
+                    int cx = mouseX - this.width / 2 + 11;
+                    int cy = mouseY - this.height / 2 + 11;
+                    element = ScreenMeta.withPosition(rawElement, cx, cy);
+                } else {
+                    ActiveTween tw = tweens.get(tweenId);
+                    if (tw != null) {
+                        if (tw.done(nowMs)) {
+                            tweens.remove(tweenId);
+                        } else {
+                            element = ScreenMeta.withPosition(rawElement, Math.round(tw.curX(nowMs)), Math.round(tw.curY(nowMs)));
+                        }
                     }
                 }
             }
@@ -445,6 +489,29 @@ public class ScriptScreen extends Screen {
             String tip = ScreenMeta.elementTooltip(element);
             if (!tip.isEmpty() && ElementRenderer.isHovered(this.font, element, this.width, this.height, mouseX, mouseY)) {
                 hoveredTooltip = tip;
+                hoveredElement = element;
+            }
+        }
+
+        // Авто-показ круга радиуса при наведении курсора на построенную башню (без клика и без нагрузки на сеть)
+        if (hoveredElement != null && rangeTemplates != null && !hoveredTooltip.isEmpty()) {
+            String eid = ScreenMeta.elementId(hoveredElement);
+            if (eid.startsWith("c") && eid.indexOf('_') > 1) {
+                int hoverRng = extractHoverRange(hoveredTooltip);
+                if (hoverRng > 0) {
+                    boolean isBuff = hoveredTooltip.contains("Маяк") || hoveredTooltip.contains("Бафф-аура");
+                    String rKey = isBuff ? "rng_b" : (hoverRng >= 170 ? "rng_l" : (hoverRng >= 115 ? "rng_m" : "rng_s"));
+                    ScreenElement tpl = rangeTemplates.get(rKey);
+                    if (tpl == null) tpl = rangeTemplates.get("rng_s");
+                    if (tpl != null) {
+                        ScreenElement vis = ScreenMeta.withHidden(
+                                ScreenMeta.withPosition(tpl, hoveredElement.layout().x(), hoveredElement.layout().y()), false);
+                        graphics.pose().pushPose();
+                        graphics.pose().translate(0f, 0f, z + 5f);
+                        ElementRenderer.render(graphics, this.font, vis, this.width, this.height, mouseX, mouseY, 0);
+                        graphics.pose().popPose();
+                    }
+                }
             }
         }
 
