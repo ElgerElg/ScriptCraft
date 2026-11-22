@@ -179,9 +179,20 @@ public final class ElementRenderer {
 
     private static void renderText(GuiGraphics g, Font font, TextElement text, int sw, int sh, int mouseX, int mouseY) {
         Layout l = text.layout();
-        String s = placeholders(text.text(), null, 0, 0);
-        int w = font.width(s);
-        int h = font.lineHeight;
+        String s = placeholders(text.text(), null, 0, 0).replace("%nl%", "\n").replace("%newline%", "\n");
+        String[] lines = s.indexOf('\n') >= 0 ? s.split("\n", -1) : null;
+        int w = 0;
+        int lineStep = font.lineHeight + 2;
+        int h;
+        if (lines == null) {
+            w = font.width(s);
+            h = font.lineHeight;
+        } else {
+            for (String ln : lines) {
+                w = Math.max(w, font.width(ln));
+            }
+            h = lines.length * lineStep - 2;
+        }
         int x = l.anchor().resolveX(sw, w, l.x());
         int y = l.anchor().resolveY(sh, h, l.y());
         float scale = com.scriptcraft.screen.ScreenMeta.elementScale(text);
@@ -204,7 +215,15 @@ public final class ElementRenderer {
             }
             g.pose().translate(-cx, -cy, 0f);
         }
-        g.drawString(font, s, x, y, l.color(), text.shadow());
+        if (lines == null) {
+            g.drawString(font, s, x, y, l.color(), text.shadow());
+        } else {
+            for (int i = 0; i < lines.length; i++) {
+                int lw = font.width(lines[i]);
+                int lx = l.anchor().resolveX(sw, lw, l.x());
+                g.drawString(font, lines[i], lx, y + i * lineStep, l.color(), text.shadow());
+            }
+        }
         if (xform) {
             g.pose().popPose();
         }

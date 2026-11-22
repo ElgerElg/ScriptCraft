@@ -688,6 +688,7 @@ public final class ExecutionContext {
      */
     private String dynamicPlaceholder(String key, String fallback) {
         return switch (key) {
+            case "nl", "newline" -> "\n";
             case "targeted" -> lookText("player");
             case "location" -> player == null ? "<none>" : Expression.toText(Places.ofPlayer(player));
             case "tool" -> player == null ? "<none>" : Places.tool(player);

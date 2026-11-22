@@ -30,7 +30,8 @@ final class Tokenizer {
                 while (i < line.length()) {
                     char d = line.charAt(i);
                     if (d == '\\' && i + 1 < line.length()) {
-                        str.append(line.charAt(i + 1));
+                        char next = line.charAt(i + 1);
+                        str.append(next == 'n' ? '\n' : next);
                         i += 2;
                         continue;
                     }

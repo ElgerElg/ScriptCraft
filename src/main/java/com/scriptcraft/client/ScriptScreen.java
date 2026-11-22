@@ -458,7 +458,7 @@ public class ScriptScreen extends Screen {
             graphics.pose().pushPose();
             graphics.pose().translate(0f, 0f, z + 50f);
             List<Component> lines = new ArrayList<>();
-            for (String raw : hoveredTooltip.replace("\\n", "\n").split("\n")) {
+            for (String raw : hoveredTooltip.replace("%nl%", "\n").replace("%newline%", "\n").replace("\\n", "\n").split("\n")) {
                 lines.add(Component.literal(raw.replace('&', '\u00a7')));
             }
             graphics.renderComponentTooltip(this.font, lines, mouseX, mouseY);

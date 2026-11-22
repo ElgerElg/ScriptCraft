@@ -4671,6 +4671,25 @@ send "&aВолна началась!" to {-team::*}
 play sound entity.player.levelup to {-team::*} with volume 0.5 pitch 1.3
 set position of screen element "boss" for {-team::*} to 100 -20`,
     since: "0.8.3", related: ["target-all", "target-named", "list-operations"]
+  },
+  {
+    id: "expr-newline", category: "expressions",
+    name: { ru: "Перенос строки (%nl% / %newline%)", en: "Newline placeholder (%nl% / %newline%)" },
+    syntax: [
+      "%nl%",
+      "%newline%",
+      "\\n"
+    ],
+    desc: {
+      ru: "Вставляет перенос на новую строку в **любом тексте** по всему ScriptCraft: в `tooltip`, `text` на экранах и HUD, `send` / `broadcast`, `set lore`, `create hologram`, а также при склейке строк в переменных. Работают и `%nl%` / `%newline%`, и классический `\\n`.",
+      en: "Inserts a line break in **any text** across ScriptCraft: `tooltip`, screen/HUD `text`, `send` / `broadcast`, `set lore`, `create hologram`, and string variables. Both `%nl%` / `%newline%` and `\\n` are supported."
+    },
+    example: `# Многострочный тултип, текст на экране, лор и сообщение в чат
+button "&aСтарт" at 0 0 tooltip "&aЗапустить волну &7(Space)%nl%&bВо время волны: x1 / x2"
+text "&6Первая строка%nl%&7Вторая строка" at 0 -20 anchor center shadow
+send "&eСтрока 1%newline%&aСтрока 2" to player
+set lore of player's tool to "&6Редкий меч%nl%&7Урон: &c+15"`,
+    since: "0.8.3", related: ["expr-colors", "eff-open-screen", "eff-item-lore-enchant", "eff-hologram"]
   }
   ]
 };
