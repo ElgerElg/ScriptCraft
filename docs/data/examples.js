@@ -1825,6 +1825,8 @@ function TdOnLeave(p: player):
 	set {-g} to {-td-host::%p%}
 	if {-g} is not set:
 		stop
+	# Сразу убираем игрока из {-td-online}, чтобы update screen и gui-эффекты больше не приходили ему!
+	remove %p% from {-td-online::%{-g}%::*}
 	set {-pcnt} to size of {-td-team::%{-g}%::*}
 	if {-pcnt} <= 1:
 		delete {-td-active::%{-g}%}
@@ -1833,11 +1835,14 @@ function TdOnLeave(p: player):
 		clear {-td-team::%{-g}%::*}
 		clear {-td-online::%{-g}%::*}
 		stop
+	# В коопе сохраняем право вернуться по /td join, но не спамим повторно и не открываем экран заново
 	if {-td-active::%{-g}%} is 1 and {-td-over::%{-g}%} is 0:
-		set {-td-reconn::%p%} to {-g}
-		if p is online:
-			send "&e[TD Кооп] &7Вы закрыли окно игры. Вернуться обратно: &a/td join" to p
-		TdLog({-g}, "&e↩ %p% вышел (/td join)")
+		if {-td-reconn::%p%} is not set:
+			set {-td-reconn::%p%} to {-g}
+			if p is online:
+				send "&e[TD Кооп] &7Вы вышли из окна игры. Вернуться обратно: &a/td join" to p
+			if size of {-td-online::%{-g}%::*} > 0:
+				TdLog({-g}, "&e↩ %p% вышел")
 
 function TdReconnect(g: player, p: player):
 	set {-m} to {-td-map::%g%}
@@ -1902,9 +1907,13 @@ function TdLog(g: player, msg: text):
 			set {-td-log::%g%::%{-i}%} to {-td-log::%g%::%{-prev}%}
 		remove 1 from {-i}
 	set {-td-log::%g%::1} to msg
-	update screen "Tower Defense" for {-td-online::%g%::*}:
-		list from {-td-log::%g%::*} vertical no scrollbar header "&b&l⚡ СОБЫТИЯ" at 179 -8 size 104x174 anchor center layer 12 id ev_log:
-			row "%loop-value%"
+	# Обновляем list ТОЛЬКО игрокам с открытым экраном, чтобы update screen не переоткрывал закрытый экран!
+	loop {-td-online::%g%::*}:
+		set {-tp} to %loop-value%
+		if {-tp} is online and {-tp} has screen "Tower Defense" open:
+			update screen "Tower Defense" for {-tp}:
+				list from {-td-log::%g%::*} vertical no scrollbar header "&b&l⚡ СОБЫТИЯ" at 179 -8 size 104x174 anchor center layer 12 id ev_log:
+					row "%loop-value%"
 
 function TdSyncPos(g: player, id: text, x: number, y: number):
 	set position of screen element "%id%" for {-td-online::%g%::*} to x y
@@ -1925,10 +1934,13 @@ function TdSyncHide(g: player, id: text):
 	hide screen element "%id%" from {-td-online::%g%::*}
 
 function TdSyncCell(g: player, col: integer, row: integer, cx: number, cy: number, tex: text, tip: text):
-	update screen "Tower Defense" for {-td-online::%g%::*}:
-		image "td:textures/gui/tile_build.png" at 0 0 size 22x22 texture 64x64 anchor center layer 3 id "c%col%_%row%" run TdCellClick(player, %col%, %row%) keep open tooltip "%tip%"
-	set image of screen element "c%col%_%row%" for {-td-online::%g%::*} to tex
-	set position of screen element "c%col%_%row%" for {-td-online::%g%::*} to cx cy
+	loop {-td-online::%g%::*}:
+		set {-tp} to %loop-value%
+		if {-tp} is online and {-tp} has screen "Tower Defense" open:
+			update screen "Tower Defense" for {-tp}:
+				image "td:textures/gui/tile_build.png" at 0 0 size 22x22 texture 64x64 anchor center layer 3 id "c%col%_%row%" run TdCellClick(player, %col%, %row%) keep open tooltip "%tip%"
+			set image of screen element "c%col%_%row%" for {-tp} to tex
+			set position of screen element "c%col%_%row%" for {-tp} to cx cy
 
 function TdSyncStatus(g: player, txt: text):
 	set text of screen element "status_txt" for {-td-online::%g%::*} to txt
