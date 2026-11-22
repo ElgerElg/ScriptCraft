@@ -201,6 +201,7 @@ public final class ServerEvents {
             SlotMigration.tick(event.getServer());
             ScriptLoader.tick(event.getServer());
             com.scriptcraft.screen.ScreenManager.flushDirty(event.getServer());
+            HudManager.flushDirty(event.getServer());
             InventoryWatch.tick(event.getServer());
             com.scriptcraft.script.ScriptProfiler.tick(event.getServer());
             com.scriptcraft.studio.ScriptHistory.tick();

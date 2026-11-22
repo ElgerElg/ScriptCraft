@@ -343,6 +343,78 @@ public final class Actions {
         }
     }
 
+    public record ScreenSetScale(Target target, String id, Expression scale) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            String resolvedId = ctx.format(id);
+            float sc = (float) Effects.number(scale, ctx);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                com.scriptcraft.screen.ScreenManager.mutateElement(p, resolvedId, e -> com.scriptcraft.screen.ScreenMeta.withScale(e, sc));
+            }
+        }
+    }
+
+    public record ScreenSetRotation(Target target, String id, Expression degrees) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            String resolvedId = ctx.format(id);
+            float deg = (float) Effects.number(degrees, ctx);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                com.scriptcraft.screen.ScreenManager.mutateElement(p, resolvedId, e -> com.scriptcraft.screen.ScreenMeta.withRotation(e, deg));
+            }
+        }
+    }
+
+    public record GuiFloatText(Target target, Expression text, Expression x, Expression y,
+                               @org.jetbrains.annotations.Nullable String colorHex,
+                               @org.jetbrains.annotations.Nullable Expression durationTicks) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            String txt = ctx.format(Expression.toText(text.evaluate(ctx)));
+            int px = (int) Math.round(Effects.number(x, ctx));
+            int py = (int) Math.round(Effects.number(y, ctx));
+            int col = parseColorRgb(colorHex, 0xFFFFFF);
+            int durMs = durationTicks == null ? 750 : Math.max(200, Math.min(5000, (int) Math.round(Effects.number(durationTicks, ctx) * 50.0)));
+            var pkt = new com.scriptcraft.network.GuiFxPacket(
+                    com.scriptcraft.network.GuiFxPacket.FLOAT_TEXT, px, py, "center", txt, col, 1, durMs, 0f);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                com.scriptcraft.network.ModNetwork.sendTo(p, pkt);
+            }
+        }
+    }
+
+    public record GuiParticles(Target target, String preset, @org.jetbrains.annotations.Nullable Expression count,
+                               Expression x, Expression y, @org.jetbrains.annotations.Nullable String colorHex,
+                               @org.jetbrains.annotations.Nullable Expression spread) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            String pr = ctx.format(preset);
+            int cnt = count == null ? 10 : Math.max(1, Math.min(48, (int) Math.round(Effects.number(count, ctx))));
+            int px = (int) Math.round(Effects.number(x, ctx));
+            int py = (int) Math.round(Effects.number(y, ctx));
+            int col = parseColorRgb(colorHex, 0);
+            float sp = spread == null ? 28f : (float) Math.max(4.0, Math.min(160.0, Effects.number(spread, ctx)));
+            var pkt = new com.scriptcraft.network.GuiFxPacket(
+                    com.scriptcraft.network.GuiFxPacket.PARTICLES, px, py, "center", pr, col, cnt, 650, sp);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                com.scriptcraft.network.ModNetwork.sendTo(p, pkt);
+            }
+        }
+    }
+
+    private static int parseColorRgb(@org.jetbrains.annotations.Nullable String raw, int fallback) {
+        if (raw == null || raw.isBlank()) return fallback;
+        String s = raw.strip();
+        if (s.startsWith("#")) s = s.substring(1);
+        if (s.startsWith("0x") || s.startsWith("0X")) s = s.substring(2);
+        try {
+            int parsed = (int) Long.parseLong(s, 16);
+            return parsed & 0x00FFFFFF;
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
     public record ScreenSetVisible(Target target, String id, boolean visible) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {

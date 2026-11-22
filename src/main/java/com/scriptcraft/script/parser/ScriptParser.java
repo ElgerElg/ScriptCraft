@@ -2256,10 +2256,13 @@ public final class ScriptParser {
 
     /** Какие параметры допустимы у каждого вида элемента (лишний параметр — понятная ошибка, а не тихое игнорирование). */
     private static final Map<String, Set<String>> ELEMENT_OPTIONS = Map.ofEntries(
-            Map.entry("text", Set.of("at", "anchor", "color", "shadow", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "tooltip", "hover")),
+            Map.entry("text", Set.of("at", "anchor", "color", "shadow", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "tooltip", "hover",
+                    "scale", "rotate", "rotation", "hscale", "hover_scale", "hover-scale")),
             Map.entry("button", Set.of("at", "size", "anchor", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "layer", "id", "tooltip", "hover")),
-            Map.entry("image", Set.of("at", "size", "texture", "anchor", "color", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "tooltip", "hover")),
+            Map.entry("image", Set.of("at", "size", "texture", "anchor", "color", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "tooltip", "hover",
+                    "scale", "rotate", "rotation", "hscale", "hover_scale", "hover-scale", "frames", "fps")),
             Map.entry("box", Set.of("at", "size", "anchor", "color", "gradient", "to", "horizontal", "vertical", "border", "border_width", "border-width",
+                    "radius", "shadow", "blur", "scale", "rotate", "rotation", "hscale", "hover_scale", "hover-scale",
                     "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "tooltip", "hover")),
             Map.entry("slot", Set.of("at", "size", "anchor", "color", "no", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "tooltip", "hover")),
             Map.entry("bar", Set.of("at", "size", "texture", "anchor", "color", "layer", "id", "value", "max", "direction",
@@ -2379,7 +2382,14 @@ public final class ScriptParser {
         int boxGrad = 0;
         int boxBorder = 0;
         int boxBorderW = 1;
+        int boxRadius = 0;
         boolean boxHoriz = false;
+        boolean boxBlur = false;
+        double elScale = 1.0;
+        double elHoverScale = 1.0;
+        double elRotation = 0.0;
+        int spriteFrames = 1;
+        int spriteFps = 8;
         while (idx < t.size()) {
             String opt = word(t, idx);
             if (allowed == null || !allowed.contains(opt)) {
@@ -2590,6 +2600,34 @@ public final class ScriptParser {
                     boxBorderW = parseInt(idx + 1 < t.size() ? t.get(idx + 1).value() : "1");
                     idx += 2;
                 }
+                case "radius" -> {
+                    boxRadius = Math.max(0, Math.min(32, parseInt(idx + 1 < t.size() ? t.get(idx + 1).value() : "0")));
+                    idx += 2;
+                }
+                case "blur" -> {
+                    boxBlur = true;
+                    idx++;
+                }
+                case "scale" -> {
+                    elScale = parseDouble(idx + 1 < t.size() ? t.get(idx + 1).value() : "1");
+                    idx += 2;
+                }
+                case "hscale", "hover_scale", "hover-scale" -> {
+                    elHoverScale = parseDouble(idx + 1 < t.size() ? t.get(idx + 1).value() : "1");
+                    idx += 2;
+                }
+                case "rotate", "rotation" -> {
+                    elRotation = parseDouble(idx + 1 < t.size() ? t.get(idx + 1).value() : "0");
+                    idx += 2;
+                }
+                case "frames" -> {
+                    spriteFrames = Math.max(1, Math.min(64, parseInt(idx + 1 < t.size() ? t.get(idx + 1).value() : "1")));
+                    idx += 2;
+                }
+                case "fps" -> {
+                    spriteFps = Math.max(1, Math.min(60, parseInt(idx + 1 < t.size() ? t.get(idx + 1).value() : "8")));
+                    idx += 2;
+                }
                 default -> throw new ParseException("неизвестный параметр элемента: " + opt);
             }
         }
@@ -2607,9 +2645,25 @@ public final class ScriptParser {
             if (w <= 0) w = 100;
             if (h <= 0) h = 60;
         }
+        StringBuilder extraTags = new StringBuilder();
+        if (Math.abs(elScale - 1.0) > 0.001) {
+            extraTags.append("sc").append(String.format(Locale.ROOT, "%.3f", Math.max(0.1, Math.min(10.0, elScale))));
+        }
+        if (Math.abs(elHoverScale - 1.0) > 0.001) {
+            if (!extraTags.isEmpty()) extraTags.append(';');
+            extraTags.append("hs").append(String.format(Locale.ROOT, "%.3f", Math.max(0.1, Math.min(10.0, elHoverScale))));
+        }
+        if (Math.abs(elRotation) > 0.01) {
+            if (!extraTags.isEmpty()) extraTags.append(';');
+            extraTags.append("rt").append(String.format(Locale.ROOT, "%.2f", elRotation));
+        }
+        if (spriteFrames > 1) {
+            if (!extraTags.isEmpty()) extraTags.append(';');
+            extraTags.append("fr").append(spriteFrames).append('x').append(spriteFps);
+        }
         Layout layout = new Layout(x, y, w, h, anchor, color, layer);
         boolean effectiveKeep = keepOpen || kind.equals("input") || kind.equals("slider") || kind.equals("toggle");
-        String packedAction = com.scriptcraft.screen.ScreenMeta.pack(id, effectiveKeep, hotkey, hidden, tooltip, action);
+        String packedAction = com.scriptcraft.screen.ScreenMeta.pack(id, effectiveKeep, hotkey, hidden, tooltip, extraTags.toString(), action);
         ScreenElement element = switch (kind) {
             case "text" -> new TextElement(layout, main, shadow, packedAction);
             case "button" -> new ButtonElement(layout, main, packedAction);
@@ -2617,7 +2671,8 @@ public final class ScriptParser {
             case "box" -> {
                 String spec = "box:" + (boxGrad == 0 ? "0" : Integer.toHexString(boxGrad))
                         + ":" + (boxBorder == 0 ? "0" : Integer.toHexString(boxBorder))
-                        + ":" + (boxHoriz ? "h" : "v") + ":" + boxBorderW;
+                        + ":" + (boxHoriz ? "h" : "v") + ":" + boxBorderW
+                        + ":" + boxRadius + ":" + (shadow ? "1" : "0") + ":" + (boxBlur ? "1" : "0");
                 yield new ImageElement(layout, spec, 0, 0, packedAction);
             }
             case "bar" -> new BarElement(layout, com.scriptcraft.screen.ScreenMeta.packBarId(id, hidden, tooltip),

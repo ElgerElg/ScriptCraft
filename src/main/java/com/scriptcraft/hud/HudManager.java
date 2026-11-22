@@ -39,6 +39,9 @@ public final class HudManager {
 
     private static final Map<UUID, PlayerHud> HUDS = new HashMap<>();
 
+    /** Очередь дельта-операций HUD за текущий тик — отправляется одним пакетом в конце тика (flushDirty). */
+    private static final Map<UUID, List<HudOp>> PENDING = new LinkedHashMap<>();
+
     /** Имя переменной -> элементы HUD, которые её показывают. Пусто для переменных вне HUD. */
     private static final Map<String, Set<Watch>> BY_VAR = new HashMap<>();
 
@@ -89,9 +92,97 @@ public final class HudManager {
     }
 
     private static void send(ServerPlayer player, List<HudOp> ops) {
-        if (!ops.isEmpty()) {
+        if (ops.isEmpty() || player == null) {
+            return;
+        }
+        server = player.getServer();
+        PENDING.computeIfAbsent(player.getUUID(), u -> new ArrayList<>()).addAll(ops);
+    }
+
+    private static void sendImmediate(ServerPlayer player, List<HudOp> ops) {
+        if (!ops.isEmpty() && player != null) {
             ModNetwork.sendTo(player, new HudPacket(ops));
         }
+    }
+
+    /**
+     * Вызывается раз в серверный тик (ServerTickEvent.END):
+     * схлопывает повторяющиеся обновления Text/Value/Visible за тик и отправляет 1 пакет на игрока.
+     */
+    public static void flushDirty(@Nullable MinecraftServer srv) {
+        if (PENDING.isEmpty()) {
+            return;
+        }
+        MinecraftServer targetServer = srv != null ? srv : server;
+        if (targetServer == null) {
+            PENDING.clear();
+            return;
+        }
+        for (Map.Entry<UUID, List<HudOp>> entry : PENDING.entrySet()) {
+            ServerPlayer player = targetServer.getPlayerList().getPlayer(entry.getKey());
+            List<HudOp> raw = entry.getValue();
+            if (player == null || raw.isEmpty()) {
+                continue;
+            }
+            List<HudOp> compacted = compactOps(raw);
+            if (!compacted.isEmpty()) {
+                ModNetwork.sendTo(player, new HudPacket(compacted));
+            }
+        }
+        PENDING.clear();
+    }
+
+    /** Убирает лишние промежуточные обновления одного и того же id (Text/Value/Visible/Vanilla) в рамках одного тика. */
+    private static List<HudOp> compactOps(List<HudOp> raw) {
+        if (raw.size() <= 1) {
+            return raw;
+        }
+        List<HudOp> out = new ArrayList<>(raw.size());
+        Map<String, Integer> lastText = new HashMap<>();
+        Map<String, Integer> lastValue = new HashMap<>();
+        Map<String, Integer> lastVis = new HashMap<>();
+        int lastVanilla = -1;
+        for (HudOp op : raw) {
+            if (op instanceof HudOp.Text t) {
+                Integer prev = lastText.get(t.id());
+                if (prev != null) {
+                    out.set(prev, t);
+                    continue;
+                }
+                lastText.put(t.id(), out.size());
+                out.add(op);
+            } else if (op instanceof HudOp.Value v) {
+                Integer prev = lastValue.get(v.id());
+                if (prev != null) {
+                    out.set(prev, v);
+                    continue;
+                }
+                lastValue.put(v.id(), out.size());
+                out.add(op);
+            } else if (op instanceof HudOp.Visible vis) {
+                Integer prev = lastVis.get(vis.id());
+                if (prev != null) {
+                    out.set(prev, vis);
+                    continue;
+                }
+                lastVis.put(vis.id(), out.size());
+                out.add(op);
+            } else if (op instanceof HudOp.Vanilla) {
+                if (lastVanilla >= 0) {
+                    out.set(lastVanilla, op);
+                    continue;
+                }
+                lastVanilla = out.size();
+                out.add(op);
+            } else {
+                // Структурная операция (Put / Remove / RemoveGroup / Clear) — сбрасываем индексы схлопывания
+                lastText.clear();
+                lastValue.clear();
+                lastVis.clear();
+                out.add(op);
+            }
+        }
+        return out;
     }
 
     /**
@@ -351,13 +442,14 @@ public final class HudManager {
         if (hud.vanillaMask != 0) {
             ops.add(new HudOp.Vanilla(hud.vanillaMask));
         }
-        send(player, ops);
+        sendImmediate(player, ops);
     }
 
     /** Остановка сервера (в одиночной игре — выход из мира): следующий мир начинает с чистого HUD. */
     public static void onServerStopped() {
         HUDS.clear();
         BY_VAR.clear();
+        PENDING.clear();
         server = null;
     }
 

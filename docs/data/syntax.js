@@ -15,7 +15,7 @@
  */
 window.SC_DOCS = window.SC_DOCS || {};
 window.SC_DOCS.syntax = {
-  version: "0.7.6",
+  version: "0.8.3",
   categories: [
     { id: "events", ru: "События", en: "Events" },
     { id: "structures", ru: "Структуры", en: "Structures" },
@@ -4498,20 +4498,20 @@ loop {-fruits::*}:
     id: "screen-box", category: "screen",
     name: { ru: "Панель / прямоугольник с градиентом (box / rect)", en: "Panel / gradient box (box / rect)" },
     syntax: [
-      "box|rect [at <X> <Y>] [size <W>x<H>] [anchor <A>] [color #AARRGGBB] [gradient|to #AARRGGBB] [horizontal|vertical] [border #AARRGGBB] [border_width <N>] [id <id>] [layer <N>] [hidden] [tooltip \"...\"] [run ... | close]"
+      "box|rect [at <X> <Y>] [size <W>x<H>] [anchor <A>] [color #AARRGGBB] [gradient|to #AARRGGBB] [horizontal|vertical] [border #AARRGGBB] [border_width <N>] [radius <N>] [shadow] [blur] [scale <N>] [rotate <deg>] [hover_scale <N>] [id <id>] [layer <N>] [hidden] [tooltip \"...\"] [run ... | close]"
     ],
     desc: {
-      ru: "Рисует панель, карточку или разделитель прямо в `open screen` и `create hud` **без PNG-текстур**:\n• `color #AARRGGBB` — основной цвет (поддерживает прозрачность AA, по умолчанию `#CC111827`).\n• `gradient #AARRGGBB` (или `to #AARRGGBB`) — второй цвет для плавного градиента.\n• `vertical` (по умолчанию, сверху вниз) или `horizontal` (слева направо).\n• `border #AARRGGBB` и `border_width <N>` — цвет и толщина рамки.\n• Поддерживает `id`, `layer`, `hidden`, `tooltip`, `run`, `close` и плавные анимации `animate screen`.",
-      en: "Draws a rectangle/card in `open screen` or `create hud` **without PNG textures**:\n• `color #AARRGGBB` — fill color with alpha (default `#CC111827`).\n• `gradient #AARRGGBB` (`to #AARRGGBB`) — second gradient color.\n• `vertical` (default) or `horizontal` gradient direction.\n• `border #AARRGGBB` and `border_width <N>` — crisp border.\n• Supports `id`, `layer`, `hidden`, `tooltip`, `run`, `close`, and `animate screen`."
+      ru: "Рисует современную панель, карточку или разделитель прямо в `open screen` и `create hud` **без PNG-текстур**:\n• `color #AARRGGBB` — основной цвет с прозрачностью (по умолчанию `#CC111827`).\n• `gradient #AARRGGBB` (`to #AARRGGBB`) + `vertical`/`horizontal` — плавный градиент.\n• `border #AARRGGBB` и `border_width <N>` — цвет и толщина рамки.\n• `radius <N>` (0–32) — скруглённые углы у заливки, градиента и рамки.\n• `shadow` — мягкая многослойная тень под панелью.\n• `blur` — эффект матового стекла с тонким верхним бликом.\n• Поддерживает `scale`, `rotate`, `hover_scale`, `id`, `layer`, `hidden`, `tooltip`, `run`, `close` и `animate screen`.",
+      en: "Draws a modern rectangle/card in `open screen` or `create hud` **without PNG textures**:\n• `color #AARRGGBB` — fill color with alpha (default `#CC111827`).\n• `gradient #AARRGGBB` (`to #AARRGGBB`) + `vertical`/`horizontal` — smooth gradient.\n• `border #AARRGGBB` and `border_width <N>` — crisp border.\n• `radius <N>` (0–32) — rounded corners for fill, gradient, and border.\n• `shadow` — soft multi-layer drop shadow.\n• `blur` — frosted glass backdrop with subtle top highlight.\n• Supports `scale`, `rotate`, `hover_scale`, `id`, `layer`, `hidden`, `tooltip`, `run`, `close`, and `animate screen`."
     },
     example: `command /card:
 \topen screen "Профиль" to player:
-\t\t# Карточка с вертикальным градиентом и синей рамкой
-\t\tbox at 0 0 size 240x130 color #EE0F172A gradient #EE1E293B border #FF3B82F6 border_width 2 layer 0
+\t\t# Скруглённая стеклянная карточка с тенью, blur, градиентом и рамкой
+\t\tbox at 0 0 size 240x130 color #CC0F172A gradient #CC1E293B border #FF38BDF8 border_width 1 radius 8 shadow blur layer 0
 \t\t# Горизонтальная градиентная полоса-заголовок
-\t\trect at 0 -54 size 236x20 color #FF2563EB to #FF7C3AED horizontal layer 1
+\t\trect at 0 -54 size 232x20 color #FF2563EB to #FF7C3AED horizontal radius 5 layer 1
 \t\ttext "&f&lПрофиль %player%" at 0 -54 anchor center shadow layer 2`,
-    since: "0.7.6", related: ["eff-open-screen", "screen-animate", "hud-create"]
+    since: "0.7.6", related: ["eff-open-screen", "screen-animate", "screen-transform-sprites", "hud-create"]
   },
   {
     id: "screen-animate", category: "screen",
@@ -4521,8 +4521,8 @@ loop {-fruits::*}:
       "animate|tween screen element \"<id>\" [for <цель>] to <X> <Y> [in <T> ticks|seconds]"
     ],
     desc: {
-      ru: "Плавно перемещает любой элемент открытого экрана (`image`, `box`, `text`, `button`, `slot`, `input` и т.д.) в новые координаты `<X> <Y>` прямо на клиенте со скоростью **60+ FPS** без лишней нагрузки на сеть. Длительность задаётся в `ticks` (по умолчанию `6` тиков = 0.3с) или `seconds`.",
-      en: "Smoothly animates any open screen element (`image`, `box`, `text`, `button`, `slot`, `input`, etc.) to new `(X, Y)` coordinates on the client at **60+ FPS** with a single network packet. Duration in `ticks` (default `6`) or `seconds`."
+      ru: "Плавно перемещает любой элемент открытого экрана (`image`, `box`, `bar`, `text`, `button`, `slot`, `input`, `slider`, `toggle`) в новые координаты `<X> <Y>` прямо на клиенте со скоростью **60+ FPS** в одном компактном дельта-пакете. Длительность задаётся в `ticks` (по умолчанию `6`) или `seconds`. С версии `0.8.3` работает и для полосок `bar` (например, HP-баров над мобами).",
+      en: "Smoothly animates any open screen element (`image`, `box`, `bar`, `text`, `button`, `slot`, `input`, `slider`, `toggle`) to `(X, Y)` on the client at **60+ FPS** via a single delta packet. Duration in `ticks` (default `6`) or `seconds`. Since `0.8.3` also supports `bar` elements."
     },
     example: `# Плавный выезд панели и полёт снаряда за 1 пакет
 animate screen "menu_panel" for player to 0 0 in 10 ticks
@@ -4613,6 +4613,64 @@ command /legend:
 set max health of player to 40
 heal player`,
     since: "0.7.6", related: ["eff-set-slot", "eff-give-item", "eff-set-health"]
+  },
+  {
+    id: "screen-gui-fx", category: "screen",
+    name: { ru: "Всплывающие цифры и GUI-частицы (gui float / gui particle)", en: "Client Floating Numbers & GUI Particles" },
+    syntax: [
+      "gui float <текст> at <X> <Y> [color #RRGGBB] [for <T> ticks] [to|for <цель>]",
+      "gui particle|particles <пресет> [count <N>] at <X> <Y> [color #RRGGBB] [spread <R>] [to|for <цель>]"
+    ],
+    desc: {
+      ru: "Создаёт эффекты прямо поверх открытого экрана (`open screen`), полностью анимируемые на клиенте в **60+ FPS** (сервер шлёт всего 1 короткий пакет):\n• `gui float` — всплывающий текст/урон с плавным подъёмом, лёгким pop-эффектом и затуханием.\n• `gui particle` — вспышка 2D-частиц с физикой разлёта, гравитацией и затуханием.\n• Пресеты частиц: `spark` (искры), `explosion` / `boom` (взрыв), `fire` / `flame` (огонь вверх), `ice` / `frost` (снежинки), `poison` (яд), `gold` / `coin` (звёзды золота), `magic` (магия), `heart` / `heal` (сердечки), `smoke` (дым).",
+      en: "Spawns 60+ FPS client-side effects over `open screen` using a single tiny packet:\n• `gui float` — rising, pop-scaled, fading floating damage/text.\n• `gui particle` — physics-driven 2D GUI particle burst with gravity and fade.\n• Presets: `spark`, `explosion`/`boom`, `fire`/`flame`, `ice`/`frost`, `poison`, `gold`/`coin`, `magic`, `heart`/`heal`, `smoke`."
+    },
+    example: `# Всплывающий крит и взрыв искр при попадании в мини-игре
+gui float "&c&l-120 CRIT!" at 40 -20 color #FF4444 for 16 ticks to {-team::*}
+gui particle "explosion" count 14 at 40 -20 spread 32 to {-team::*}
+gui particle "ice" count 10 at -50 10 to player`,
+    since: "0.8.3", related: ["screen-animate", "screen-box", "target-varlist"]
+  },
+  {
+    id: "screen-transform-sprites", category: "screen",
+    name: { ru: "Поворот, масштаб, hover-scale и спрайтшиты", en: "Rotation, Scale, Hover-Scale & Spritesheets" },
+    syntax: [
+      "image \"...\" ... [scale <N>] [hover_scale <N>] [rotate <градусы>] [frames <N>] [fps <N>]",
+      "text \"...\" ... [scale <N>] [hover_scale <N>] [rotate <градусы>]",
+      "set scale of screen [element] \"<id>\" [for <цель>] to <число>",
+      "set rotation of screen [element] \"<id>\" [for <цель>] to <градусы>"
+    ],
+    desc: {
+      ru: "Клиентские трансформации и покадровая анимация спрайтов без нагрузки на сервер:\n• `scale <N>` (0.1–10.0) — масштаб элемента (`image`, `text`, `box`).\n• `hover_scale <N>` (`hscale`) — автоматическое увеличение при наведении курсора на клиенте.\n• `rotate <deg>` (`rotation`) — поворот элемента на заданный угол в градусах.\n• `frames <N>` и `fps <N>` у `image` — клиентская анимация спрайтшита (автоматически режет PNG на `N` горизонтальных или вертикальных кадров и листает со скоростью `fps` кадров/сек без пакетов с сервера).\n• `set scale` и `set rotation` — динамическое изменение масштаба и угла на лету.",
+      en: "Client-side transforms and spritesheet animation with zero server overhead:\n• `scale <N>` (0.1–10.0) — scales `image`, `text`, or `box`.\n• `hover_scale <N>` (`hscale`) — automatic hover zoom on the client.\n• `rotate <deg>` (`rotation`) — rotates around element center.\n• `frames <N>` and `fps <N>` on `image` — client-side spritesheet playback.\n• `set scale` / `set rotation` — dynamically update scale or angle."
+    },
+    example: `# Иконка с увеличением при наведении и анимированный спрайтшит огня (4 кадра, 10 FPS)
+open screen "Арена" to player:
+\timage "game:textures/gui/btn_play.png" at 0 40 size 48x48 texture 48x48 hover_scale 1.15 run Start() keep open
+\timage "game:textures/gui/fire_sheet.png" at 0 -20 size 32x32 texture 128x32 frames 4 fps 10 id fire
+\timage "game:textures/gui/arrow.png" at 0 0 size 16x16 texture 16x16 rotate 45 id arrow
+
+# Повернуть стрелу на лету
+set rotation of screen "arrow" for player to 135
+set scale of screen "arrow" for player to 1.3`,
+    since: "0.8.3", related: ["screen-animate", "screen-box", "screen-gui-fx"]
+  },
+  {
+    id: "target-varlist", category: "targets",
+    name: { ru: "Список игроков в цели ({list::*})", en: "Player list target ({list::*})" },
+    syntax: [
+      "<действие> ... to|for {список::*}",
+      "<действие> ... to|for {-локальный-список::*}"
+    ],
+    desc: {
+      ru: "Любую переменную-список с никами игроков (или объектами `player`) можно передавать **напрямую как цель** любого эффекта — без `loop`! Онлайн-игроки из списка выбираются автоматически с дедупликацией. Ускоряет групповые рассылки и кооп-скрипты.",
+      en: "Any list variable containing player names/objects can be passed **directly as a target** to any effect without a `loop`. Online players are resolved and deduplicated automatically."
+    },
+    example: `# Отправка сообщения, звука и обновление экрана всей команде в одну строку
+send "&aВолна началась!" to {-team::*}
+play sound entity.player.levelup to {-team::*} with volume 0.5 pitch 1.3
+set position of screen element "boss" for {-team::*} to 100 -20`,
+    since: "0.8.3", related: ["target-all", "target-named", "list-operations"]
   }
   ]
 };

@@ -43,6 +43,149 @@ public final class ExecutionContext {
     /** Цветовые коды в стиле Bukkit: &a, &l ... -> §a, §l. */
     private static final Pattern COLOR = Pattern.compile("&([0-9a-fk-orA-FK-OR])");
 
+    /**
+     * Предкомпиляция шаблонов строк с плейсхолдерами (%player%, %{-var}%) и цветами (&a).
+     * Кэширует разобранные сегменты, чтобы в горячих циклах (every N ticks) не гонять 4 regex Matcher'а на каждую строку.
+     */
+    private static final int MAX_TEMPLATE_CACHE = 4096;
+    private static final java.util.concurrent.ConcurrentHashMap<String, CompiledTemplate> TEMPLATE_CACHE =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static final class CompiledTemplate {
+        static final byte SEG_LITERAL = 0;
+        static final byte SEG_PLACEHOLDER = 1;
+        static final byte SEG_SIMPLE_VAR = 2;
+
+        final boolean fast;
+        final boolean hasPercent;
+        final boolean hasAmp;
+        final String coloredStatic; // если нет % — готовая строка с §
+        final byte[] segKinds;
+        final String[] segValues;
+
+        CompiledTemplate(boolean fast, boolean hasPercent, boolean hasAmp,
+                         @Nullable String coloredStatic, byte[] segKinds, String[] segValues) {
+            this.fast = fast;
+            this.hasPercent = hasPercent;
+            this.hasAmp = hasAmp;
+            this.coloredStatic = coloredStatic;
+            this.segKinds = segKinds;
+            this.segValues = segValues;
+        }
+
+        static CompiledTemplate compile(String raw) {
+            boolean hasPercent = raw.indexOf('%') >= 0;
+            boolean hasAmp = raw.indexOf('&') >= 0;
+            if (!hasPercent) {
+                String colored = hasAmp ? applyColorsFast(raw) : raw;
+                return new CompiledTemplate(true, false, hasAmp, colored, null, null);
+            }
+            // Если есть сложные EXTRA-формы (%nbt..., %targeted..., %prefix of player%) — fallback на regex
+            if (raw.contains("%nbt ") || raw.contains("%nbt of") || raw.contains("%targeted ")
+                    || raw.contains(" of player%")) {
+                return new CompiledTemplate(false, true, hasAmp, null, null, null);
+            }
+            java.util.ArrayList<Byte> kinds = new java.util.ArrayList<>();
+            java.util.ArrayList<String> vals = new java.util.ArrayList<>();
+            int i = 0;
+            int n = raw.length();
+            int litStart = 0;
+            while (i < n) {
+                int p = raw.indexOf('%', i);
+                if (p < 0) {
+                    break;
+                }
+                // Проверяем %{...}% (простая переменная без вложенных %)
+                if (p + 1 < n && raw.charAt(p + 1) == '{') {
+                    int close = raw.indexOf("}%", p + 2);
+                    if (close > p + 2) {
+                        String inner = raw.substring(p + 2, close);
+                        if (inner.indexOf('{') < 0 && inner.indexOf('}') < 0 && inner.indexOf('%') < 0) {
+                            if (p > litStart) {
+                                kinds.add(SEG_LITERAL);
+                                vals.add(raw.substring(litStart, p));
+                            }
+                            kinds.add(SEG_SIMPLE_VAR);
+                            vals.add(inner.strip());
+                            i = close + 2;
+                            litStart = i;
+                            continue;
+                        }
+                        // Вложенные плейсхолдеры/переменные вроде %{-td-gold::%{-tp}%}% — fallback на полный путь
+                        return new CompiledTemplate(false, true, hasAmp, null, null, null);
+                    }
+                }
+                // Проверяем простой плейсхолдер %name%
+                int end = raw.indexOf('%', p + 1);
+                if (end > p + 1) {
+                    boolean validName = true;
+                    for (int k = p + 1; k < end; k++) {
+                        char c = raw.charAt(k);
+                        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+                                || (c >= '0' && c <= '9') || c == '_' || c == '-')) {
+                            validName = false;
+                            break;
+                        }
+                    }
+                    if (validName) {
+                        if (p > litStart) {
+                            kinds.add(SEG_LITERAL);
+                            vals.add(raw.substring(litStart, p));
+                        }
+                        kinds.add(SEG_PLACEHOLDER);
+                        vals.add(raw.substring(p + 1, end).toLowerCase(Locale.ROOT));
+                        i = end + 1;
+                        litStart = i;
+                        continue;
+                    }
+                }
+                i = p + 1;
+            }
+            if (litStart < n) {
+                kinds.add(SEG_LITERAL);
+                vals.add(raw.substring(litStart));
+            }
+            byte[] kArr = new byte[kinds.size()];
+            for (int j = 0; j < kinds.size(); j++) {
+                kArr[j] = kinds.get(j);
+            }
+            return new CompiledTemplate(true, true, hasAmp, null, kArr, vals.toArray(String[]::new));
+        }
+    }
+
+    private static CompiledTemplate templateFor(String raw) {
+        CompiledTemplate cached = TEMPLATE_CACHE.get(raw);
+        if (cached != null) {
+            return cached;
+        }
+        CompiledTemplate compiled = CompiledTemplate.compile(raw);
+        if (TEMPLATE_CACHE.size() < MAX_TEMPLATE_CACHE) {
+            TEMPLATE_CACHE.put(raw, compiled);
+        }
+        return compiled;
+    }
+
+    private static String applyColorsFast(String s) {
+        int amp = s.indexOf('&');
+        if (amp < 0) {
+            return s;
+        }
+        char[] chars = s.toCharArray();
+        boolean changed = false;
+        for (int i = amp; i < chars.length - 1; i++) {
+            if (chars[i] == '&') {
+                char c = chars[i + 1];
+                if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+                        || (c >= 'k' && c <= 'o') || (c >= 'K' && c <= 'O') || c == 'r' || c == 'R') {
+                    chars[i] = '\u00a7';
+                    changed = true;
+                    i++;
+                }
+            }
+        }
+        return changed ? new String(chars) : s;
+    }
+
     private final MinecraftServer server;
     @Nullable
     private final ServerPlayer player;
@@ -317,7 +460,15 @@ public final class ExecutionContext {
      * {snake::lb::%who%::%{-snake-lb-rank::%who%}%::name} -> snake::lb::Steve::1::name.
      */
     public String variableName(String rawName) {
-        String text = expandPlaceholders0(rawName.strip());
+        String stripped = rawName.strip();
+        if (stripped.indexOf('%') < 0) {
+            return stripped;
+        }
+        CompiledTemplate tpl = templateFor(stripped);
+        if (tpl.fast) {
+            return evalTemplate(tpl, false);
+        }
+        String text = expandPlaceholders0(stripped);
         return replaceTextVariables(text, name -> Expression.toText(getVariable(name)));
     }
 
@@ -375,9 +526,53 @@ public final class ExecutionContext {
      * Значения переменных повторно не разбираются — так текст из переменной не может "подставить" что-то лишнее.
      */
     public String format(String raw) {
+        if (raw.isEmpty()) {
+            return raw;
+        }
+        CompiledTemplate tpl = templateFor(raw);
+        if (tpl.fast) {
+            if (!tpl.hasPercent) {
+                return tpl.coloredStatic;
+            }
+            return evalTemplate(tpl, true);
+        }
         String text = expandPlaceholders0(raw);
         text = replaceTextVariables(text, name -> Expression.toText(getVariable(name)));
-        return COLOR.matcher(text).replaceAll("\u00a7$1");
+        return applyColorsFast(text);
+    }
+
+    private String evalTemplate(CompiledTemplate tpl, boolean applyColors) {
+        StringBuilder sb = new StringBuilder(32);
+        byte[] kinds = tpl.segKinds;
+        String[] vals = tpl.segValues;
+        for (int i = 0; i < kinds.length; i++) {
+            byte k = kinds[i];
+            if (k == CompiledTemplate.SEG_LITERAL) {
+                sb.append(vals[i]);
+            } else if (k == CompiledTemplate.SEG_SIMPLE_VAR) {
+                sb.append(Expression.toText(getVariable(vals[i])));
+            } else {
+                String key = vals[i];
+                sb.append(resolveSimplePlaceholder(key));
+            }
+        }
+        String res = sb.toString();
+        return applyColors ? applyColorsFast(res) : res;
+    }
+
+    private String resolveSimplePlaceholder(String key) {
+        if (hasLocal(key)) {
+            Object local = local(key);
+            if (local instanceof ServerPlayer sp) {
+                return sp.getGameProfile().getName();
+            }
+            return Expression.toText(local);
+        }
+        String value = variables.get(key);
+        if (value == null) {
+            value = dynamicPlaceholder(key, "%" + key + "%");
+        }
+        return value;
     }
 
     private static String replaceTextVariables(String raw, java.util.function.Function<String, String> values) {

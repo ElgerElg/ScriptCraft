@@ -52,6 +52,10 @@ final class TargetParser {
         String v = tok.value();
         String w = v.toLowerCase(Locale.ROOT);
         if (v.length() > 2 && v.startsWith("{") && v.endsWith("}")) {
+            String inner = v.substring(1, v.length() - 1).strip();
+            if (inner.endsWith("::*") && inner.length() > 3) {
+                return new Parsed(new Target.VarList(inner.substring(0, inner.length() - 3)), i + 1);
+            }
             return new Parsed(new Target.Named(ScriptParser.expression(tok)), i + 1);
         }
         FuncType local = ScriptParser.localType(w);

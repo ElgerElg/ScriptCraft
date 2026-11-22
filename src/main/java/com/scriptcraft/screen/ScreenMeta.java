@@ -18,14 +18,23 @@ public record ScreenMeta(String id, boolean keepOpen, String hotkey, boolean hid
 
     public static String pack(@Nullable String id, boolean keepOpen, @Nullable String hotkey, boolean hidden,
                               @Nullable String tooltip, @Nullable String rawAction) {
+        return pack(id, keepOpen, hotkey, hidden, tooltip, "", rawAction);
+    }
+
+    public static String pack(@Nullable String id, boolean keepOpen, @Nullable String hotkey, boolean hidden,
+                              @Nullable String tooltip, @Nullable String extraTags, @Nullable String rawAction) {
         String cleanId = id == null ? "" : id.strip();
         String cleanKey = hotkey == null ? "" : hotkey.strip().toLowerCase(java.util.Locale.ROOT);
         String cleanTip = tooltip == null ? "" : tooltip.replace(MARK, ' ').replace(SEP, ' ');
+        String cleanExtra = extraTags == null ? "" : extraTags.replace(MARK, ' ').replace(SEP, ' ').strip();
         String cleanAct = rawAction == null ? "" : rawAction;
-        if (cleanId.isEmpty() && !keepOpen && cleanKey.isEmpty() && !hidden && cleanTip.isEmpty()) {
+        if (cleanId.isEmpty() && !keepOpen && cleanKey.isEmpty() && !hidden && cleanTip.isEmpty() && cleanExtra.isEmpty()) {
             return cleanAct;
         }
-        return MARK + cleanId + SEP + (keepOpen ? '1' : '0') + SEP + cleanKey + SEP + (hidden ? '1' : '0') + SEP + cleanTip + MARK + cleanAct;
+        if (cleanExtra.isEmpty()) {
+            return MARK + cleanId + SEP + (keepOpen ? '1' : '0') + SEP + cleanKey + SEP + (hidden ? '1' : '0') + SEP + cleanTip + MARK + cleanAct;
+        }
+        return MARK + cleanId + SEP + (keepOpen ? '1' : '0') + SEP + cleanKey + SEP + (hidden ? '1' : '0') + SEP + cleanTip + SEP + cleanExtra + MARK + cleanAct;
     }
 
     public static ScreenMeta unpack(@Nullable String packed) {
@@ -105,36 +114,132 @@ public record ScreenMeta(String id, boolean keepOpen, String hotkey, boolean hid
         return false;
     }
 
-    public static int tweenMs(ScreenElement e) {
+    private static String extraTagsOf(ScreenElement e) {
+        if (e instanceof BarElement bar) {
+            String raw = bar.id();
+            if (raw == null || raw.isEmpty() || raw.charAt(0) != MARK) return "";
+            int end = raw.indexOf(MARK, 1);
+            if (end < 0) return "";
+            String[] parts = raw.substring(1, end).split(String.valueOf(SEP), -1);
+            return parts.length > 2 ? parts[2] : "";
+        }
         String packed = elementPackedAction(e);
         if (packed == null || packed.isEmpty() || packed.charAt(0) != MARK) {
-            return 0;
+            return "";
         }
         int end = packed.indexOf(MARK, 1);
         if (end < 0) {
-            return 0;
+            return "";
         }
         String[] parts = packed.substring(1, end).split(String.valueOf(SEP), -1);
-        if (parts.length > 5 && parts[5].startsWith("tw")) {
-            try {
-                return Integer.parseInt(parts[5].substring(2));
-            } catch (NumberFormatException ignored) {
-            }
-        }
-        return 0;
+        return parts.length > 5 ? parts[5] : "";
     }
 
-    public static ScreenElement withTween(ScreenElement e, int durationMs) {
-        if (durationMs <= 0) {
-            return e;
+    @Nullable
+    private static String tagValue(ScreenElement e, String prefix) {
+        String extra = extraTagsOf(e);
+        if (extra.isEmpty()) return null;
+        for (String tok : extra.split(";")) {
+            if (tok.startsWith(prefix)) {
+                return tok.substring(prefix.length());
+            }
+        }
+        return null;
+    }
+
+    private static String upsertTag(String extra, String prefix, String newVal) {
+        StringBuilder sb = new StringBuilder();
+        if (extra != null && !extra.isEmpty()) {
+            for (String tok : extra.split(";")) {
+                if (tok.isEmpty() || tok.startsWith(prefix)) continue;
+                if (!sb.isEmpty()) sb.append(';');
+                sb.append(tok);
+            }
+        }
+        if (newVal != null && !newVal.isEmpty()) {
+            if (!sb.isEmpty()) sb.append(';');
+            sb.append(prefix).append(newVal);
+        }
+        return sb.toString();
+    }
+
+    public static int tweenMs(ScreenElement e) {
+        String v = tagValue(e, "tw");
+        if (v == null) return 0;
+        try {
+            return Integer.parseInt(v);
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
+    }
+
+    public static float elementScale(ScreenElement e) {
+        String v = tagValue(e, "sc");
+        if (v == null) return 1f;
+        try {
+            return Math.max(0.1f, Math.min(10f, Float.parseFloat(v)));
+        } catch (NumberFormatException ignored) {
+            return 1f;
+        }
+    }
+
+    public static float elementHoverScale(ScreenElement e) {
+        String v = tagValue(e, "hs");
+        if (v == null) return 1f;
+        try {
+            return Math.max(0.1f, Math.min(10f, Float.parseFloat(v)));
+        } catch (NumberFormatException ignored) {
+            return 1f;
+        }
+    }
+
+    public static float elementRotation(ScreenElement e) {
+        String v = tagValue(e, "rt");
+        if (v == null) return 0f;
+        try {
+            return Float.parseFloat(v);
+        } catch (NumberFormatException ignored) {
+            return 0f;
+        }
+    }
+
+    /** Количество кадров спрайтшита (>1 означает анимацию на клиенте). */
+    public static int spriteFrames(ScreenElement e) {
+        String v = tagValue(e, "fr");
+        if (v == null) return 1;
+        int x = v.indexOf('x');
+        try {
+            return Math.max(1, Integer.parseInt(x > 0 ? v.substring(0, x) : v));
+        } catch (NumberFormatException ignored) {
+            return 1;
+        }
+    }
+
+    public static int spriteFps(ScreenElement e) {
+        String v = tagValue(e, "fr");
+        if (v == null) return 8;
+        int x = v.indexOf('x');
+        if (x < 0) return 8;
+        try {
+            return Math.max(1, Math.min(60, Integer.parseInt(v.substring(x + 1))));
+        } catch (NumberFormatException ignored) {
+            return 8;
+        }
+    }
+
+    public static ScreenElement withExtraTag(ScreenElement e, String prefix, String val) {
+        String nextExtra = upsertTag(extraTagsOf(e), prefix, val);
+        if (e instanceof BarElement bar) {
+            String nextId = packBarId(bar.id(), isBarHidden(bar.id()), unpackBarTooltip(bar.id()), nextExtra);
+            return new BarElement(bar.layout(), nextId, bar.value(), bar.max(), bar.direction(),
+                    bar.backgroundColor(), bar.fillTexture(), bar.backgroundTexture(), bar.textureWidth(), bar.textureHeight(), bar.text(), bar.shadow());
         }
         String packed = elementPackedAction(e);
         if (packed == null) {
             return e;
         }
         ScreenMeta m = unpack(packed);
-        String nextPacked = MARK + m.id() + SEP + (m.keepOpen() ? '1' : '0') + SEP + m.hotkey()
-                + SEP + (m.hidden() ? '1' : '0') + SEP + m.tooltip() + SEP + "tw" + durationMs + MARK + m.rawAction();
+        String nextPacked = pack(m.id(), m.keepOpen(), m.hotkey(), m.hidden(), m.tooltip(), nextExtra, m.rawAction());
         if (e instanceof ButtonElement b) return new ButtonElement(b.layout(), b.label(), nextPacked);
         if (e instanceof TextElement t) return new TextElement(t.layout(), t.text(), t.shadow(), nextPacked);
         if (e instanceof ImageElement i) return new ImageElement(i.layout(), i.texture(), i.textureWidth(), i.textureHeight(), nextPacked);
@@ -145,21 +250,44 @@ public record ScreenMeta(String id, boolean keepOpen, String hotkey, boolean hid
         return e;
     }
 
+    public static ScreenElement withTween(ScreenElement e, int durationMs) {
+        if (durationMs <= 0) {
+            return e;
+        }
+        return withExtraTag(e, "tw", Integer.toString(durationMs));
+    }
+
+    public static ScreenElement withScale(ScreenElement e, float scale) {
+        return withExtraTag(e, "sc", String.format(java.util.Locale.ROOT, "%.3f", Math.max(0.1f, Math.min(10f, scale))));
+    }
+
+    public static ScreenElement withRotation(ScreenElement e, float degrees) {
+        return withExtraTag(e, "rt", String.format(java.util.Locale.ROOT, "%.2f", degrees));
+    }
+
     public static boolean hasListScrollbar(ListElement list) {
         return !"noslider".equals(unpack(list.header()).hotkey());
     }
 
     public static String packBarId(String id, boolean hidden) {
-        return packBarId(id, hidden, "");
+        return packBarId(id, hidden, "", "");
     }
 
     public static String packBarId(String id, boolean hidden, @Nullable String tooltip) {
+        return packBarId(id, hidden, tooltip, "");
+    }
+
+    public static String packBarId(String id, boolean hidden, @Nullable String tooltip, @Nullable String extraTags) {
         String clean = unpackBarId(id);
         String tip = tooltip == null ? "" : tooltip.replace(MARK, ' ').replace(SEP, ' ');
-        if (!hidden && tip.isEmpty()) {
+        String extra = extraTags == null ? "" : extraTags.replace(MARK, ' ').replace(SEP, ' ').strip();
+        if (!hidden && tip.isEmpty() && extra.isEmpty()) {
             return clean;
         }
-        return MARK + (hidden ? "H" : "V") + SEP + tip + MARK + clean;
+        if (extra.isEmpty()) {
+            return MARK + (hidden ? "H" : "V") + SEP + tip + MARK + clean;
+        }
+        return MARK + (hidden ? "H" : "V") + SEP + tip + SEP + extra + MARK + clean;
     }
 
     public static String unpackBarId(@Nullable String raw) {
@@ -196,14 +324,23 @@ public record ScreenMeta(String id, boolean keepOpen, String hotkey, boolean hid
         if (end < 0) {
             return "";
         }
-        String hdr = raw.substring(1, end);
-        int sep = hdr.indexOf(SEP);
-        return sep >= 0 ? hdr.substring(sep + 1) : "";
+        String[] parts = raw.substring(1, end).split(String.valueOf(SEP), -1);
+        return parts.length > 1 ? parts[1] : "";
     }
 
     private static String repackAction(String packed, @Nullable Boolean newHidden) {
         ScreenMeta m = unpack(packed);
-        return pack(m.id(), m.keepOpen(), m.hotkey(), newHidden != null ? newHidden : m.hidden(), m.tooltip(), m.rawAction());
+        String extra = "";
+        if (packed != null && !packed.isEmpty() && packed.charAt(0) == MARK) {
+            int end = packed.indexOf(MARK, 1);
+            if (end > 0) {
+                String[] parts = packed.substring(1, end).split(String.valueOf(SEP), -1);
+                if (parts.length > 5) {
+                    extra = parts[5];
+                }
+            }
+        }
+        return pack(m.id(), m.keepOpen(), m.hotkey(), newHidden != null ? newHidden : m.hidden(), m.tooltip(), extra, m.rawAction());
     }
 
     public static ScreenElement withHidden(ScreenElement e, boolean hidden) {
@@ -212,7 +349,7 @@ public record ScreenMeta(String id, boolean keepOpen, String hotkey, boolean hid
         if (e instanceof ImageElement i) return new ImageElement(i.layout(), i.texture(), i.textureWidth(), i.textureHeight(), repackAction(i.action(), hidden));
         if (e instanceof SlotElement s) return new SlotElement(s.layout(), s.content(), s.value(), s.count(), s.frame(), repackAction(s.action(), hidden));
         if (e instanceof BarElement bar) {
-            return new BarElement(bar.layout(), packBarId(bar.id(), hidden, unpackBarTooltip(bar.id())), bar.value(), bar.max(), bar.direction(),
+            return new BarElement(bar.layout(), packBarId(bar.id(), hidden, unpackBarTooltip(bar.id()), extraTagsOf(bar)), bar.value(), bar.max(), bar.direction(),
                     bar.backgroundColor(), bar.fillTexture(), bar.backgroundTexture(), bar.textureWidth(), bar.textureHeight(), bar.text(), bar.shadow());
         }
         if (e instanceof ListElement list) {

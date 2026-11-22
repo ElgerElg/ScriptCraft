@@ -448,6 +448,12 @@ public class ScriptScreen extends Screen {
             }
         }
 
+        // Клиентские GUI-частицы и всплывающие цифры урона поверх экрана
+        graphics.pose().pushPose();
+        graphics.pose().translate(0f, 0f, z + 30f);
+        ClientGuiFx.render(graphics, this.font, this.width, this.height);
+        graphics.pose().popPose();
+
         if (!hoveredTooltip.isEmpty()) {
             graphics.pose().pushPose();
             graphics.pose().translate(0f, 0f, z + 50f);

@@ -30,7 +30,7 @@ import java.util.Set;
  * Синтаксис целей разбирает {@code TargetParser}; здесь только выполнение.
  */
 public sealed interface Target permits Target.Self, Target.Named, Target.LoopPlayer, Target.All,
-        Target.Targeted, Target.InRadius, Target.Selector, Target.Local {
+        Target.Targeted, Target.InRadius, Target.Selector, Target.Local, Target.VarList {
 
     /** Сам выбор игроков (без учёта статистики). */
     List<ServerPlayer> select(ExecutionContext ctx);
@@ -241,6 +241,40 @@ public sealed interface Target permits Target.Self, Target.Named, Target.LoopPla
                 return found == null ? List.of() : List.of(found);
             }
             return List.of();
+        }
+    }
+
+    /**
+     * Список игроков прямо из переменной-списка: {team::*}, {-td-online::%g%::*}.
+     * Позволяет писать send "hi" to {-team::*} или set position ... for {-team::*} без loop.
+     */
+    record VarList(String rawPrefix) implements Target {
+        @Override
+        public List<ServerPlayer> select(ExecutionContext ctx) {
+            String prefix = ctx.variableName(rawPrefix);
+            var children = com.scriptcraft.script.variables.VariableStore.children(prefix);
+            if (children.isEmpty()) {
+                return List.of();
+            }
+            Set<ServerPlayer> result = new LinkedHashSet<>();
+            for (var entry : children) {
+                Object val = entry.getValue();
+                if (val instanceof ServerPlayer sp) {
+                    ServerPlayer live = ctx.server().getPlayerList().getPlayer(sp.getUUID());
+                    if (live != null) {
+                        result.add(live);
+                    }
+                } else {
+                    String n = Expression.toText(val).strip();
+                    if (!n.isEmpty() && !n.equals("<none>")) {
+                        ServerPlayer found = ctx.server().getPlayerList().getPlayerByName(n);
+                        if (found != null) {
+                            result.add(found);
+                        }
+                    }
+                }
+            }
+            return new ArrayList<>(result);
         }
     }
 }

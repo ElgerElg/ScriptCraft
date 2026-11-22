@@ -23,7 +23,8 @@ public final class ModNetwork {
     // 12: студия — ревизия сохранения, живая правка, право scriptcraft.studio.
     // 13: студия — проводник по scriptcraft/, картинки, загрузка файлов, активные редакторы.
     // 14: интерактивные контролы GUI (input/slider/toggle/tooltip), эффекты камеры, профайлер, история версий.
-    private static final String PROTOCOL_VERSION = "14";
+    // 15: клиентские GUI-частицы и всплывающие цифры (GuiFxPacket).
+    private static final String PROTOCOL_VERSION = "15";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(ScriptCraft.MODID, "main"),
@@ -192,6 +193,11 @@ public final class ModNetwork {
                 .encoder(ScriptHistoryPacket.PreviewView::encode)
                 .decoder(ScriptHistoryPacket.PreviewView::decode)
                 .consumerMainThread(ScriptHistoryPacket.PreviewView::handle)
+                .add();
+        CHANNEL.messageBuilder(GuiFxPacket.class, id++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(GuiFxPacket::encode)
+                .decoder(GuiFxPacket::decode)
+                .consumerMainThread(GuiFxPacket::handle)
                 .add();
     }
 

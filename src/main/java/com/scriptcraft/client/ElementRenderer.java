@@ -85,9 +85,9 @@ public final class ElementRenderer {
             return ItemStack.EMPTY;
         }
         if (e instanceof TextElement text) {
-            renderText(g, font, text, screenW, screenH);
+            renderText(g, font, text, screenW, screenH, mouseX, mouseY);
         } else if (e instanceof ImageElement image) {
-            renderImage(g, image, screenW, screenH);
+            renderImage(g, image, screenW, screenH, mouseX, mouseY);
         } else if (e instanceof BarElement bar) {
             renderBar(g, font, bar, screenW, screenH);
         } else if (e instanceof SlotElement slot) {
@@ -177,77 +177,243 @@ public final class ElementRenderer {
 
     // ------------------------------------------------------------------ текст и картинки
 
-    private static void renderText(GuiGraphics g, Font font, TextElement text, int sw, int sh) {
+    private static void renderText(GuiGraphics g, Font font, TextElement text, int sw, int sh, int mouseX, int mouseY) {
         Layout l = text.layout();
         String s = placeholders(text.text(), null, 0, 0);
         int w = font.width(s);
         int h = font.lineHeight;
         int x = l.anchor().resolveX(sw, w, l.x());
         int y = l.anchor().resolveY(sh, h, l.y());
+        float scale = com.scriptcraft.screen.ScreenMeta.elementScale(text);
+        float hScale = com.scriptcraft.screen.ScreenMeta.elementHoverScale(text);
+        float rot = com.scriptcraft.screen.ScreenMeta.elementRotation(text);
+        if (hScale != 1f && mouseX >= x && mouseY >= y && mouseX < x + w && mouseY < y + h) {
+            scale *= hScale;
+        }
+        boolean xform = Math.abs(scale - 1f) > 0.001f || Math.abs(rot) > 0.01f;
+        if (xform) {
+            float cx = x + w / 2f;
+            float cy = y + h / 2f;
+            g.pose().pushPose();
+            g.pose().translate(cx, cy, 0f);
+            if (Math.abs(rot) > 0.01f) {
+                g.pose().mulPose(com.mojang.math.Axis.ZP.rotationDegrees(rot));
+            }
+            if (Math.abs(scale - 1f) > 0.001f) {
+                g.pose().scale(scale, scale, 1f);
+            }
+            g.pose().translate(-cx, -cy, 0f);
+        }
         g.drawString(font, s, x, y, l.color(), text.shadow());
+        if (xform) {
+            g.pose().popPose();
+        }
     }
 
-    private static void renderImage(GuiGraphics g, ImageElement image, int sw, int sh) {
+    private static void renderImage(GuiGraphics g, ImageElement image, int sw, int sh, int mouseX, int mouseY) {
         Layout l = image.layout();
         int w = l.width() > 0 ? l.width() : 16;
         int h = l.height() > 0 ? l.height() : 16;
         int x = l.anchor().resolveX(sw, w, l.x());
         int y = l.anchor().resolveY(sh, h, l.y());
+        float scale = com.scriptcraft.screen.ScreenMeta.elementScale(image);
+        float hScale = com.scriptcraft.screen.ScreenMeta.elementHoverScale(image);
+        float rot = com.scriptcraft.screen.ScreenMeta.elementRotation(image);
+        if (hScale != 1f && mouseX >= x && mouseY >= y && mouseX < x + w && mouseY < y + h) {
+            scale *= hScale;
+        }
+        boolean xform = Math.abs(scale - 1f) > 0.001f || Math.abs(rot) > 0.01f;
+        if (xform) {
+            float cx = x + w / 2f;
+            float cy = y + h / 2f;
+            g.pose().pushPose();
+            g.pose().translate(cx, cy, 0f);
+            if (Math.abs(rot) > 0.01f) {
+                g.pose().mulPose(com.mojang.math.Axis.ZP.rotationDegrees(rot));
+            }
+            if (Math.abs(scale - 1f) > 0.001f) {
+                g.pose().scale(scale, scale, 1f);
+            }
+            g.pose().translate(-cx, -cy, 0f);
+        }
         if (image.texture() != null && image.texture().startsWith("box:")) {
             renderBox(g, image.texture(), l.color(), x, y, w, h);
+            if (xform) g.pose().popPose();
             return;
         }
         ResourceLocation texture = texture(image.texture());
         if (texture == null) {
+            if (xform) g.pose().popPose();
             return;
         }
         int texW = image.textureWidth() > 0 ? image.textureWidth() : w;
         int texH = image.textureHeight() > 0 ? image.textureHeight() : h;
-        // Цвет элемента используется как оттенок картинки (белый = без изменений).
+        int frames = com.scriptcraft.screen.ScreenMeta.spriteFrames(image);
         setTint(l.color());
-        // Рисуем всю текстуру (texW x texH), растянутую до w x h.
-        g.blit(texture, x, y, w, h, 0f, 0f, texW, texH, texW, texH);
+        if (frames > 1) {
+            int fps = com.scriptcraft.screen.ScreenMeta.spriteFps(image);
+            int frame = (int) ((System.currentTimeMillis() / Math.max(1L, 1000L / fps)) % frames);
+            if (texW >= texH) {
+                int fw = Math.max(1, texW / frames);
+                g.blit(texture, x, y, w, h, frame * (float) fw, 0f, fw, texH, texW, texH);
+            } else {
+                int fh = Math.max(1, texH / frames);
+                g.blit(texture, x, y, w, h, 0f, frame * (float) fh, texW, fh, texW, texH);
+            }
+        } else {
+            g.blit(texture, x, y, w, h, 0f, 0f, texW, texH, texW, texH);
+        }
         resetTint();
+        if (xform) {
+            g.pose().popPose();
+        }
     }
 
-    /** Прямоугольник / карточка без текстуры с поддержкой вертикального или горизонтального градиента и рамки. */
+    /**
+     * Прямоугольник / карточка без текстуры с поддержкой:
+     * градиента (вертикальный/горизонтальный), рамки, скруглённых углов (radius), тени (shadow) и blur-эффекта (blur).
+     */
     private static void renderBox(GuiGraphics g, String spec, int color1, int x, int y, int w, int h) {
-        // Формат: box:<gradHex>:<borderHex>:<v|h>:<borderW>
+        // Формат: box:<gradHex>:<borderHex>:<v|h>:<borderW>[:<radius>:<shadow 0|1>:<blur 0|1>]
         String[] parts = spec.substring(4).split(":", -1);
         int color2 = parts.length > 0 ? parseHexArgb(parts[0]) : 0;
         int border = parts.length > 1 ? parseHexArgb(parts[1]) : 0;
         boolean horiz = parts.length > 2 && "h".equals(parts[2]);
         int bw = 1;
         if (parts.length > 3 && !parts[3].isEmpty()) {
-            try {
-                bw = Math.max(0, Math.min(16, Integer.parseInt(parts[3])));
-            } catch (NumberFormatException ignored) {
+            try { bw = Math.max(0, Math.min(16, Integer.parseInt(parts[3]))); } catch (NumberFormatException ignored) {}
+        }
+        int radius = 0;
+        if (parts.length > 4 && !parts[4].isEmpty()) {
+            try { radius = Math.max(0, Math.min(Math.min(w, h) / 2, Integer.parseInt(parts[4]))); } catch (NumberFormatException ignored) {}
+        }
+        boolean shadow = parts.length > 5 && "1".equals(parts[5]);
+        boolean blur = parts.length > 6 && "1".equals(parts[6]);
+
+        // 1. Мягкая тень под панелью
+        if (shadow) {
+            fillRoundedSolid(g, x + 3, y + 4, w, h, radius, 0x26000000);
+            fillRoundedSolid(g, x + 2, y + 3, w, h, radius, 0x30000000);
+            fillRoundedSolid(g, x + 1, y + 2, w, h, radius, 0x28000000);
+        }
+        // 2. Эффект матового стекла / blur-подложки
+        if (blur) {
+            fillRoundedSolid(g, x - 1, y - 1, w + 2, h + 2, radius + 1, 0x280B1220);
+            fillRoundedSolid(g, x, y, w, h, radius, 0x440F172A);
+        }
+
+        // 3. Основная заливка (сплошная или градиент, скруглённая или обычная)
+        if (radius <= 0) {
+            if (color2 == 0) {
+                g.fill(x, y, x + w, y + h, color1);
+            } else if (!horiz) {
+                g.fillGradient(x, y, x + w, y + h, color1, color2);
+            } else {
+                fillHorizontalGradient(g, x, y, w, h, color1, color2);
+            }
+        } else {
+            fillRounded(g, x, y, w, h, radius, color1, color2, horiz);
+        }
+
+        // Тонкий стеклянный блик сверху для blur-панелей
+        if (blur && w > 6 && h > 4) {
+            int inset = Math.max(1, radius / 2);
+            g.fill(x + inset, y + 1, x + w - inset, y + 2, 0x26FFFFFF);
+        }
+
+        // 4. Рамка
+        if (border != 0 && bw > 0) {
+            if (radius <= 0) {
+                g.fill(x, y, x + w, y + bw, border);
+                g.fill(x, y + h - bw, x + w, y + h, border);
+                g.fill(x, y + bw, x + bw, y + h - bw, border);
+                g.fill(x + w - bw, y + bw, x + w, y + h - bw, border);
+            } else {
+                drawRoundedBorder(g, x, y, w, h, radius, bw, border);
             }
         }
-        if (color2 == 0) {
-            g.fill(x, y, x + w, y + h, color1);
-        } else if (!horiz) {
-            g.fillGradient(x, y, x + w, y + h, color1, color2);
+    }
+
+    private static int lerpArgb(int c1, int c2, float t) {
+        int a1 = (c1 >>> 24) & 0xFF, r1 = (c1 >> 16) & 0xFF, g1 = (c1 >> 8) & 0xFF, b1 = c1 & 0xFF;
+        int a2 = (c2 >>> 24) & 0xFF, r2 = (c2 >> 16) & 0xFF, g2 = (c2 >> 8) & 0xFF, b2 = c2 & 0xFF;
+        return (Math.round(a1 + (a2 - a1) * t) << 24)
+                | (Math.round(r1 + (r2 - r1) * t) << 16)
+                | (Math.round(g1 + (g2 - g1) * t) << 8)
+                | Math.round(b1 + (b2 - b1) * t);
+    }
+
+    private static int cornerInset(int dyFromEdge, int r) {
+        double d = r - dyFromEdge - 0.5;
+        if (d <= 0) return 0;
+        return Math.max(0, (int) Math.floor(r - Math.sqrt(Math.max(0.0, r * r - d * d))));
+    }
+
+    private static void fillHorizontalGradient(GuiGraphics g, int x, int y, int w, int h, int c1, int c2) {
+        int step = w > 180 ? 2 : 1;
+        int denom = Math.max(1, w - 1);
+        for (int dx = 0; dx < w; dx += step) {
+            g.fill(x + dx, y, Math.min(x + w, x + dx + step), y + h, lerpArgb(c1, c2, (float) dx / denom));
+        }
+    }
+
+    private static void fillRoundedSolid(GuiGraphics g, int x, int y, int w, int h, int r, int color) {
+        if (r <= 0) {
+            g.fill(x, y, x + w, y + h, color);
+            return;
+        }
+        int cr = Math.min(r, Math.min(w, h) / 2);
+        // Центральная прямоугольная часть одним вызовом fill
+        if (h > cr * 2) {
+            g.fill(x, y + cr, x + w, y + h - cr, color);
+        }
+        for (int row = 0; row < cr; row++) {
+            int inset = cornerInset(row, cr);
+            g.fill(x + inset, y + row, x + w - inset, y + row + 1, color);
+            g.fill(x + inset, y + h - 1 - row, x + w - inset, y + h - row, color);
+        }
+    }
+
+    private static void fillRounded(GuiGraphics g, int x, int y, int w, int h, int r, int c1, int c2, boolean horiz) {
+        if (c2 == 0) {
+            fillRoundedSolid(g, x, y, w, h, r, c1);
+            return;
+        }
+        int cr = Math.min(r, Math.min(w, h) / 2);
+        if (!horiz) {
+            int denom = Math.max(1, h - 1);
+            for (int row = 0; row < h; row++) {
+                int inset = 0;
+                if (row < cr) inset = cornerInset(row, cr);
+                else if (row >= h - cr) inset = cornerInset(h - 1 - row, cr);
+                g.fill(x + inset, y + row, x + w - inset, y + row + 1, lerpArgb(c1, c2, (float) row / denom));
+            }
         } else {
-            int step = w > 180 ? 2 : 1;
-            int a1 = (color1 >>> 24) & 0xFF, r1 = (color1 >> 16) & 0xFF, g1 = (color1 >> 8) & 0xFF, b1 = color1 & 0xFF;
-            int a2 = (color2 >>> 24) & 0xFF, r2 = (color2 >> 16) & 0xFF, g2 = (color2 >> 8) & 0xFF, b2 = color2 & 0xFF;
+            int step = w > 160 ? 2 : 1;
             int denom = Math.max(1, w - 1);
             for (int dx = 0; dx < w; dx += step) {
-                float t = (float) dx / denom;
-                int a = Math.round(a1 + (a2 - a1) * t);
-                int r = Math.round(r1 + (r2 - r1) * t);
-                int gr = Math.round(g1 + (g2 - g1) * t);
-                int b = Math.round(b1 + (b2 - b1) * t);
-                int col = (a << 24) | (r << 16) | (gr << 8) | b;
-                g.fill(x + dx, y, Math.min(x + w, x + dx + step), y + h, col);
+                int col = lerpArgb(c1, c2, (float) dx / denom);
+                int yInset = 0;
+                if (dx < cr) yInset = cornerInset(dx, cr);
+                else if (dx >= w - cr) yInset = cornerInset(w - 1 - dx, cr);
+                g.fill(x + dx, y + yInset, Math.min(x + w, x + dx + step), y + h - yInset, col);
             }
         }
-        if (border != 0 && bw > 0) {
-            g.fill(x, y, x + w, y + bw, border);
-            g.fill(x, y + h - bw, x + w, y + h, border);
-            g.fill(x, y + bw, x + bw, y + h - bw, border);
-            g.fill(x + w - bw, y + bw, x + w, y + h - bw, border);
+    }
+
+    private static void drawRoundedBorder(GuiGraphics g, int x, int y, int w, int h, int r, int bw, int border) {
+        int cr = Math.min(r, Math.min(w, h) / 2);
+        for (int row = 0; row < h; row++) {
+            int inset = 0;
+            if (row < cr) inset = cornerInset(row, cr);
+            else if (row >= h - cr) inset = cornerInset(h - 1 - row, cr);
+            if (row < bw || row >= h - bw) {
+                g.fill(x + inset, y + row, x + w - inset, y + row + 1, border);
+            } else {
+                int leftW = Math.max(bw, (row < cr ? cornerInset(Math.max(0, row - 1), cr) - inset + bw : bw));
+                g.fill(x + inset, y + row, Math.min(x + w - inset, x + inset + leftW), y + row + 1, border);
+                g.fill(Math.max(x + inset, x + w - inset - leftW), y + row, x + w - inset, y + row + 1, border);
+            }
         }
     }
 
