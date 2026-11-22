@@ -23,12 +23,29 @@ public final class Actions {
 
     /** Выполняет действия по очереди; каждое действие расходует один шаг бюджета (защита от зависаний). */
     public static void runAll(List<Action> actions, ExecutionContext ctx) {
-        for (Action action : actions) {
-            if (ctx.isStopped()) {
-                return;
+        ctx.enterRun();
+        try {
+            for (int i = 0; i < actions.size(); i++) {
+                if (ctx.isStopped() || ctx.isWaiting()) {
+                    return;
+                }
+                ctx.step();
+                actions.get(i).execute(ctx);
+                if (ctx.isWaiting()) {
+                    if (i + 1 < actions.size()) {
+                        ctx.appendContinuation(actions.subList(i + 1, actions.size()));
+                    }
+                    return;
+                }
             }
-            ctx.step();
-            action.execute(ctx);
+        } finally {
+            if (ctx.exitRun() && ctx.isWaiting()) {
+                int ticks = ctx.consumeWaitTicks();
+                List<Action> next = ctx.consumeContinuation();
+                if (!next.isEmpty()) {
+                    ScriptScheduler.schedule(ctx, ticks, next);
+                }
+            }
         }
     }
 
@@ -166,15 +183,24 @@ public final class Actions {
     }
 
     /**
-     * wait &lt;n&gt; seconds|ticks|minutes — хвост текущего блока (строки ниже на том же отступе)
-     * выполнится позже. Код снаружи блока не ждёт. Пауза не длиннее 5 минут.
-     * Игрок внутри цикла (loop-player) после паузы не сохраняется.
+     * wait &lt;n&gt; seconds|ticks|minutes — приостанавливает выполнение текущего запуска (включая if, loop, while, function)
+     * и продолжает его через N тиков на главном потоке сервера. Пауза не длиннее 5 минут.
      */
-    public record Wait(Expression amount, int ticksPerUnit, List<Action> after) implements Action {
+    public record Wait(Expression amount, int ticksPerUnit) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
             int ticks = (int) Math.round(Effects.number(amount, ctx) * ticksPerUnit);
-            ScriptScheduler.schedule(ctx, ticks, after);
+            ctx.requestWait(ticks);
+        }
+    }
+
+    /** Внутреннее действие продолжения: снимает кадр функции после завершения её тела с wait. */
+    public record ExitFunctionFrame(@Nullable String previousScript) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            ctx.popFrame();
+            ctx.setScript(previousScript);
+            ctx.exitFunction();
         }
     }
 
@@ -219,34 +245,61 @@ public final class Actions {
 
     // ------------------------------------------------------------------ игрок и чат
 
-    /** loop <N> times: — повторяет блок N раз, задавая %loop-number% от 1 до N. */
+    /** loop <N> times: — повторяет блок N раз, задавая %loop-number% от 1 до N. Поддерживает wait внутри цикла. */
     public record LoopTimes(Expression count, List<Action> body) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
             int n = (int) Math.max(0, Math.min(10000, Math.round(Effects.number(count, ctx))));
-            String prev = ctx.placeholder("loop-number");
+            String prev = ctx.placeholderOrNull("loop-number");
+            runLoopTimes(1, n, body, prev, ctx);
+        }
+
+        static void runLoopTimes(int start, int n, List<Action> body, @Nullable String prev, ExecutionContext ctx) {
+            boolean suspended = false;
             try {
-                for (int i = 1; i <= n; i++) {
+                for (int i = start; i <= n; i++) {
                     if (ctx.isStopped()) {
                         return;
                     }
                     ctx.step();
                     ctx.setPlaceholder("loop-number", Integer.toString(i));
                     runAll(body, ctx);
+                    if (ctx.isWaiting()) {
+                        suspended = true;
+                        ctx.appendContinuation(new ResumeLoopTimes(i + 1, n, body, prev));
+                        return;
+                    }
                 }
             } finally {
-                ctx.setPlaceholder("loop-number", prev);
+                if (!suspended) {
+                    if (prev == null) {
+                        ctx.clearPlaceholder("loop-number");
+                    } else {
+                        ctx.setPlaceholder("loop-number", prev);
+                    }
+                }
             }
         }
     }
 
-    /** while <условие>: — повторяет блок, пока условие истинно (ограничено бюджетом шагов). */
+    private record ResumeLoopTimes(int nextIndex, int total, List<Action> body, @Nullable String prev) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            LoopTimes.runLoopTimes(nextIndex, total, body, prev, ctx);
+        }
+    }
+
+    /** while <условие>: — повторяет блок, пока условие истинно (поддерживает wait внутри цикла). */
     public record While(Condition condition, List<Action> body) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
             while (!ctx.isStopped() && condition.test(ctx)) {
                 ctx.step();
                 runAll(body, ctx);
+                if (ctx.isWaiting()) {
+                    ctx.appendContinuation(this);
+                    return;
+                }
             }
         }
     }
@@ -597,18 +650,33 @@ public final class Actions {
                     return sortMode < 0 ? -cmp : cmp;
                 });
             }
+            runLoopIndices(entries, 0, body, previousIndex, previousValue, ctx);
+        }
+
+        static void runLoopIndices(List<java.util.Map.Entry<String, Object>> entries, int start,
+                                   List<Action> body, @Nullable String previousIndex, @Nullable String previousValue,
+                                   ExecutionContext ctx) {
+            boolean suspended = false;
             try {
-                for (java.util.Map.Entry<String, Object> entry : entries) {
+                for (int idx = start; idx < entries.size(); idx++) {
                     if (ctx.isStopped()) {
                         break;
                     }
+                    java.util.Map.Entry<String, Object> entry = entries.get(idx);
                     ctx.setPlaceholder("loop-index", entry.getKey());
                     ctx.setPlaceholder("loop-value", Expression.toText(entry.getValue()));
                     runAll(body, ctx);
+                    if (ctx.isWaiting()) {
+                        suspended = true;
+                        ctx.appendContinuation(new ResumeLoopIndices(entries, idx + 1, body, previousIndex, previousValue));
+                        return;
+                    }
                 }
             } finally {
-                restorePlaceholder(ctx, "loop-index", previousIndex);
-                restorePlaceholder(ctx, "loop-value", previousValue);
+                if (!suspended) {
+                    restorePlaceholder(ctx, "loop-index", previousIndex);
+                    restorePlaceholder(ctx, "loop-value", previousValue);
+                }
             }
         }
 
@@ -621,22 +689,60 @@ public final class Actions {
         }
     }
 
+    private record ResumeLoopIndices(List<java.util.Map.Entry<String, Object>> entries, int nextIdx,
+                                     List<Action> body, @Nullable String prevIndex, @Nullable String prevValue) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            LoopIndices.runLoopIndices(entries, nextIdx, body, prevIndex, prevValue, ctx);
+        }
+    }
+
     public record Loop(Target target, List<Action> body) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
             List<ServerPlayer> players = target.resolve(ctx);
+            List<java.util.UUID> ids = new ArrayList<>(players.size());
+            for (ServerPlayer p : players) {
+                ids.add(p.getUUID());
+            }
             ServerPlayer previous = ctx.loopPlayer();
+            runLoopPlayers(ids, 0, body, previous == null ? null : previous.getUUID(), ctx);
+        }
+
+        static void runLoopPlayers(List<java.util.UUID> ids, int start, List<Action> body,
+                                   @Nullable java.util.UUID previousId, ExecutionContext ctx) {
+            boolean suspended = false;
             try {
-                for (ServerPlayer p : players) {
+                for (int idx = start; idx < ids.size(); idx++) {
                     if (ctx.isStopped()) {
                         break;
                     }
+                    ServerPlayer p = ctx.server().getPlayerList().getPlayer(ids.get(idx));
+                    if (p == null) {
+                        continue;
+                    }
                     ctx.setLoopPlayer(p);
                     runAll(body, ctx);
+                    if (ctx.isWaiting()) {
+                        suspended = true;
+                        ctx.appendContinuation(new ResumeLoopPlayers(ids, idx + 1, body, previousId));
+                        return;
+                    }
                 }
             } finally {
-                ctx.setLoopPlayer(previous);
+                if (!suspended) {
+                    ServerPlayer prev = previousId == null ? null : ctx.server().getPlayerList().getPlayer(previousId);
+                    ctx.setLoopPlayer(prev);
+                }
             }
+        }
+    }
+
+    private record ResumeLoopPlayers(List<java.util.UUID> ids, int nextIdx, List<Action> body,
+                                     @Nullable java.util.UUID previousId) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            Loop.runLoopPlayers(ids, nextIdx, body, previousId, ctx);
         }
     }
 }

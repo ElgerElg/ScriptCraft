@@ -207,7 +207,13 @@ public final class InputSync {
             if (action instanceof Actions.Loop loop && containsCancel(loop.body())) {
                 return true;
             }
-            if (action instanceof Actions.Wait wait && containsCancel(wait.after())) {
+            if (action instanceof Actions.LoopTimes loop && containsCancel(loop.body())) {
+                return true;
+            }
+            if (action instanceof Actions.LoopIndices loop && containsCancel(loop.body())) {
+                return true;
+            }
+            if (action instanceof Actions.While loop && containsCancel(loop.body())) {
                 return true;
             }
         }

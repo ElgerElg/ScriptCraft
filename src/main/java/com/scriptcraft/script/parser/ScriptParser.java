@@ -1034,8 +1034,7 @@ public final class ScriptParser {
                     error(children.get(0), "у 'wait' не бывает вложенных строк — следующие действия пишите на том же отступе");
                 }
                 try {
-                    actions.add(parseWait(line, body.subList(end, body.size())));
-                    break;
+                    actions.add(parseWait(line));
                 } catch (ParseException e) {
                     error(line, e.getMessage());
                 }
@@ -1469,24 +1468,24 @@ public final class ScriptParser {
         return ticks;
     }
 
-    /** wait 2 seconds — хвост блока выполнится после паузы. */
-    private Action parseWait(Line line, List<Line> rest) throws ParseException {
+    /** wait 2 seconds / wait 10 ticks / wait 1 minute — приостанавливает выполнение блока. */
+    private Action parseWait(Line line) throws ParseException {
         List<Token> t = Tokenizer.tokenize(line.text());
         if (t.size() < 2) {
             throw new ParseException("нужно: wait <число> seconds|ticks|minutes");
         }
         String unit = word(t, t.size() - 1);
         int per = switch (unit) {
-            case "tick", "ticks" -> 1;
-            case "second", "seconds", "sec", "secs" -> 20;
-            case "minute", "minutes", "min", "mins" -> 1200;
+            case "t", "tick", "ticks" -> 1;
+            case "s", "second", "seconds", "sec", "secs" -> 20;
+            case "m", "minute", "minutes", "min", "mins" -> 1200;
             default -> throw new ParseException("единица времени: ticks, seconds или minutes");
         };
         ExprParser.Parsed amount = ExprParser.parse(t, 1);
         if (amount.end() != t.size() - 1) {
             throw new ParseException("нужно: wait <число> seconds|ticks|minutes");
         }
-        return new Actions.Wait(amount.expression(), per, parseActions(rest));
+        return new Actions.Wait(amount.expression(), per);
     }
 
     private static boolean canAttachElse(Actions.If root) {

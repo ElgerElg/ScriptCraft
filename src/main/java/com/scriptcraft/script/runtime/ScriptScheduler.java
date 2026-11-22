@@ -1,6 +1,8 @@
 package com.scriptcraft.script.runtime;
 
 import com.scriptcraft.ScriptCraft;
+import com.scriptcraft.script.ScriptLoader;
+import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import org.jetbrains.annotations.Nullable;
@@ -11,16 +13,17 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Отложенные хвосты "wait N seconds": остаток блока выполняется на главном потоке сервера
- * через N тиков. При /sc reload задачи этого скрипта снимаются.
+ * Отложенные продолжения "wait N seconds|ticks|minutes": остаток блока (включая if, loop, while, function)
+ * выполняется на главном потоке сервера через N тиков. При /sc reload задачи этого скрипта снимаются.
  * Дольше 5 минут пауза не ставится — остаток обрезается до 5 минут.
  */
 public final class ScriptScheduler {
     private static final int MAX_DELAY = 20 * 300;
     private static final List<Task> TASKS = new ArrayList<>();
 
-    private record Task(int runAt, @Nullable String script, @Nullable UUID player,
-                        Map<String, String> placeholders, Map<String, Object> locals, List<Action> actions) {
+    private record Task(int runAt, @Nullable String script, @Nullable UUID player, @Nullable UUID loopPlayer,
+                        @Nullable CommandSourceStack source, List<ArgType> argTypes, List<Object> args,
+                        Map<String, String> placeholders, List<Map<String, Object>> frames, List<Action> actions) {
     }
 
     private ScriptScheduler() {
@@ -32,8 +35,10 @@ public final class ScriptScheduler {
         }
         int delay = Math.max(1, Math.min(MAX_DELAY, ticks));
         UUID id = ctx.player() == null ? null : ctx.player().getUUID();
-        TASKS.add(new Task(ctx.server().getTickCount() + delay, ctx.script(), id,
-                ctx.snapshotPlaceholders(), ctx.snapshotLocals(), actions));
+        UUID loopId = ctx.loopPlayer() == null ? null : ctx.loopPlayer().getUUID();
+        TASKS.add(new Task(ctx.server().getTickCount() + delay, ctx.script(), id, loopId,
+                ctx.source(), ctx.snapshotCommandArgTypes(), ctx.snapshotCommandArgs(),
+                ctx.snapshotPlaceholders(), ctx.snapshotFrames(), actions));
     }
 
     /** script == null — снять все задачи (полная перезагрузка и остановка сервера). */
@@ -63,15 +68,21 @@ public final class ScriptScheduler {
             if (task.player() != null && player == null) {
                 continue; // игрок вышел, пока скрипт ждал
             }
-            ExecutionContext ctx = new ExecutionContext(server, player, null);
+            ServerPlayer loopPlayer = task.loopPlayer() == null ? null : server.getPlayerList().getPlayer(task.loopPlayer());
+            CommandSourceStack src = player != null ? player.createCommandSourceStack() : task.source();
+            ExecutionContext ctx = new ExecutionContext(server, player, src);
             ctx.setScript(task.script());
+            ctx.setLoopPlayer(loopPlayer);
+            ctx.restoreCommandArguments(task.argTypes(), task.args());
             ctx.restorePlaceholders(task.placeholders());
-            ctx.restoreLocals(task.locals());
+            ctx.restoreFrames(task.frames(), server);
             long prof = com.scriptcraft.script.ScriptProfiler.start();
             try {
                 Actions.runAll(task.actions(), ctx);
             } catch (RuntimeException e) {
-                ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка после wait ({}): {}", task.script(), e.getMessage());
+                String msg = e.getMessage() == null ? e.toString() : e.getMessage();
+                ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка после wait ({}): {}", task.script(), msg);
+                ScriptLoader.noteRuntime(task.script() == null ? "" : task.script(), msg, player, server);
             } finally {
                 com.scriptcraft.script.ScriptProfiler.end(prof, task.script(), "wait");
             }

@@ -75,7 +75,7 @@ public final class ScriptLoader {
         try {
             com.scriptcraft.script.runtime.Action action = com.scriptcraft.script.parser.ScriptParser.parseScreenFunctionCall(call);
             if (action != null) {
-                action.execute(ctx);
+                com.scriptcraft.script.runtime.Actions.runAll(List.of(action), ctx);
             }
         } catch ( Exception e) {
             String msg = e.getMessage() == null ? e.toString() : e.getMessage();

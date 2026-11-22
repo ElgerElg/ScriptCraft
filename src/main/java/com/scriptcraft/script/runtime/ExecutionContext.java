@@ -209,6 +209,11 @@ public final class ExecutionContext {
     private int targetHits;
     /** stop — прервать остальные действия этого запуска. */
     private boolean stopped;
+    /** wait — приостановить выполнение и продолжить через waitTicks на главном потоке сервера. */
+    private boolean waiting;
+    private int waitTicks;
+    private int runDepth;
+    private final List<Action> continuation = new java.util.ArrayList<>();
     /** Кадры параметров функций. Верхний кадр — текущий вызов. */
     private final ArrayDeque<Map<String, Object>> frames = new ArrayDeque<>();
     private final ArrayDeque<Boolean> stopMarks = new ArrayDeque<>();
@@ -234,6 +239,11 @@ public final class ExecutionContext {
     @Nullable
     public ServerPlayer player() {
         return player;
+    }
+
+    @Nullable
+    public CommandSourceStack source() {
+        return source;
     }
 
     /** Возвращает игрока или бросает ошибку (например, команду вызвали из консоли). */
@@ -436,6 +446,92 @@ public final class ExecutionContext {
     public void exitFunction() {
         functionDepth = Math.max(0, functionDepth - 1);
         stopped = stopMarks.isEmpty() ? stopped : stopMarks.pop();
+    }
+
+    public List<ArgType> snapshotCommandArgTypes() {
+        return commandArgTypes;
+    }
+
+    public List<Object> snapshotCommandArgs() {
+        return commandArgs;
+    }
+
+    public void restoreCommandArguments(List<ArgType> types, List<Object> values) {
+        this.commandArgTypes = types == null ? List.of() : List.copyOf(types);
+        this.commandArgs = values == null ? List.of() : java.util.Collections.unmodifiableList(new java.util.ArrayList<>(values));
+    }
+
+    /** Копия всех кадров параметров функций (от старого к новому) для wait. */
+    public List<Map<String, Object>> snapshotFrames() {
+        List<Map<String, Object>> out = new java.util.ArrayList<>(frames.size());
+        var it = frames.descendingIterator();
+        while (it.hasNext()) {
+            out.add(new LinkedHashMap<>(it.next()));
+        }
+        return out;
+    }
+
+    public void restoreFrames(@Nullable List<Map<String, Object>> saved, MinecraftServer srv) {
+        frames.clear();
+        stopMarks.clear();
+        functionDepth = 0;
+        if (saved == null) {
+            return;
+        }
+        for (Map<String, Object> frame : saved) {
+            Map<String, Object> copy = new LinkedHashMap<>();
+            for (Map.Entry<String, Object> e : frame.entrySet()) {
+                Object val = e.getValue();
+                if (val instanceof ServerPlayer sp) {
+                    ServerPlayer live = srv.getPlayerList().getPlayer(sp.getUUID());
+                    val = live != null ? live : sp;
+                }
+                copy.put(e.getKey(), val);
+            }
+            frames.push(copy);
+            stopMarks.push(false);
+            functionDepth++;
+        }
+    }
+
+    public void requestWait(int ticks) {
+        this.waiting = true;
+        this.waitTicks = Math.max(1, ticks);
+        this.continuation.clear();
+    }
+
+    public boolean isWaiting() {
+        return waiting;
+    }
+
+    public void appendContinuation(Action action) {
+        this.continuation.add(action);
+    }
+
+    public void appendContinuation(List<Action> actions) {
+        this.continuation.addAll(actions);
+    }
+
+    public void enterRun() {
+        this.runDepth++;
+    }
+
+    public boolean exitRun() {
+        this.runDepth = Math.max(0, this.runDepth - 1);
+        return this.runDepth == 0;
+    }
+
+    public int consumeWaitTicks() {
+        int t = this.waitTicks;
+        this.waitTicks = 0;
+        this.waiting = false;
+        return t;
+    }
+
+    public List<Action> consumeContinuation() {
+        List<Action> copy = List.copyOf(this.continuation);
+        this.continuation.clear();
+        return copy;
     }
 
     public void stop() {

@@ -258,11 +258,17 @@ final class SimpleProgram implements ScriptProgram {
                 com.scriptcraft.script.ScriptProfiler.end(prof, def.file(), "fn " + def.name());
             }
         } finally {
-            if (pushed) {
-                ctx.popFrame();
+            if (ctx.isWaiting()) {
+                if (pushed) {
+                    ctx.appendContinuation(new Actions.ExitFunctionFrame(previous));
+                }
+            } else {
+                if (pushed) {
+                    ctx.popFrame();
+                }
+                ctx.setScript(previous);
+                ctx.exitFunction();
             }
-            ctx.setScript(previous);
-            ctx.exitFunction();
         }
     }
 
