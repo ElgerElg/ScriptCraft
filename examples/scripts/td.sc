@@ -1,8 +1,8 @@
 # ==========================================================
-#  td.sc — Tower Defense Ultra HD (Кооп до 4 игроков!)
-#          3 HD-карты (448x224) | 3 сложности (10 / 20 / 30 волн)
-#          8 башен + Эволюция ✦5★ | 13 видов мобов и боссов
-#          Тонкие HP-полоски мобов + живые тултипы башен!
+#  td.sc — Tower Defense Ultra HD v3 (оптимизирован под ScriptCraft 0.8.3!)
+#          3 HD-карты (448x224) | Кооп до 4 игроков + реконнект
+#          60 FPS клиентский Tween (мобы, HP-бары, снаряды) + GUI-частицы
+#          Скруглённые стеклянные панели (box radius/shadow/blur) + {list::*} цели
 #  Команды:
 #    /td               — меню карты, сложности и команды
 #    /td coop <игрок>  — пригласить друга в кооп (до 4 игроков!)
@@ -19,6 +19,7 @@ on load:
 	clear {-td-active::*}
 	clear {-td-host::*}
 	clear {-td-team::*}
+	clear {-td-online::*}
 	clear {-td-inv::*}
 	clear {-td-reconn::*}
 
@@ -39,7 +40,6 @@ command /td [text] [player]:
 		if arg-2 is player:
 			send "&cНельзя пригласить самого себя!" to player
 			stop
-		# Убедимся, что хост в своей команде
 		if {-td-team::%player%::*} is empty:
 			add %player% to {-td-team::%player%::*}
 		set {-cnt} to size of {-td-team::%player%::*}
@@ -53,7 +53,6 @@ command /td [text] [player]:
 		TdOpenMenu(player)
 		stop
 	if arg-1 is "join" or "accept" or "reconnect" or "rejoin":
-		# Сначала проверяем: может игрок вылетел/закрыл активную кооп-игру и хочет вернуться?
 		if {-td-reconn::%player%} is set:
 			set {-rh} to {-td-reconn::%player%}
 			if {-rh} is online and {-td-active::%{-rh}%} is 1:
@@ -76,7 +75,6 @@ command /td [text] [player]:
 				send "&cКоманда уже полная (4/4)!" to player
 				stop
 			add %player% to {-td-team::%{-host}%::*}
-		# Если игра хоста уже идёт — сразу подключаем прямо на карту!
 		if {-td-active::%{-host}%} is 1:
 			TdReconnect({-host}, player)
 			stop
@@ -137,24 +135,30 @@ on toggle "autowave":
 		set {-td-auto::%{-g}%} to 0
 		TdSyncStatus({-g}, "&7Авто-волна выключена")
 
-# --- Игровой цикл (тикает только хост комнаты -> синк всем 1..4 игрокам) ---
+# --- Игровой цикл (x1 = 5 тиков/сек + 4-tick 60 FPS tween; x2 = 10 тиков/сек + 2-tick 60 FPS tween) ---
 
 every 2 ticks:
 	loop all players:
 		if {-td-active::%loop-player%} is 1:
-			# Собираем активных онлайн-игроков с открытым экраном 1 раз за тик (экономия ЦП!)
-			clear {-td-online::%loop-player%::*}
-			loop {-td-team::%loop-player%::*}:
-				set {-tp} to %loop-value%
-				if {-tp} is online and {-tp} has screen "Tower Defense" open:
-					add {-tp} to {-td-online::%loop-player%::*}
-			if size of {-td-online::%loop-player%::*} > 0:
-				TdTick(loop-player)
-				if {-td-speed::%loop-player%} is 2 and {-td-in-wave::%loop-player%} is 1 and {-td-over::%loop-player%} is 0:
+			# На скорости x1 тикаем через раз (каждые 4 тика), на x2 — каждые 2 тика!
+			set {-run} to 1
+			if {-td-speed::%loop-player%} is 1 or {-td-in-wave::%loop-player%} is 0:
+				add 1 to {-td-sub::%loop-player%}
+				if {-td-sub::%loop-player%} < 2:
+					set {-run} to 0
+				else:
+					set {-td-sub::%loop-player%} to 0
+			if {-run} is 1:
+				clear {-td-online::%loop-player%::*}
+				loop {-td-team::%loop-player%::*}:
+					set {-tp} to %loop-value%
+					if {-tp} is online and {-tp} has screen "Tower Defense" open:
+						add {-tp} to {-td-online::%loop-player%::*}
+				if size of {-td-online::%loop-player%::*} > 0:
 					TdTick(loop-player)
-			else:
-				delete {-td-active::%loop-player%}
-				delete {-td-over::%loop-player%}
+				else:
+					delete {-td-active::%loop-player%}
+					delete {-td-over::%loop-player%}
 
 function TdOnLeave(p: player):
 	set {-g} to {-td-host::%p%}
@@ -162,13 +166,12 @@ function TdOnLeave(p: player):
 		stop
 	set {-pcnt} to size of {-td-team::%{-g}%::*}
 	if {-pcnt} <= 1:
-		# Соло-игра: закрываем сессию
 		delete {-td-active::%{-g}%}
 		delete {-td-over::%{-g}%}
 		delete {-td-host::%p%}
 		clear {-td-team::%{-g}%::*}
+		clear {-td-online::%{-g}%::*}
 		stop
-	# В коопе сохраняем право на переподключение через /td join!
 	if {-td-active::%{-g}%} is 1 and {-td-over::%{-g}%} is 0:
 		set {-td-reconn::%p%} to {-g}
 		if p is online:
@@ -192,12 +195,12 @@ function TdReconnect(g: player, p: player):
 		TdOpenMap2(p)
 	else:
 		TdOpenMap3(p)
-	# Восстанавливаем все стоящие башни (текстуры, живые тултипы и звёзды)
-	loop 28 times:
-		set {-ti} to %loop-number%
-		if {-td-ta::%g%::%{-ti}%} is 1:
-			TdSyncTowerVisual(g, {-ti})
-	# Восстанавливаем всех живых врагов, их тонкие полоски HP и полосу Босса
+	set {-tmax} to {-td-tmax::%g%}
+	if {-tmax} > 0:
+		loop {-tmax} times:
+			set {-ti} to %loop-number%
+			if {-td-ta::%g%::%{-ti}%} is 1:
+				TdSyncTowerVisual(g, {-ti})
 	loop 12 times:
 		set {-ei} to %loop-number%
 		if {-td-ea::%g%::%{-ei}%} is 1:
@@ -221,65 +224,52 @@ function TdReconnect(g: player, p: player):
 	play sound entity.player.levelup to p with volume 0.5 pitch 1.3
 
 # ==========================================================
-#  ХЕЛПЕРЫ СИНХРОНИЗАЦИИ ДЛЯ 1..4 ИГРОКОВ (С ОПТИМИЗАЦИЕЙ)
+#  ХЕЛПЕРЫ СИНХРОНИЗАЦИИ (ПРЯМОЙ ТАРГЕТ {-td-online::%g%::*} БЕЗ LOOP!)
 # ==========================================================
 
 function TdSyncPos(g: player, id: text, x: number, y: number):
-	loop {-td-online::%g%::*}:
-		set {-tp} to %loop-value%
-		set position of screen element "%id%" for {-tp} to x y
+	set position of screen element "%id%" for {-td-online::%g%::*} to x y
+
+function TdSyncAnim(g: player, id: text, x: number, y: number, dur: number):
+	animate screen "%id%" for {-td-online::%g%::*} to x y in dur ticks
 
 function TdSyncImg(g: player, id: text, tex: text):
-	loop {-td-online::%g%::*}:
-		set {-tp} to %loop-value%
-		set image of screen element "%id%" for {-tp} to tex
+	set image of screen element "%id%" for {-td-online::%g%::*} to tex
 
 function TdSyncTxt(g: player, id: text, txt: text):
-	loop {-td-online::%g%::*}:
-		set {-tp} to %loop-value%
-		set text of screen element "%id%" for {-tp} to txt
+	set text of screen element "%id%" for {-td-online::%g%::*} to txt
 
 function TdSyncShow(g: player, id: text):
-	loop {-td-online::%g%::*}:
-		set {-tp} to %loop-value%
-		show screen element "%id%" to {-tp}
+	show screen element "%id%" to {-td-online::%g%::*}
 
 function TdSyncHide(g: player, id: text):
-	loop {-td-online::%g%::*}:
-		set {-tp} to %loop-value%
-		hide screen element "%id%" from {-tp}
+	hide screen element "%id%" from {-td-online::%g%::*}
 
 function TdSyncCell(g: player, col: integer, row: integer, cx: number, cy: number, tex: text, tip: text):
-	loop {-td-online::%g%::*}:
-		set {-tp} to %loop-value%
-		update screen "Tower Defense" for {-tp}:
-			image "td:textures/gui/tile_build.png" at 0 0 size 28x28 texture 28x28 anchor center layer 3 id "c%col%_%row%" run TdCellClick(player, %col%, %row%) keep open tooltip "%tip%"
-		set image of screen element "c%col%_%row%" for {-tp} to tex
-		set position of screen element "c%col%_%row%" for {-tp} to cx cy
+	update screen "Tower Defense" for {-td-online::%g%::*}:
+		image "td:textures/gui/tile_build.png" at 0 0 size 28x28 texture 28x28 anchor center layer 3 id "c%col%_%row%" run TdCellClick(player, %col%, %row%) keep open tooltip "%tip%"
+	set image of screen element "c%col%_%row%" for {-td-online::%g%::*} to tex
+	set position of screen element "c%col%_%row%" for {-td-online::%g%::*} to cx cy
 
 function TdSyncStatus(g: player, txt: text):
-	TdSyncTxt(g, "status_txt", txt)
+	set text of screen element "status_txt" for {-td-online::%g%::*} to txt
 
 function TdSyncSound(g: player, snd: text, vol: number, pit: number):
-	loop {-td-online::%g%::*}:
-		set {-tp} to %loop-value%
-		play sound %snd% to {-tp} with volume vol pitch pit
+	play sound %snd% to {-td-online::%g%::*} with volume vol pitch pit
 
 function TdSyncBar(g: player, id: text, val: number, mx: number):
-	loop {-td-online::%g%::*}:
-		set {-tp} to %loop-value%
-		if mx > 0:
-			set max of screen bar "%id%" for {-tp} to mx
-		set value of screen bar "%id%" for {-tp} to val
+	if mx > 0:
+		set max of screen bar "%id%" for {-td-online::%g%::*} to mx
+	set value of screen bar "%id%" for {-td-online::%g%::*} to val
 
 function TdSyncBossBar(g: player, val: number, mx: number):
 	TdSyncBar(g, "boss_bar", val, mx)
 
 function TdSyncGoldScore(g: player):
+	set text of screen element "hud_score" for {-td-online::%g%::*} to "&a%{-td-score::%g%}%"
 	loop {-td-online::%g%::*}:
 		set {-tp} to %loop-value%
 		set text of screen element "hud_gold" for {-tp} to "&6%{-td-gold::%{-tp}%}%"
-		set text of screen element "hud_score" for {-tp} to "&a%{-td-score::%g%}%"
 
 function TdSyncHud(g: player):
 	set {-sp} to "x1"
@@ -290,13 +280,13 @@ function TdSyncHud(g: player):
 	set {-tstr} to "&7Соло &7[%{-sp}%&7]"
 	if {-pcnt} > 1:
 		set {-tstr} to "&dКооп(%{-pcnt}%): &f%{-names}% &7[%{-sp}%&7]"
+	set text of screen element "hud_wave" for {-td-online::%g%::*} to "&f%{-td-wave::%g%}%/%{-td-maxw::%g%}%"
+	set text of screen element "hud_hp" for {-td-online::%g%::*} to "&c%{-td-hp::%g%}%"
+	set text of screen element "hud_score" for {-td-online::%g%::*} to "&a%{-td-score::%g%}%"
+	set text of screen element "hud_team" for {-td-online::%g%::*} to {-tstr}
 	loop {-td-online::%g%::*}:
 		set {-tp} to %loop-value%
-		set text of screen element "hud_wave" for {-tp} to "&f%{-td-wave::%g%}%/%{-td-maxw::%g%}%"
 		set text of screen element "hud_gold" for {-tp} to "&6%{-td-gold::%{-tp}%}%"
-		set text of screen element "hud_hp" for {-tp} to "&c%{-td-hp::%g%}%"
-		set text of screen element "hud_score" for {-tp} to "&a%{-td-score::%g%}%"
-		set text of screen element "hud_team" for {-tp} to {-tstr}
 
 function TdShowRange(p: player, tx: number, ty: number, rng: number):
 	hide screen element "rng_s" from p
@@ -432,30 +422,28 @@ function TdOpenMenu(p: player):
 	if {-td-team::%p%::*} is empty:
 		add %p% to {-td-team::%p%::*}
 	open screen "Tower Defense" to p:
-		bar "bg_menu" value 0 max 1 at 0 0 size 438x258 anchor center background #F2090E1A layer 0
-		bar "bg_top" value 1 max 1 at 0 -128 size 438x2 anchor center color #FF38BDF8 background #FF38BDF8 layer 1
-		bar "bg_bot" value 1 max 1 at 0 128 size 438x2 anchor center color #FF1E293B background #FF1E293B layer 1
-		bar "bg_hdr" value 0 max 1 at 0 -114 size 434x24 anchor center background #FF111C33 layer 1
+		box at 0 0 size 440x260 anchor center color #EE090E1A gradient #EE111C33 border #FF38BDF8 border_width 1 radius 10 shadow blur layer 0
+		box at 0 -114 size 430x24 anchor center color #FF1D4ED8 to #FF7C3AED horizontal radius 6 layer 1
 		text "&b&l✦ &f&lTOWER DEFENSE &b&lULTRA HD &b&l✦" at 0 -114 anchor center shadow layer 2
 		text "&7Кооп до 4 игроков: &e/td coop <ник> &7(друг: &a/td join&7) | 8 башен + ✦5★ Эволюция!" at 0 -92 anchor center shadow layer 2
 
-		# Карточки под 3 HD превью карт + индикатор выбора
-		bar "card_m1" value 0 max 1 at -132 -40 size 130x68 anchor center background #CC162032 layer 1
-		bar "card_m2" value 0 max 1 at 0 -40 size 130x68 anchor center background #CC162032 layer 1
-		bar "card_m3" value 0 max 1 at 132 -40 size 130x68 anchor center background #CC162032 layer 1
-		bar "map_sel" value 1 max 1 at -132 -7 size 130x2 anchor center color #FF22C55E background #FF22C55E layer 3
+		# Карточки под 3 HD превью карт + плавный индикатор выбора
+		box at -132 -40 size 130x68 anchor center color #CC162032 border #3338BDF8 radius 6 shadow layer 1
+		box at 0 -40 size 130x68 anchor center color #CC162032 border #3338BDF8 radius 6 shadow layer 1
+		box at 132 -40 size 130x68 anchor center color #CC162032 border #3338BDF8 radius 6 shadow layer 1
+		box at -132 -6 size 122x2 anchor center color #FF22C55E radius 1 id map_sel layer 3
 
-		image "td:textures/gui/map_valley.png" at -132 -40 size 124x62 texture 896x448 anchor center layer 2 run TdPickMap(player, 1) keep open tooltip "&aИзумрудная долина\n&7Классический S-маршрут"
-		text "&a1. Долина" at -132 3 anchor center shadow layer 2 id m_lbl1
+		image "td:textures/gui/map_valley.png" at -132 -40 size 124x62 texture 896x448 anchor center hover_scale 1.05 layer 2 run TdPickMap(player, 1) keep open tooltip "&aИзумрудная долина\n&7Классический S-маршрут"
+		text "&a1. Долина" at -132 4 anchor center shadow layer 2 id m_lbl1
 
-		image "td:textures/gui/map_volcano.png" at 0 -40 size 124x62 texture 896x448 anchor center layer 2 run TdPickMap(player, 2) keep open tooltip "&6Лавовый каньон\n&7Двойной зигзаг — много поворотов!"
-		text "&72. Каньон" at 0 3 anchor center shadow layer 2 id m_lbl2
+		image "td:textures/gui/map_volcano.png" at 0 -40 size 124x62 texture 896x448 anchor center hover_scale 1.05 layer 2 run TdPickMap(player, 2) keep open tooltip "&6Лавовый каньон\n&7Двойной зигзаг — много поворотов!"
+		text "&72. Каньон" at 0 4 anchor center shadow layer 2 id m_lbl2
 
-		image "td:textures/gui/map_ice.png" at 132 -40 size 124x62 texture 896x448 anchor center layer 2 run TdPickMap(player, 3) keep open tooltip "&bЛедяная цитадель\n&7Быстрый арктический серпантин!"
-		text "&73. Цитадель" at 132 3 anchor center shadow layer 2 id m_lbl3
+		image "td:textures/gui/map_ice.png" at 132 -40 size 124x62 texture 896x448 anchor center hover_scale 1.05 layer 2 run TdPickMap(player, 3) keep open tooltip "&bЛедяная цитадель\n&7Быстрый арктический серпантин!"
+		text "&73. Цитадель" at 132 4 anchor center shadow layer 2 id m_lbl3
 
 		# Блок сложности и команды
-		bar "card_diff" value 0 max 1 at 0 54 size 414x70 anchor center background #AA111827 layer 1
+		box at 0 54 size 414x70 anchor center color #AA111827 border #2238BDF8 radius 6 layer 1
 		text "&b&lСЛОЖНОСТЬ" at 0 26 anchor center shadow layer 2
 		button "&aЛёгкий (10 волн)" at -122 44 size 112x20 anchor center layer 2 run TdPickDiff(player, 1) keep open tooltip "&aЛёгкий уровень\n&710 волн | 2 босса | 15 HP | 140з"
 		button "&eСредний (20 волн)" at 0 44 size 112x20 anchor center layer 2 run TdPickDiff(player, 2) keep open tooltip "&eСредний уровень\n&720 волн | 4 босса | 10 HP | 120з"
@@ -486,15 +474,15 @@ function TdRefreshMenuInfo(p: player):
 	set {-mn} to "&aДолина"
 	if {-m} is 1:
 		set text of screen element "m_lbl1" for p to "&a&l▶ 1. Долина"
-		set position of screen element "map_sel" for p to -132 -7
+		animate screen "map_sel" for p to -132 -6 in 4 ticks
 	else if {-m} is 2:
 		set {-mn} to "&6Каньон"
 		set text of screen element "m_lbl2" for p to "&6&l▶ 2. Каньон"
-		set position of screen element "map_sel" for p to 0 -7
+		animate screen "map_sel" for p to 0 -6 in 4 ticks
 	else:
 		set {-mn} to "&bЦитадель"
 		set text of screen element "m_lbl3" for p to "&b&l▶ 3. Цитадель"
-		set position of screen element "map_sel" for p to 132 -7
+		animate screen "map_sel" for p to 132 -6 in 4 ticks
 	set {-dn} to "&eСредний (20 волн)"
 	if {-d} is 1:
 		set {-dn} to "&aЛёгкий (10 волн)"
@@ -524,7 +512,6 @@ function TdStartGame(host: player):
 	set {-m} to {-td-map::%host%}
 	set {-d} to {-td-diff::%host%}
 
-	# Фильтруем команду (оставляем только онлайн-игроков, хост всегда первый)
 	clear {-tmp-team::*}
 	add %host% to {-tmp-team::*}
 	loop {-td-team::%host%::*}:
@@ -543,13 +530,13 @@ function TdStartGame(host: player):
 	set {-td-wave::%host%} to 0
 	set {-td-score::%host%} to 0
 	set {-td-speed::%host%} to 1
+	set {-td-sub::%host%} to 0
 	set {-td-auto::%host%} to 0
 	set {-td-auto-cd::%host%} to 0
 	set {-td-in-wave::%host%} to 0
 	set {-td-to-spawn::%host%} to 0
 	set {-td-spawn-boss::%host%} to 0
 	set {-td-spawn-cd::%host%} to 0
-	set {-td-fx-cd::%host%} to 0
 	set {-td-boss-vis::%host%} to 0
 	set {-td-tmax::%host%} to 0
 	set {-td-prcnt::%host%} to 0
@@ -667,14 +654,13 @@ function TdLoadWaypoints(g: player, mapId: number):
 
 function TdOpenMap1(p: player):
 	open screen "Tower Defense" to p:
-		# Современный верхний HUD (стеклянная панель + карточки + неоновый акцент)
-		bar "bg_hud" value 0 max 1 at 0 -132 size 458x24 anchor center background #EE090E1A layer 11
-		bar "hud_line" value 1 max 1 at 0 -120 size 458x1 anchor center color #FF38BDF8 background #FF38BDF8 layer 12
-		bar "pill_w" value 0 max 1 at -198 -132 size 56x16 anchor center background #CC162032 layer 11
-		bar "pill_g" value 0 max 1 at -126 -132 size 64x16 anchor center background #CC162032 layer 11
-		bar "pill_h" value 0 max 1 at -58 -132 size 50x16 anchor center background #CC162032 layer 11
-		bar "pill_s" value 0 max 1 at 10 -132 size 68x16 anchor center background #CC162032 layer 11
-		bar "pill_t" value 0 max 1 at 140 -132 size 166x16 anchor center background #CC162032 layer 11
+		# Современный верхний HUD (скруглённые стеклянные карточки + blur + shadow)
+		box at 0 -132 size 458x24 anchor center color #E6090E1A gradient #E6111C33 border #FF38BDF8 border_width 1 radius 6 shadow blur layer 11
+		box at -198 -132 size 56x16 anchor center color #CC162032 border #4438BDF8 radius 4 layer 11
+		box at -126 -132 size 64x16 anchor center color #CC162032 border #44FACC15 radius 4 layer 11
+		box at -58 -132 size 50x16 anchor center color #CC162032 border #44EF4444 radius 4 layer 11
+		box at 10 -132 size 68x16 anchor center color #CC162032 border #4422C55E radius 4 layer 11
+		box at 140 -132 size 166x16 anchor center color #CC162032 border #44C084FC radius 4 layer 11
 		image "td:textures/gui/icon_wave.png" at -216 -132 size 11x11 texture 32x32 anchor center layer 12 tooltip "&eТекущая волна"
 		text "&f0/20" at -190 -132 anchor center shadow layer 12 id hud_wave
 		image "td:textures/gui/icon_coin.png" at -148 -132 size 11x11 texture 32x32 anchor center layer 12 tooltip "&6Ваше личное золото"
@@ -685,8 +671,8 @@ function TdOpenMap1(p: player):
 		text "&a0" at 18 -132 anchor center shadow layer 12 id hud_score
 		text "&7Соло &7[x1]" at 140 -132 anchor center shadow layer 12 id hud_team
 
-		# Тактическая рамка + большая HD карта 448x224 (текстура 896x448)
-		bar "map_frame" value 0 max 1 at 0 -2 size 452x228 anchor center background #8838BDF8 layer 0
+		# Тактическая рамка с тенью + большая HD карта 448x224 (текстура 896x448)
+		box at 0 -2 size 454x230 anchor center color #AA090E1A border #AA38BDF8 border_width 2 radius 5 shadow layer 0
 		image "td:textures/gui/map_valley.png" at 0 -2 size 448x224 texture 896x448 anchor center layer 1 id map
 		bar "boss_bar" value 100 max 100 at 0 -106 size 230x9 anchor center color #FFEF4444 background #CC1A0A0A text "&c&l☠ БОСС: %value%/%max%" shadow layer 14 hidden
 
@@ -695,7 +681,7 @@ function TdOpenMap1(p: player):
 		image "td:textures/gui/range_circle.png" at 0 0 size 260x260 texture 192x192 anchor center layer 2 id rng_m hidden
 		image "td:textures/gui/range_circle.png" at 0 0 size 390x390 texture 192x192 anchor center layer 2 id rng_l hidden
 
-		# Свободная сетка постройки 16x8 (клетка 28x28, тултипы обновляются автоматически!)
+		# Свободная сетка постройки 16x8 (клетка 28x28, живые тултипы!)
 		image "td:textures/gui/tile_build.png" at -210 -100 size 28x28 texture 28x28 anchor center layer 3 id c0_0 run TdCellClick(player, 0, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
 		image "td:textures/gui/tile_build.png" at -182 -100 size 28x28 texture 28x28 anchor center layer 3 id c1_0 run TdCellClick(player, 1, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
 		image "td:textures/gui/tile_build.png" at -154 -100 size 28x28 texture 28x28 anchor center layer 3 id c2_0 run TdCellClick(player, 2, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
@@ -812,7 +798,7 @@ function TdOpenMap1(p: player):
 		text "" at 0 0 anchor center shadow layer 6 id st27 hidden
 		text "" at 0 0 anchor center shadow layer 6 id st28 hidden
 
-		# 11 слотов обычных врагов + 1 слот Босса + тонкие полоски HP над каждым мобом
+		# 11 слотов обычных врагов + 1 слот Босса + тонкие HP-бары (60 FPS tween!)
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e1 hidden
 		bar "ehp1" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e2 hidden
@@ -838,49 +824,47 @@ function TdOpenMap1(p: player):
 		image "td:textures/gui/mob_boss.png" at -210 -72 size 32x32 texture 56x56 anchor center layer 8 id e12 hidden
 		bar "ehp12" value 100 max 100 at -210 -91 size 30x4 anchor center color #FFEF4444 background #CC1A0A0A layer 9 hidden
 
-		# 6 летающих HD прожектайлов + вспышка взрыва
+		# 6 летающих HD прожектайлов (60 FPS tween!)
 		image "td:textures/gui/proj_arrow.png" at 0 0 size 11x11 texture 20x20 anchor center layer 9 id pr1 hidden
 		image "td:textures/gui/proj_arrow.png" at 0 0 size 11x11 texture 20x20 anchor center layer 9 id pr2 hidden
 		image "td:textures/gui/proj_arrow.png" at 0 0 size 11x11 texture 20x20 anchor center layer 9 id pr3 hidden
 		image "td:textures/gui/proj_arrow.png" at 0 0 size 11x11 texture 20x20 anchor center layer 9 id pr4 hidden
 		image "td:textures/gui/proj_arrow.png" at 0 0 size 11x11 texture 20x20 anchor center layer 9 id pr5 hidden
 		image "td:textures/gui/proj_arrow.png" at 0 0 size 11x11 texture 20x20 anchor center layer 9 id pr6 hidden
-		image "td:textures/gui/fx_boom.png" at 0 0 size 20x20 texture 32x32 anchor center layer 10 id fx hidden
 
 		# Современная инфо-строка статуса
-		bar "bg_stat" value 0 max 1 at 0 119 size 458x15 anchor center background #E60B1220 layer 11
-		bar "stat_acc" value 1 max 1 at -227 119 size 3x15 anchor center color #FF38BDF8 background #FF38BDF8 layer 12
+		box at 0 119 size 458x15 anchor center color #E60B1220 border #3338BDF8 radius 4 layer 11
+		box at -226 119 size 3x11 anchor center color #FF38BDF8 radius 1 layer 12
 		text "&eВыбран: &fЛучник (50з) &7— наведи на башню для инфо, ЛКМ для постройки/апгрейда!" at 0 119 anchor center shadow layer 12 id status_txt
-		text "&c&lБАЗА ПАЛА!" at 0 -16 anchor center shadow layer 20 id end_title hidden
-		text "&fНажми &eR &f(рестарт) или &eM &f(меню)" at 0 2 anchor center shadow layer 20 id end_sub hidden
+		text "&c&lБАЗА ПАЛА!" at 0 -16 anchor center shadow scale 1.4 layer 20 id end_title hidden
+		text "&fНажми &eR &f(рестарт) или &eM &f(меню)" at 0 4 anchor center shadow layer 20 id end_sub hidden
 
-		# Нижняя панель инструментов (карточки слотов + индикатор выбора + 8 башен)
-		bar "bg_bar" value 0 max 1 at 0 148 size 458x42 anchor center background #F2090E1A layer 11
-		bar "bar_line" value 1 max 1 at 0 127 size 458x1 anchor center color #FF1E293B background #FF1E293B layer 12
-		bar "slot_bg1" value 0 max 1 at -208 148 size 32x34 anchor center background #CC162032 layer 11
-		bar "slot_bg2" value 0 max 1 at -172 148 size 32x34 anchor center background #CC162032 layer 11
-		bar "slot_bg3" value 0 max 1 at -136 148 size 32x34 anchor center background #CC162032 layer 11
-		bar "slot_bg4" value 0 max 1 at -100 148 size 32x34 anchor center background #CC162032 layer 11
-		bar "slot_bg5" value 0 max 1 at -64 148 size 32x34 anchor center background #CC162032 layer 11
-		bar "slot_bg6" value 0 max 1 at -28 148 size 32x34 anchor center background #CC162032 layer 11
-		bar "slot_bg7" value 0 max 1 at 8 148 size 32x34 anchor center background #CC162032 layer 11
-		bar "slot_bg8" value 0 max 1 at 44 148 size 32x34 anchor center background #CC162032 layer 11
-		bar "sel_bar" value 1 max 1 at -208 131 size 32x2 anchor center color #FFFACC15 background #FFFACC15 layer 13
-		image "td:textures/gui/tower_archer.png" at -208 142 size 22x22 texture 48x48 anchor center layer 12 id ico1 run TdSelectTool(player, 1) keep open tooltip "&e[1] Лучник &7(50з)\n&7Урон: 15 | Очень быстрый | Дальн: 98\n&6✦5★ Шквал: &fстреляет сразу по 2 целям!"
+		# Нижняя панель инструментов (скруглённые слоты + hover_scale + индикатор выбора)
+		box at 0 148 size 458x42 anchor center color #EE090E1A gradient #EE111827 border #FF1E293B radius 6 shadow blur layer 11
+		box at -208 148 size 32x34 anchor center color #CC162032 border #3338BDF8 radius 5 layer 11
+		box at -172 148 size 32x34 anchor center color #CC162032 border #3338BDF8 radius 5 layer 11
+		box at -136 148 size 32x34 anchor center color #CC162032 border #3338BDF8 radius 5 layer 11
+		box at -100 148 size 32x34 anchor center color #CC162032 border #3338BDF8 radius 5 layer 11
+		box at -64 148 size 32x34 anchor center color #CC162032 border #3338BDF8 radius 5 layer 11
+		box at -28 148 size 32x34 anchor center color #CC162032 border #3338BDF8 radius 5 layer 11
+		box at 8 148 size 32x34 anchor center color #CC162032 border #3338BDF8 radius 5 layer 11
+		box at 44 148 size 32x34 anchor center color #CC162032 border #3338BDF8 radius 5 layer 11
+		box at -208 131 size 30x2 anchor center color #FFFACC15 radius 1 id sel_bar layer 13
+		image "td:textures/gui/tower_archer.png" at -208 142 size 22x22 texture 48x48 anchor center hover_scale 1.14 layer 12 id ico1 run TdSelectTool(player, 1) keep open tooltip "&e[1] Лучник &7(50з)\n&7Урон: 15 | Очень быстрый | Дальн: 98\n&6✦5★ Шквал: &fстреляет сразу по 2 целям!"
 		text "&e[1]50" at -208 159 anchor center shadow layer 12 id lbl1
-		image "td:textures/gui/tower_cannon.png" at -172 142 size 22x22 texture 48x48 anchor center layer 12 id ico2 run TdSelectTool(player, 2) keep open tooltip "&6[2] Пушка &7(95з)\n&7Урон: 36 + &cСплеш | Дальн: 92\n&6✦5★ Напалм: &fмега-сплеш + поджог врагов!"
+		image "td:textures/gui/tower_cannon.png" at -172 142 size 22x22 texture 48x48 anchor center hover_scale 1.14 layer 12 id ico2 run TdSelectTool(player, 2) keep open tooltip "&6[2] Пушка &7(95з)\n&7Урон: 36 + &cСплеш | Дальн: 92\n&6✦5★ Напалм: &fмега-сплеш + поджог врагов!"
 		text "&7[2]95" at -172 159 anchor center shadow layer 12 id lbl2
-		image "td:textures/gui/tower_frost.png" at -136 142 size 22x22 texture 48x48 anchor center layer 12 id ico3 run TdSelectTool(player, 3) keep open tooltip "&b[3] Лёд &7(85з)\n&7Урон: 8 | &bАура замедления 40% по радиусу | Дальн: 96\n&6✦5★ Стужа: &f50% замедл. + 12% заморозка (0.5с, не боссов)"
+		image "td:textures/gui/tower_frost.png" at -136 142 size 22x22 texture 48x48 anchor center hover_scale 1.14 layer 12 id ico3 run TdSelectTool(player, 3) keep open tooltip "&b[3] Лёд &7(85з)\n&7Урон: 8 | &bАура замедления 40% по радиусу | Дальн: 96\n&6✦5★ Стужа: &f50% замедл. + 12% заморозка (0.5с, не боссов)"
 		text "&7[3]85" at -136 159 anchor center shadow layer 12 id lbl3
-		image "td:textures/gui/tower_mage.png" at -100 142 size 22x22 texture 48x48 anchor center layer 12 id ico4 run TdSelectTool(player, 4) keep open tooltip "&d[4] Маг &7(130з)\n&7Урон: 32 | &dДальность 132\n&6✦5★ Убийца Боссов: &fx2 Боссам + 4% макс.HP!"
+		image "td:textures/gui/tower_mage.png" at -100 142 size 22x22 texture 48x48 anchor center hover_scale 1.14 layer 12 id ico4 run TdSelectTool(player, 4) keep open tooltip "&d[4] Маг &7(130з)\n&7Урон: 32 | &dДальность 132\n&6✦5★ Убийца Боссов: &fx2 Боссам + 4% макс.HP!"
 		text "&7[4]130" at -100 159 anchor center shadow layer 12 id lbl4
-		image "td:textures/gui/tower_tesla.png" at -64 142 size 22x22 texture 48x48 anchor center layer 12 id ico5 run TdSelectTool(player, 5) keep open tooltip "&b[5] Тесла &7(115з)\n&7Урон: 20 | &bЦепная молния (3 цели) | Дальн: 108\n&6✦5★ Шторм: &f5 целей + 90% урон + стан!"
+		image "td:textures/gui/tower_tesla.png" at -64 142 size 22x22 texture 48x48 anchor center hover_scale 1.14 layer 12 id ico5 run TdSelectTool(player, 5) keep open tooltip "&b[5] Тесла &7(115з)\n&7Урон: 20 | &bЦепная молния (3 цели) | Дальн: 108\n&6✦5★ Шторм: &f5 целей + 90% урон + стан!"
 		text "&7[5]115" at -64 159 anchor center shadow layer 12 id lbl5
-		image "td:textures/gui/tower_sniper.png" at -28 142 size 22x22 texture 48x48 anchor center layer 12 id ico6 run TdSelectTool(player, 6) keep open tooltip "&c[6] Снайпер &7(150з)\n&7Урон: 56 | &cКрит 25% | Дальн: 215\n&6✦5★ Казнь: &fкрит 45% x2.5 + казнь <20% HP!"
+		image "td:textures/gui/tower_sniper.png" at -28 142 size 22x22 texture 48x48 anchor center hover_scale 1.14 layer 12 id ico6 run TdSelectTool(player, 6) keep open tooltip "&c[6] Снайпер &7(150з)\n&7Урон: 56 | &cКрит 25% | Дальн: 215\n&6✦5★ Казнь: &fкрит 45% x2.5 + казнь <20% HP!"
 		text "&7[6]150" at -28 159 anchor center shadow layer 12 id lbl6
-		image "td:textures/gui/tower_poison.png" at 8 142 size 22x22 texture 48x48 anchor center layer 12 id ico7 run TdSelectTool(player, 7) keep open tooltip "&a[7] Алхимик &7(105з)\n&7Урон: 12 + &aЯд (урон в сек.) | Дальн: 100\n&6✦5★ Чума: &fяд заражает всех врагов вокруг!"
+		image "td:textures/gui/tower_poison.png" at 8 142 size 22x22 texture 48x48 anchor center hover_scale 1.14 layer 12 id ico7 run TdSelectTool(player, 7) keep open tooltip "&a[7] Алхимик &7(105з)\n&7Урон: 12 + &aЯд (урон в сек.) | Дальн: 100\n&6✦5★ Чума: &fяд заражает всех врагов вокруг!"
 		text "&7[7]105" at 8 159 anchor center shadow layer 12 id lbl7
-		image "td:textures/gui/tower_farm.png" at 44 142 size 22x22 texture 48x48 anchor center layer 12 id ico8 run TdSelectTool(player, 8) keep open tooltip "&6[8] Банк &7(140з)\n&7Доход: &6+28/+50/+80/+120з &7каждую волну!\n&6✦5★ Дворец: &f+180з за волну и +1 HP базе!"
+		image "td:textures/gui/tower_farm.png" at 44 142 size 22x22 texture 48x48 anchor center hover_scale 1.14 layer 12 id ico8 run TdSelectTool(player, 8) keep open tooltip "&6[8] Банк &7(140з)\n&7Доход: &6+28/+50/+80/+120з &7каждую волну!\n&6✦5★ Дворец: &f+180з за волну и +1 HP базе!"
 		text "&7[8]140" at 44 159 anchor center shadow layer 12 id lbl8
 		button "&aСтарт/x2" at 118 139 size 68x16 anchor center run TdWaveOrSpeed(player) keep open tooltip "&aЗапустить волну &7(Space)\n&bВо время волны: скорость x1 / x2"
 		toggle "Авто" id autowave at 192 139 size 58x16 anchor center value false color #22C55E tooltip "&aАвто-волна\n&7Авто-старт следующей волны через 1.5с"
@@ -889,14 +873,13 @@ function TdOpenMap1(p: player):
 
 function TdOpenMap2(p: player):
 	open screen "Tower Defense" to p:
-		# Современный верхний HUD (стеклянная панель + карточки + неоновый акцент)
-		bar "bg_hud" value 0 max 1 at 0 -132 size 458x24 anchor center background #EE090E1A layer 11
-		bar "hud_line" value 1 max 1 at 0 -120 size 458x1 anchor center color #FF38BDF8 background #FF38BDF8 layer 12
-		bar "pill_w" value 0 max 1 at -198 -132 size 56x16 anchor center background #CC162032 layer 11
-		bar "pill_g" value 0 max 1 at -126 -132 size 64x16 anchor center background #CC162032 layer 11
-		bar "pill_h" value 0 max 1 at -58 -132 size 50x16 anchor center background #CC162032 layer 11
-		bar "pill_s" value 0 max 1 at 10 -132 size 68x16 anchor center background #CC162032 layer 11
-		bar "pill_t" value 0 max 1 at 140 -132 size 166x16 anchor center background #CC162032 layer 11
+		# Современный верхний HUD (скруглённые стеклянные карточки + blur + shadow)
+		box at 0 -132 size 458x24 anchor center color #E6090E1A gradient #E6111C33 border #FF38BDF8 border_width 1 radius 6 shadow blur layer 11
+		box at -198 -132 size 56x16 anchor center color #CC162032 border #4438BDF8 radius 4 layer 11
+		box at -126 -132 size 64x16 anchor center color #CC162032 border #44FACC15 radius 4 layer 11
+		box at -58 -132 size 50x16 anchor center color #CC162032 border #44EF4444 radius 4 layer 11
+		box at 10 -132 size 68x16 anchor center color #CC162032 border #4422C55E radius 4 layer 11
+		box at 140 -132 size 166x16 anchor center color #CC162032 border #44C084FC radius 4 layer 11
 		image "td:textures/gui/icon_wave.png" at -216 -132 size 11x11 texture 32x32 anchor center layer 12 tooltip "&eТекущая волна"
 		text "&f0/20" at -190 -132 anchor center shadow layer 12 id hud_wave
 		image "td:textures/gui/icon_coin.png" at -148 -132 size 11x11 texture 32x32 anchor center layer 12 tooltip "&6Ваше личное золото"
@@ -907,8 +890,8 @@ function TdOpenMap2(p: player):
 		text "&a0" at 18 -132 anchor center shadow layer 12 id hud_score
 		text "&7Соло &7[x1]" at 140 -132 anchor center shadow layer 12 id hud_team
 
-		# Тактическая рамка + большая HD карта 448x224 (текстура 896x448)
-		bar "map_frame" value 0 max 1 at 0 -2 size 452x228 anchor center background #8838BDF8 layer 0
+		# Тактическая рамка с тенью + большая HD карта 448x224 (текстура 896x448)
+		box at 0 -2 size 454x230 anchor center color #AA090E1A border #AA38BDF8 border_width 2 radius 5 shadow layer 0
 		image "td:textures/gui/map_volcano.png" at 0 -2 size 448x224 texture 896x448 anchor center layer 1 id map
 		bar "boss_bar" value 100 max 100 at 0 -106 size 230x9 anchor center color #FFEF4444 background #CC1A0A0A text "&c&l☠ БОСС: %value%/%max%" shadow layer 14 hidden
 
@@ -917,7 +900,7 @@ function TdOpenMap2(p: player):
 		image "td:textures/gui/range_circle.png" at 0 0 size 260x260 texture 192x192 anchor center layer 2 id rng_m hidden
 		image "td:textures/gui/range_circle.png" at 0 0 size 390x390 texture 192x192 anchor center layer 2 id rng_l hidden
 
-		# Свободная сетка постройки 16x8 (клетка 28x28, тултипы обновляются автоматически!)
+		# Свободная сетка постройки 16x8 (клетка 28x28, живые тултипы!)
 		image "td:textures/gui/tile_build.png" at -70 -100 size 28x28 texture 28x28 anchor center layer 3 id c5_0 run TdCellClick(player, 5, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
 		image "td:textures/gui/tile_build.png" at -42 -100 size 28x28 texture 28x28 anchor center layer 3 id c6_0 run TdCellClick(player, 6, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
 		image "td:textures/gui/tile_build.png" at -14 -100 size 28x28 texture 28x28 anchor center layer 3 id c7_0 run TdCellClick(player, 7, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
@@ -1046,7 +1029,7 @@ function TdOpenMap2(p: player):
 		text "" at 0 0 anchor center shadow layer 6 id st27 hidden
 		text "" at 0 0 anchor center shadow layer 6 id st28 hidden
 
-		# 11 слотов обычных врагов + 1 слот Босса + тонкие полоски HP над каждым мобом
+		# 11 слотов обычных врагов + 1 слот Босса + тонкие HP-бары (60 FPS tween!)
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e1 hidden
 		bar "ehp1" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e2 hidden
@@ -1072,49 +1055,47 @@ function TdOpenMap2(p: player):
 		image "td:textures/gui/mob_boss.png" at -210 -72 size 32x32 texture 56x56 anchor center layer 8 id e12 hidden
 		bar "ehp12" value 100 max 100 at -210 -91 size 30x4 anchor center color #FFEF4444 background #CC1A0A0A layer 9 hidden
 
-		# 6 летающих HD прожектайлов + вспышка взрыва
+		# 6 летающих HD прожектайлов (60 FPS tween!)
 		image "td:textures/gui/proj_arrow.png" at 0 0 size 11x11 texture 20x20 anchor center layer 9 id pr1 hidden
 		image "td:textures/gui/proj_arrow.png" at 0 0 size 11x11 texture 20x20 anchor center layer 9 id pr2 hidden
 		image "td:textures/gui/proj_arrow.png" at 0 0 size 11x11 texture 20x20 anchor center layer 9 id pr3 hidden
 		image "td:textures/gui/proj_arrow.png" at 0 0 size 11x11 texture 20x20 anchor center layer 9 id pr4 hidden
 		image "td:textures/gui/proj_arrow.png" at 0 0 size 11x11 texture 20x20 anchor center layer 9 id pr5 hidden
 		image "td:textures/gui/proj_arrow.png" at 0 0 size 11x11 texture 20x20 anchor center layer 9 id pr6 hidden
-		image "td:textures/gui/fx_boom.png" at 0 0 size 20x20 texture 32x32 anchor center layer 10 id fx hidden
 
 		# Современная инфо-строка статуса
-		bar "bg_stat" value 0 max 1 at 0 119 size 458x15 anchor center background #E60B1220 layer 11
-		bar "stat_acc" value 1 max 1 at -227 119 size 3x15 anchor center color #FF38BDF8 background #FF38BDF8 layer 12
+		box at 0 119 size 458x15 anchor center color #E60B1220 border #3338BDF8 radius 4 layer 11
+		box at -226 119 size 3x11 anchor center color #FF38BDF8 radius 1 layer 12
 		text "&eВыбран: &fЛучник (50з) &7— наведи на башню для инфо, ЛКМ для постройки/апгрейда!" at 0 119 anchor center shadow layer 12 id status_txt
-		text "&c&lБАЗА ПАЛА!" at 0 -16 anchor center shadow layer 20 id end_title hidden
-		text "&fНажми &eR &f(рестарт) или &eM &f(меню)" at 0 2 anchor center shadow layer 20 id end_sub hidden
+		text "&c&lБАЗА ПАЛА!" at 0 -16 anchor center shadow scale 1.4 layer 20 id end_title hidden
+		text "&fНажми &eR &f(рестарт) или &eM &f(меню)" at 0 4 anchor center shadow layer 20 id end_sub hidden
 
-		# Нижняя панель инструментов (карточки слотов + индикатор выбора + 8 башен)
-		bar "bg_bar" value 0 max 1 at 0 148 size 458x42 anchor center background #F2090E1A layer 11
-		bar "bar_line" value 1 max 1 at 0 127 size 458x1 anchor center color #FF1E293B background #FF1E293B layer 12
-		bar "slot_bg1" value 0 max 1 at -208 148 size 32x34 anchor center background #CC162032 layer 11
-		bar "slot_bg2" value 0 max 1 at -172 148 size 32x34 anchor center background #CC162032 layer 11
-		bar "slot_bg3" value 0 max 1 at -136 148 size 32x34 anchor center background #CC162032 layer 11
-		bar "slot_bg4" value 0 max 1 at -100 148 size 32x34 anchor center background #CC162032 layer 11
-		bar "slot_bg5" value 0 max 1 at -64 148 size 32x34 anchor center background #CC162032 layer 11
-		bar "slot_bg6" value 0 max 1 at -28 148 size 32x34 anchor center background #CC162032 layer 11
-		bar "slot_bg7" value 0 max 1 at 8 148 size 32x34 anchor center background #CC162032 layer 11
-		bar "slot_bg8" value 0 max 1 at 44 148 size 32x34 anchor center background #CC162032 layer 11
-		bar "sel_bar" value 1 max 1 at -208 131 size 32x2 anchor center color #FFFACC15 background #FFFACC15 layer 13
-		image "td:textures/gui/tower_archer.png" at -208 142 size 22x22 texture 48x48 anchor center layer 12 id ico1 run TdSelectTool(player, 1) keep open tooltip "&e[1] Лучник &7(50з)\n&7Урон: 15 | Очень быстрый | Дальн: 98\n&6✦5★ Шквал: &fстреляет сразу по 2 целям!"
+		# Нижняя панель инструментов (скруглённые слоты + hover_scale + индикатор выбора)
+		box at 0 148 size 458x42 anchor center color #EE090E1A gradient #EE111827 border #FF1E293B radius 6 shadow blur layer 11
+		box at -208 148 size 32x34 anchor center color #CC162032 border #3338BDF8 radius 5 layer 11
+		box at -172 148 size 32x34 anchor center color #CC162032 border #3338BDF8 radius 5 layer 11
+		box at -136 148 size 32x34 anchor center color #CC162032 border #3338BDF8 radius 5 layer 11
+		box at -100 148 size 32x34 anchor center color #CC162032 border #3338BDF8 radius 5 layer 11
+		box at -64 148 size 32x34 anchor center color #CC162032 border #3338BDF8 radius 5 layer 11
+		box at -28 148 size 32x34 anchor center color #CC162032 border #3338BDF8 radius 5 layer 11
+		box at 8 148 size 32x34 anchor center color #CC162032 border #3338BDF8 radius 5 layer 11
+		box at 44 148 size 32x34 anchor center color #CC162032 border #3338BDF8 radius 5 layer 11
+		box at -208 131 size 30x2 anchor center color #FFFACC15 radius 1 id sel_bar layer 13
+		image "td:textures/gui/tower_archer.png" at -208 142 size 22x22 texture 48x48 anchor center hover_scale 1.14 layer 12 id ico1 run TdSelectTool(player, 1) keep open tooltip "&e[1] Лучник &7(50з)\n&7Урон: 15 | Очень быстрый | Дальн: 98\n&6✦5★ Шквал: &fстреляет сразу по 2 целям!"
 		text "&e[1]50" at -208 159 anchor center shadow layer 12 id lbl1
-		image "td:textures/gui/tower_cannon.png" at -172 142 size 22x22 texture 48x48 anchor center layer 12 id ico2 run TdSelectTool(player, 2) keep open tooltip "&6[2] Пушка &7(95з)\n&7Урон: 36 + &cСплеш | Дальн: 92\n&6✦5★ Напалм: &fмега-сплеш + поджог врагов!"
+		image "td:textures/gui/tower_cannon.png" at -172 142 size 22x22 texture 48x48 anchor center hover_scale 1.14 layer 12 id ico2 run TdSelectTool(player, 2) keep open tooltip "&6[2] Пушка &7(95з)\n&7Урон: 36 + &cСплеш | Дальн: 92\n&6✦5★ Напалм: &fмега-сплеш + поджог врагов!"
 		text "&7[2]95" at -172 159 anchor center shadow layer 12 id lbl2
-		image "td:textures/gui/tower_frost.png" at -136 142 size 22x22 texture 48x48 anchor center layer 12 id ico3 run TdSelectTool(player, 3) keep open tooltip "&b[3] Лёд &7(85з)\n&7Урон: 8 | &bАура замедления 40% по радиусу | Дальн: 96\n&6✦5★ Стужа: &f50% замедл. + 12% заморозка (0.5с, не боссов)"
+		image "td:textures/gui/tower_frost.png" at -136 142 size 22x22 texture 48x48 anchor center hover_scale 1.14 layer 12 id ico3 run TdSelectTool(player, 3) keep open tooltip "&b[3] Лёд &7(85з)\n&7Урон: 8 | &bАура замедления 40% по радиусу | Дальн: 96\n&6✦5★ Стужа: &f50% замедл. + 12% заморозка (0.5с, не боссов)"
 		text "&7[3]85" at -136 159 anchor center shadow layer 12 id lbl3
-		image "td:textures/gui/tower_mage.png" at -100 142 size 22x22 texture 48x48 anchor center layer 12 id ico4 run TdSelectTool(player, 4) keep open tooltip "&d[4] Маг &7(130з)\n&7Урон: 32 | &dДальность 132\n&6✦5★ Убийца Боссов: &fx2 Боссам + 4% макс.HP!"
+		image "td:textures/gui/tower_mage.png" at -100 142 size 22x22 texture 48x48 anchor center hover_scale 1.14 layer 12 id ico4 run TdSelectTool(player, 4) keep open tooltip "&d[4] Маг &7(130з)\n&7Урон: 32 | &dДальность 132\n&6✦5★ Убийца Боссов: &fx2 Боссам + 4% макс.HP!"
 		text "&7[4]130" at -100 159 anchor center shadow layer 12 id lbl4
-		image "td:textures/gui/tower_tesla.png" at -64 142 size 22x22 texture 48x48 anchor center layer 12 id ico5 run TdSelectTool(player, 5) keep open tooltip "&b[5] Тесла &7(115з)\n&7Урон: 20 | &bЦепная молния (3 цели) | Дальн: 108\n&6✦5★ Шторм: &f5 целей + 90% урон + стан!"
+		image "td:textures/gui/tower_tesla.png" at -64 142 size 22x22 texture 48x48 anchor center hover_scale 1.14 layer 12 id ico5 run TdSelectTool(player, 5) keep open tooltip "&b[5] Тесла &7(115з)\n&7Урон: 20 | &bЦепная молния (3 цели) | Дальн: 108\n&6✦5★ Шторм: &f5 целей + 90% урон + стан!"
 		text "&7[5]115" at -64 159 anchor center shadow layer 12 id lbl5
-		image "td:textures/gui/tower_sniper.png" at -28 142 size 22x22 texture 48x48 anchor center layer 12 id ico6 run TdSelectTool(player, 6) keep open tooltip "&c[6] Снайпер &7(150з)\n&7Урон: 56 | &cКрит 25% | Дальн: 215\n&6✦5★ Казнь: &fкрит 45% x2.5 + казнь <20% HP!"
+		image "td:textures/gui/tower_sniper.png" at -28 142 size 22x22 texture 48x48 anchor center hover_scale 1.14 layer 12 id ico6 run TdSelectTool(player, 6) keep open tooltip "&c[6] Снайпер &7(150з)\n&7Урон: 56 | &cКрит 25% | Дальн: 215\n&6✦5★ Казнь: &fкрит 45% x2.5 + казнь <20% HP!"
 		text "&7[6]150" at -28 159 anchor center shadow layer 12 id lbl6
-		image "td:textures/gui/tower_poison.png" at 8 142 size 22x22 texture 48x48 anchor center layer 12 id ico7 run TdSelectTool(player, 7) keep open tooltip "&a[7] Алхимик &7(105з)\n&7Урон: 12 + &aЯд (урон в сек.) | Дальн: 100\n&6✦5★ Чума: &fяд заражает всех врагов вокруг!"
+		image "td:textures/gui/tower_poison.png" at 8 142 size 22x22 texture 48x48 anchor center hover_scale 1.14 layer 12 id ico7 run TdSelectTool(player, 7) keep open tooltip "&a[7] Алхимик &7(105з)\n&7Урон: 12 + &aЯд (урон в сек.) | Дальн: 100\n&6✦5★ Чума: &fяд заражает всех врагов вокруг!"
 		text "&7[7]105" at 8 159 anchor center shadow layer 12 id lbl7
-		image "td:textures/gui/tower_farm.png" at 44 142 size 22x22 texture 48x48 anchor center layer 12 id ico8 run TdSelectTool(player, 8) keep open tooltip "&6[8] Банк &7(140з)\n&7Доход: &6+28/+50/+80/+120з &7каждую волну!\n&6✦5★ Дворец: &f+180з за волну и +1 HP базе!"
+		image "td:textures/gui/tower_farm.png" at 44 142 size 22x22 texture 48x48 anchor center hover_scale 1.14 layer 12 id ico8 run TdSelectTool(player, 8) keep open tooltip "&6[8] Банк &7(140з)\n&7Доход: &6+28/+50/+80/+120з &7каждую волну!\n&6✦5★ Дворец: &f+180з за волну и +1 HP базе!"
 		text "&7[8]140" at 44 159 anchor center shadow layer 12 id lbl8
 		button "&aСтарт/x2" at 118 139 size 68x16 anchor center run TdWaveOrSpeed(player) keep open tooltip "&aЗапустить волну &7(Space)\n&bВо время волны: скорость x1 / x2"
 		toggle "Авто" id autowave at 192 139 size 58x16 anchor center value false color #22C55E tooltip "&aАвто-волна\n&7Авто-старт следующей волны через 1.5с"
@@ -1123,14 +1104,13 @@ function TdOpenMap2(p: player):
 
 function TdOpenMap3(p: player):
 	open screen "Tower Defense" to p:
-		# Современный верхний HUD (стеклянная панель + карточки + неоновый акцент)
-		bar "bg_hud" value 0 max 1 at 0 -132 size 458x24 anchor center background #EE090E1A layer 11
-		bar "hud_line" value 1 max 1 at 0 -120 size 458x1 anchor center color #FF38BDF8 background #FF38BDF8 layer 12
-		bar "pill_w" value 0 max 1 at -198 -132 size 56x16 anchor center background #CC162032 layer 11
-		bar "pill_g" value 0 max 1 at -126 -132 size 64x16 anchor center background #CC162032 layer 11
-		bar "pill_h" value 0 max 1 at -58 -132 size 50x16 anchor center background #CC162032 layer 11
-		bar "pill_s" value 0 max 1 at 10 -132 size 68x16 anchor center background #CC162032 layer 11
-		bar "pill_t" value 0 max 1 at 140 -132 size 166x16 anchor center background #CC162032 layer 11
+		# Современный верхний HUD (скруглённые стеклянные карточки + blur + shadow)
+		box at 0 -132 size 458x24 anchor center color #E6090E1A gradient #E6111C33 border #FF38BDF8 border_width 1 radius 6 shadow blur layer 11
+		box at -198 -132 size 56x16 anchor center color #CC162032 border #4438BDF8 radius 4 layer 11
+		box at -126 -132 size 64x16 anchor center color #CC162032 border #44FACC15 radius 4 layer 11
+		box at -58 -132 size 50x16 anchor center color #CC162032 border #44EF4444 radius 4 layer 11
+		box at 10 -132 size 68x16 anchor center color #CC162032 border #4422C55E radius 4 layer 11
+		box at 140 -132 size 166x16 anchor center color #CC162032 border #44C084FC radius 4 layer 11
 		image "td:textures/gui/icon_wave.png" at -216 -132 size 11x11 texture 32x32 anchor center layer 12 tooltip "&eТекущая волна"
 		text "&f0/20" at -190 -132 anchor center shadow layer 12 id hud_wave
 		image "td:textures/gui/icon_coin.png" at -148 -132 size 11x11 texture 32x32 anchor center layer 12 tooltip "&6Ваше личное золото"
@@ -1141,8 +1121,8 @@ function TdOpenMap3(p: player):
 		text "&a0" at 18 -132 anchor center shadow layer 12 id hud_score
 		text "&7Соло &7[x1]" at 140 -132 anchor center shadow layer 12 id hud_team
 
-		# Тактическая рамка + большая HD карта 448x224 (текстура 896x448)
-		bar "map_frame" value 0 max 1 at 0 -2 size 452x228 anchor center background #8838BDF8 layer 0
+		# Тактическая рамка с тенью + большая HD карта 448x224 (текстура 896x448)
+		box at 0 -2 size 454x230 anchor center color #AA090E1A border #AA38BDF8 border_width 2 radius 5 shadow layer 0
 		image "td:textures/gui/map_ice.png" at 0 -2 size 448x224 texture 896x448 anchor center layer 1 id map
 		bar "boss_bar" value 100 max 100 at 0 -106 size 230x9 anchor center color #FFEF4444 background #CC1A0A0A text "&c&l☠ БОСС: %value%/%max%" shadow layer 14 hidden
 
@@ -1151,7 +1131,7 @@ function TdOpenMap3(p: player):
 		image "td:textures/gui/range_circle.png" at 0 0 size 260x260 texture 192x192 anchor center layer 2 id rng_m hidden
 		image "td:textures/gui/range_circle.png" at 0 0 size 390x390 texture 192x192 anchor center layer 2 id rng_l hidden
 
-		# Свободная сетка постройки 16x8 (клетка 28x28, тултипы обновляются автоматически!)
+		# Свободная сетка постройки 16x8 (клетка 28x28, живые тултипы!)
 		image "td:textures/gui/tile_build.png" at -210 -100 size 28x28 texture 28x28 anchor center layer 3 id c0_0 run TdCellClick(player, 0, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
 		image "td:textures/gui/tile_build.png" at -182 -100 size 28x28 texture 28x28 anchor center layer 3 id c1_0 run TdCellClick(player, 1, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
 		image "td:textures/gui/tile_build.png" at -154 -100 size 28x28 texture 28x28 anchor center layer 3 id c2_0 run TdCellClick(player, 2, 0) keep open tooltip "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню"
@@ -1283,7 +1263,7 @@ function TdOpenMap3(p: player):
 		text "" at 0 0 anchor center shadow layer 6 id st27 hidden
 		text "" at 0 0 anchor center shadow layer 6 id st28 hidden
 
-		# 11 слотов обычных врагов + 1 слот Босса + тонкие полоски HP над каждым мобом
+		# 11 слотов обычных врагов + 1 слот Босса + тонкие HP-бары (60 FPS tween!)
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e1 hidden
 		bar "ehp1" value 100 max 100 at -210 -85 size 20x3 anchor center color #FF22C55E background #CC0F172A layer 8 hidden
 		image "td:textures/gui/mob_slime.png" at -210 -72 size 22x22 texture 40x40 anchor center layer 7 id e2 hidden
@@ -1309,49 +1289,47 @@ function TdOpenMap3(p: player):
 		image "td:textures/gui/mob_boss.png" at -210 -72 size 32x32 texture 56x56 anchor center layer 8 id e12 hidden
 		bar "ehp12" value 100 max 100 at -210 -91 size 30x4 anchor center color #FFEF4444 background #CC1A0A0A layer 9 hidden
 
-		# 6 летающих HD прожектайлов + вспышка взрыва
+		# 6 летающих HD прожектайлов (60 FPS tween!)
 		image "td:textures/gui/proj_arrow.png" at 0 0 size 11x11 texture 20x20 anchor center layer 9 id pr1 hidden
 		image "td:textures/gui/proj_arrow.png" at 0 0 size 11x11 texture 20x20 anchor center layer 9 id pr2 hidden
 		image "td:textures/gui/proj_arrow.png" at 0 0 size 11x11 texture 20x20 anchor center layer 9 id pr3 hidden
 		image "td:textures/gui/proj_arrow.png" at 0 0 size 11x11 texture 20x20 anchor center layer 9 id pr4 hidden
 		image "td:textures/gui/proj_arrow.png" at 0 0 size 11x11 texture 20x20 anchor center layer 9 id pr5 hidden
 		image "td:textures/gui/proj_arrow.png" at 0 0 size 11x11 texture 20x20 anchor center layer 9 id pr6 hidden
-		image "td:textures/gui/fx_boom.png" at 0 0 size 20x20 texture 32x32 anchor center layer 10 id fx hidden
 
 		# Современная инфо-строка статуса
-		bar "bg_stat" value 0 max 1 at 0 119 size 458x15 anchor center background #E60B1220 layer 11
-		bar "stat_acc" value 1 max 1 at -227 119 size 3x15 anchor center color #FF38BDF8 background #FF38BDF8 layer 12
+		box at 0 119 size 458x15 anchor center color #E60B1220 border #3338BDF8 radius 4 layer 11
+		box at -226 119 size 3x11 anchor center color #FF38BDF8 radius 1 layer 12
 		text "&eВыбран: &fЛучник (50з) &7— наведи на башню для инфо, ЛКМ для постройки/апгрейда!" at 0 119 anchor center shadow layer 12 id status_txt
-		text "&c&lБАЗА ПАЛА!" at 0 -16 anchor center shadow layer 20 id end_title hidden
-		text "&fНажми &eR &f(рестарт) или &eM &f(меню)" at 0 2 anchor center shadow layer 20 id end_sub hidden
+		text "&c&lБАЗА ПАЛА!" at 0 -16 anchor center shadow scale 1.4 layer 20 id end_title hidden
+		text "&fНажми &eR &f(рестарт) или &eM &f(меню)" at 0 4 anchor center shadow layer 20 id end_sub hidden
 
-		# Нижняя панель инструментов (карточки слотов + индикатор выбора + 8 башен)
-		bar "bg_bar" value 0 max 1 at 0 148 size 458x42 anchor center background #F2090E1A layer 11
-		bar "bar_line" value 1 max 1 at 0 127 size 458x1 anchor center color #FF1E293B background #FF1E293B layer 12
-		bar "slot_bg1" value 0 max 1 at -208 148 size 32x34 anchor center background #CC162032 layer 11
-		bar "slot_bg2" value 0 max 1 at -172 148 size 32x34 anchor center background #CC162032 layer 11
-		bar "slot_bg3" value 0 max 1 at -136 148 size 32x34 anchor center background #CC162032 layer 11
-		bar "slot_bg4" value 0 max 1 at -100 148 size 32x34 anchor center background #CC162032 layer 11
-		bar "slot_bg5" value 0 max 1 at -64 148 size 32x34 anchor center background #CC162032 layer 11
-		bar "slot_bg6" value 0 max 1 at -28 148 size 32x34 anchor center background #CC162032 layer 11
-		bar "slot_bg7" value 0 max 1 at 8 148 size 32x34 anchor center background #CC162032 layer 11
-		bar "slot_bg8" value 0 max 1 at 44 148 size 32x34 anchor center background #CC162032 layer 11
-		bar "sel_bar" value 1 max 1 at -208 131 size 32x2 anchor center color #FFFACC15 background #FFFACC15 layer 13
-		image "td:textures/gui/tower_archer.png" at -208 142 size 22x22 texture 48x48 anchor center layer 12 id ico1 run TdSelectTool(player, 1) keep open tooltip "&e[1] Лучник &7(50з)\n&7Урон: 15 | Очень быстрый | Дальн: 98\n&6✦5★ Шквал: &fстреляет сразу по 2 целям!"
+		# Нижняя панель инструментов (скруглённые слоты + hover_scale + индикатор выбора)
+		box at 0 148 size 458x42 anchor center color #EE090E1A gradient #EE111827 border #FF1E293B radius 6 shadow blur layer 11
+		box at -208 148 size 32x34 anchor center color #CC162032 border #3338BDF8 radius 5 layer 11
+		box at -172 148 size 32x34 anchor center color #CC162032 border #3338BDF8 radius 5 layer 11
+		box at -136 148 size 32x34 anchor center color #CC162032 border #3338BDF8 radius 5 layer 11
+		box at -100 148 size 32x34 anchor center color #CC162032 border #3338BDF8 radius 5 layer 11
+		box at -64 148 size 32x34 anchor center color #CC162032 border #3338BDF8 radius 5 layer 11
+		box at -28 148 size 32x34 anchor center color #CC162032 border #3338BDF8 radius 5 layer 11
+		box at 8 148 size 32x34 anchor center color #CC162032 border #3338BDF8 radius 5 layer 11
+		box at 44 148 size 32x34 anchor center color #CC162032 border #3338BDF8 radius 5 layer 11
+		box at -208 131 size 30x2 anchor center color #FFFACC15 radius 1 id sel_bar layer 13
+		image "td:textures/gui/tower_archer.png" at -208 142 size 22x22 texture 48x48 anchor center hover_scale 1.14 layer 12 id ico1 run TdSelectTool(player, 1) keep open tooltip "&e[1] Лучник &7(50з)\n&7Урон: 15 | Очень быстрый | Дальн: 98\n&6✦5★ Шквал: &fстреляет сразу по 2 целям!"
 		text "&e[1]50" at -208 159 anchor center shadow layer 12 id lbl1
-		image "td:textures/gui/tower_cannon.png" at -172 142 size 22x22 texture 48x48 anchor center layer 12 id ico2 run TdSelectTool(player, 2) keep open tooltip "&6[2] Пушка &7(95з)\n&7Урон: 36 + &cСплеш | Дальн: 92\n&6✦5★ Напалм: &fмега-сплеш + поджог врагов!"
+		image "td:textures/gui/tower_cannon.png" at -172 142 size 22x22 texture 48x48 anchor center hover_scale 1.14 layer 12 id ico2 run TdSelectTool(player, 2) keep open tooltip "&6[2] Пушка &7(95з)\n&7Урон: 36 + &cСплеш | Дальн: 92\n&6✦5★ Напалм: &fмега-сплеш + поджог врагов!"
 		text "&7[2]95" at -172 159 anchor center shadow layer 12 id lbl2
-		image "td:textures/gui/tower_frost.png" at -136 142 size 22x22 texture 48x48 anchor center layer 12 id ico3 run TdSelectTool(player, 3) keep open tooltip "&b[3] Лёд &7(85з)\n&7Урон: 8 | &bАура замедления 40% по радиусу | Дальн: 96\n&6✦5★ Стужа: &f50% замедл. + 12% заморозка (0.5с, не боссов)"
+		image "td:textures/gui/tower_frost.png" at -136 142 size 22x22 texture 48x48 anchor center hover_scale 1.14 layer 12 id ico3 run TdSelectTool(player, 3) keep open tooltip "&b[3] Лёд &7(85з)\n&7Урон: 8 | &bАура замедления 40% по радиусу | Дальн: 96\n&6✦5★ Стужа: &f50% замедл. + 12% заморозка (0.5с, не боссов)"
 		text "&7[3]85" at -136 159 anchor center shadow layer 12 id lbl3
-		image "td:textures/gui/tower_mage.png" at -100 142 size 22x22 texture 48x48 anchor center layer 12 id ico4 run TdSelectTool(player, 4) keep open tooltip "&d[4] Маг &7(130з)\n&7Урон: 32 | &dДальность 132\n&6✦5★ Убийца Боссов: &fx2 Боссам + 4% макс.HP!"
+		image "td:textures/gui/tower_mage.png" at -100 142 size 22x22 texture 48x48 anchor center hover_scale 1.14 layer 12 id ico4 run TdSelectTool(player, 4) keep open tooltip "&d[4] Маг &7(130з)\n&7Урон: 32 | &dДальность 132\n&6✦5★ Убийца Боссов: &fx2 Боссам + 4% макс.HP!"
 		text "&7[4]130" at -100 159 anchor center shadow layer 12 id lbl4
-		image "td:textures/gui/tower_tesla.png" at -64 142 size 22x22 texture 48x48 anchor center layer 12 id ico5 run TdSelectTool(player, 5) keep open tooltip "&b[5] Тесла &7(115з)\n&7Урон: 20 | &bЦепная молния (3 цели) | Дальн: 108\n&6✦5★ Шторм: &f5 целей + 90% урон + стан!"
+		image "td:textures/gui/tower_tesla.png" at -64 142 size 22x22 texture 48x48 anchor center hover_scale 1.14 layer 12 id ico5 run TdSelectTool(player, 5) keep open tooltip "&b[5] Тесла &7(115з)\n&7Урон: 20 | &bЦепная молния (3 цели) | Дальн: 108\n&6✦5★ Шторм: &f5 целей + 90% урон + стан!"
 		text "&7[5]115" at -64 159 anchor center shadow layer 12 id lbl5
-		image "td:textures/gui/tower_sniper.png" at -28 142 size 22x22 texture 48x48 anchor center layer 12 id ico6 run TdSelectTool(player, 6) keep open tooltip "&c[6] Снайпер &7(150з)\n&7Урон: 56 | &cКрит 25% | Дальн: 215\n&6✦5★ Казнь: &fкрит 45% x2.5 + казнь <20% HP!"
+		image "td:textures/gui/tower_sniper.png" at -28 142 size 22x22 texture 48x48 anchor center hover_scale 1.14 layer 12 id ico6 run TdSelectTool(player, 6) keep open tooltip "&c[6] Снайпер &7(150з)\n&7Урон: 56 | &cКрит 25% | Дальн: 215\n&6✦5★ Казнь: &fкрит 45% x2.5 + казнь <20% HP!"
 		text "&7[6]150" at -28 159 anchor center shadow layer 12 id lbl6
-		image "td:textures/gui/tower_poison.png" at 8 142 size 22x22 texture 48x48 anchor center layer 12 id ico7 run TdSelectTool(player, 7) keep open tooltip "&a[7] Алхимик &7(105з)\n&7Урон: 12 + &aЯд (урон в сек.) | Дальн: 100\n&6✦5★ Чума: &fяд заражает всех врагов вокруг!"
+		image "td:textures/gui/tower_poison.png" at 8 142 size 22x22 texture 48x48 anchor center hover_scale 1.14 layer 12 id ico7 run TdSelectTool(player, 7) keep open tooltip "&a[7] Алхимик &7(105з)\n&7Урон: 12 + &aЯд (урон в сек.) | Дальн: 100\n&6✦5★ Чума: &fяд заражает всех врагов вокруг!"
 		text "&7[7]105" at 8 159 anchor center shadow layer 12 id lbl7
-		image "td:textures/gui/tower_farm.png" at 44 142 size 22x22 texture 48x48 anchor center layer 12 id ico8 run TdSelectTool(player, 8) keep open tooltip "&6[8] Банк &7(140з)\n&7Доход: &6+28/+50/+80/+120з &7каждую волну!\n&6✦5★ Дворец: &f+180з за волну и +1 HP базе!"
+		image "td:textures/gui/tower_farm.png" at 44 142 size 22x22 texture 48x48 anchor center hover_scale 1.14 layer 12 id ico8 run TdSelectTool(player, 8) keep open tooltip "&6[8] Банк &7(140з)\n&7Доход: &6+28/+50/+80/+120з &7каждую волну!\n&6✦5★ Дворец: &f+180з за волну и +1 HP базе!"
 		text "&7[8]140" at 44 159 anchor center shadow layer 12 id lbl8
 		button "&aСтарт/x2" at 118 139 size 68x16 anchor center run TdWaveOrSpeed(player) keep open tooltip "&aЗапустить волну &7(Space)\n&bВо время волны: скорость x1 / x2"
 		toggle "Авто" id autowave at 192 139 size 58x16 anchor center value false color #22C55E tooltip "&aАвто-волна\n&7Авто-старт следующей волны через 1.5с"
@@ -1389,7 +1367,7 @@ function TdSelectTool(p: player, tool: number):
 	set text of screen element "lbl7" for p to "&7[7]105"
 	set text of screen element "lbl8" for p to "&7[8]140"
 	set {-sx} to -208 + (tool - 1) * 36
-	set position of screen element "sel_bar" for p to {-sx} 131
+	animate screen "sel_bar" for p to {-sx} 131 in 3 ticks
 	if tool is 1:
 		set text of screen element "lbl1" for p to "&e[1]50"
 		set text of screen element "status_txt" for p to "&eЛучник (50з) &7| &6✦5★: &fШквал по 2 целям!"
@@ -1446,7 +1424,6 @@ function TdWaveOrSpeed(p: player):
 	TdNextWave({-g})
 
 function TdTowerRange(tt: number, lvl: number):
-	# Вычисляем радиус в {-td-tmp-rng}
 	set {-r} to 98
 	if tt is 2:
 		set {-r} to 92
@@ -1499,12 +1476,14 @@ function TdCellClick(p: player, col: integer, row: integer):
 		TdShowRange(p, 0, 0, 0)
 		TdSyncCell({-g}, col, row, {-tx}, {-ty}, "td:textures/gui/tile_build.png", "&7Свободная клетка\n&aЛКМ: &fпостроить выбранную башню")
 		TdSyncHide({-g}, "st%{-tid}%")
+		gui float "&6+%{-ref}%з" at {-tx} {-ty} color #FACC15 for 16 ticks to {-td-online::%{-g}%::*}
+		gui particle "gold" count 8 at {-tx} {-ty} spread 22 to {-td-online::%{-g}%::*}
 		TdSyncStatus({-g}, "&e%p% продал башню (+%{-ref}%з)")
 		TdSyncSound({-g}, "entity.experience_orb.pickup", 0.6, 0.9)
 		TdSyncGoldScore({-g})
 		stop
 
-	# Клик по построенной башне -> показываем её круг радиуса + улучшаем/эволюционируем!
+	# Клик по построенной башне -> радиус + апгрейд/эволюция!
 	if {-tid} > 0:
 		set {-lvl} to {-td-tl::%{-g}%::%{-tid}%}
 		set {-tt} to {-td-tt::%{-g}%::%{-tid}%}
@@ -1540,12 +1519,15 @@ function TdCellClick(p: player, col: integer, row: integer):
 		TdShowRange(p, {-tx}, {-ty}, {-td-tmp-rng})
 		TdSyncTowerVisual({-g}, {-tid})
 		if {-nl} is 2:
+			gui particle "spark" count 8 at {-tx} {-ty} color #FACC15 spread 20 to {-td-online::%{-g}%::*}
 			TdSyncStatus({-g}, "&a%p% улучшил башню (%{-own}%) → ур.2! (-%{-up}%з)")
 			TdSyncSound({-g}, "entity.player.levelup", 0.5, 1.35)
 		else if {-nl} is 3:
+			gui particle "magic" count 10 at {-tx} {-ty} spread 24 to {-td-online::%{-g}%::*}
 			TdSyncStatus({-g}, "&a%p% улучшил башню (%{-own}%) → ур.3! (-%{-up}%з)")
 			TdSyncSound({-g}, "entity.player.levelup", 0.5, 1.45)
 		else if {-nl} is 4:
+			gui particle "magic" count 12 at {-tx} {-ty} color #38BDF8 spread 28 to {-td-online::%{-g}%::*}
 			TdSyncStatus({-g}, "&b%p% поднял ур.4! След. клик (570з) → &6&l✦5★ ЭВОЛЮЦИЯ!")
 			TdSyncSound({-g}, "entity.player.levelup", 0.55, 1.6)
 		else:
@@ -1564,6 +1546,8 @@ function TdCellClick(p: player, col: integer, row: integer):
 				set {-evo} to "Чума (заразный яд по области!)"
 			else if {-tt} is 8:
 				set {-evo} to "Золотой Дворец (+180з и +1 HP!)"
+			gui float "&6&l✦ 5★ ЭВОЛЮЦИЯ!" at {-tx} {-ty} color #FACC15 for 24 ticks to {-td-online::%{-g}%::*}
+			gui particle "gold" count 18 at {-tx} {-ty} spread 38 to {-td-online::%{-g}%::*}
 			TdSyncStatus({-g}, "&6&l✦ ЭВОЛЮЦИЯ 5★! &f%p% открыл: &e%{-evo}%")
 			TdSyncSound({-g}, "ui.toast.challenge_complete", 0.75, 1.2)
 		TdSyncGoldScore({-g})
@@ -1622,6 +1606,7 @@ function TdCellClick(p: player, col: integer, row: integer):
 	TdTowerRange({-tool}, 1)
 	TdShowRange(p, {-cx}, {-cy}, {-td-tmp-rng})
 	TdSyncTowerVisual({-g}, {-slot})
+	gui particle "spark" count 8 at {-cx} {-cy} color #38BDF8 spread 22 to {-td-online::%{-g}%::*}
 	TdSyncStatus({-g}, "&a%p% построил башню! Наведи курсор для статов, ЛКМ — апгрейд")
 	TdSyncSound({-g}, "block.anvil.use", 0.35, 1.5)
 	TdSyncGoldScore({-g})
@@ -1664,24 +1649,23 @@ function TdNextWave(g: player):
 	TdSyncHud(g)
 
 # ==========================================================
-#  ОСНОВНОЙ ТИК ИГРЫ
+#  ОСНОВНОЙ ТИК ИГРЫ (5 ТИКОВ/СЕК x1, 10 ТИКОВ/СЕК x2 + 60 FPS TWEEN)
 # ==========================================================
 
 function TdTick(g: player):
 	if {-td-over::%g%} is 1:
 		stop
 
-	if {-td-fx-cd::%g%} > 0:
-		remove 1 from {-td-fx-cd::%g%}
-		if {-td-fx-cd::%g%} <= 0:
-			TdSyncHide(g, "fx")
-
 	if {-td-in-wave::%g%} is 0:
 		if {-td-auto::%g%} is 1 and {-td-wave::%g%} > 0 and {-td-wave::%g%} < {-td-maxw::%g%}:
 			add 1 to {-td-auto-cd::%g%}
-			if {-td-auto-cd::%g%} >= 15:
+			if {-td-auto-cd::%g%} >= 8:
 				TdNextWave(g)
 		stop
+
+	set {-anim} to 4
+	if {-td-speed::%g%} is 2:
+		set {-anim} to 2
 
 	# 1. Спавн врагов
 	if {-td-to-spawn::%g%} > 0 or {-td-spawn-boss::%g%} > 0:
@@ -1689,7 +1673,7 @@ function TdTick(g: player):
 		if {-td-spawn-cd::%g%} <= 0:
 			TdSpawnNext(g)
 
-	# 2. Враги: регенерация Некроманта, горение Напалма, яд Алхимика, движение
+	# 2. Враги: регенерация, горение, яд, плавное движение (tween!)
 	set {-boss-alive} to 0
 	loop 12 times:
 		set {-ei} to %loop-number%
@@ -1705,7 +1689,7 @@ function TdTick(g: player):
 				remove 1 from {-td-epoison::%g%::%{-ei}%}
 				TdDamageEnemy(g, {-ei}, {-td-epoison-d::%g%::%{-ei}%}, 0, 0)
 			if {-td-ea::%g%::%{-ei}%} is 1:
-				TdMoveEnemy(g, {-ei})
+				TdMoveEnemy(g, {-ei}, {-anim})
 			if {-td-ea::%g%::%{-ei}%} is 1 and {-td-eboss::%g%::%{-ei}%} is 1:
 				set {-boss-alive} to 1
 				TdSyncBossBar(g, {-td-ehp::%g%::%{-ei}%}, 0)
@@ -1715,9 +1699,9 @@ function TdTick(g: player):
 
 	# 3. Полёт прожектайлов (только если есть активные снаряды)
 	if {-td-prcnt::%g%} > 0:
-		TdMoveProjectiles(g)
+		TdMoveProjectiles(g, {-anim})
 
-	# 4. Стрельба всех башен (кроме Банка; тикаем кд прямо здесь и не перебираем пустые слоты!)
+	# 4. Стрельба всех башен (инлайн кд + цикл только до tmax!)
 	set {-tmax} to {-td-tmax::%g%}
 	if {-tmax} > 0:
 		loop {-tmax} times:
@@ -1743,31 +1727,32 @@ function TdTick(g: player):
 			loop {-td-team::%g%::*}:
 				set {-tp} to %loop-value%
 				add {-bonus} to {-td-gold::%{-tp}%}
-			# Доход от Банков (башня #8) их владельцам + лечение базы от ✦5★ Дворца!
 			set {-bank-tot} to 0
-			loop 28 times:
-				set {-bi} to %loop-number%
-				if {-td-ta::%g%::%{-bi}%} is 1 and {-td-tt::%g%::%{-bi}%} is 8:
-					set {-bl} to {-td-tl::%g%::%{-bi}%}
-					set {-inc} to 28
-					if {-bl} is 2:
-						set {-inc} to 50
-					else if {-bl} is 3:
-						set {-inc} to 80
-					else if {-bl} is 4:
-						set {-inc} to 120
-					else if {-bl} >= 5:
-						set {-inc} to 180
-						add 1 to {-td-hp::%g%}
-					set {-bo} to {-td-towner::%g%::%{-bi}%}
-					add {-inc} to {-td-gold::%{-bo}%}
-					add {-inc} to {-bank-tot}
+			if {-tmax} > 0:
+				loop {-tmax} times:
+					set {-bi} to %loop-number%
+					if {-td-ta::%g%::%{-bi}%} is 1 and {-td-tt::%g%::%{-bi}%} is 8:
+						set {-bl} to {-td-tl::%g%::%{-bi}%}
+						set {-inc} to 28
+						if {-bl} is 2:
+							set {-inc} to 50
+						else if {-bl} is 3:
+							set {-inc} to 80
+						else if {-bl} is 4:
+							set {-inc} to 120
+						else if {-bl} >= 5:
+							set {-inc} to 180
+							add 1 to {-td-hp::%g%}
+						set {-bo} to {-td-towner::%g%::%{-bi}%}
+						add {-inc} to {-td-gold::%{-bo}%}
+						add {-inc} to {-bank-tot}
 			add 100 + {-td-wave::%g%} * 15 to {-td-score::%g%}
 			TdSyncHud(g)
 			if {-td-wave::%g%} >= {-td-maxw::%g%}:
 				TdWin(g)
 			else:
 				if {-bank-tot} > 0:
+					gui float "&6+%{-bank-tot}%з от Банков!" at 0 -30 color #FACC15 for 24 ticks to {-td-online::%g%::*}
 					TdSyncStatus(g, "&aВолна %{-td-wave::%g%}%/%{-td-maxw::%g%}% пройдена! +%{-bonus}%з &6(+%{-bank-tot}%з от Банков!)")
 				else:
 					TdSyncStatus(g, "&aВолна %{-td-wave::%g%}%/%{-td-maxw::%g%}% пройдена! +%{-bonus}%з. Жмите &eSpace!")
@@ -1781,7 +1766,6 @@ function TdSpawnNext(g: player):
 		set {-dmul} to 0.85
 	else if {-d} is 3:
 		set {-dmul} to 1.25
-	# Масштабирование сложности для 1..4 игроков!
 	set {-pcnt} to size of {-td-team::%g%::*}
 	if {-pcnt} is 2:
 		set {-dmul} to {-dmul} * 1.45
@@ -1800,64 +1784,64 @@ function TdSpawnNext(g: player):
 			if {-td-ea::%g%::%{-k}%} is 0 and {-slot} is 0:
 				set {-slot} to {-k}
 		if {-slot} is 0:
-			set {-td-spawn-cd::%g%} to 2
+			set {-td-spawn-cd::%g%} to 1
 			stop
 		remove 1 from {-td-to-spawn::%g%}
 
+		# Скорости адаптированы под 4-tick цикл (в 2 раза реже тики -> в 2 раза длиннее шаг + 60 FPS tween!)
 		set {-hp} to round((35 + {-w} * 25 + {-w} * {-w} * 2.6) * {-dmul})
-		set {-spd} to 4.1 + {-w} * 0.09
+		set {-spd} to 8.2 + {-w} * 0.18
 		set {-rew} to 10 + round({-w} * 0.65)
-		set {-cd} to 7 - floor({-w} / 6)
-		if {-cd} < 3:
-			set {-cd} to 3
+		set {-cd} to 4 - floor({-w} / 10)
+		if {-cd} < 2:
+			set {-cd} to 2
 		set {-tex} to "td:textures/gui/mob_slime.png"
 		set {-reg} to 0
 		set {-imm} to 0
 		set {-bdmg} to 1
 
-		# 10 видов обычных мобов с уникальными свойствами!
 		set {-m10} to {-w} % 10
 		if {-m10} is 2:
 			set {-tex} to "td:textures/gui/mob_goblin.png"
 			set {-hp} to round({-hp} * 0.7)
-			set {-spd} to {-spd} + 1.65
-			set {-cd} to 3
+			set {-spd} to {-spd} + 3.3
+			set {-cd} to 2
 		else if {-m10} is 3:
 			set {-tex} to "td:textures/gui/mob_orc.png"
 			set {-hp} to round({-hp} * 1.15)
 		else if {-m10} is 4:
 			set {-tex} to "td:textures/gui/mob_spider.png"
 			set {-hp} to round({-hp} * 0.8)
-			set {-spd} to {-spd} + 1.35
-			set {-cd} to 3
+			set {-spd} to {-spd} + 2.7
+			set {-cd} to 2
 		else if {-m10} is 5:
 			set {-tex} to "td:textures/gui/mob_knight.png"
 			set {-hp} to round({-hp} * 1.35)
-			set {-spd} to {-spd} - 0.35
+			set {-spd} to {-spd} - 0.7
 		else if {-m10} is 6:
 			set {-tex} to "td:textures/gui/mob_ghost.png"
 			set {-hp} to round({-hp} * 0.88)
-			set {-spd} to {-spd} + 1.2
+			set {-spd} to {-spd} + 2.4
 		else if {-m10} is 7:
 			set {-tex} to "td:textures/gui/mob_necromancer.png"
 			set {-hp} to round({-hp} * 1.1)
-			set {-reg} to round({-hp} * 0.015)
+			set {-reg} to round({-hp} * 0.03)
 			add 4 to {-rew}
 		else if {-m10} is 8:
 			set {-tex} to "td:textures/gui/mob_blaze.png"
 			set {-hp} to round({-hp} * 1.05)
-			set {-spd} to {-spd} + 0.65
+			set {-spd} to {-spd} + 1.3
 			set {-imm} to 1
 			add 4 to {-rew}
 		else if {-m10} is 9:
 			set {-tex} to "td:textures/gui/mob_golem.png"
 			set {-hp} to round({-hp} * 1.7)
-			set {-spd} to {-spd} - 0.8
+			set {-spd} to {-spd} - 1.6
 			add 6 to {-rew}
 		else if {-m10} is 0:
 			set {-tex} to "td:textures/gui/mob_ravager.png"
 			set {-hp} to round({-hp} * 1.85)
-			set {-spd} to {-spd} - 0.5
+			set {-spd} to {-spd} - 1.0
 			set {-bdmg} to 2
 			add 8 to {-rew}
 
@@ -1894,7 +1878,7 @@ function TdSpawnNext(g: player):
 		set {-bk} to {-td-spawn-boss::%g%}
 		set {-td-spawn-boss::%g%} to 0
 		set {-bhp} to round((520 + {-bk} * {-bk} * 420) * {-dmul})
-		set {-bspd} to 2.6 + {-bk} * 0.09
+		set {-bspd} to 5.2 + {-bk} * 0.18
 		set {-brew} to 90 + {-bk} * 75
 		set {-btex} to "td:textures/gui/mob_boss.png"
 		if {-w} is {-td-maxw::%g%}:
@@ -1931,8 +1915,9 @@ function TdSpawnNext(g: player):
 		TdSyncShow(g, "ehp12")
 		TdSyncBossBar(g, {-bhp}, {-bhp})
 		TdSyncShow(g, "boss_bar")
+		gui particle "explosion" count 16 at {-sx} {-sy} color #EF4444 spread 36 to {-td-online::%g%::*}
 
-function TdMoveEnemy(g: player, i: number):
+function TdMoveEnemy(g: player, i: number, anim: number):
 	if {-td-efreeze::%g%::%i%} > 0:
 		remove 1 from {-td-efreeze::%g%::%i%}
 		stop
@@ -1961,11 +1946,9 @@ function TdMoveEnemy(g: player, i: number):
 			set {-dmg} to {-td-ebdmg::%g%::%i%}
 			remove {-dmg} from {-td-hp::%g%}
 			TdSyncSound(g, "entity.iron_golem.damage", 0.7, 0.8)
-			loop {-td-team::%g%::*}:
-				set {-tp} to %loop-value%
-				if {-tp} is online and {-tp} has screen "Tower Defense" open:
-					shake camera of {-tp} with intensity 1.6 for 8 ticks
-					fade screen of {-tp} to #FF1100 in 2 stay 2 out 8 ticks
+			shake camera of {-td-online::%g%::*} with intensity 1.6 for 8 ticks
+			fade screen of {-td-online::%g%::*} to #FF1100 in 2 stay 2 out 8 ticks
+			gui float "&c-%{-dmg}% HP!" at {-tx} {-ty} color #EF4444 for 18 ticks to {-td-online::%g%::*}
 			TdSyncHud(g)
 			if {-td-hp::%g%} <= 0:
 				TdLose(g)
@@ -1977,21 +1960,17 @@ function TdMoveEnemy(g: player, i: number):
 	set {-td-ex::%g%::%i%} to {-x}
 	set {-td-ey::%g%::%i%} to {-y}
 	set {-td-eseg::%g%::%i%} to {-seg}
-	TdSyncPos(g, "e%i%", {-x}, {-y})
+	TdSyncAnim(g, "e%i%", {-x}, {-y}, anim)
 	set {-hy} to {-y} - 13
 	if {-td-eboss::%g%::%i%} is 1:
 		set {-hy} to {-y} - 19
-	TdSyncPos(g, "ehp%i%", {-x}, {-hy})
+	TdSyncAnim(g, "ehp%i%", {-x}, {-hy}, anim)
 
 # ==========================================================
-#  БАШНИ, ЭВОЛЮЦИИ ✦5★ И ЛЕТАЮЩИЕ ПРОЖЕКТАЙЛЫ
+#  БАШНИ, ЭВОЛЮЦИИ ✦5★, ЛЕТАЮЩИЕ ПРОЖЕКТАЙЛЫ И GUI-ЧАСТИЦЫ
 # ==========================================================
 
 function TdTowerTick(g: player, tid: number):
-	if {-td-tcd::%g%::%tid%} > 0:
-		remove 1 from {-td-tcd::%g%::%tid%}
-		stop
-
 	set {-type} to {-td-tt::%g%::%tid%}
 	set {-lvl} to {-td-tl::%g%::%tid%}
 	set {-tx} to {-td-tx::%g%::%tid%}
@@ -2004,46 +1983,47 @@ function TdTowerTick(g: player, tid: number):
 	set {-range} to {-td-tmp-rng}
 	set {-r2} to {-range} * {-range}
 
+	# Кулдауны и скорости снарядов под 4-tick цикл (ровно тот же DPS при вдвое меньшей нагрузке!)
 	set {-dmg} to 15
-	set {-cd} to 4
-	set {-pspd} to 28
+	set {-cd} to 2
+	set {-pspd} to 56
 	set {-ptex} to "td:textures/gui/proj_arrow.png"
 	if {-type} is 2:
 		set {-dmg} to 36
-		set {-cd} to 11
-		set {-pspd} to 20
+		set {-cd} to 5
+		set {-pspd} to 40
 		set {-ptex} to "td:textures/gui/proj_cannon.png"
 	else if {-type} is 3:
 		set {-dmg} to 8
-		set {-cd} to 9
-		set {-pspd} to 24
+		set {-cd} to 4
+		set {-pspd} to 48
 		set {-ptex} to "td:textures/gui/proj_frost.png"
 	else if {-type} is 4:
 		set {-dmg} to 32
-		set {-cd} to 6
-		set {-pspd} to 22
+		set {-cd} to 3
+		set {-pspd} to 44
 		set {-ptex} to "td:textures/gui/proj_mage.png"
 	else if {-type} is 5:
 		set {-dmg} to 20
-		set {-cd} to 7
-		set {-pspd} to 30
+		set {-cd} to 3
+		set {-pspd} to 60
 		set {-ptex} to "td:textures/gui/proj_tesla.png"
 	else if {-type} is 6:
 		set {-dmg} to 56
-		set {-cd} to 13
-		set {-pspd} to 38
+		set {-cd} to 6
+		set {-pspd} to 76
 		set {-ptex} to "td:textures/gui/proj_sniper.png"
 	else if {-type} is 7:
 		set {-dmg} to 12
-		set {-cd} to 7
-		set {-pspd} to 24
+		set {-cd} to 3
+		set {-pspd} to 48
 		set {-ptex} to "td:textures/gui/proj_poison.png"
 
 	set {-dmg} to round({-dmg} * (1 + ({-lvl} - 1) * 0.55))
 	if {-evo} is 1:
 		set {-dmg} to round({-dmg} * 1.4)
 
-	# Ледяная башня (#3): аура замедления/заморозки по ВСЕМУ радиусу вокруг башни!
+	# Ледяная башня (#3): аура замедления по всему радиусу + клиентские снежинки!
 	if {-type} is 3:
 		set {-hit-any} to 0
 		loop 12 times:
@@ -2058,12 +2038,13 @@ function TdTowerTick(g: player, tid: number):
 						set {-td-eslow-f::%g%::%{-ei}%} to 0.5
 						if {-td-eboss::%g%::%{-ei}%} is 0 and {-td-eimm::%g%::%{-ei}%} is 0:
 							chance of 12%:
-								set {-frz} to 5
+								set {-frz} to 3
 					else:
 						set {-td-eslow-f::%g%::%{-ei}%} to 0.6
-					TdDamageEnemy(g, {-ei}, {-dmg}, 18, {-frz})
+					TdDamageEnemy(g, {-ei}, {-dmg}, 9, {-frz})
 		if {-hit-any} is 1:
 			set {-td-tcd::%g%::%tid%} to {-cd}
+			gui particle "ice" count 10 at {-tx} {-ty} spread 42 to {-td-online::%g%::*}
 			TdSyncSound(g, "block.glass.break", 0.14, 1.85)
 		stop
 
@@ -2115,7 +2096,7 @@ function TdSpawnProjectile(g: player, sx: number, sy: number, tgt: number, ptype
 	TdSyncPos(g, "pr%{-ps}%", sx, sy)
 	TdSyncShow(g, "pr%{-ps}%")
 
-function TdMoveProjectiles(g: player):
+function TdMoveProjectiles(g: player, anim: number):
 	loop 6 times:
 		set {-k} to %loop-number%
 		if {-td-pra::%g%::%{-k}%} is 1:
@@ -2143,7 +2124,7 @@ function TdMoveProjectiles(g: player):
 					set {-ny} to {-py} + ({-dy} / {-dist}) * {-spd}
 					set {-td-prx::%g%::%{-k}%} to {-nx}
 					set {-td-pry::%g%::%{-k}%} to {-ny}
-					TdSyncPos(g, "pr%{-k}%", {-nx}, {-ny})
+					TdSyncAnim(g, "pr%{-k}%", {-nx}, {-ny}, anim)
 
 function TdClearProjectiles(g: player):
 	set {-td-prcnt::%g%} to 0
@@ -2154,13 +2135,12 @@ function TdClearProjectiles(g: player):
 
 function TdImpact(g: player, tgt: number, ptype: number, evo: number, dmg: number, hx: number, hy: number):
 	if ptype is 2:
-		TdSyncPos(g, "fx", hx, hy)
-		TdSyncShow(g, "fx")
-		set {-td-fx-cd::%g%} to 2
+		gui particle "explosion" count 12 at hx hy spread 32 to {-td-online::%g%::*}
 		TdSyncSound(g, "entity.generic.explode", 0.15, 1.65)
 		set {-rad2} to 2304
 		if evo is 1:
 			set {-rad2} to 4624
+			gui particle "fire" count 10 at hx hy spread 36 to {-td-online::%g%::*}
 		loop 12 times:
 			set {-si} to %loop-number%
 			if {-td-ea::%g%::%{-si}%} is 1:
@@ -2169,17 +2149,19 @@ function TdImpact(g: player, tgt: number, ptype: number, evo: number, dmg: numbe
 				if {-sdx} * {-sdx} + {-sdy} * {-sdy} <= {-rad2}:
 					TdDamageEnemy(g, {-si}, dmg, 0, 0)
 					if evo is 1 and {-td-ea::%g%::%{-si}%} is 1:
-						set {-td-eburn::%g%::%{-si}%} to 12
-						set {-td-eburn-d::%g%::%{-si}%} to round(dmg * 0.14)
+						set {-td-eburn::%g%::%{-si}%} to 6
+						set {-td-eburn-d::%g%::%{-si}%} to round(dmg * 0.28)
 	else if ptype is 4:
 		set {-fdmg} to dmg
 		if evo is 1:
 			if {-td-eboss::%g%::%tgt%} is 1:
 				set {-fdmg} to round({-fdmg} * 2.0)
 			add round({-td-emhp::%g%::%tgt%} * 0.04) to {-fdmg}
+		gui particle "magic" count 7 at hx hy spread 20 to {-td-online::%g%::*}
 		TdSyncSound(g, "entity.illusioner.cast_spell", 0.17, 1.5)
 		TdDamageEnemy(g, tgt, {-fdmg}, 0, 0)
 	else if ptype is 5:
+		gui particle "spark" count 10 at hx hy color #38BDF8 spread 28 to {-td-online::%g%::*}
 		TdSyncSound(g, "entity.lightning_bolt.impact", 0.13, 1.9)
 		set {-maxh} to 3
 		set {-crad2} to 5476
@@ -2189,7 +2171,7 @@ function TdImpact(g: player, tgt: number, ptype: number, evo: number, dmg: numbe
 			set {-maxh} to 5
 			set {-crad2} to 9216
 			set {-cmul} to 0.9
-			set {-stun} to 4
+			set {-stun} to 2
 		TdDamageEnemy(g, tgt, dmg, 0, {-stun})
 		set {-hits} to 1
 		loop 12 times:
@@ -2205,26 +2187,25 @@ function TdImpact(g: player, tgt: number, ptype: number, evo: number, dmg: numbe
 		if evo is 1:
 			chance of 45%:
 				set {-fdmg} to round(dmg * 2.5)
-				TdSyncPos(g, "fx", hx, hy)
-				TdSyncShow(g, "fx")
-				set {-td-fx-cd::%g%} to 2
+				gui float "&c&l-%{-fdmg}% CRIT!" at hx hy color #FF4444 for 14 ticks to {-td-online::%g%::*}
+				gui particle "spark" count 10 at hx hy color #EF4444 spread 26 to {-td-online::%g%::*}
 			if {-td-eboss::%g%::%tgt%} is 0 and {-td-ehp::%g%::%tgt%} <= {-td-emhp::%g%::%tgt%} * 0.2:
 				set {-fdmg} to 999999
+				gui float "&4&l☠ КАЗНЬ!" at hx hy color #EF4444 for 16 ticks to {-td-online::%g%::*}
 		else:
 			chance of 25%:
 				set {-fdmg} to dmg * 2
-				TdSyncPos(g, "fx", hx, hy)
-				TdSyncShow(g, "fx")
-				set {-td-fx-cd::%g%} to 2
+				gui float "&c-%{-fdmg}%!" at hx hy color #FF6B6B for 12 ticks to {-td-online::%g%::*}
+				gui particle "spark" count 8 at hx hy color #EF4444 spread 20 to {-td-online::%g%::*}
 		TdSyncSound(g, "entity.arrow.hit_player", 0.22, 1.6)
 		TdDamageEnemy(g, tgt, {-fdmg}, 0, 0)
 	else if ptype is 7:
-		# Алхимик: сильный яд (+ ✦5★ Чума: заражает всех врагов в радиусе 58!)
+		gui particle "poison" count 8 at hx hy spread 24 to {-td-online::%g%::*}
 		TdSyncSound(g, "entity.splash_potion.break", 0.18, 1.4)
 		TdDamageEnemy(g, tgt, dmg, 0, 0)
 		if {-td-ea::%g%::%tgt%} is 1:
-			set {-td-epoison::%g%::%tgt%} to 20
-			set {-td-epoison-d::%g%::%tgt%} to round(dmg * 0.35)
+			set {-td-epoison::%g%::%tgt%} to 10
+			set {-td-epoison-d::%g%::%tgt%} to round(dmg * 0.7)
 		if evo is 1:
 			loop 12 times:
 				set {-si} to %loop-number%
@@ -2232,8 +2213,8 @@ function TdImpact(g: player, tgt: number, ptype: number, evo: number, dmg: numbe
 					set {-sdx} to {-td-ex::%g%::%{-si}%} - hx
 					set {-sdy} to {-td-ey::%g%::%{-si}%} - hy
 					if {-sdx} * {-sdx} + {-sdy} * {-sdy} <= 3364:
-						set {-td-epoison::%g%::%{-si}%} to 20
-						set {-td-epoison-d::%g%::%{-si}%} to round(dmg * 0.3)
+						set {-td-epoison::%g%::%{-si}%} to 10
+						set {-td-epoison-d::%g%::%{-si}%} to round(dmg * 0.6)
 	else:
 		TdSyncSound(g, "entity.arrow.shoot", 0.17, 1.45)
 		TdDamageEnemy(g, tgt, dmg, 0, 0)
@@ -2248,6 +2229,8 @@ function TdDamageEnemy(g: player, i: number, dmg: number, slow: number, freeze: 
 		set {-td-efreeze::%g%::%i%} to freeze
 	if {-td-ehp::%g%::%i%} <= 0:
 		set {-td-ea::%g%::%i%} to 0
+		set {-kx} to {-td-ex::%g%::%i%}
+		set {-ky} to {-td-ey::%g%::%i%}
 		TdSyncHide(g, "e%i%")
 		TdSyncHide(g, "ehp%i%")
 		set {-rew} to {-td-erew::%g%::%i%}
@@ -2263,9 +2246,12 @@ function TdDamageEnemy(g: player, i: number, dmg: number, slow: number, freeze: 
 			set {-tp} to %loop-value%
 			add {-share} to {-td-gold::%{-tp}%}
 		add {-rew} to {-td-score::%g%}
+		gui float "&6+%{-share}%з" at {-kx} {-ky} color #FACC15 for 14 ticks to {-td-online::%g%::*}
+		gui particle "gold" count 6 at {-kx} {-ky} spread 18 to {-td-online::%g%::*}
 		if {-td-eboss::%g%::%i%} is 1:
 			set {-td-boss-vis::%g%} to 0
 			TdSyncHide(g, "boss_bar")
+			gui particle "gold" count 24 at {-kx} {-ky} spread 44 to {-td-online::%g%::*}
 			TdSyncSound(g, "ui.toast.challenge_complete", 0.7, 1.1)
 		TdSyncGoldScore(g)
 	else:
@@ -2294,10 +2280,8 @@ function TdWin(g: player):
 	TdSyncTxt(g, "end_sub", "&aСчёт: &e%{-td-score::%g%}% &7— нажми &eR &7(ещё раз) или &eM &7(меню)")
 	TdSyncShow(g, "end_title")
 	TdSyncShow(g, "end_sub")
-	loop {-td-team::%g%::*}:
-		set {-tp} to %loop-value%
-		if {-tp} is online and {-tp} has screen "Tower Defense" open:
-			fade screen of {-tp} to #FFD700 in 3 stay 4 out 14 ticks
+	fade screen of {-td-online::%g%::*} to #FFD700 in 3 stay 4 out 14 ticks
+	gui particle "gold" count 32 at 0 -10 spread 80 to {-td-online::%g%::*}
 	TdSyncSound(g, "ui.toast.challenge_complete", 0.9, 1.0)
 	TdSaveScore(g)
 
