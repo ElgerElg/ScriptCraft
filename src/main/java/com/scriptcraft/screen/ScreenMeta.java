@@ -227,6 +227,44 @@ public record ScreenMeta(String id, boolean keepOpen, String hotkey, boolean hid
         }
     }
 
+    /** Элемент следует за курсором мыши на экране (follow cursor). */
+    public static boolean followsCursor(ScreenElement e) {
+        return "1".equals(tagValue(e, "fc"));
+    }
+
+    /** Радиус круга, который рисуется вокруг элемента при наведении (hover_circle N). 0 = выключен. */
+    public static int hoverCircleRadius(ScreenElement e) {
+        String v = tagValue(e, "hc");
+        if (v == null) return 0;
+        int sep = v.indexOf('x');
+        try {
+            return Math.max(0, Integer.parseInt(sep >= 0 ? v.substring(0, sep) : v));
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
+    }
+
+    /** Цвет круга при наведении (RGB, по умолчанию #38BDF8). */
+    public static int hoverCircleColor(ScreenElement e) {
+        String v = tagValue(e, "hc");
+        if (v == null) return 0x38BDF8;
+        int sep = v.indexOf('x');
+        if (sep < 0 || sep + 1 >= v.length()) return 0x38BDF8;
+        try {
+            return (int) Long.parseLong(v.substring(sep + 1), 16) & 0x00FFFFFF;
+        } catch (NumberFormatException ignored) {
+            return 0x38BDF8;
+        }
+    }
+
+    public static ScreenElement withHoverCircle(ScreenElement e, int radius, int rgb) {
+        if (radius <= 0) {
+            return withExtraTag(e, "hc", "");
+        }
+        String val = radius + "x" + Integer.toHexString(rgb & 0x00FFFFFF);
+        return withExtraTag(e, "hc", val);
+    }
+
     public static ScreenElement withExtraTag(ScreenElement e, String prefix, String val) {
         String nextExtra = upsertTag(extraTagsOf(e), prefix, val);
         if (e instanceof BarElement bar) {

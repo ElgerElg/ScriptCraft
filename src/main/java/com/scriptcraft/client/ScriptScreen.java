@@ -289,31 +289,31 @@ public class ScriptScreen extends Screen {
         return ScreenMeta.elementId(list) + ":" + l.x() + ":" + l.y() + ":" + l.anchor().name();
     }
 
-    private static int extractHoverRange(String tip) {
-        for (String marker : new String[]{"Дальн:", "Радиус:"}) {
-            int idx = tip.indexOf(marker);
-            if (idx >= 0) {
-                int i = idx + marker.length();
-                int num = 0;
-                boolean found = false;
-                while (i < tip.length()) {
-                    char c = tip.charAt(i);
-                    if ((c == '&' || c == '\u00a7') && i + 1 < tip.length()) {
-                        i += 2;
-                        continue;
-                    }
-                    if (c >= '0' && c <= '9') {
-                        num = num * 10 + (c - '0');
-                        found = true;
-                    } else if (found) {
-                        break;
-                    }
-                    i++;
-                }
-                if (num > 0) return num;
-            }
+    /** Рисует универсальный полупрозрачный круг радиуса R с пунктирным контуром поверх экрана (hover_circle). */
+    private static void drawHoverCircle(GuiGraphics g, int cx, int cy, int r, int rgb) {
+        if (r <= 0) return;
+        int fillCol = 0x22000000 | (rgb & 0x00FFFFFF);
+        int rimCol = 0xC8000000 | (rgb & 0x00FFFFFF);
+        // Мягкая заливка круга горизонтальными сканлайнами (шаг 2px для скорости)
+        for (int dy = -r; dy <= r; dy += 2) {
+            int dx = (int) Math.sqrt(Math.max(0, r * r - dy * dy));
+            g.fill(cx - dx, cy + dy, cx + dx + 1, cy + dy + 2, fillCol);
         }
-        return 0;
+        // Чёткий пунктирный контур (72 сегмента)
+        int segs = Math.max(36, Math.min(96, r));
+        for (int i = 0; i < segs; i++) {
+            if ((i & 1) == 1) continue;
+            double a = (2.0 * Math.PI * i) / segs;
+            int px = cx + (int) Math.round(Math.cos(a) * r);
+            int py = cy + (int) Math.round(Math.sin(a) * r);
+            g.fill(px - 1, py - 1, px + 1, py + 1, rimCol);
+        }
+        // Засечки по сторонам света
+        int tickCol = 0xDDFFFFFF;
+        g.fill(cx, cy - r - 2, cx + 1, cy - r + 4, tickCol);
+        g.fill(cx, cy + r - 3, cx + 1, cy + r + 3, tickCol);
+        g.fill(cx - r - 2, cy, cx - r + 4, cy + 1, tickCol);
+        g.fill(cx + r - 3, cy, cx + r + 3, cy + 1, tickCol);
     }
 
     @Override
@@ -414,38 +414,26 @@ public class ScriptScreen extends Screen {
 
         ItemStack hoveredItem = ItemStack.EMPTY;
         String hoveredTooltip = "";
-        ScreenElement hoveredElement = null;
-        Map<String, ScreenElement> rangeTemplates = null;
+        ScreenElement hoveredCircleEl = null;
         long nowMs = System.currentTimeMillis();
         float z = 0f;
         for (ScreenElement rawElement : ordered) {
-            String rawId = ScreenMeta.elementId(rawElement);
-            if (!rawId.isEmpty()) {
-                String lowId = rawId.toLowerCase(Locale.ROOT);
-                if (lowId.equals("rng_s") || lowId.equals("rng_m") || lowId.equals("rng_l") || lowId.equals("rng_b")) {
-                    if (rangeTemplates == null) rangeTemplates = new LinkedHashMap<>();
-                    rangeTemplates.put(lowId, rawElement);
-                }
-            }
             if (ScreenMeta.isHidden(rawElement)) {
                 continue;
             }
             ScreenElement element = rawElement;
-            String tweenId = rawId;
-            if (!tweenId.isEmpty()) {
-                String lowId = tweenId.toLowerCase(Locale.ROOT);
-                if (lowId.equals("cursor") || lowId.startsWith("cursor_")) {
-                    int cx = mouseX - this.width / 2 + 11;
-                    int cy = mouseY - this.height / 2 + 11;
-                    element = ScreenMeta.withPosition(rawElement, cx, cy);
-                } else {
-                    ActiveTween tw = tweens.get(tweenId);
-                    if (tw != null) {
-                        if (tw.done(nowMs)) {
-                            tweens.remove(tweenId);
-                        } else {
-                            element = ScreenMeta.withPosition(rawElement, Math.round(tw.curX(nowMs)), Math.round(tw.curY(nowMs)));
-                        }
+            String tweenId = ScreenMeta.elementId(rawElement);
+            if (ScreenMeta.followsCursor(rawElement)) {
+                int cx = mouseX - this.width / 2 + 11;
+                int cy = mouseY - this.height / 2 + 11;
+                element = ScreenMeta.withPosition(rawElement, cx, cy);
+            } else if (!tweenId.isEmpty()) {
+                ActiveTween tw = tweens.get(tweenId);
+                if (tw != null) {
+                    if (tw.done(nowMs)) {
+                        tweens.remove(tweenId);
+                    } else {
+                        element = ScreenMeta.withPosition(rawElement, Math.round(tw.curX(nowMs)), Math.round(tw.curY(nowMs)));
                     }
                 }
             }
@@ -486,35 +474,31 @@ public class ScriptScreen extends Screen {
             if (ElementRenderer.drawsItem(element)) {
                 z = Math.min(z + ElementRenderer.ITEM_Z_STEP, ElementRenderer.MAX_Z);
             }
-            String tip = ScreenMeta.elementTooltip(element);
-            if (!tip.isEmpty() && ElementRenderer.isHovered(this.font, element, this.width, this.height, mouseX, mouseY)) {
-                hoveredTooltip = tip;
-                hoveredElement = element;
+            boolean hovered = ElementRenderer.isHovered(this.font, element, this.width, this.height, mouseX, mouseY);
+            if (hovered) {
+                String tip = ScreenMeta.elementTooltip(element);
+                if (!tip.isEmpty()) {
+                    hoveredTooltip = tip;
+                }
+                if (ScreenMeta.hoverCircleRadius(element) > 0) {
+                    hoveredCircleEl = element;
+                }
             }
         }
 
-        // Авто-показ точного круга радиуса (диаметр = 2 * R) при наведении курсора на построенную башню
-        if (hoveredElement != null && rangeTemplates != null && !hoveredTooltip.isEmpty()) {
-            String eid = ScreenMeta.elementId(hoveredElement);
-            if (eid.startsWith("c") && eid.indexOf('_') > 1) {
-                int hoverRng = extractHoverRange(hoveredTooltip);
-                if (hoverRng > 0) {
-                    boolean isBuff = hoveredTooltip.contains("Маяк") || hoveredTooltip.contains("Бафф-аура");
-                    ScreenElement tpl = isBuff ? rangeTemplates.get("rng_b") : rangeTemplates.get("rng_s");
-                    if (tpl == null) tpl = rangeTemplates.get("rng_s");
-                    if (tpl != null) {
-                        int diam = Math.max(24, hoverRng * 2);
-                        Layout oldL = tpl.layout();
-                        Layout exactL = new Layout(hoveredElement.layout().x(), hoveredElement.layout().y(),
-                                diam, diam, oldL.anchor(), oldL.color(), oldL.layer());
-                        ScreenElement vis = ScreenMeta.withHidden(ScreenMeta.withLayout(tpl, exactL), false);
-                        graphics.pose().pushPose();
-                        graphics.pose().translate(0f, 0f, z + 5f);
-                        ElementRenderer.render(graphics, this.font, vis, this.width, this.height, mouseX, mouseY, 0);
-                        graphics.pose().popPose();
-                    }
-                }
-            }
+        // Универсальный круг при наведении на элемент (hover_circle <R> [hover_color #RRGGBB])
+        if (hoveredCircleEl != null) {
+            int hr = ScreenMeta.hoverCircleRadius(hoveredCircleEl);
+            int hcol = ScreenMeta.hoverCircleColor(hoveredCircleEl);
+            Layout hl = hoveredCircleEl.layout();
+            int ew = hl.width() > 0 ? hl.width() : 16;
+            int eh = hl.height() > 0 ? hl.height() : 16;
+            int cx = hl.anchor().resolveX(this.width, ew, hl.x()) + ew / 2;
+            int cy = hl.anchor().resolveY(this.height, eh, hl.y()) + eh / 2;
+            graphics.pose().pushPose();
+            graphics.pose().translate(0f, 0f, z + 5f);
+            drawHoverCircle(graphics, cx, cy, hr, hcol);
+            graphics.pose().popPose();
         }
 
         // Клиентские GUI-частицы и всплывающие цифры урона поверх экрана

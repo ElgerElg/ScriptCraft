@@ -170,6 +170,24 @@ final class EffectPatterns {
         rule("set rotation of screen %text% to %num%",
                 c -> new Actions.ScreenSetRotation(new Target.Self(), hudName(c.text(0)), c.num(1)));
 
+        // Универсальный круг при наведении на любой элемент экрана
+        rule("set hover_circle|hover-circle of screen element %text% for|of %target% to %num% color %id%",
+                c -> new Actions.ScreenSetHoverCircle(c.target(1), hudName(c.text(0)), c.num(2), c.text(3)));
+        rule("set hover_circle|hover-circle of screen %text% for|of %target% to %num% color %id%",
+                c -> new Actions.ScreenSetHoverCircle(c.target(1), hudName(c.text(0)), c.num(2), c.text(3)));
+        rule("set hover_circle|hover-circle of screen element %text% for|of %target% to %num%",
+                c -> new Actions.ScreenSetHoverCircle(c.target(1), hudName(c.text(0)), c.num(2), null));
+        rule("set hover_circle|hover-circle of screen %text% for|of %target% to %num%",
+                c -> new Actions.ScreenSetHoverCircle(c.target(1), hudName(c.text(0)), c.num(2), null));
+        rule("set hover_circle|hover-circle of screen element %text% to %num% color %id%",
+                c -> new Actions.ScreenSetHoverCircle(new Target.Self(), hudName(c.text(0)), c.num(1), c.text(2)));
+        rule("set hover_circle|hover-circle of screen %text% to %num% color %id%",
+                c -> new Actions.ScreenSetHoverCircle(new Target.Self(), hudName(c.text(0)), c.num(1), c.text(2)));
+        rule("set hover_circle|hover-circle of screen element %text% to %num%",
+                c -> new Actions.ScreenSetHoverCircle(new Target.Self(), hudName(c.text(0)), c.num(1), null));
+        rule("set hover_circle|hover-circle of screen %text% to %num%",
+                c -> new Actions.ScreenSetHoverCircle(new Target.Self(), hudName(c.text(0)), c.num(1), null));
+
         // Клиентские всплывающие цифры / текст поверх GUI
         rule("gui float %piece% at %num% %num% color %id% for %num% ticks to|for %target%",
                 c -> new Actions.GuiFloatText(c.target(5), c.exprValue(0), c.num(1), c.num(2), c.text(3), c.num(4)));

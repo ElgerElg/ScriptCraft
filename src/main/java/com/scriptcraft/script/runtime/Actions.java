@@ -365,6 +365,19 @@ public final class Actions {
         }
     }
 
+    public record ScreenSetHoverCircle(Target target, String id, Expression radius,
+                                       @org.jetbrains.annotations.Nullable String colorHex) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            String resolvedId = ctx.format(id);
+            int rad = Math.max(0, Math.min(500, (int) Math.round(Effects.number(radius, ctx))));
+            int rgb = parseColorRgb(colorHex, 0x38BDF8);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                com.scriptcraft.screen.ScreenManager.mutateElement(p, resolvedId, e -> com.scriptcraft.screen.ScreenMeta.withHoverCircle(e, rad, rgb));
+            }
+        }
+    }
+
     public record GuiFloatText(Target target, Expression text, Expression x, Expression y,
                                @org.jetbrains.annotations.Nullable String colorHex,
                                @org.jetbrains.annotations.Nullable Expression durationTicks) implements Action {

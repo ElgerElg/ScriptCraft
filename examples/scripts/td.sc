@@ -294,7 +294,7 @@ function TdSyncShow(g: player, id: text):
 function TdSyncHide(g: player, id: text):
 	hide screen element "%id%" from {-td-online::%g%::*}
 
-function TdSyncCell(g: player, col: integer, row: integer, cx: number, cy: number, tex: text, tip: text):
+function TdSyncCell(g: player, col: integer, row: integer, cx: number, cy: number, tex: text, tip: text, hrad: number, hcol: text):
 	loop {-td-online::%g%::*}:
 		set {-tp} to %loop-value%
 		if {-tp} is online and {-tp} has screen "Tower Defense" open:
@@ -302,6 +302,10 @@ function TdSyncCell(g: player, col: integer, row: integer, cx: number, cy: numbe
 				image "td:textures/gui/tile_build.png" at 0 0 size 22x22 texture 64x64 anchor center layer 3 id "c%col%_%row%" run TdCellClick(player, %col%, %row%) keep open tooltip "%tip%"
 			set image of screen element "c%col%_%row%" for {-tp} to tex
 			set position of screen element "c%col%_%row%" for {-tp} to cx cy
+			if hrad > 0:
+				set hover_circle of screen element "c%col%_%row%" for {-tp} to hrad color "%hcol%"
+			else:
+				set hover_circle of screen element "c%col%_%row%" for {-tp} to 0
 
 function TdSyncStatus(g: player, txt: text):
 	set text of screen element "status_txt" for {-td-online::%g%::*} to txt
@@ -528,7 +532,10 @@ function TdSyncTowerVisual(g: player, tid: number):
 		set {-act} to "&a▶ ЛКМ: Ур.%{-nl}% &6(%{-up}%з) &8| &cX: +%{-ref}%з"
 
 	set {-tip} to "&b&l▍ %{-tname}% %{-st}% &8[Ур.%{-tl}%]%nl%%{-stat}%%nl%&8▪ &7Владелец: &f%{-own}%%nl%%{-act}%"
-	TdSyncCell(g, {-tc}, {-tr}, {-tx}, {-ty}, {-tex}, {-tip})
+	set {-hc} to "#38BDF8"
+	if {-tt} is 9:
+		set {-hc} to "#FACC15"
+	TdSyncCell(g, {-tc}, {-tr}, {-tx}, {-ty}, {-tex}, {-tip}, {-rng}, {-hc})
 	set {-sy} to {-ty} + 8
 	TdSyncPos(g, "st%tid%", {-tx}, {-sy})
 	TdSyncTxt(g, "st%tid%", {-st})
@@ -1132,8 +1139,8 @@ function TdOpenMap1(p: player):
 		button "Заново" at 152 129 size 52x15 anchor center run TdRestartCurrent(player) keep open tooltip "&eРестарт карты &8[R]"
 		button "Меню" at 208 129 size 52x15 anchor center run TdOpenMenu(player) keep open tooltip "&eВыбор карты и кооп &8[M]"
 
-		# Привязанная к курсору иконка текущей башни (появляется при выборе 1..9, пропадает после постройки или клика в пустоту)
-		image "td:textures/gui/tower_archer.png" at 0 0 size 15x15 texture 64x64 anchor center layer 24 id cursor_icon hidden
+		# Привязанная к курсору иконка текущей башни (универсальное свойство follow cursor)
+		image "td:textures/gui/tower_archer.png" at 0 0 size 15x15 texture 64x64 anchor center follow cursor layer 24 id cursor_icon hidden
 
 function TdOpenMap2(p: player):
 	set {-g} to {-td-host::%p%}
@@ -1385,8 +1392,8 @@ function TdOpenMap2(p: player):
 		button "Заново" at 152 129 size 52x15 anchor center run TdRestartCurrent(player) keep open tooltip "&eРестарт карты &8[R]"
 		button "Меню" at 208 129 size 52x15 anchor center run TdOpenMenu(player) keep open tooltip "&eВыбор карты и кооп &8[M]"
 
-		# Привязанная к курсору иконка текущей башни (появляется при выборе 1..9, пропадает после постройки или клика в пустоту)
-		image "td:textures/gui/tower_archer.png" at 0 0 size 15x15 texture 64x64 anchor center layer 24 id cursor_icon hidden
+		# Привязанная к курсору иконка текущей башни (универсальное свойство follow cursor)
+		image "td:textures/gui/tower_archer.png" at 0 0 size 15x15 texture 64x64 anchor center follow cursor layer 24 id cursor_icon hidden
 
 function TdOpenMap3(p: player):
 	set {-g} to {-td-host::%p%}
@@ -1641,8 +1648,8 @@ function TdOpenMap3(p: player):
 		button "Заново" at 152 129 size 52x15 anchor center run TdRestartCurrent(player) keep open tooltip "&eРестарт карты &8[R]"
 		button "Меню" at 208 129 size 52x15 anchor center run TdOpenMenu(player) keep open tooltip "&eВыбор карты и кооп &8[M]"
 
-		# Привязанная к курсору иконка текущей башни (появляется при выборе 1..9, пропадает после постройки или клика в пустоту)
-		image "td:textures/gui/tower_archer.png" at 0 0 size 15x15 texture 64x64 anchor center layer 24 id cursor_icon hidden
+		# Привязанная к курсору иконка текущей башни (универсальное свойство follow cursor)
+		image "td:textures/gui/tower_archer.png" at 0 0 size 15x15 texture 64x64 anchor center follow cursor layer 24 id cursor_icon hidden
 
 function TdOpenMap4(p: player):
 	set {-g} to {-td-host::%p%}
@@ -1878,8 +1885,8 @@ function TdOpenMap4(p: player):
 		button "Заново" at 152 129 size 52x15 anchor center run TdRestartCurrent(player) keep open tooltip "&eРестарт карты &8[R]"
 		button "Меню" at 208 129 size 52x15 anchor center run TdOpenMenu(player) keep open tooltip "&eВыбор карты и кооп &8[M]"
 
-		# Привязанная к курсору иконка текущей башни (появляется при выборе 1..9, пропадает после постройки или клика в пустоту)
-		image "td:textures/gui/tower_archer.png" at 0 0 size 15x15 texture 64x64 anchor center layer 24 id cursor_icon hidden
+		# Привязанная к курсору иконка текущей башни (универсальное свойство follow cursor)
+		image "td:textures/gui/tower_archer.png" at 0 0 size 15x15 texture 64x64 anchor center follow cursor layer 24 id cursor_icon hidden
 
 function TdOpenMap5(p: player):
 	set {-g} to {-td-host::%p%}
@@ -2110,8 +2117,8 @@ function TdOpenMap5(p: player):
 		button "Заново" at 152 129 size 52x15 anchor center run TdRestartCurrent(player) keep open tooltip "&eРестарт карты &8[R]"
 		button "Меню" at 208 129 size 52x15 anchor center run TdOpenMenu(player) keep open tooltip "&eВыбор карты и кооп &8[M]"
 
-		# Привязанная к курсору иконка текущей башни (появляется при выборе 1..9, пропадает после постройки или клика в пустоту)
-		image "td:textures/gui/tower_archer.png" at 0 0 size 15x15 texture 64x64 anchor center layer 24 id cursor_icon hidden
+		# Привязанная к курсору иконка текущей башни (универсальное свойство follow cursor)
+		image "td:textures/gui/tower_archer.png" at 0 0 size 15x15 texture 64x64 anchor center follow cursor layer 24 id cursor_icon hidden
 
 # ==========================================================
 #  УПРАВЛЕНИЕ, СТРОИТЕЛЬСТВО (ДО 32 БАШЕН), МАЯК-БАФФЕР И ✦5★
@@ -2300,7 +2307,7 @@ function TdCellClick(p: player, col: integer, row: integer):
 		set {-td-grid::%{-g}%::%col%_%row%} to 0
 		set {-td-sell::%p%} to 0
 		TdClearTool(p)
-		TdSyncCell({-g}, col, row, {-tx}, {-ty}, "td:textures/gui/tile_build.png", "")
+		TdSyncCell({-g}, col, row, {-tx}, {-ty}, "td:textures/gui/tile_build.png", "", 0, "#38BDF8")
 		TdSyncHide({-g}, "st%{-tid}%")
 		TdRecalcBuffs({-g})
 		gui float "&6+%{-ref}%з" at {-tx} {-ty} color "#FACC15" for 16 ticks to {-td-online::%{-g}%::*}

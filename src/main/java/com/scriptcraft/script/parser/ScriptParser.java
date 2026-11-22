@@ -2257,14 +2257,15 @@ public final class ScriptParser {
     /** Какие параметры допустимы у каждого вида элемента (лишний параметр — понятная ошибка, а не тихое игнорирование). */
     private static final Map<String, Set<String>> ELEMENT_OPTIONS = Map.ofEntries(
             Map.entry("text", Set.of("at", "anchor", "color", "shadow", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "tooltip", "hover",
-                    "scale", "rotate", "rotation", "hscale", "hover_scale", "hover-scale")),
+                    "scale", "rotate", "rotation", "hscale", "hover_scale", "hover-scale", "follow", "hover_circle", "hover-circle", "hover_color", "hover-color")),
             Map.entry("button", Set.of("at", "size", "anchor", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "layer", "id", "tooltip", "hover")),
             Map.entry("image", Set.of("at", "size", "texture", "anchor", "color", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "tooltip", "hover",
-                    "scale", "rotate", "rotation", "hscale", "hover_scale", "hover-scale", "frames", "fps")),
+                    "scale", "rotate", "rotation", "hscale", "hover_scale", "hover-scale", "frames", "fps", "follow", "hover_circle", "hover-circle", "hover_color", "hover-color")),
             Map.entry("box", Set.of("at", "size", "anchor", "color", "gradient", "to", "horizontal", "vertical", "border", "border_width", "border-width",
-                    "radius", "shadow", "blur", "scale", "rotate", "rotation", "hscale", "hover_scale", "hover-scale",
+                    "radius", "shadow", "blur", "scale", "rotate", "rotation", "hscale", "hover_scale", "hover-scale", "follow", "hover_circle", "hover-circle", "hover_color", "hover-color",
                     "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "tooltip", "hover")),
-            Map.entry("slot", Set.of("at", "size", "anchor", "color", "no", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "tooltip", "hover")),
+            Map.entry("slot", Set.of("at", "size", "anchor", "color", "no", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "tooltip", "hover",
+                    "follow", "hover_circle", "hover-circle", "hover_color", "hover-color")),
             Map.entry("bar", Set.of("at", "size", "texture", "anchor", "color", "layer", "id", "value", "max", "direction",
                     "background", "fill", "text", "shadow", "hidden", "tooltip", "hover")),
             Map.entry("hotbar", Set.of("at", "size", "anchor", "color", "no", "layer", "id", "spacing")),
@@ -2390,6 +2391,9 @@ public final class ScriptParser {
         double elRotation = 0.0;
         int spriteFrames = 1;
         int spriteFps = 8;
+        boolean followCursor = false;
+        int hoverCircle = 0;
+        int hoverCircleColor = 0x38BDF8;
         while (idx < t.size()) {
             String opt = word(t, idx);
             if (allowed == null || !allowed.contains(opt)) {
@@ -2628,6 +2632,19 @@ public final class ScriptParser {
                     spriteFps = Math.max(1, Math.min(60, parseInt(idx + 1 < t.size() ? t.get(idx + 1).value() : "8")));
                     idx += 2;
                 }
+                case "follow" -> {
+                    expectWord(t, idx + 1, "cursor");
+                    followCursor = true;
+                    idx += 2;
+                }
+                case "hover_circle", "hover-circle" -> {
+                    hoverCircle = Math.max(0, Math.min(500, parseInt(idx + 1 < t.size() ? t.get(idx + 1).value() : "0")));
+                    idx += 2;
+                }
+                case "hover_color", "hover-color" -> {
+                    hoverCircleColor = parseColor(idx + 1 < t.size() ? t.get(idx + 1).value() : "") & 0x00FFFFFF;
+                    idx += 2;
+                }
                 default -> throw new ParseException("неизвестный параметр элемента: " + opt);
             }
         }
@@ -2660,6 +2677,14 @@ public final class ScriptParser {
         if (spriteFrames > 1) {
             if (!extraTags.isEmpty()) extraTags.append(';');
             extraTags.append("fr").append(spriteFrames).append('x').append(spriteFps);
+        }
+        if (followCursor) {
+            if (!extraTags.isEmpty()) extraTags.append(';');
+            extraTags.append("fc1");
+        }
+        if (hoverCircle > 0) {
+            if (!extraTags.isEmpty()) extraTags.append(';');
+            extraTags.append("hc").append(hoverCircle).append('x').append(Integer.toHexString(hoverCircleColor & 0x00FFFFFF));
         }
         Layout layout = new Layout(x, y, w, h, anchor, color, layer);
         boolean effectiveKeep = keepOpen || kind.equals("input") || kind.equals("slider") || kind.equals("toggle");

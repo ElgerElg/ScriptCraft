@@ -4635,14 +4635,15 @@ gui particle "ice" count 10 at -50 10 to player`,
     id: "screen-transform-sprites", category: "screen",
     name: { ru: "Поворот, масштаб, hover-scale и спрайтшиты", en: "Rotation, Scale, Hover-Scale & Spritesheets" },
     syntax: [
-      "image \"...\" ... [scale <N>] [hover_scale <N>] [rotate <градусы>] [frames <N>] [fps <N>]",
-      "text \"...\" ... [scale <N>] [hover_scale <N>] [rotate <градусы>]",
+      "image \"...\" ... [scale <N>] [hover_scale <N>] [rotate <градусы>] [frames <N>] [fps <N>] [follow cursor] [hover_circle <R>] [hover_color #RRGGBB]",
+      "text \"...\" ... [scale <N>] [hover_scale <N>] [rotate <градусы>] [follow cursor] [hover_circle <R>] [hover_color #RRGGBB]",
       "set scale of screen [element] \"<id>\" [for <цель>] to <число>",
-      "set rotation of screen [element] \"<id>\" [for <цель>] to <градусы>"
+      "set rotation of screen [element] \"<id>\" [for <цель>] to <градусы>",
+      "set hover_circle of screen [element] \"<id>\" [for <цель>] to <радиус> [color \"#RRGGBB\"]"
     ],
     desc: {
-      ru: "Клиентские трансформации и покадровая анимация спрайтов без нагрузки на сервер:\n• `scale <N>` (0.1–10.0) — масштаб элемента (`image`, `text`, `box`).\n• `hover_scale <N>` (`hscale`) — автоматическое увеличение при наведении курсора на клиенте.\n• `rotate <deg>` (`rotation`) — поворот элемента на заданный угол в градусах.\n• `frames <N>` и `fps <N>` у `image` — клиентская анимация спрайтшита (автоматически режет PNG на `N` горизонтальных или вертикальных кадров и листает со скоростью `fps` кадров/сек без пакетов с сервера).\n• `set scale` и `set rotation` — динамическое изменение масштаба и угла на лету.",
-      en: "Client-side transforms and spritesheet animation with zero server overhead:\n• `scale <N>` (0.1–10.0) — scales `image`, `text`, or `box`.\n• `hover_scale <N>` (`hscale`) — automatic hover zoom on the client.\n• `rotate <deg>` (`rotation`) — rotates around element center.\n• `frames <N>` and `fps <N>` on `image` — client-side spritesheet playback.\n• `set scale` / `set rotation` — dynamically update scale or angle."
+      ru: "Клиентские трансформации, привязка к курсору, круг при наведении и покадровая анимация спрайтов без нагрузки на сервер:\n• `scale <N>` (0.1–10.0) — масштаб элемента (`image`, `text`, `box`).\n• `hover_scale <N>` (`hscale`) — автоматическое увеличение при наведении курсора на клиенте.\n• `rotate <deg>` (`rotation`) — поворот элемента на заданный угол в градусах.\n• `follow cursor` — элемент автоматически следует за курсором мыши на экране (управляется через `show` / `hide`).\n• `hover_circle <R>` и `hover_color #RRGGBB` — при наведении на элемент клиент рисует полупрозрачный тактический круг радиуса `R` вокруг него (можно менять на лету через `set hover_circle ... to <R> [color \"#...\"]`, `0` — выключить).\n• `frames <N>` и `fps <N>` у `image` — клиентская анимация спрайтшита.\n• `set scale` и `set rotation` — динамическое изменение масштаба и угла на лету.",
+      en: "Client-side transforms, cursor follower, hover circle, and spritesheet animation with zero server overhead:\n• `scale <N>` (0.1–10.0) — scales `image`, `text`, or `box`.\n• `hover_scale <N>` (`hscale`) — automatic hover zoom on the client.\n• `rotate <deg>` (`rotation`) — rotates around element center.\n• `follow cursor` — element follows the mouse cursor on screen (toggle via `show` / `hide`).\n• `hover_circle <R>` & `hover_color #RRGGBB` — draws a translucent tactical radius circle on hover (dynamic `set hover_circle ... to <R> [color \"#...\"]`, `0` disables).\n• `frames <N>` and `fps <N>` on `image` — client-side spritesheet playback.\n• `set scale` / `set rotation` — dynamically update scale or angle."
     },
     example: `# Иконка с увеличением при наведении и анимированный спрайтшит огня (4 кадра, 10 FPS)
 open screen "Арена" to player:
