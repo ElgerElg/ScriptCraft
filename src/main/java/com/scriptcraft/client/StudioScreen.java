@@ -1949,10 +1949,11 @@ public class StudioScreen extends Screen {
             }
         }
 
-        // --- Правая колонка: Все горячие клавиши клиента ---
+        // --- Правая колонка: Горячие клавиши + Статус библиотек ---
         int rx = midX + 6;
         int rw = Math.max(160, px + pw - rx - 14);
-        int rh = availH;
+        int libsH = 74;
+        int rh = Math.max(96, availH - libsH - 8);
         g.fill(rx, y0 - 2, rx + rw, y0 + rh, SURFACE);
         border(g, rx, y0 - 2, rw, rh + 2, EDGE);
         g.drawString(this.font, Messages.get("studio.set.hotkeys"), rx + 10, y0 + 5, GOLD, false);
@@ -1991,6 +1992,43 @@ public class StudioScreen extends Screen {
             hy += 18;
         }
         g.disableScissor();
+
+        // Панель статуса библиотек (PlayerAnimator, Bendy-lib, LuckPerms)
+        int ly = y0 + rh + 6;
+        g.fill(rx, ly, rx + rw, ly + libsH, SURFACE);
+        border(g, rx, ly, rw, libsH, EDGE);
+        g.drawString(this.font, Messages.get("studio.set.libs"), rx + 10, ly + 5, GOLD, false);
+        g.fill(rx + 1, ly + 17, rx + rw - 1, ly + 18, EDGE);
+        drawLibStatusRow(g, rx, ly + 22, rw, "PlayerAnimator", modStatusText("playeranimator"),
+                net.minecraftforge.fml.ModList.get().isLoaded("playeranimator"));
+        drawLibStatusRow(g, rx, ly + 38, rw, "Bendy-lib", modStatusText("bendylib"),
+                net.minecraftforge.fml.ModList.get().isLoaded("bendylib"));
+        String lpCode = StudioSession.serverLuckPerms;
+        boolean lpOk = lpCode != null && !lpCode.equals("NONE");
+        String lpKey = switch (lpCode == null ? "NONE" : lpCode) {
+            case "MOD" -> "lp.mod";
+            case "PLUGIN" -> "lp.plugin";
+            case "BOTH" -> "lp.both";
+            case "API" -> "lp.api";
+            default -> "lp.none";
+        };
+        drawLibStatusRow(g, rx, ly + 54, rw, "LuckPerms", Messages.get(lpKey).replaceFirst("^LuckPerms:\\s*", ""), lpOk);
+    }
+
+    private static String modStatusText(String modId) {
+        var mod = net.minecraftforge.fml.ModList.get().getModContainerById(modId);
+        if (mod.isPresent()) {
+            return Messages.get("studio.lib.loaded") + " (v" + mod.get().getModInfo().getVersion() + ")";
+        }
+        return Messages.get("studio.lib.missing");
+    }
+
+    private void drawLibStatusRow(GuiGraphics g, int rx, int y, int rw, String name, String status, boolean ok) {
+        g.fill(rx + 10, y + 3, rx + 15, y + 8, ok ? GREEN : 0xFFEF4444);
+        g.drawString(this.font, name, rx + 20, y + 1, TEXT, false);
+        int sw = this.font.width(status);
+        int sx = Math.max(rx + 120, rx + rw - sw - 10);
+        g.drawString(this.font, trim(status, rx + rw - sx - 8), sx, y + 1, ok ? GREEN : MUTED, false);
     }
 
     private void drawSettingsCheck(GuiGraphics g, int mx, int my, int x, int y, int w, String key, String label, boolean on) {

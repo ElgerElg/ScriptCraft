@@ -251,8 +251,11 @@ public final class StudioSession {
         return liveLines.get(file);
     }
 
-    public static void catalog(List<String> names) {
+    public static String serverLuckPerms = "NONE";
+
+    public static void catalog(List<String> names, String lpPresence) {
         catalog = new ArrayList<>(names);
+        serverLuckPerms = lpPresence == null || lpPresence.isBlank() ? "NONE" : lpPresence;
     }
 
     public static void acceptExplorerDir(StudioExplorerPacket.DirView view) {

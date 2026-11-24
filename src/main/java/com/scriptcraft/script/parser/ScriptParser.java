@@ -1613,6 +1613,10 @@ public final class ScriptParser {
         if (head.equals("spawn") && word(t, 1).equals("entity")) {
             return parseSpawnEntity(t);
         }
+        if ((head.equals("play") || head.equals("stop"))
+                && (word(t, 1).equals("animation") || (word(t, 1).equals("player") && word(t, 2).equals("animation")))) {
+            return head.equals("play") ? parsePlayAnimation(t) : parseStopAnimation(t);
+        }
         // Сначала таблица эффектов (set gamemode of player..., heal player by 2, send title ...).
         Action effect = EffectPatterns.tryParse(t);
         if (effect != null) {
@@ -2863,6 +2867,148 @@ public final class ScriptParser {
         } else {
             arguments.add(new ArgSpec(type, optional));
         }
+    }
+
+    /**
+     * play [player] animation "&lt;id&gt;" [on|of &lt;цель&gt;] [for|to &lt;зрители&gt;]
+     * [first person | no first person | first person &lt;bool&gt;] [speed N] [fade N]
+     */
+    private Action parsePlayAnimation(List<Token> t) throws ParseException {
+        int idx = word(t, 1).equals("player") ? 3 : 2;
+        if (idx >= t.size()) {
+            throw new ParseException("need: play animation \"id\" [on player] [for all players] [first person] [speed N] [fade N]",
+                    "нужно: play animation \"id\" [on player] [for all players] [first person] [speed N] [fade N]");
+        }
+        ExprParser.Parsed animParsed = ExprParser.parseAtom(t, idx);
+        idx = animParsed.end();
+        Target target = null;
+        Target viewers = null;
+        Expression firstPersonExpr = null;
+        boolean firstPersonDefault = true;
+        Expression speed = null;
+        Expression fade = null;
+
+        while (idx < t.size()) {
+            String opt = word(t, idx);
+            switch (opt) {
+                case "on", "of" -> {
+                    TargetParser.Parsed p = TargetParser.parse(t, idx + 1);
+                    if (p == null) {
+                        throw new ParseException("expected target after '" + opt + "'", "ожидается цель после '" + opt + "'");
+                    }
+                    target = p.target();
+                    idx = p.end();
+                }
+                case "for", "to" -> {
+                    TargetParser.Parsed p = TargetParser.parse(t, idx + 1);
+                    if (p == null) {
+                        throw new ParseException("expected viewer target after '" + opt + "'", "ожидается цель-зритель после '" + opt + "'");
+                    }
+                    viewers = p.target();
+                    idx = p.end();
+                }
+                case "speed" -> {
+                    if (idx + 1 >= t.size()) {
+                        throw new ParseException("need: speed <number>", "нужно: speed <число>");
+                    }
+                    ExprParser.Parsed p = ExprParser.parseAtom(t, idx + 1);
+                    speed = p.expression();
+                    idx = p.end();
+                }
+                case "fade" -> {
+                    if (idx + 1 >= t.size()) {
+                        throw new ParseException("need: fade <ticks>", "нужно: fade <тики>");
+                    }
+                    ExprParser.Parsed p = ExprParser.parseAtom(t, idx + 1);
+                    fade = p.expression();
+                    idx = p.end();
+                }
+                case "in", "with" -> {
+                    if (word(t, idx + 1).equals("first") && word(t, idx + 2).equals("person")) {
+                        firstPersonDefault = true;
+                        firstPersonExpr = null;
+                        idx += 3;
+                    } else {
+                        throw new ParseException("unknown option in play animation: '" + t.get(idx).value() + "'",
+                                "неизвестный параметр play animation: '" + t.get(idx).value() + "'");
+                    }
+                }
+                case "no", "without" -> {
+                    if (word(t, idx + 1).equals("first") && word(t, idx + 2).equals("person")) {
+                        firstPersonDefault = false;
+                        firstPersonExpr = null;
+                        idx += 3;
+                    } else {
+                        throw new ParseException("unknown option in play animation: '" + t.get(idx).value() + "'",
+                                "неизвестный параметр play animation: '" + t.get(idx).value() + "'");
+                    }
+                }
+                case "first" -> {
+                    if (!word(t, idx + 1).equals("person")) {
+                        throw new ParseException("expected 'first person'", "ожидается 'first person'");
+                    }
+                    idx += 2;
+                    if (idx < t.size()) {
+                        String nxt = word(t, idx);
+                        if (!nxt.equals("on") && !nxt.equals("of") && !nxt.equals("for") && !nxt.equals("to")
+                                && !nxt.equals("speed") && !nxt.equals("fade")) {
+                            ExprParser.Parsed p = ExprParser.parseAtom(t, idx);
+                            firstPersonExpr = p.expression();
+                            idx = p.end();
+                            continue;
+                        }
+                    }
+                    firstPersonDefault = true;
+                    firstPersonExpr = null;
+                }
+                default -> throw new ParseException("unknown option in play animation: '" + t.get(idx).value() + "'",
+                        "неизвестный параметр play animation: '" + t.get(idx).value() + "'");
+            }
+        }
+        return new com.scriptcraft.script.runtime.Effects.PlayAnimation(
+                animParsed.expression(), target, viewers, firstPersonExpr, firstPersonDefault, speed, fade);
+    }
+
+    /**
+     * stop [player] animation [on|of &lt;цель&gt;] [for|to &lt;зрители&gt;] [fade N]
+     */
+    private Action parseStopAnimation(List<Token> t) throws ParseException {
+        int idx = word(t, 1).equals("player") ? 3 : 2;
+        Target target = null;
+        Target viewers = null;
+        Expression fade = null;
+        while (idx < t.size()) {
+            String opt = word(t, idx);
+            switch (opt) {
+                case "on", "of" -> {
+                    TargetParser.Parsed p = TargetParser.parse(t, idx + 1);
+                    if (p == null) {
+                        throw new ParseException("expected target after '" + opt + "'", "ожидается цель после '" + opt + "'");
+                    }
+                    target = p.target();
+                    idx = p.end();
+                }
+                case "for", "to" -> {
+                    TargetParser.Parsed p = TargetParser.parse(t, idx + 1);
+                    if (p == null) {
+                        throw new ParseException("expected viewer target after '" + opt + "'", "ожидается цель-зритель после '" + opt + "'");
+                    }
+                    viewers = p.target();
+                    idx = p.end();
+                }
+                case "fade" -> {
+                    if (idx + 1 >= t.size()) {
+                        throw new ParseException("need: fade <ticks>", "нужно: fade <тики>");
+                    }
+                    ExprParser.Parsed p = ExprParser.parseAtom(t, idx + 1);
+                    fade = p.expression();
+                    idx = p.end();
+                }
+                default -> throw new ParseException("unknown option in stop animation: '" + t.get(idx).value() + "'",
+                        "неизвестный параметр stop animation: '" + t.get(idx).value() + "'");
+            }
+        }
+        return new com.scriptcraft.script.runtime.Effects.StopAnimation(target, viewers, fade);
     }
 
     /**

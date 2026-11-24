@@ -36,6 +36,8 @@ public final class StudioAutocomplete {
             "give player effect speed for 10 seconds", "clear effects of player",
             "play sound entity.player.levelup to player",
             "play sound entity.experience_orb.pickup at player for all players",
+            "play animation \"scriptcraft:wave\" on player for all players first person",
+            "stop animation of player",
             "spawn particle flame at player count 20 speed 0.05",
             "spawn entity \"minecraft:zombie\" at player named \"&cBoss\" with health 50",
             "push player upwards with force 1.2",

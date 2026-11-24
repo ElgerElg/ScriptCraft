@@ -1,6 +1,7 @@
 package com.scriptcraft.network;
 
 import com.scriptcraft.script.ScriptPaths;
+import com.scriptcraft.script.runtime.LuckPermsLink;
 import com.scriptcraft.studio.StudioAccess;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
@@ -13,7 +14,7 @@ import java.util.List;
 import java.util.function.Supplier;
 
 /** Сервер -> клиент: имена скриптов этой сессии (папка сервера, в одиночной игре она же локальная). */
-public record ScriptListPacket(List<String> names) {
+public record ScriptListPacket(List<String> names, String lpPresence) {
     public static ScriptListPacket ofServer() {
         List<String> names = new ArrayList<>();
         for (String name : ScriptPaths.listScripts()) {
@@ -22,7 +23,7 @@ public record ScriptListPacket(List<String> names) {
             }
             names.add(name);
         }
-        return new ScriptListPacket(names);
+        return new ScriptListPacket(names, LuckPermsLink.presence().name());
     }
 
     public static void encode(ScriptListPacket packet, FriendlyByteBuf buf) {
@@ -30,6 +31,7 @@ public record ScriptListPacket(List<String> names) {
         for (String name : packet.names) {
             buf.writeUtf(name, 200);
         }
+        buf.writeUtf(packet.lpPresence == null ? "NONE" : packet.lpPresence, 16);
     }
 
     public static ScriptListPacket decode(FriendlyByteBuf buf) {
@@ -38,13 +40,14 @@ public record ScriptListPacket(List<String> names) {
         for (int i = 0; i < count && i < 200; i++) {
             names.add(buf.readUtf(200));
         }
-        return new ScriptListPacket(names);
+        String lp = buf.readUtf(16);
+        return new ScriptListPacket(names, lp);
     }
 
     public static void handle(ScriptListPacket packet, Supplier<NetworkEvent.Context> ctx) {
         ctx.get().enqueueWork(() ->
                 DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () ->
-                        com.scriptcraft.client.ClientPacketHandler.studioCatalog(packet.names)));
+                        com.scriptcraft.client.ClientPacketHandler.studioCatalog(packet.names, packet.lpPresence)));
         ctx.get().setPacketHandled(true);
     }
 

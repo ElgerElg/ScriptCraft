@@ -195,7 +195,7 @@ final class ExprParser {
         return left;
     }
 
-    private static Parsed parseAtom(List<Token> t, int i) throws ParseException {
+    static Parsed parseAtom(List<Token> t, int i) throws ParseException {
         if (i >= t.size()) {
             throw new ParseException("ожидается значение");
         }

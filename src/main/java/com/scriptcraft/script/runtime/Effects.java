@@ -1891,6 +1891,75 @@ public final class Effects {
         }
     }
 
+    /** play [player] animation <id> [on <цель>] [for <зрители>] [first person|no first person] [speed N] [fade N] */
+    public record PlayAnimation(Expression animation, @Nullable Target target, @Nullable Target viewers,
+                                @Nullable Expression firstPerson, boolean firstPersonDefault,
+                                @Nullable Expression speed, @Nullable Expression fadeTicks) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            String animId = Expression.toText(animation.evaluate(ctx)).strip();
+            if (animId.isEmpty()) {
+                return;
+            }
+            boolean fp = firstPersonDefault;
+            if (firstPerson != null) {
+                fp = bool(firstPerson, ctx);
+            }
+            float spd = speed == null ? 1.0f : (float) Math.max(0.05, Math.min(10.0, number(speed, ctx)));
+            int fade = fadeTicks == null ? 4 : Math.max(0, Math.min(40, (int) Math.round(number(fadeTicks, ctx))));
+
+            List<ServerPlayer> animated = target == null
+                    ? List.of(ctx.requirePlayer())
+                    : target.resolve(ctx);
+            if (animated.isEmpty()) {
+                return;
+            }
+            List<ServerPlayer> audience = viewers == null ? null : viewers.resolve(ctx);
+            for (ServerPlayer subject : animated) {
+                com.scriptcraft.network.PlayerAnimPacket pkt = com.scriptcraft.network.PlayerAnimPacket.play(
+                        subject.getUUID(), animId, fp, spd, fade);
+                if (audience != null) {
+                    for (ServerPlayer viewer : audience) {
+                        com.scriptcraft.network.ModNetwork.sendTo(viewer, pkt);
+                    }
+                } else {
+                    for (ServerPlayer viewer : subject.serverLevel().players()) {
+                        com.scriptcraft.network.ModNetwork.sendTo(viewer, pkt);
+                    }
+                }
+            }
+        }
+    }
+
+    /** stop [player] animation [on|of <цель>] [for <зрители>] [fade N] */
+    public record StopAnimation(@Nullable Target target, @Nullable Target viewers,
+                                @Nullable Expression fadeTicks) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            int fade = fadeTicks == null ? 4 : Math.max(0, Math.min(40, (int) Math.round(number(fadeTicks, ctx))));
+            List<ServerPlayer> animated = target == null
+                    ? List.of(ctx.requirePlayer())
+                    : target.resolve(ctx);
+            if (animated.isEmpty()) {
+                return;
+            }
+            List<ServerPlayer> audience = viewers == null ? null : viewers.resolve(ctx);
+            for (ServerPlayer subject : animated) {
+                com.scriptcraft.network.PlayerAnimPacket pkt = com.scriptcraft.network.PlayerAnimPacket.stop(
+                        subject.getUUID(), fade);
+                if (audience != null) {
+                    for (ServerPlayer viewer : audience) {
+                        com.scriptcraft.network.ModNetwork.sendTo(viewer, pkt);
+                    }
+                } else {
+                    for (ServerPlayer viewer : subject.serverLevel().players()) {
+                        com.scriptcraft.network.ModNetwork.sendTo(viewer, pkt);
+                    }
+                }
+            }
+        }
+    }
+
     private static void motion(Entity e, double x, double y, double z) {
         e.setDeltaMovement(x, y, z);
         e.hurtMarked = true;

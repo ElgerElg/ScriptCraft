@@ -211,6 +211,7 @@ public final class ClientResources {
         boolean needReload = bindingsReload;
         bindingsReload = false;
         int gui = 0;
+        boolean hasAnim = false;
         for (String path : CHANGED) {
             if (isGuiTexture(path)) {
                 if (registerDynamic(path)) {
@@ -224,7 +225,14 @@ public final class ClientResources {
                     continue;
                 }
             }
+            if (isPlayerAnimation(path)) {
+                hasAnim = true;
+                continue;
+            }
             needReload = true;
+        }
+        if (hasAnim && net.minecraftforge.fml.ModList.get().isLoaded("playeranimator")) {
+            PlayerAnimBridge.invalidateCache();
         }
         ScriptCraft.LOGGER.info("[ScriptCraft] Ресурсы обновлены: {} файлов, GUI-картинок без перезагрузки: {}", CHANGED.size(), gui);
         CHANGED.clear();
@@ -239,6 +247,13 @@ public final class ClientResources {
     private static boolean isGuiTexture(String path) {
         String[] parts = path.split("/", 4);
         return parts.length == 4 && parts[2].equals("textures") && parts[3].startsWith("gui/") && path.endsWith(".png");
+    }
+
+    /** assets/<ns>/player_animation(s)/... .json — анимации PlayerAnimator. */
+    private static boolean isPlayerAnimation(String path) {
+        String[] parts = path.split("/", 4);
+        return parts.length == 4 && (parts[2].equals("player_animation") || parts[2].equals("player_animations"))
+                && path.endsWith(".json");
     }
 
     /** Регистрирует картинку как DynamicTexture под её обычным id (ns:textures/gui/...png). */

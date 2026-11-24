@@ -63,8 +63,8 @@ public final class ClientPacketHandler {
         }
     }
 
-    public static void studioCatalog(List<String> names) {
-        StudioSession.catalog(names);
+    public static void studioCatalog(List<String> names, String lpPresence) {
+        StudioSession.catalog(names, lpPresence);
     }
 
     public static void studioText(String name, String text, long revision, int flags) {
@@ -89,6 +89,18 @@ public final class ClientPacketHandler {
 
     public static void cameraEffect(com.scriptcraft.network.CameraEffectPacket packet) {
         ClientCameraEffects.apply(packet);
+    }
+
+    public static void playerAnim(com.scriptcraft.network.PlayerAnimPacket packet) {
+        if (!net.minecraftforge.fml.ModList.get().isLoaded("playeranimator")) {
+            return;
+        }
+        if (packet.stop()) {
+            PlayerAnimBridge.stop(packet.targetUuid(), packet.fadeTicks());
+        } else {
+            PlayerAnimBridge.play(packet.targetUuid(), packet.animationId(),
+                    packet.firstPerson(), packet.speed(), packet.fadeTicks());
+        }
     }
 
     public static void profilerData(com.scriptcraft.network.ProfilerPacket.Data data) {

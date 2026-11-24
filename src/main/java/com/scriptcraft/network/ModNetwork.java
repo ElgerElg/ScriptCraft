@@ -25,7 +25,8 @@ public final class ModNetwork {
     // 14: интерактивные контролы GUI (input/slider/toggle/tooltip), эффекты камеры, профайлер, история версий.
     // 15: клиентские GUI-частицы и всплывающие цифры (GuiFxPacket).
     // 16: цвет редактора в StudioLivePacket (совместное редактирование и GUI-редактор).
-    private static final String PROTOCOL_VERSION = "16";
+    // 17: анимации игрока (PlayerAnimPacket) и статус LuckPerms в ScriptListPacket.
+    private static final String PROTOCOL_VERSION = "17";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(ScriptCraft.MODID, "main"),
@@ -199,6 +200,11 @@ public final class ModNetwork {
                 .encoder(GuiFxPacket::encode)
                 .decoder(GuiFxPacket::decode)
                 .consumerMainThread(GuiFxPacket::handle)
+                .add();
+        CHANNEL.messageBuilder(PlayerAnimPacket.class, id++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(PlayerAnimPacket::encode)
+                .decoder(PlayerAnimPacket::decode)
+                .consumerMainThread(PlayerAnimPacket::handle)
                 .add();
     }
 
