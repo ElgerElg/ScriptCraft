@@ -159,6 +159,7 @@ public class StudioScreen extends Screen {
 
     @Override
     public void onClose() {
+        StudioAnimEditor.onLeaveTab();
         StudioSync.leave();
         super.onClose();
     }
@@ -266,6 +267,9 @@ public class StudioScreen extends Screen {
             renderHome(g, mouseX, mouseY - slideY);
         } else if (StudioSession.JOURNAL.equals(StudioSession.active)) {
             renderJournal(g, mouseX, mouseY - slideY);
+        } else if (StudioSession.ANIMATOR.equals(StudioSession.active)) {
+            StudioAnimEditor.render(g, this.font, px + 6, py + TITLE + MENU_H + 4,
+                    pw - 12, ph - TITLE - MENU_H - 10, mouseX, mouseY - slideY);
         } else if (StudioSession.PROFILER.equals(StudioSession.active) && ClientUiSettings.showProfiler()) {
             renderProfiler(g, mouseX, mouseY - slideY);
         } else if (script() != null) {
@@ -327,6 +331,7 @@ public class StudioScreen extends Screen {
             journalLabel = journalLabel + " " + StudioSession.issues.size();
         }
         x = tab(g, mx, my, x, journalLabel, StudioSession.JOURNAL, false);
+        x = tab(g, mx, my, x, Messages.get("studio.animator"), StudioSession.ANIMATOR, false);
         if (ClientUiSettings.showProfiler()) {
             x = tab(g, mx, my, x, Messages.get("studio.profiler"), StudioSession.PROFILER, false);
         }
@@ -2590,9 +2595,14 @@ public class StudioScreen extends Screen {
                 if (tab.startsWith("x:")) {
                     requestClose(tab.substring(2));
                 } else {
+                    if (StudioSession.ANIMATOR.equals(StudioSession.active) && !StudioSession.ANIMATOR.equals(tab)) {
+                        StudioAnimEditor.onLeaveTab();
+                    }
                     StudioSession.active = tab;
                     if (StudioSession.PROFILER.equals(tab)) {
                         lastProfFetchMs = 0L;
+                    } else if (StudioSession.ANIMATOR.equals(tab)) {
+                        StudioAnimEditor.requestServerFiles();
                     } else if (!StudioSession.HOME.equals(tab) && !StudioSession.JOURNAL.equals(tab)) {
                         StudioSession.lastScriptTab = tab;
                     }
@@ -2619,6 +2629,10 @@ public class StudioScreen extends Screen {
         }
         if (settings) {
             settingsClick(mx, my);
+            return true;
+        }
+        if (StudioSession.ANIMATOR.equals(StudioSession.active) && my >= py + TITLE + MENU_H) {
+            StudioAnimEditor.mouseClicked(this.font, mx, my, button);
             return true;
         }
         if (StudioSession.PROFILER.equals(StudioSession.active) && ClientUiSettings.showProfiler()
@@ -2788,6 +2802,11 @@ public class StudioScreen extends Screen {
         if (gotoOpen && gotoField.mouseDragged(this.font, mx)) return true;
         if (StudioSession.toolPanelOpen && panelFocus == 1 && findField.mouseDragged(this.font, mx)) return true;
         if (StudioSession.toolPanelOpen && panelFocus == 2 && replaceField.mouseDragged(this.font, mx)) return true;
+        if (StudioSession.ANIMATOR.equals(StudioSession.active) && !settings && drag == Drag.NONE) {
+            if (StudioAnimEditor.mouseDragged(this.font, mx, my, button)) {
+                return true;
+            }
+        }
         if (StudioSession.guiEditorMode && script() != null && !script().genericFile && !script().isImage && !settings) {
             if (StudioGuiEditor.mouseDragged(this.font, mx, my, button)) {
                 return true;
@@ -2909,6 +2928,7 @@ public class StudioScreen extends Screen {
         gotoField.mouseReleased();
         findField.mouseReleased();
         replaceField.mouseReleased();
+        StudioAnimEditor.mouseReleased();
         StudioGuiEditor.mouseReleased(script());
         drag = Drag.NONE;
         slider = 0;
@@ -2917,6 +2937,11 @@ public class StudioScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+        if (StudioSession.ANIMATOR.equals(StudioSession.active) && !settings) {
+            if (StudioAnimEditor.mouseScrolled((int) mouseX, (int) mouseY, delta)) {
+                return true;
+            }
+        }
         if (StudioSession.guiEditorMode && script() != null && !script().genericFile && !script().isImage && !settings) {
             if (StudioGuiEditor.mouseScrolled((int) mouseX, (int) mouseY, delta)) {
                 return true;
@@ -3028,6 +3053,11 @@ public class StudioScreen extends Screen {
                 confirmAsk();
             }
             return true;
+        }
+        if (StudioSession.ANIMATOR.equals(StudioSession.active) && !settings && menu == null && !catalog) {
+            if (StudioAnimEditor.keyPressed(key)) {
+                return true;
+            }
         }
         if (key == GLFW.GLFW_KEY_ESCAPE) {
             if (acMatch != null) {
@@ -3305,6 +3335,10 @@ public class StudioScreen extends Screen {
             }
             return true;
         }
+        if (StudioSession.ANIMATOR.equals(StudioSession.active) && !settings) {
+            StudioAnimEditor.charTyped(ch);
+            return true;
+        }
         ScriptDocument doc = script();
         if (StudioSession.guiEditorMode && doc != null && !doc.genericFile && !doc.isImage && !settings) {
             if (StudioGuiEditor.charTyped(ch)) {
@@ -3368,13 +3402,19 @@ public class StudioScreen extends Screen {
     }
 
     private ScriptDocument script() {
-        if (StudioSession.HOME.equals(StudioSession.active) || StudioSession.JOURNAL.equals(StudioSession.active)) {
+        if (StudioSession.HOME.equals(StudioSession.active)
+                || StudioSession.JOURNAL.equals(StudioSession.active)
+                || StudioSession.ANIMATOR.equals(StudioSession.active)
+                || StudioSession.PROFILER.equals(StudioSession.active)) {
             return null;
         }
         return StudioSession.docs.get(StudioSession.active);
     }
 
     private void openScript(String name) {
+        if (StudioSession.ANIMATOR.equals(StudioSession.active)) {
+            StudioAnimEditor.onLeaveTab();
+        }
         ScriptDocument doc = StudioSession.openScript(name);
         catalog = false;
         settings = false;
@@ -3386,6 +3426,14 @@ public class StudioScreen extends Screen {
     private void openExplorerFile(String relPath) {
         if (relPath.startsWith("scripts/") && relPath.endsWith(".sc")) {
             openScript(relPath.substring("scripts/".length()));
+            return;
+        }
+        if (relPath.startsWith("resources/assets/") && relPath.toLowerCase(Locale.ROOT).endsWith(".json")
+                && (relPath.contains("/player_animation/") || relPath.contains("/player_animations/"))) {
+            catalog = false;
+            settings = false;
+            StudioSession.active = StudioSession.ANIMATOR;
+            ModNetwork.sendToServer(new StudioExplorerPacket.Action(StudioExplorerPacket.Kind.READ_FILE, relPath, "$anim_open"));
             return;
         }
         ScriptDocument doc = StudioSession.openGenericFile(relPath);
@@ -3966,7 +4014,8 @@ public class StudioScreen extends Screen {
                     Messages.get("studio.m.spaces_to_tabs"), Messages.get("studio.m.tabs_to_spaces"));
             case "search" -> List.of(Messages.get("studio.find_replace"));
             case "view" -> List.of(StudioSession.maximized ? Messages.get("studio.m.window") : Messages.get("studio.m.full"),
-                    Messages.get("studio.journal"), Messages.get("studio.m.tools"), Messages.get("studio.m.gui_editor"));
+                    Messages.get("studio.journal"), Messages.get("studio.animator"),
+                    Messages.get("studio.m.tools"), Messages.get("studio.m.gui_editor"));
             case "reload" -> List.of(
                     Messages.get("studio.m.reload_scripts"),
                     Messages.get("studio.m.reload_resources"),
@@ -4029,15 +4078,19 @@ public class StudioScreen extends Screen {
                 if (index == 0) {
                     toggleMax();
                 } else if (index == 1) {
+                    if (StudioSession.ANIMATOR.equals(StudioSession.active)) StudioAnimEditor.onLeaveTab();
                     StudioSession.active = StudioSession.JOURNAL;
-                } else if (index == 2 && script() != null) {
+                } else if (index == 2) {
+                    StudioSession.active = StudioSession.ANIMATOR;
+                    StudioAnimEditor.requestServerFiles();
+                } else if (index == 3 && script() != null) {
                     if (StudioSession.toolPanelOpen) {
                         StudioSession.toolPanelOpen = false;
                         panelFocus = 0;
                     } else {
                         openToolPanel(0);
                     }
-                } else if (index == 3 && script() != null && !script().genericFile && !script().isImage) {
+                } else if (index == 4 && script() != null && !script().genericFile && !script().isImage) {
                     StudioSession.guiEditorMode = !StudioSession.guiEditorMode;
                     if (StudioSession.guiEditorMode) {
                         StudioGuiEditor.reloadFromDocument(script());
@@ -4105,6 +4158,11 @@ public class StudioScreen extends Screen {
             return StudioSession.JOURNAL;
         }
         x += tabWidth(journalLabel, false, false);
+        String animLabel = Messages.get("studio.animator");
+        if (hitTab(mx, x, animLabel, false) != null) {
+            return StudioSession.ANIMATOR;
+        }
+        x += tabWidth(animLabel, false, false);
         if (ClientUiSettings.showProfiler()) {
             String profLabel = Messages.get("studio.profiler");
             if (hitTab(mx, x, profLabel, false) != null) {

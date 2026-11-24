@@ -103,6 +103,10 @@ public final class StudioExplorer {
         String path = normalizeRel(action.path());
         switch (action.kind()) {
             case LIST -> {
+                if ("$animations".equals(action.path())) {
+                    sendAnimationsList(player);
+                    return;
+                }
                 WATCHING_DIR.put(player.getUUID(), path);
                 sendDir(player, path);
             }
@@ -134,7 +138,13 @@ public final class StudioExplorer {
                         ScriptLoader.reloadAll(player.createCommandSourceStack());
                         broadcastScriptsAndLog(server);
                     } else if (path.startsWith("resources/")) {
-                        markResourcesDirty(server);
+                        if ("$anim_del".equals(action.extra()) && server != null) {
+                            ResourceSync.reloadAndPush(server);
+                            clearResourcesDirty(server);
+                            sendAnimationsList(player);
+                        } else {
+                            markResourcesDirty(server);
+                        }
                     }
                     broadcastRename(server, path, "");
                     broadcastDirs(server);
@@ -199,7 +209,8 @@ public final class StudioExplorer {
                     }
                     byte[] bytes = Files.readAllBytes(target);
                     boolean bin = isImageName(path);
-                    ModNetwork.sendTo(player, new StudioExplorerPacket.FileView(path, bin, bytes, ""));
+                    String tag = "$anim_open".equals(action.extra()) ? "$anim_open" : "";
+                    ModNetwork.sendTo(player, new StudioExplorerPacket.FileView(path, bin, bytes, tag));
                 } catch (IOException e) {
                     Feedback.toPlayer(player, "studio.read_failed", path);
                 }
@@ -225,7 +236,13 @@ public final class StudioExplorer {
                         }
                         broadcastScriptsAndLog(server);
                     } else if (path.startsWith("resources/") && server != null) {
-                        markResourcesDirty(server);
+                        if ("$anim_save".equals(action.extra())) {
+                            ResourceSync.reloadAndPush(server);
+                            clearResourcesDirty(server);
+                            sendAnimationsList(player);
+                        } else {
+                            markResourcesDirty(server);
+                        }
                     }
                     broadcastDirs(server);
                 } catch (IOException e) {
@@ -275,6 +292,40 @@ public final class StudioExplorer {
         if (resourcesDirty) {
             ModNetwork.sendTo(player, new StudioExplorerPacket.FileView("1", false, new byte[0], "$res_dirty"));
         }
+    }
+
+    /** Собирает все .json файлы анимаций игрока из resources/assets/<ns>/player_animation(s)/ для редактора анимаций. */
+    public static void sendAnimationsList(ServerPlayer player) {
+        Path root = ModPaths.root().toAbsolutePath().normalize();
+        Path assetsRoot = ModPaths.resources().resolve("assets").toAbsolutePath().normalize();
+        List<StudioExplorerPacket.Entry> entries = new ArrayList<>();
+        if (Files.isDirectory(assetsRoot)) {
+            try (Stream<Path> nsStream = Files.list(assetsRoot)) {
+                List<Path> namespaces = nsStream.filter(Files::isDirectory)
+                        .sorted(Comparator.comparing(p -> p.getFileName().toString().toLowerCase(Locale.ROOT)))
+                        .toList();
+                for (Path nsDir : namespaces) {
+                    for (String sub : List.of("player_animation", "player_animations")) {
+                        Path animDir = nsDir.resolve(sub);
+                        if (!Files.isDirectory(animDir)) continue;
+                        try (Stream<Path> walk = Files.walk(animDir, 4)) {
+                            List<Path> files = walk.filter(Files::isRegularFile)
+                                    .filter(p -> p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".json"))
+                                    .sorted(Comparator.comparing(p -> p.toString().toLowerCase(Locale.ROOT)))
+                                    .toList();
+                            for (Path f : files) {
+                                if (entries.size() >= 250) break;
+                                String rel = root.relativize(f).toString().replace('\\', '/');
+                                entries.add(new StudioExplorerPacket.Entry(rel, false, safeSize(f)));
+                            }
+                        } catch (IOException ignored) {
+                        }
+                    }
+                }
+            } catch (IOException ignored) {
+            }
+        }
+        ModNetwork.sendTo(player, new StudioExplorerPacket.DirView("$animations", entries, List.of()));
     }
 
     /** Рассылает свежее содержимое открытых папок и активных редакторов всем студийцам онлайн. */

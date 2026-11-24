@@ -4778,7 +4778,23 @@ play animation "emotes:dance" on targeted player for player first person false
 # Плавно остановить анимацию за 6 тиков
 command /stopanim:
 \tstop animation of player fade 6`,
-    since: "0.8.8", related: ["cmd-reload", "target-varlist"]
+    since: "0.8.8", related: ["studio-anim-editor", "studio-libs-and-colors", "cmd-reload", "target-varlist"]
+  },
+  {
+    id: "studio-anim-editor", category: "commands",
+    name: { ru: "3D-редактор анимаций игрока в Студии", en: "3D Player Animation Editor in Studio" },
+    syntax: [
+      "Студия (F3 + ~) → вкладка «Анимация игрока» (слева от «Профайлер»)"
+    ],
+    desc: {
+      ru: "Полноценный встроенный 3D-редактор анимаций модели игрока уровня Blockbench прямо внутри Студии ScriptCraft:\n• **Живой 3D-вьюпорт с Bendy-lib**: рендерит вашего персонажа со скином, вторым слоем, бронёй и предметами в руках; при установленных `PlayerAnimator` + `Bendy-lib` показывает плавный изгиб конечностей в реальном времени, а без модов автоматически работает в автономном 3D-режиме.\n• **Выделение мышью и 3D-Гизмо**: кликайте ЛКМ прямо по частям тела на 3D-модели и тяните оси `X / Y / Z` в режимах **Поворот (`R`)**, **Сдвиг (`G`)** и **Изгиб Bendy-lib (`B`)** (фиксация оси клавишами `X`, `Y`, `Z`, плавная доводка с `Shift`, орбита `ПКМ`, панорама `СКМ`, зум колесом, вид от 1-го лица `1P`, сброс камеры `F`).\n• **Многодорожечный таймлайн и 31 кривая Easing**: перемотка ползунка, выделение нескольких ключей рамкой мыши (**box-select**), сдвиг групп ключей по времени, переключение вида «Все кости / 8 каналов выбранной кости», живой график кривой (`INOUTSINE`, `OUTBACK`, `OUTELASTIC`, `OUTBOUNCE` и др.), цикл (`Loop` + `returnTick`) и 5 готовых стартовых шаблонов.\n• **Полезные хоткеи**: `Space` (Play/Pause), `← / →` (±1 тик), `1..9` (выбор кости), `I / K` (поставить ключ), `Del` (удалить ключи), `Ctrl+M` (отзеркалить позу лево ⇄ право), `Ctrl+C / Ctrl+V` (копировать/вставить ключи или позу), `Ctrl+Z / Ctrl+Y` (Undo/Redo), `Ctrl+S` (сохранение).\n• **Мгновенная синхронизация**: сохранение (`Ctrl+S`) записывает `.json` в `scriptcraft/resources/assets/<ns>/player_animation/<name>.json` и сразу рассылает ресурс всем игрокам без перезагрузки ресурспаков, а кнопка **`→ В скрипт`** вставляет готовую команду `play animation` в ваш `.sc` файл (также поддерживается открытие существующих JSON Emotecraft и Blockbench).",
+      en: "Full-featured Blockbench-class 3D player animation editor built right into ScriptCraft Studio:\n• **Live 3D Viewport with Bendy-lib**: renders your character with skin layers, armor, and held items; displays real-time curved limb deformation when `PlayerAnimator` + `Bendy-lib` are loaded, with a built-in standalone 3D fallback when absent.\n• **3D Mouse Picking & Axis Gizmo**: click directly on body parts in the 3D scene and drag `X / Y / Z` handles in **Rotate (`R`)**, **Move (`G`)**, and **Bend (`B`)** modes (`X`/`Y`/`Z` axis lock, `Shift` fine precision, `RMB` orbit, `MMB` pan, scroll zoom, `1P` first-person preview, `F` reset camera).\n• **Multi-Track Timeline & 31 Easing Curves**: playhead scrubbing, **marquee box-selection**, multi-keyframe retiming, Bones/Channels view toggle, live 2D easing curve graph (`INOUTSINE`, `OUTBACK`, `OUTELASTIC`, `OUTBOUNCE`, etc.), loop (`returnTick`), and 5 starter presets.\n• **Rich Keybinds**: `Space` (Play/Pause), `← / →` (±1 tick), `1..9` (select bone), `I / K` (insert keyframe), `Del` (remove keys), `Ctrl+M` (Mirror Pose), `Ctrl+C / Ctrl+V` (Copy/Paste), `Ctrl+Z / Ctrl+Y` (Undo/Redo), `Ctrl+S` (Save).\n• **Instant Sync & `.sc` Export**: `Ctrl+S` saves to `scriptcraft/resources/assets/<ns>/player_animation/<name>.json` and hot-syncs to all online clients immediately; **`→ .sc`** inserts the `play animation` command straight into your script (supports opening both Emotecraft and Blockbench JSON files)."
+    },
+    example: `# После сохранения анимации (Ctrl+S) во вкладке «Анимация игрока»
+# нажмите «→ В скрипт» — команда готова к запуску сразу в игре:
+command /slash:
+\tplay animation "scriptcraft:slash" on player for all players first person`,
+    since: "0.8.8", related: ["eff-player-animation", "studio-libs-and-colors", "screen-gui-builder"]
   },
   {
     id: "screen-gui-builder", category: "screen",

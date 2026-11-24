@@ -1,0 +1,767 @@
+package com.scriptcraft.client;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.api.distmarker.OnlyIn;
+import net.minecraftforge.fml.ModList;
+
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.UUID;
+
+/**
+ * Чистая Java-модель 3D-анимации игрока для редактора в Студии.
+ * Не импортирует классы PlayerAnimator напрямую, поэтому безопасно работает даже без мода,
+ * а при загруженном {@code playeranimator} синхронизируется через {@link PlayerAnimBridge}.
+ */
+@OnlyIn(Dist.CLIENT)
+public final class StudioAnimModel {
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
+
+    private StudioAnimModel() {
+    }
+
+    public enum BoneId {
+        BODY("body", "studio.anim.bone.body", 0f, 0f, 0f, true, 0xFFF0B85B),
+        TORSO("torso", "studio.anim.bone.torso", 0f, 0f, 0f, true, 0xFF58A6FF),
+        HEAD("head", "studio.anim.bone.head", 0f, 0f, 0f, false, 0xFF4CC38A),
+        RIGHT_ARM("rightArm", "studio.anim.bone.rarm", -5f, 2f, 0f, true, 0xFFE06C75),
+        LEFT_ARM("leftArm", "studio.anim.bone.larm", 5f, 2f, 0f, true, 0xFF61AFEF),
+        RIGHT_LEG("rightLeg", "studio.anim.bone.rleg", -1.9f, 12f, 0.1f, true, 0xFFE5C07B),
+        LEFT_LEG("leftLeg", "studio.anim.bone.lleg", 1.9f, 12f, 0.1f, true, 0xFFC678DD),
+        RIGHT_ITEM("rightItem", "studio.anim.bone.ritem", 0f, 0f, 0f, false, 0xFFF97316),
+        LEFT_ITEM("leftItem", "studio.anim.bone.litem", 0f, 0f, 0f, false, 0xFF22D3EE);
+
+        public final String partKey;
+        public final String langKey;
+        public final float defX;
+        public final float defY;
+        public final float defZ;
+        public final boolean bendable;
+        public final int color;
+
+        BoneId(String partKey, String langKey, float defX, float defY, float defZ, boolean bendable, int color) {
+            this.partKey = partKey;
+            this.langKey = langKey;
+            this.defX = defX;
+            this.defY = defY;
+            this.defZ = defZ;
+            this.bendable = bendable;
+            this.color = color;
+        }
+
+        public static BoneId byPartKey(String key) {
+            if (key == null) return null;
+            for (BoneId b : values()) {
+                if (b.partKey.equalsIgnoreCase(key)) {
+                    return b;
+                }
+            }
+            return null;
+        }
+    }
+
+    public enum Channel {
+        ROT_X("pitch", "Rot X", true, 0xFFEF4444, 5f),
+        ROT_Y("yaw", "Rot Y", true, 0xFF22C55E, 5f),
+        ROT_Z("roll", "Rot Z", true, 0xFF3B82F6, 5f),
+        POS_X("x", "Pos X", false, 0xFFEF4444, 0.5f),
+        POS_Y("y", "Pos Y", false, 0xFF22C55E, 0.5f),
+        POS_Z("z", "Pos Z", false, 0xFF3B82F6, 0.5f),
+        BEND_DIR("axis", "Bend Dir", true, 0xFFA855F7, 5f),
+        BEND_ANG("bend", "Bend °", true, 0xFFEC4899, 5f);
+
+        public final String jsonKey;
+        public final String shortLabel;
+        public final boolean angle;
+        public final int axisColor;
+        public final float step;
+
+        Channel(String jsonKey, String shortLabel, boolean angle, int axisColor, float step) {
+            this.jsonKey = jsonKey;
+            this.shortLabel = shortLabel;
+            this.angle = angle;
+            this.axisColor = axisColor;
+            this.step = step;
+        }
+
+        public boolean isBend() {
+            return this == BEND_DIR || this == BEND_ANG;
+        }
+    }
+
+    public enum EaseCurve {
+        LINEAR, CONSTANT,
+        INOUTSINE, INSINE, OUTSINE,
+        INQUAD, OUTQUAD, INOUTQUAD,
+        INCUBIC, OUTCUBIC, INOUTCUBIC,
+        INQUART, OUTQUART, INOUTQUART,
+        INQUINT, OUTQUINT, INOUTQUINT,
+        INEXPO, OUTEXPO, INOUTEXPO,
+        INCIRC, OUTCIRC, INOUTCIRC,
+        INBACK, OUTBACK, INOUTBACK,
+        INELASTIC, OUTELASTIC, INOUTELASTIC,
+        INBOUNCE, OUTBOUNCE, INOUTBOUNCE;
+
+        public static EaseCurve parse(String raw) {
+            if (raw == null || raw.isBlank()) return LINEAR;
+            String clean = raw.trim().toUpperCase(Locale.ROOT).replace("_", "").replace("-", "");
+            if (clean.startsWith("EASE")) clean = clean.substring(4);
+            for (EaseCurve e : values()) {
+                if (e.name().equals(clean)) return e;
+            }
+            return LINEAR;
+        }
+
+        public float eval(float t) {
+            float x = Math.max(0f, Math.min(1f, t));
+            final float c1 = 1.70158f;
+            final float c2 = c1 * 1.525f;
+            final float c3 = c1 + 1f;
+            final float c4 = (float) ((2.0 * Math.PI) / 3.0);
+            final float c5 = (float) ((2.0 * Math.PI) / 4.5);
+            return switch (this) {
+                case LINEAR -> x;
+                case CONSTANT -> x >= 1f ? 1f : 0f;
+                case INSINE -> 1f - (float) Math.cos((x * Math.PI) / 2.0);
+                case OUTSINE -> (float) Math.sin((x * Math.PI) / 2.0);
+                case INOUTSINE -> -((float) Math.cos(Math.PI * x) - 1f) / 2f;
+                case INQUAD -> x * x;
+                case OUTQUAD -> 1f - (1f - x) * (1f - x);
+                case INOUTQUAD -> x < 0.5f ? 2f * x * x : 1f - (float) Math.pow(-2f * x + 2f, 2) / 2f;
+                case INCUBIC -> x * x * x;
+                case OUTCUBIC -> 1f - (float) Math.pow(1f - x, 3);
+                case INOUTCUBIC -> x < 0.5f ? 4f * x * x * x : 1f - (float) Math.pow(-2f * x + 2f, 3) / 2f;
+                case INQUART -> x * x * x * x;
+                case OUTQUART -> 1f - (float) Math.pow(1f - x, 4);
+                case INOUTQUART -> x < 0.5f ? 8f * x * x * x * x : 1f - (float) Math.pow(-2f * x + 2f, 4) / 2f;
+                case INQUINT -> x * x * x * x * x;
+                case OUTQUINT -> 1f - (float) Math.pow(1f - x, 5);
+                case INOUTQUINT -> x < 0.5f ? 16f * x * x * x * x * x : 1f - (float) Math.pow(-2f * x + 2f, 5) / 2f;
+                case INEXPO -> x == 0f ? 0f : (float) Math.pow(2.0, 10.0 * x - 10.0);
+                case OUTEXPO -> x == 1f ? 1f : 1f - (float) Math.pow(2.0, -10.0 * x);
+                case INOUTEXPO -> x == 0f ? 0f : x == 1f ? 1f
+                        : x < 0.5f ? (float) Math.pow(2.0, 20.0 * x - 10.0) / 2f
+                        : (2f - (float) Math.pow(2.0, -20.0 * x + 10.0)) / 2f;
+                case INCIRC -> 1f - (float) Math.sqrt(Math.max(0f, 1f - x * x));
+                case OUTCIRC -> (float) Math.sqrt(Math.max(0f, 1f - (x - 1f) * (x - 1f)));
+                case INOUTCIRC -> x < 0.5f
+                        ? (1f - (float) Math.sqrt(Math.max(0f, 1f - 4f * x * x))) / 2f
+                        : ((float) Math.sqrt(Math.max(0f, 1f - (float) Math.pow(-2f * x + 2f, 2))) + 1f) / 2f;
+                case INBACK -> c3 * x * x * x - c1 * x * x;
+                case OUTBACK -> 1f + c3 * (float) Math.pow(x - 1f, 3) + c1 * (float) Math.pow(x - 1f, 2);
+                case INOUTBACK -> x < 0.5f
+                        ? ((float) Math.pow(2f * x, 2) * ((c2 + 1f) * 2f * x - c2)) / 2f
+                        : ((float) Math.pow(2f * x - 2f, 2) * ((c2 + 1f) * (x * 2f - 2f) + c2) + 2f) / 2f;
+                case INELASTIC -> x == 0f ? 0f : x == 1f ? 1f
+                        : -(float) Math.pow(2.0, 10.0 * x - 10.0) * (float) Math.sin((x * 10.0 - 10.75) * c4);
+                case OUTELASTIC -> x == 0f ? 0f : x == 1f ? 1f
+                        : (float) Math.pow(2.0, -10.0 * x) * (float) Math.sin((x * 10.0 - 0.75) * c4) + 1f;
+                case INOUTELASTIC -> x == 0f ? 0f : x == 1f ? 1f
+                        : x < 0.5f
+                        ? -((float) Math.pow(2.0, 20.0 * x - 10.0) * (float) Math.sin((20.0 * x - 11.125) * c5)) / 2f
+                        : ((float) Math.pow(2.0, -20.0 * x + 10.0) * (float) Math.sin((20.0 * x - 11.125) * c5)) / 2f + 1f;
+                case INBOUNCE -> 1f - bounceOut(1f - x);
+                case OUTBOUNCE -> bounceOut(x);
+                case INOUTBOUNCE -> x < 0.5f
+                        ? (1f - bounceOut(1f - 2f * x)) / 2f
+                        : (1f + bounceOut(2f * x - 1f)) / 2f;
+            };
+        }
+
+        private static float bounceOut(float x) {
+            final float n1 = 7.5625f;
+            final float d1 = 2.75f;
+            if (x < 1f / d1) {
+                return n1 * x * x;
+            } else if (x < 2f / d1) {
+                float t = x - 1.5f / d1;
+                return n1 * t * t + 0.75f;
+            } else if (x < 2.5f / d1) {
+                float t = x - 2.25f / d1;
+                return n1 * t * t + 0.9375f;
+            } else {
+                float t = x - 2.625f / d1;
+                return n1 * t * t + 0.984375f;
+            }
+        }
+    }
+
+    public record KeyPoint(int tick, float value, EaseCurve ease) {
+    }
+
+    public record KeyRef(BoneId bone, Channel channel, int tick) {
+    }
+
+    public static final class AnimDoc {
+        public String namespace = "scriptcraft";
+        public String fileName = "wave";
+        public String displayName = "Wave";
+        public String author = "ScriptCraft";
+        public String description = "";
+        public int beginTick = 2;
+        public int endTick = 40;
+        public int stopTick = 45;
+        public boolean looped = false;
+        public int returnTick = 0;
+        public boolean easingBefore = false;
+        public UUID uuid = UUID.randomUUID();
+
+        private final EnumMap<BoneId, EnumMap<Channel, TreeMap<Integer, KeyPoint>>> tracks = new EnumMap<>(BoneId.class);
+        private final EnumMap<BoneId, Boolean> boneVisible = new EnumMap<>(BoneId.class);
+        private final Deque<String> undoStack = new ArrayDeque<>();
+        private final Deque<String> redoStack = new ArrayDeque<>();
+        private String savedSnapshot = "";
+
+        public AnimDoc() {
+            for (BoneId b : BoneId.values()) {
+                EnumMap<Channel, TreeMap<Integer, KeyPoint>> chMap = new EnumMap<>(Channel.class);
+                for (Channel c : Channel.values()) {
+                    chMap.put(c, new TreeMap<>());
+                }
+                tracks.put(b, chMap);
+                boneVisible.put(b, true);
+            }
+            markSaved();
+        }
+
+        public void clearTracks() {
+            for (BoneId b : BoneId.values()) {
+                for (Channel c : Channel.values()) {
+                    tracks.get(b).get(c).clear();
+                }
+                boneVisible.put(b, true);
+            }
+        }
+
+        public String fullId() {
+            return namespace + ":" + fileName;
+        }
+
+        public String serverRelPath() {
+            return "resources/assets/" + namespace + "/player_animation/" + fileName + ".json";
+        }
+
+        public boolean isBoneVisible(BoneId bone) {
+            return boneVisible.getOrDefault(bone, true);
+        }
+
+        public void toggleBoneVisible(BoneId bone) {
+            boneVisible.put(bone, !isBoneVisible(bone));
+        }
+
+        public TreeMap<Integer, KeyPoint> track(BoneId bone, Channel ch) {
+            return tracks.get(bone).get(ch);
+        }
+
+        public boolean hasKeys(BoneId bone, Channel ch) {
+            return !tracks.get(bone).get(ch).isEmpty();
+        }
+
+        public boolean boneHasAnyKeys(BoneId bone) {
+            for (Channel c : Channel.values()) {
+                if (!tracks.get(bone).get(c).isEmpty()) return true;
+            }
+            return false;
+        }
+
+        public boolean boneHasKeyAt(BoneId bone, int tick) {
+            for (Channel c : Channel.values()) {
+                if (tracks.get(bone).get(c).containsKey(tick)) return true;
+            }
+            return false;
+        }
+
+        public void putKey(BoneId bone, Channel ch, int tick, float value, EaseCurve ease) {
+            if (!bone.bendable && ch.isBend()) return;
+            int clampedTick = Math.max(0, tick);
+            float rounded = Math.round(value * 100f) / 100f;
+            if (ch == Channel.BEND_ANG) {
+                rounded = Math.max(-180f, Math.min(180f, rounded));
+            }
+            tracks.get(bone).get(ch).put(clampedTick, new KeyPoint(clampedTick, rounded, ease == null ? EaseCurve.INOUTSINE : ease));
+            if (clampedTick > endTick) {
+                endTick = clampedTick;
+                if (stopTick <= endTick) stopTick = endTick + 5;
+            }
+        }
+
+        public void removeKey(BoneId bone, Channel ch, int tick) {
+            tracks.get(bone).get(ch).remove(tick);
+        }
+
+        public float eval(BoneId bone, Channel ch, float tick) {
+            if (!isBoneVisible(bone)) return 0f;
+            if (!bone.bendable && ch.isBend()) return 0f;
+            TreeMap<Integer, KeyPoint> map = tracks.get(bone).get(ch);
+            if (map.isEmpty()) return 0f;
+
+            float t = Math.max(0f, tick);
+            if (looped && endTick > returnTick && t > endTick) {
+                int span = Math.max(1, endTick - returnTick);
+                t = returnTick + ((t - returnTick) % span);
+            }
+
+            int floorTick = (int) Math.floor(t);
+            Map.Entry<Integer, KeyPoint> beforeEntry = map.floorEntry(floorTick);
+            Map.Entry<Integer, KeyPoint> afterEntry = map.higherEntry(floorTick);
+
+            if (beforeEntry == null && afterEntry != null) {
+                KeyPoint first = afterEntry.getValue();
+                if (first.tick == 0) return first.value;
+                int startTick = 0;
+                float frac = Math.max(0f, Math.min(1f, (t - startTick) / Math.max(1f, first.tick - startTick)));
+                EaseCurve ease = easingBefore ? first.ease : EaseCurve.INOUTSINE;
+                return lerp(0f, first.value, ease.eval(frac));
+            }
+            if (beforeEntry != null && afterEntry == null) {
+                KeyPoint last = beforeEntry.getValue();
+                if (looped) {
+                    Map.Entry<Integer, KeyPoint> loopTarget = map.ceilingEntry(returnTick);
+                    if (loopTarget != null && last.tick < endTick) {
+                        int totalSpan = (endTick - last.tick) + (loopTarget.getKey() - returnTick);
+                        if (totalSpan > 0) {
+                            float frac = Math.max(0f, Math.min(1f, (t - last.tick) / totalSpan));
+                            EaseCurve ease = easingBefore ? loopTarget.getValue().ease : last.ease;
+                            return lerp(last.value, loopTarget.getValue().value, ease.eval(frac));
+                        }
+                    }
+                    return last.value;
+                }
+                if (t <= endTick) {
+                    return last.value;
+                }
+                int fadeSpan = Math.max(1, stopTick - endTick);
+                if (t >= stopTick) return 0f;
+                float frac = Math.max(0f, Math.min(1f, (t - endTick) / fadeSpan));
+                return lerp(last.value, 0f, EaseCurve.INOUTSINE.eval(frac));
+            }
+            if (beforeEntry != null) {
+                KeyPoint k0 = beforeEntry.getValue();
+                KeyPoint k1 = afterEntry.getValue();
+                if (k1.tick <= k0.tick) return k0.value;
+                float frac = Math.max(0f, Math.min(1f, (t - k0.tick) / (k1.tick - k0.tick)));
+                EaseCurve ease = easingBefore ? k1.ease : k0.ease;
+                return lerp(k0.value, k1.value, ease.eval(frac));
+            }
+            return 0f;
+        }
+
+        private static float lerp(float a, float b, float t) {
+            return a + (b - a) * t;
+        }
+
+        public void mirrorPoseAt(int tick, EaseCurve defaultEase) {
+            swapAndMirrorPair(BoneId.RIGHT_ARM, BoneId.LEFT_ARM, tick, defaultEase);
+            swapAndMirrorPair(BoneId.RIGHT_LEG, BoneId.LEFT_LEG, tick, defaultEase);
+            swapAndMirrorPair(BoneId.RIGHT_ITEM, BoneId.LEFT_ITEM, tick, defaultEase);
+            mirrorSingleBone(BoneId.BODY, tick, defaultEase);
+            mirrorSingleBone(BoneId.TORSO, tick, defaultEase);
+            mirrorSingleBone(BoneId.HEAD, tick, defaultEase);
+        }
+
+        private void swapAndMirrorPair(BoneId a, BoneId b, int tick, EaseCurve defaultEase) {
+            for (Channel ch : Channel.values()) {
+                if (!a.bendable && ch.isBend()) continue;
+                boolean hasA = hasKeys(a, ch);
+                boolean hasB = hasKeys(b, ch);
+                if (!hasA && !hasB) continue;
+                float valA = eval(a, ch, tick);
+                float valB = eval(b, ch, tick);
+                float sign = mirrorSign(ch);
+                KeyPoint kpA = track(a, ch).get(tick);
+                KeyPoint kpB = track(b, ch).get(tick);
+                EaseCurve easeA = kpA != null ? kpA.ease : defaultEase;
+                EaseCurve easeB = kpB != null ? kpB.ease : defaultEase;
+                putKey(a, ch, tick, valB * sign, easeB);
+                putKey(b, ch, tick, valA * sign, easeA);
+            }
+        }
+
+        private void mirrorSingleBone(BoneId bone, int tick, EaseCurve defaultEase) {
+            for (Channel ch : Channel.values()) {
+                if (!bone.bendable && ch.isBend()) continue;
+                if (!hasKeys(bone, ch)) continue;
+                float sign = mirrorSign(ch);
+                if (sign < 0f) {
+                    float val = eval(bone, ch, tick);
+                    KeyPoint kp = track(bone, ch).get(tick);
+                    putKey(bone, ch, tick, -val, kp != null ? kp.ease : defaultEase);
+                }
+            }
+        }
+
+        private static float mirrorSign(Channel ch) {
+            return switch (ch) {
+                case ROT_Y, ROT_Z, POS_X, BEND_DIR -> -1f;
+                default -> 1f;
+            };
+        }
+
+        // --- Undo / Redo ---
+
+        public String snapshot() {
+            return toStandaloneJson(this);
+        }
+
+        public void pushUndo() {
+            String snap = snapshot();
+            if (!undoStack.isEmpty() && undoStack.peekLast().equals(snap)) {
+                return;
+            }
+            undoStack.addLast(snap);
+            while (undoStack.size() > 80) {
+                undoStack.removeFirst();
+            }
+            redoStack.clear();
+        }
+
+        public boolean undo() {
+            if (undoStack.isEmpty()) return false;
+            String cur = snapshot();
+            String prev = undoStack.removeLast();
+            redoStack.addLast(cur);
+            fromStandaloneJson(prev, this);
+            return true;
+        }
+
+        public boolean redo() {
+            if (redoStack.isEmpty()) return false;
+            String cur = snapshot();
+            String next = redoStack.removeLast();
+            undoStack.addLast(cur);
+            fromStandaloneJson(next, this);
+            return true;
+        }
+
+        public void markSaved() {
+            savedSnapshot = snapshot();
+        }
+
+        public boolean isDirty() {
+            return !savedSnapshot.equals(snapshot());
+        }
+    }
+
+    // --- Сериализация / десериализация (PlayerAnimator + автономный резерв) ---
+
+    public static String serialize(AnimDoc doc) {
+        if (ModList.get().isLoaded("playeranimator")) {
+            try {
+                return PlayerAnimBridge.serializeDoc(doc);
+            } catch (Throwable ignored) {
+            }
+        }
+        return toStandaloneJson(doc);
+    }
+
+    public static boolean deserialize(String json, AnimDoc out) {
+        if (json == null || json.isBlank()) return false;
+        if (ModList.get().isLoaded("playeranimator")) {
+            try {
+                if (PlayerAnimBridge.deserializeInto(json, out)) {
+                    return true;
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        return fromStandaloneJson(json, out);
+    }
+
+    public static String toStandaloneJson(AnimDoc doc) {
+        JsonObject root = new JsonObject();
+        root.addProperty("name", doc.displayName == null || doc.displayName.isBlank() ? doc.fileName : doc.displayName);
+        root.addProperty("author", doc.author == null || doc.author.isBlank() ? "ScriptCraft" : doc.author);
+        root.addProperty("description", doc.description == null ? "" : doc.description);
+        root.addProperty("version", 2);
+        if (doc.uuid != null) {
+            root.addProperty("uuid", doc.uuid.toString());
+        }
+
+        JsonObject emote = new JsonObject();
+        emote.addProperty("beginTick", Math.max(0, doc.beginTick));
+        emote.addProperty("endTick", Math.max(1, doc.endTick));
+        emote.addProperty("stopTick", Math.max(doc.endTick + 1, doc.stopTick));
+        emote.addProperty("isLoop", doc.looped);
+        emote.addProperty("returnTick", Math.max(0, Math.min(doc.endTick, doc.returnTick)));
+        emote.addProperty("nsfw", false);
+        emote.addProperty("degrees", true);
+
+        JsonArray moves = new JsonArray();
+        for (BoneId bone : BoneId.values()) {
+            for (Channel ch : Channel.values()) {
+                if (!bone.bendable && ch.isBend()) continue;
+                for (KeyPoint kp : doc.track(bone, ch).values()) {
+                    JsonObject m = new JsonObject();
+                    m.addProperty("tick", kp.tick);
+                    m.addProperty("easing", kp.ease.name());
+                    m.addProperty("turn", 0);
+                    JsonObject partObj = new JsonObject();
+                    float rawVal = kp.value;
+                    if (!ch.angle) {
+                        if (ch == Channel.POS_X) rawVal += bone.defX;
+                        else if (ch == Channel.POS_Y) rawVal += bone.defY;
+                        else if (ch == Channel.POS_Z) rawVal += bone.defZ;
+                    }
+                    partObj.addProperty(ch.jsonKey, rawVal);
+                    m.add(bone.partKey, partObj);
+                    moves.add(m);
+                }
+            }
+        }
+        emote.add("moves", moves);
+        root.add("emote", emote);
+        return GSON.toJson(root);
+    }
+
+    public static boolean fromStandaloneJson(String json, AnimDoc out) {
+        try {
+            JsonObject root = JsonParser.parseString(json).getAsJsonObject();
+            if (!root.has("emote")) {
+                return false;
+            }
+            out.clearTracks();
+            if (root.has("name") && root.get("name").isJsonPrimitive()) {
+                out.displayName = root.get("name").getAsString();
+            }
+            if (root.has("author") && root.get("author").isJsonPrimitive()) {
+                out.author = root.get("author").getAsString();
+            }
+            if (root.has("description") && root.get("description").isJsonPrimitive()) {
+                out.description = root.get("description").getAsString();
+            }
+            JsonObject emote = root.getAsJsonObject("emote");
+            boolean degrees = !emote.has("degrees") || emote.get("degrees").getAsBoolean();
+            out.beginTick = emote.has("beginTick") ? emote.get("beginTick").getAsInt() : 0;
+            out.endTick = emote.has("endTick") ? Math.max(1, emote.get("endTick").getAsInt()) : 40;
+            out.stopTick = emote.has("stopTick") ? Math.max(out.endTick + 1, emote.get("stopTick").getAsInt()) : out.endTick + 5;
+            out.looped = emote.has("isLoop") && emote.get("isLoop").getAsBoolean();
+            out.returnTick = emote.has("returnTick") ? emote.get("returnTick").getAsInt() : 0;
+            out.easingBefore = false;
+
+            if (emote.has("moves") && emote.get("moves").isJsonArray()) {
+                for (JsonElement el : emote.getAsJsonArray("moves")) {
+                    if (!el.isJsonObject()) continue;
+                    JsonObject m = el.getAsJsonObject();
+                    int tick = m.has("tick") ? m.get("tick").getAsInt() : 0;
+                    EaseCurve ease = m.has("easing") ? EaseCurve.parse(m.get("easing").getAsString()) : EaseCurve.LINEAR;
+                    for (BoneId bone : BoneId.values()) {
+                        if (!m.has(bone.partKey) || !m.get(bone.partKey).isJsonObject()) continue;
+                        JsonObject p = m.getAsJsonObject(bone.partKey);
+                        for (Channel ch : Channel.values()) {
+                            if (!p.has(ch.jsonKey)) continue;
+                            float v = p.get(ch.jsonKey).getAsFloat();
+                            if (ch.angle && !degrees) {
+                                v = (float) Math.toDegrees(v);
+                            } else if (!ch.angle) {
+                                if (ch == Channel.POS_X) v -= bone.defX;
+                                else if (ch == Channel.POS_Y) v -= bone.defY;
+                                else if (ch == Channel.POS_Z) v -= bone.defZ;
+                            }
+                            out.putKey(bone, ch, tick, v, ease);
+                        }
+                    }
+                }
+            }
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    // --- Готовые стартовые пресеты с поддержкой Bendy-lib ---
+
+    public static void applyPreset(AnimDoc doc, String presetId) {
+        doc.pushUndo();
+        doc.clearTracks();
+        doc.returnTick = 0;
+        doc.easingBefore = false;
+        switch (presetId) {
+            case "wave" -> {
+                doc.fileName = "wave";
+                doc.displayName = "Friendly Wave";
+                doc.beginTick = 3;
+                doc.endTick = 36;
+                doc.stopTick = 42;
+                doc.looped = false;
+                doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_X, 0, 0f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_Z, 0, 0f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_X, 7, -145f, EaseCurve.OUTBACK);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_Z, 7, 18f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.BEND_DIR, 7, 90f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.BEND_ANG, 7, -32f, EaseCurve.INOUTSINE);
+
+                doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_Z, 13, -24f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.BEND_ANG, 13, 28f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_Z, 19, 24f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.BEND_ANG, 19, -32f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_Z, 25, -22f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.BEND_ANG, 25, 26f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_X, 31, -140f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_Z, 31, 15f, EaseCurve.INOUTSINE);
+
+                doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_X, 36, 0f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_Z, 36, 0f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.BEND_ANG, 36, 0f, EaseCurve.INOUTSINE);
+
+                doc.putKey(BoneId.HEAD, Channel.ROT_Z, 8, -8f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.HEAD, Channel.ROT_Z, 20, 6f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.HEAD, Channel.ROT_Z, 35, 0f, EaseCurve.INOUTSINE);
+            }
+            case "slash" -> {
+                doc.fileName = "slash";
+                doc.displayName = "Power Slash";
+                doc.beginTick = 2;
+                doc.endTick = 22;
+                doc.stopTick = 27;
+                doc.looped = false;
+                // Замах
+                doc.putKey(BoneId.TORSO, Channel.ROT_Y, 5, 38f, EaseCurve.OUTQUAD);
+                doc.putKey(BoneId.TORSO, Channel.BEND_DIR, 5, 0f, EaseCurve.OUTQUAD);
+                doc.putKey(BoneId.TORSO, Channel.BEND_ANG, 5, -14f, EaseCurve.OUTQUAD);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_X, 5, -135f, EaseCurve.OUTQUAD);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_Y, 5, 35f, EaseCurve.OUTQUAD);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_Z, 5, 45f, EaseCurve.OUTQUAD);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.BEND_DIR, 5, 0f, EaseCurve.OUTQUAD);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.BEND_ANG, 5, -40f, EaseCurve.OUTQUAD);
+                doc.putKey(BoneId.RIGHT_ITEM, Channel.ROT_X, 5, -20f, EaseCurve.OUTQUAD);
+                // Рубящий удар
+                doc.putKey(BoneId.TORSO, Channel.ROT_Y, 11, -46f, EaseCurve.OUTBACK);
+                doc.putKey(BoneId.TORSO, Channel.BEND_ANG, 11, 22f, EaseCurve.OUTBACK);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_X, 11, -28f, EaseCurve.OUTBACK);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_Y, 11, -55f, EaseCurve.OUTBACK);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_Z, 11, -30f, EaseCurve.OUTBACK);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.BEND_ANG, 11, -12f, EaseCurve.OUTCUBIC);
+                doc.putKey(BoneId.RIGHT_ITEM, Channel.ROT_X, 11, 55f, EaseCurve.OUTBACK);
+                doc.putKey(BoneId.LEFT_ARM, Channel.ROT_X, 11, 28f, EaseCurve.OUTQUAD);
+                doc.putKey(BoneId.LEFT_ARM, Channel.ROT_Z, 11, -24f, EaseCurve.OUTQUAD);
+                // Возврат
+                doc.putKey(BoneId.TORSO, Channel.ROT_Y, 22, 0f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.TORSO, Channel.BEND_ANG, 22, 0f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_X, 22, 0f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_Y, 22, 0f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_Z, 22, 0f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.BEND_ANG, 22, 0f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.RIGHT_ITEM, Channel.ROT_X, 22, 0f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.LEFT_ARM, Channel.ROT_X, 22, 0f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.LEFT_ARM, Channel.ROT_Z, 22, 0f, EaseCurve.INOUTSINE);
+            }
+            case "backflip" -> {
+                doc.fileName = "backflip";
+                doc.displayName = "Acrobatic Backflip";
+                doc.beginTick = 2;
+                doc.endTick = 28;
+                doc.stopTick = 33;
+                doc.looped = false;
+                // Присед перед прыжком
+                doc.putKey(BoneId.BODY, Channel.POS_Y, 4, 3.5f, EaseCurve.OUTQUAD);
+                doc.putKey(BoneId.TORSO, Channel.BEND_ANG, 4, 24f, EaseCurve.OUTQUAD);
+                doc.putKey(BoneId.RIGHT_LEG, Channel.BEND_ANG, 4, 48f, EaseCurve.OUTQUAD);
+                doc.putKey(BoneId.LEFT_LEG, Channel.BEND_ANG, 4, 48f, EaseCurve.OUTQUAD);
+                doc.putKey(BoneId.RIGHT_LEG, Channel.ROT_X, 4, -28f, EaseCurve.OUTQUAD);
+                doc.putKey(BoneId.LEFT_LEG, Channel.ROT_X, 4, -28f, EaseCurve.OUTQUAD);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_X, 4, 40f, EaseCurve.OUTQUAD);
+                doc.putKey(BoneId.LEFT_ARM, Channel.ROT_X, 4, 40f, EaseCurve.OUTQUAD);
+                // Взлёт + вращение
+                doc.putKey(BoneId.BODY, Channel.POS_Y, 13, -14f, EaseCurve.OUTQUAD);
+                doc.putKey(BoneId.BODY, Channel.ROT_X, 5, 0f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.BODY, Channel.ROT_X, 13, -180f, EaseCurve.LINEAR);
+                doc.putKey(BoneId.BODY, Channel.ROT_X, 21, -360f, EaseCurve.OUTQUAD);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_X, 12, -150f, EaseCurve.OUTQUAD);
+                doc.putKey(BoneId.LEFT_ARM, Channel.ROT_X, 12, -150f, EaseCurve.OUTQUAD);
+                doc.putKey(BoneId.RIGHT_LEG, Channel.ROT_X, 13, -65f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.LEFT_LEG, Channel.ROT_X, 13, -65f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.RIGHT_LEG, Channel.BEND_ANG, 13, 70f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.LEFT_LEG, Channel.BEND_ANG, 13, 70f, EaseCurve.INOUTSINE);
+                // Приземление
+                doc.putKey(BoneId.BODY, Channel.POS_Y, 22, 2.5f, EaseCurve.INQUAD);
+                doc.putKey(BoneId.BODY, Channel.POS_Y, 28, 0f, EaseCurve.OUTBACK);
+                doc.putKey(BoneId.BODY, Channel.ROT_X, 28, -360f, EaseCurve.LINEAR);
+                doc.putKey(BoneId.TORSO, Channel.BEND_ANG, 28, 0f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_X, 28, 0f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.LEFT_ARM, Channel.ROT_X, 28, 0f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.RIGHT_LEG, Channel.ROT_X, 28, 0f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.LEFT_LEG, Channel.ROT_X, 28, 0f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.RIGHT_LEG, Channel.BEND_ANG, 28, 0f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.LEFT_LEG, Channel.BEND_ANG, 28, 0f, EaseCurve.INOUTSINE);
+            }
+            case "dance" -> {
+                doc.fileName = "dance";
+                doc.displayName = "Groove Loop";
+                doc.beginTick = 3;
+                doc.endTick = 32;
+                doc.stopTick = 36;
+                doc.looped = true;
+                doc.returnTick = 0;
+                int[] ts = {0, 8, 16, 24, 32};
+                float[] side = {1f, -1f, 1f, -1f, 1f};
+                for (int i = 0; i < ts.length; i++) {
+                    int t = ts[i];
+                    float s = side[i];
+                    doc.putKey(BoneId.BODY, Channel.POS_Y, t, (i % 2 == 0) ? 0f : 1.8f, EaseCurve.INOUTSINE);
+                    doc.putKey(BoneId.TORSO, Channel.ROT_Z, t, 10f * s, EaseCurve.INOUTSINE);
+                    doc.putKey(BoneId.TORSO, Channel.BEND_DIR, t, 90f, EaseCurve.INOUTSINE);
+                    doc.putKey(BoneId.TORSO, Channel.BEND_ANG, t, 16f * s, EaseCurve.INOUTSINE);
+                    doc.putKey(BoneId.HEAD, Channel.ROT_Z, t, -12f * s, EaseCurve.INOUTSINE);
+                    doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_X, t, s > 0 ? -115f : -45f, EaseCurve.INOUTSINE);
+                    doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_Z, t, 25f, EaseCurve.INOUTSINE);
+                    doc.putKey(BoneId.RIGHT_ARM, Channel.BEND_ANG, t, -42f, EaseCurve.INOUTSINE);
+                    doc.putKey(BoneId.LEFT_ARM, Channel.ROT_X, t, s < 0 ? -115f : -45f, EaseCurve.INOUTSINE);
+                    doc.putKey(BoneId.LEFT_ARM, Channel.ROT_Z, t, -25f, EaseCurve.INOUTSINE);
+                    doc.putKey(BoneId.LEFT_ARM, Channel.BEND_ANG, t, -42f, EaseCurve.INOUTSINE);
+                    doc.putKey(BoneId.RIGHT_LEG, Channel.BEND_ANG, t, s > 0 ? 28f : 5f, EaseCurve.INOUTSINE);
+                    doc.putKey(BoneId.LEFT_LEG, Channel.BEND_ANG, t, s < 0 ? 28f : 5f, EaseCurve.INOUTSINE);
+                }
+            }
+            case "bow" -> {
+                doc.fileName = "royal_bow";
+                doc.displayName = "Royal Bow";
+                doc.beginTick = 3;
+                doc.endTick = 40;
+                doc.stopTick = 46;
+                doc.looped = false;
+                doc.putKey(BoneId.TORSO, Channel.ROT_X, 0, 0f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.TORSO, Channel.ROT_X, 12, 42f, EaseCurve.INOUTCUBIC);
+                doc.putKey(BoneId.TORSO, Channel.BEND_ANG, 12, 26f, EaseCurve.INOUTCUBIC);
+                doc.putKey(BoneId.TORSO, Channel.ROT_X, 28, 42f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.TORSO, Channel.BEND_ANG, 28, 26f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.TORSO, Channel.ROT_X, 40, 0f, EaseCurve.INOUTCUBIC);
+                doc.putKey(BoneId.TORSO, Channel.BEND_ANG, 40, 0f, EaseCurve.INOUTCUBIC);
+
+                doc.putKey(BoneId.HEAD, Channel.ROT_X, 12, 24f, EaseCurve.INOUTCUBIC);
+                doc.putKey(BoneId.HEAD, Channel.ROT_X, 28, 24f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.HEAD, Channel.ROT_X, 40, 0f, EaseCurve.INOUTCUBIC);
+
+                doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_X, 12, -38f, EaseCurve.INOUTCUBIC);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_Y, 12, -40f, EaseCurve.INOUTCUBIC);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.BEND_ANG, 12, -55f, EaseCurve.INOUTCUBIC);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_X, 28, -38f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_Y, 28, -40f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.BEND_ANG, 28, -55f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_X, 40, 0f, EaseCurve.INOUTCUBIC);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.ROT_Y, 40, 0f, EaseCurve.INOUTCUBIC);
+                doc.putKey(BoneId.RIGHT_ARM, Channel.BEND_ANG, 40, 0f, EaseCurve.INOUTCUBIC);
+
+                doc.putKey(BoneId.LEFT_ARM, Channel.ROT_X, 12, 32f, EaseCurve.INOUTCUBIC);
+                doc.putKey(BoneId.LEFT_ARM, Channel.ROT_Z, 12, -26f, EaseCurve.INOUTCUBIC);
+                doc.putKey(BoneId.LEFT_ARM, Channel.ROT_X, 28, 32f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.LEFT_ARM, Channel.ROT_Z, 28, -26f, EaseCurve.INOUTSINE);
+                doc.putKey(BoneId.LEFT_ARM, Channel.ROT_X, 40, 0f, EaseCurve.INOUTCUBIC);
+                doc.putKey(BoneId.LEFT_ARM, Channel.ROT_Z, 40, 0f, EaseCurve.INOUTCUBIC);
+            }
+            default -> {
+            }
+        }
+    }
+}

@@ -30,6 +30,7 @@ import java.util.Map;
 public final class StudioSession {
     public static final String HOME = "home";
     public static final String JOURNAL = "journal";
+    public static final String ANIMATOR = "animator";
     public static final String PROFILER = "profiler";
 
     public static boolean maximized = true;
@@ -141,6 +142,7 @@ public final class StudioSession {
         historyEntries = List.of();
         historySelectedId = "";
         historyPreviewText = "";
+        StudioAnimEditor.reset();
         StudioSync.reset();
     }
 
@@ -259,6 +261,10 @@ public final class StudioSession {
     }
 
     public static void acceptExplorerDir(StudioExplorerPacket.DirView view) {
+        if ("$animations".equals(view.dir())) {
+            StudioAnimEditor.acceptServerFiles(view.entries());
+            return;
+        }
         explorerDir = view.dir() == null ? "" : view.dir();
         explorerEntries = List.copyOf(view.entries());
         activeEditors = List.copyOf(view.editors());
@@ -286,6 +292,10 @@ public final class StudioSession {
             if (becameDirty) {
                 ClientToasts.push(Messages.toast("studio.res_changed_hint"));
             }
+            return;
+        }
+        if ("$anim_open".equals(view.renamedFrom())) {
+            StudioAnimEditor.acceptLoadedJson(view.path(), new String(view.data(), StandardCharsets.UTF_8));
             return;
         }
         // Уведомление о переименовании / включении-выключении / удалении файла
