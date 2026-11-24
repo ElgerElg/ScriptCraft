@@ -16,17 +16,11 @@
 #  Ваниль, которую можно спрятать:
 #    hotbar, health, food, armor, air, experience, mount_health, jump_bar,
 #    crosshair, effects, item_name, scoreboard, bossbar, hud, all
-#  Дальше по игре:
-#    set value|progress of bar "имя" for <цель> to <число>
-#    set max of bar "имя" ... to <число>
-#    set text of hud "имя" ... to "текст"
-#    show hud / hide hud / remove hud "имя" / clear hud
 #  {переменная} в тексте, value или max сама обновляет HUD в момент записи.
-#  Пакет уходит только если строка изменилась. %health% и остальные источники
-#  считает клиент каждый кадр, без пакетов.
 # ==========================================================
 
 on join or load:
+	set {-hud_on::%player%} to true
 	hide vanilla hotbar for player
 	hide vanilla health for player
 	hide vanilla food for player
@@ -50,26 +44,37 @@ on join or load:
 		bar "coins_goal" value {coins::%player%} max 100 at 4, 24 size 70x4 anchor top_left color #FFD700 layer 0
 		text "%script%" at -4, 4 anchor top_right color #666666 layer 1
 
-command /coinhud:
-	aliases: coinsui
-	set text of hud "coins_text" for player to "%{coins::%player%}%"
-	set value of bar "coins_goal" for player to {coins::%player%}
+function HudSetState(p: player, enabled: boolean):
+	set {-hud_on::%p%} to enabled
+	if enabled is true:
+		show hud "stats" to p
+		show hud "coins" to p
+		hide vanilla hotbar for p
+		hide vanilla health for p
+		hide vanilla food for p
+		hide vanilla armor for p
+		hide vanilla experience for p
+		send action bar "&aКастомный HUD включён" to p
+	else:
+		hide hud "stats" from p
+		hide hud "coins" from p
+		show vanilla hotbar for p
+		show vanilla health for p
+		show vanilla food for p
+		show vanilla armor for p
+		show vanilla experience for p
+		send action bar "&7Кастомный HUD скрыт" to p
 
-command /hudoff:
-	hide hud "stats" from player
-	show vanilla hotbar for player
-	show vanilla health for player
-	show vanilla food for player
-	show vanilla armor for player
-	show vanilla experience for player
-
-command /hudon:
-	show hud "stats" to player
-	hide vanilla hotbar for player
-	hide vanilla health for player
-	hide vanilla food for player
-	hide vanilla armor for player
-	hide vanilla experience for player
+# Единый переключатель кастомного HUD: /hud [on|off]
+command /hud [text]:
+	if arg-1 is "off":
+		HudSetState(player, false)
+	else if arg-1 is "on":
+		HudSetState(player, true)
+	else if {-hud_on::%player%} is true:
+		HudSetState(player, false)
+	else:
+		HudSetState(player, true)
 
 command /boss <integer>:
 	permission: 2
@@ -78,8 +83,3 @@ command /boss <integer>:
 		text "Страж" at 0, 6 anchor top color #FF5555 shadow layer 1
 		bar "boss_hp" value 100 max 100 at 0, 18 size 182x6 anchor top color #AA0000 layer 0
 	set progress of bar "boss_hp" for players in radius 30 of player to arg-1
-
-command /hudreset:
-	permission: 2
-	clear hud for player
-	show vanilla all for player

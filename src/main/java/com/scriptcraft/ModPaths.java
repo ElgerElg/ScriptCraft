@@ -3,11 +3,15 @@ package com.scriptcraft;
 import com.scriptcraft.script.ScriptPaths;
 import net.minecraftforge.fml.loading.FMLPaths;
 
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
 
@@ -27,14 +31,18 @@ public final class ModPaths {
     /** Имя файла конфига относительно папки config/ (Forge разрешает путь от неё). */
     public static final String CONFIG_FILE = "../scriptcraft/config.toml";
 
-    /** Примеры внутри jar (build.gradle -> processResources -> scriptcraft_defaults/). Копируются при первом запуске. */
-    private static final List<String> DEFAULT_FILES = List.of(
-            "scripts/welcome.sc",
-            "scripts/ruby.sc",
-            "scripts/menu.sc",
-            "scripts/hud.sc",
-            "scripts/bag.sc",
-            "scripts/snake.sc",
+    /** Запасной список, если index.txt ещё не сгенерирован в IDE. */
+    private static final List<String> FALLBACK_DEFAULTS = List.of(
+            "scripts/-welcome.sc",
+            "scripts/-ruby.sc",
+            "scripts/-menu.sc",
+            "scripts/-hud.sc",
+            "scripts/-features.sc",
+            "scripts/-bag.sc",
+            "scripts/-snake.sc",
+            "scripts/-dino.sc",
+            "scripts/-td.sc",
+            "scripts/-seabattle.sc",
             "resources/assets/example/blockstates/ruby_block.json",
             "resources/assets/example/models/block/ruby_block.json",
             "resources/assets/example/models/item/ruby_block.json",
@@ -50,13 +58,6 @@ public final class ModPaths {
             "resources/assets/example/lang/ru_ru.json",
             "resources/data/example/loot_tables/blocks/ruby_block.json",
             "resources/data/minecraft/tags/blocks/mineable/pickaxe.json");
-
-    /**
-     * Все примеры копируются выключенными ("-имя.sc"). Уже лежащий файл не переименовывается.
-     * Включить: /sc enable welcome (и ruby, menu, hud, bag).
-     */
-    private static final java.util.Set<String> DISABLED_DEFAULTS = java.util.Set.of(
-            "scripts/welcome.sc", "scripts/ruby.sc", "scripts/menu.sc", "scripts/hud.sc", "scripts/bag.sc", "scripts/snake.sc");
 
     private ModPaths() {
     }
@@ -93,8 +94,8 @@ public final class ModPaths {
     /**
      * Создаёт структуру папок. Вызывается первым делом в конструкторе мода (до регистрации конфига).
      * 1) Если есть старая папка <игра>/scripts (прежние версии мода), а новой ещё нет — переносим её.
-     * 2) Если папки scripts нет совсем — копируем примеры скриптов из jar.
-     * 3) Если папки resources нет — копируем примеры ресурсов (namespace example) из jar.
+     * 2) Если папки scripts нет совсем — копируем все примеры скриптов из jar в выключенном виде (-имя.sc).
+     * 3) Если папки resources нет — копируем все примеры ресурсов из jar.
      */
     public static void ensureLayout() {
         try {
@@ -126,7 +127,6 @@ public final class ModPaths {
             Files.move(oldScripts, scripts());
             ScriptCraft.LOGGER.info("[ScriptCraft] Старая папка {} перенесена в {}", oldScripts, scripts());
         } catch (IOException moveFailed) {
-            // Например, другой диск или файл занят — копируем, старую папку оставляем как есть.
             try (Stream<Path> walk = Files.walk(oldScripts)) {
                 for (Path p : (Iterable<Path>) walk::iterator) {
                     Path target = scripts().resolve(oldScripts.relativize(p).toString());
@@ -141,16 +141,45 @@ public final class ModPaths {
         }
     }
 
+    private static List<String> defaultFiles() {
+        try (InputStream in = ModPaths.class.getResourceAsStream("/scriptcraft_defaults/index.txt")) {
+            if (in != null) {
+                List<String> list = new ArrayList<>();
+                try (BufferedReader br = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        String trimmed = line.strip();
+                        if (!trimmed.isEmpty()) {
+                            list.add(trimmed);
+                        }
+                    }
+                }
+                if (!list.isEmpty()) {
+                    return list;
+                }
+            }
+        } catch (IOException ignored) {
+        }
+        return FALLBACK_DEFAULTS;
+    }
+
     private static void copyDefaults(String prefix) throws IOException {
-        for (String rel : DEFAULT_FILES) {
+        for (String rel : defaultFiles()) {
             if (!rel.startsWith(prefix)) {
                 continue;
             }
             Path target = root().resolve(rel);
-            if (DISABLED_DEFAULTS.contains(rel)) {
-                target = target.resolveSibling("-" + target.getFileName());
-            }
-            if (Files.exists(target)) {
+            if (prefix.equals("scripts/")) {
+                String fname = target.getFileName().toString();
+                String disabledName = fname.startsWith("-") ? fname : "-" + fname;
+                String enabledName = fname.startsWith("-") ? fname.substring(1) : fname;
+                Path disabledPath = target.resolveSibling(disabledName);
+                Path enabledPath = target.resolveSibling(enabledName);
+                if (Files.exists(disabledPath) || Files.exists(enabledPath)) {
+                    continue;
+                }
+                target = disabledPath;
+            } else if (Files.exists(target)) {
                 continue;
             }
             try (InputStream in = ModPaths.class.getResourceAsStream("/scriptcraft_defaults/" + rel)) {

@@ -175,6 +175,19 @@ tasks.named('processResources', ProcessResources).configure {
     from('examples') {
         into 'scriptcraft_defaults'
     }
+    doLast {
+        def exRoot = file('examples')
+        if (exRoot.isDirectory()) {
+            def lines = []
+            exRoot.eachFileRecurse(groovy.io.FileType.FILES) { f ->
+                lines << exRoot.relativePath(f).replace('\\', '/')
+            }
+            lines.sort()
+            def outIdx = new File(destinationDir, 'scriptcraft_defaults/index.txt')
+            outIdx.parentFile.mkdirs()
+            outIdx.setText(lines.join('\n') + '\n', 'UTF-8')
+        }
+    }
 }
 
 // Example for how to get properties into the manifest for reading at runtime.

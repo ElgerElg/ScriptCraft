@@ -1,5 +1,5 @@
 # ==========================================================
-#  menu.sc — экран-лавка. Копируется выключенным: /sc enable menu. Открыть: /menu
+#  menu.sc — экран-лавка. Копируется выключенным (-menu.sc): /sc enable menu
 #  Элементы экрана, все необязательные хвосты можно комбинировать:
 #    text "..."   at X Y   anchor ...   color #RRGGBB   shadow   layer N
 #    button "..." at X Y   size WxH     anchor ...      run "/команда"  или  close   layer N
@@ -51,45 +51,46 @@ command /order <text>:
 			remove 8 from {coins::%player%}
 			give player example:ruby 1
 			send "&aКуплен рубин. Осталось: %{coins::%player%}%" to player
-	else:
-		if arg-1 is "diamond":
-			if {coins::%player%} < 15:
-				send "&cНужно 15 монет." to player
-			else:
-				remove 15 from {coins::%player%}
-				give player diamond 1
-				send "&bКуплен алмаз. Осталось: %{coins::%player%}%" to player
+	else if arg-1 is "diamond":
+		if {coins::%player%} < 15:
+			send "&cНужно 15 монет." to player
 		else:
-			if arg-1 is "bread":
-				if {coins::%player%} < 3:
-					send "&cНужно 3 монеты." to player
-				else:
-					remove 3 from {coins::%player%}
-					give player bread 8
-					send "&6Хлеб выдан. Осталось: %{coins::%player%}%" to player
-			else:
-				if arg-1 is "block":
-					if {coins::%player%} < 20:
-						send "&cНужно 20 монет." to player
-					else:
-						remove 20 from {coins::%player%}
-						give player example:ruby_block 1
-						send "&cБлок выдан. Осталось: %{coins::%player%}%" to player
-				else:
-					if arg-1 is "heal":
-						if {coins::%player%} < 10:
-							send "&cЛечение стоит 10 монет." to player
-						else:
-							remove 10 from {coins::%player%}
-							heal player
-							feed player
-							send "&aТы в порядке. Осталось: %{coins::%player%}%" to player
-					else:
-						send "&7Неизвестный товар: %arg-1%. Лавка: /menu" to player
+			remove 15 from {coins::%player%}
+			give player diamond 1
+			send "&bКуплен алмаз. Осталось: %{coins::%player%}%" to player
+	else if arg-1 is "bread":
+		if {coins::%player%} < 3:
+			send "&cНужно 3 монеты." to player
+		else:
+			remove 3 from {coins::%player%}
+			give player bread 8
+			send "&6Хлеб выдан. Осталось: %{coins::%player%}%" to player
+	else if arg-1 is "block":
+		if {coins::%player%} < 20:
+			send "&cНужно 20 монет." to player
+		else:
+			remove 20 from {coins::%player%}
+			give player example:ruby_block 1
+			send "&cБлок выдан. Осталось: %{coins::%player%}%" to player
+	else if arg-1 is "heal":
+		if {coins::%player%} < 10:
+			send "&cЛечение стоит 10 монет." to player
+		else:
+			remove 10 from {coins::%player%}
+			heal player
+			feed player
+			send "&aТы в порядке. Осталось: %{coins::%player%}%" to player
+	else:
+		send "&7Неизвестный товар: %arg-1%. Лавка: /menu" to player
 
 command /announce:
 	permission: 2
 	aliases: shout
+	set {-msg} to "%args%"
+	if {-msg} is "":
+		set {-msg} to "%player% зовёт всех рядом!"
 	open screen "Объявление" to players in radius 16 of player:
-		text "%player% зовёт всех рядом" at 0, -16 color #FFD700 shadow
-		button "Понятно" at 0, 12 size 120x20 close
+		box at 0, 0 size 220x74 color #CC0F172A border #FFD700 border_width 1 radius 6 shadow layer 0
+		text "&6&lОбъявление от %player%" at 0, -22 color #FFD700 shadow layer 2
+		text "&f%{-msg}%" at 0, -4 color #FFFFFF shadow layer 2
+		button "Понятно" at 0, 18 size 110x18 close layer 3

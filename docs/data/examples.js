@@ -11,9 +11,9 @@ window.SC_DOCS.examples = [
     title: { ru: "Вход, эффекты и команды с аргументами", en: "Join, effects and commands with arguments" },
     intro: { ru: "Вход, переменные, шанс и команда с аргументами. Копируется выключенным: /sc enable welcome.", en: "Join, variables, chance and a command with arguments. Copied disabled: /sc enable welcome." },
     blocks: [
-      { lang: "sc", title: { ru: "scriptcraft/scripts/welcome.sc", en: "scriptcraft/scripts/welcome.sc" }, code: `# ==========================================================
+      { lang: "sc", title: { ru: "scriptcraft/scripts/-welcome.sc", en: "scriptcraft/scripts/-welcome.sc" }, code: `# ==========================================================
 #  welcome.sc — вход, эффекты, переменные и команды с аргументами
-#  Копируется выключенным. Включить: /sc enable welcome
+#  Копируется выключенным (-welcome.sc). Включить: /sc enable welcome
 #  Перезагрузка: /sc reload welcome. Выключить: /sc disable welcome
 #  Отступ — Tab. Один Tab равен четырём пробелам, пробелы тоже понимаются.
 # ==========================================================
@@ -32,11 +32,14 @@ on join:
 on quit:
 	broadcast "&7%player% вышел"
 
-# Хвост строки без списка аргументов — это %args%.
-command /hello:
-	aliases: hi
-	send "&bПривет, %player%! Ты написал: &f%args%" to player
-	send "&8Скрипт: %script%" to player
+# Хвост строки без списка аргументов попадает в %args%.
+command /bc:
+	permission: 2
+	aliases: broadcast
+	if "%args%" is "":
+		send "&cИспользование: /bc <текст объявления>" to player
+		stop
+	broadcast "&6[Объявление] &f%args%"
 
 # permission, aliases и executable by пишутся ПОД командой, не в заголовке.
 command /kit:
@@ -46,7 +49,7 @@ command /kit:
 	give player bread 16
 	heal player
 	feed player
-	send "&6Набор выдан." to player
+	send "&6Стартовый набор выдан." to player
 
 command /buff:
 	permission: 2
@@ -60,61 +63,96 @@ command /buff:
 	send title "&6Бафф" with subtitle "&eСкорость и ночное зрение" to player
 	send action bar "&aЗдоровье и голод восстановлены" to player
 
-command /fly:
+# Переключатель полёта для себя или указанного игрока.
+command /fly [player]:
 	permission: 2
-	set flying of player to true
-	send action bar "&bПолёт включён" to player
+	if arg-1 is not set:
+		if player is flying:
+			set flying of player to false
+			send action bar "&7Полёт выключен" to player
+		else:
+			set flying of player to true
+			send action bar "&bПолёт включён" to player
+	else:
+		if arg-1 is flying:
+			set flying of arg-1 to false
+			send action bar "&7Полёт выключен" to arg-1
+			reply "&7Полёт выключен для &f%arg-1%"
+		else:
+			set flying of arg-1 to true
+			send action bar "&bПолёт включён" to arg-1
+			reply "&bПолёт включён для &f%arg-1%"
 
-command /nofly:
+# Смена режима игры: /gm <0|1|2|3> [игрок] (или s/c/a/sp).
+function SetPlayerGm(target: player, mode: text):
+	if mode is "0" or "s" or "survival":
+		set gamemode of target to survival
+		send action bar "&aРежим выживания" to target
+	else if mode is "1" or "c" or "creative":
+		set gamemode of target to creative
+		send action bar "&bТворческий режим" to target
+	else if mode is "2" or "a" or "adventure":
+		set gamemode of target to adventure
+		send action bar "&eРежим приключения" to target
+	else if mode is "3" or "sp" or "spectator":
+		set gamemode of target to spectator
+		send action bar "&7Режим наблюдателя" to target
+
+command /gm <text> [player]:
 	permission: 2
-	aliases: walk
-	set flying of player to false
-	send action bar "&7Полёт выключен" to player
+	aliases: gamemode
+	if arg-1 is not "0" and arg-1 is not "1" and arg-1 is not "2" and arg-1 is not "3" and arg-1 is not "s" and arg-1 is not "c" and arg-1 is not "a" and arg-1 is not "sp" and arg-1 is not "survival" and arg-1 is not "creative" and arg-1 is not "adventure" and arg-1 is not "spectator":
+		send "&cИспользование: /gm <0|1|2|3> [игрок]" to player
+		stop
+	if arg-2 is not set:
+		SetPlayerGm(player, arg-1)
+	else:
+		SetPlayerGm(arg-2, arg-1)
+		reply "&aРежим игры для &f%arg-2% &aизменён."
 
-command /creative:
-	permission: 2
-	aliases: gmc
-	set player's gamemode to creative
-
-command /survival:
-	permission: 2
-	aliases: gms
-	set gamemode of player to survival
-	clear effects of player
-
-# <player> обязателен, [integer] можно не писать. arg-1 — имя, arg-2 — число или <none>.
-command /heal <player> [integer]:
+# Оба аргумента необязательны: /heal, /heal Steve, /heal Steve 10.
+command /heal [player] [integer]:
 	permission: 2
 	aliases: h
 	executable by: players and console
-	if arg-2 is not set:
+	if arg-1 is not set:
+		heal player
+		feed player
+		send action bar "&aЗдоровье восстановлено" to player
+	else if arg-2 is not set:
 		heal arg-1
+		send action bar "&aТебя вылечил %player%" to arg-1
+		reply "&aВылечен %arg-1%"
 	else:
 		heal arg-1 by arg-2
-	send action bar "&aТебя лечит %player%" to arg-1
-	reply "&aВылечен %arg-1%"
+		send action bar "&aТебя лечит %player% (+%arg-2%)" to arg-1
+		reply "&aВылечен %arg-1% на %arg-2%"
+
+# Точка спавна и личный дом хранятся как полноценная локация (мир + координаты + поворот).
+command /setspawn:
+	permission: 2
+	set {spawn} to location of player
+	send "&aТочка спавна сохранена." to player
 
 command /spawn:
-	permission: 2
 	aliases: hub
-	teleport player to 0, 100, 0
-	reply "Точка 0 100 0"
+	if {spawn} is not set:
+		send "&cТочка спавна ещё не задана (/setspawn)." to player
+	else:
+		teleport player to {spawn}
+		send action bar "&aТелепортация на спавн" to player
 
-# Дом хранится в переменных. x/y/z of player — координаты.
 command /sethome:
 	aliases: sh
-	set {home_x::%player%} to x of player
-	set {home_y::%player%} to y of player
-	set {home_z::%player%} to z of player
-	set {home_world::%player%} to world of player
-	send "&aДом сохранён: &f%{home_x::%player%}% %{home_y::%player%}% %{home_z::%player%}%" to player
+	set {home::%player%} to location of player
+	send "&aДом сохранён!" to player
 
 command /home:
 	aliases: base
-	if {home_x::%player%} is not set:
-		send "&cСначала /sethome" to player
+	if {home::%player%} is not set:
+		send "&cСначала установите дом: /sethome" to player
 	else:
-		teleport player to {home_x::%player%}, {home_y::%player%}, {home_z::%player%}
+		teleport player to {home::%player%}
 		send "&aТы дома." to player
 
 command /look:
@@ -159,19 +197,13 @@ command /pay <player> <integer>:
 	aliases: transfer
 	if {coins::%player%} < arg-2:
 		send "&cНе хватает монет. Баланс: %{coins::%player%}%" to player
+	else if arg-2 < 1:
+		send "&cСумма должна быть больше нуля." to player
 	else:
-		if arg-2 < 1:
-			send "&cСумма должна быть больше нуля." to player
-		else:
-			remove arg-2 from {coins::%player%}
-			add arg-2 to {coins::%arg-1%}
-			send "&aПереведено &6%arg-2% &aмонет игроку &f%arg-1%" to player
-			send "&a%player% перевёл тебе &6%arg-2% &aмонет" to arg-1
-
-command /resetcoins:
-	permission: 2
-	delete {coins::%player%}
-	reply "Баланс сброшен"` }
+		remove arg-2 from {coins::%player%}
+		add arg-2 to {coins::%arg-1%}
+		send "&aПереведено &6%arg-2% &aмонет игроку &f%arg-1%" to player
+		send "&a%player% перевёл тебе &6%arg-2% &aмонет" to arg-1` }
     ],
     notes: { ru: ["Отступ — Tab. Один Tab равен четырём пробелам, пробелы по-прежнему понимаются.","Под командой: permission: 0–4, aliases: короткие имена через запятую, executable by: players / console / players and console.","Аргументы: <тип> обязательный, [тип] можно не писать. Типы: text, player, offline player, integer, number, boolean, date, world, item.","arg-1 — первый аргумент, %arg-1% — он же в тексте. Нет необязательного аргумента — arg-2 is not set.","Без списка аргументов хвост строки остаётся в %args%. %script% — имя файла без .sc.","{-имя} живёт до перезапуска сервера, {имя} пишется в scriptcraft/variables/variables.json."], en: ["Indent with Tab. One Tab equals four spaces; spaces still work.","Under the command: permission: 0–4, aliases: short names separated by commas, executable by: players / console / players and console.","Arguments: <type> is required, [type] may be omitted. Types: text, player, offline player, integer, number, boolean, date, world, item.","arg-1 is the first argument, %arg-1% is the same value in text. A missing optional argument is arg-2 is not set.","Without an argument list the rest of the line stays in %args%. %script% is the file name without .sc.","{-name} lives until the server restarts, {name} is saved in scriptcraft/variables/variables.json."] },
     related: ["struct-command", "struct-comment", "event-join", "expr-argument", "expr-script", "expr-variable", "expr-temp-variable", "struct-chance", "eff-teleport"]
@@ -181,8 +213,8 @@ command /resetcoins:
     title: { ru: "Лавка: экран, слои, слоты и кнопки", en: "Shop: a screen, layers, slots and buttons" },
     intro: { ru: "Лавка /menu. Кнопки тратят монеты из welcome.sc.", en: "A shop on /menu. Buttons spend coins from welcome.sc." },
     blocks: [
-      { lang: "sc", title: { ru: "scriptcraft/scripts/menu.sc", en: "scriptcraft/scripts/menu.sc" }, code: `# ==========================================================
-#  menu.sc — экран-лавка. Копируется выключенным: /sc enable menu. Открыть: /menu
+      { lang: "sc", title: { ru: "scriptcraft/scripts/-menu.sc", en: "scriptcraft/scripts/-menu.sc" }, code: `# ==========================================================
+#  menu.sc — экран-лавка. Копируется выключенным (-menu.sc): /sc enable menu
 #  Элементы экрана, все необязательные хвосты можно комбинировать:
 #    text "..."   at X Y   anchor ...   color #RRGGBB   shadow   layer N
 #    button "..." at X Y   size WxH     anchor ...      run "/команда"  или  close   layer N
@@ -234,48 +266,49 @@ command /order <text>:
 			remove 8 from {coins::%player%}
 			give player example:ruby 1
 			send "&aКуплен рубин. Осталось: %{coins::%player%}%" to player
-	else:
-		if arg-1 is "diamond":
-			if {coins::%player%} < 15:
-				send "&cНужно 15 монет." to player
-			else:
-				remove 15 from {coins::%player%}
-				give player diamond 1
-				send "&bКуплен алмаз. Осталось: %{coins::%player%}%" to player
+	else if arg-1 is "diamond":
+		if {coins::%player%} < 15:
+			send "&cНужно 15 монет." to player
 		else:
-			if arg-1 is "bread":
-				if {coins::%player%} < 3:
-					send "&cНужно 3 монеты." to player
-				else:
-					remove 3 from {coins::%player%}
-					give player bread 8
-					send "&6Хлеб выдан. Осталось: %{coins::%player%}%" to player
-			else:
-				if arg-1 is "block":
-					if {coins::%player%} < 20:
-						send "&cНужно 20 монет." to player
-					else:
-						remove 20 from {coins::%player%}
-						give player example:ruby_block 1
-						send "&cБлок выдан. Осталось: %{coins::%player%}%" to player
-				else:
-					if arg-1 is "heal":
-						if {coins::%player%} < 10:
-							send "&cЛечение стоит 10 монет." to player
-						else:
-							remove 10 from {coins::%player%}
-							heal player
-							feed player
-							send "&aТы в порядке. Осталось: %{coins::%player%}%" to player
-					else:
-						send "&7Неизвестный товар: %arg-1%. Лавка: /menu" to player
+			remove 15 from {coins::%player%}
+			give player diamond 1
+			send "&bКуплен алмаз. Осталось: %{coins::%player%}%" to player
+	else if arg-1 is "bread":
+		if {coins::%player%} < 3:
+			send "&cНужно 3 монеты." to player
+		else:
+			remove 3 from {coins::%player%}
+			give player bread 8
+			send "&6Хлеб выдан. Осталось: %{coins::%player%}%" to player
+	else if arg-1 is "block":
+		if {coins::%player%} < 20:
+			send "&cНужно 20 монет." to player
+		else:
+			remove 20 from {coins::%player%}
+			give player example:ruby_block 1
+			send "&cБлок выдан. Осталось: %{coins::%player%}%" to player
+	else if arg-1 is "heal":
+		if {coins::%player%} < 10:
+			send "&cЛечение стоит 10 монет." to player
+		else:
+			remove 10 from {coins::%player%}
+			heal player
+			feed player
+			send "&aТы в порядке. Осталось: %{coins::%player%}%" to player
+	else:
+		send "&7Неизвестный товар: %arg-1%. Лавка: /menu" to player
 
 command /announce:
 	permission: 2
 	aliases: shout
+	set {-msg} to "%args%"
+	if {-msg} is "":
+		set {-msg} to "%player% зовёт всех рядом!"
 	open screen "Объявление" to players in radius 16 of player:
-		text "%player% зовёт всех рядом" at 0, -16 color #FFD700 shadow
-		button "Понятно" at 0, 12 size 120x20 close` }
+		box at 0, 0 size 220x74 color #CC0F172A border #FFD700 border_width 1 radius 6 shadow layer 0
+		text "&6&lОбъявление от %player%" at 0, -22 color #FFD700 shadow layer 2
+		text "&f%{-msg}%" at 0, -4 color #FFFFFF shadow layer 2
+		button "Понятно" at 0, 18 size 110x18 close layer 3` }
     ],
     notes: { ru: ["Элементы: text, button, slot, image, bar, hotbar. У всех есть at X Y, anchor, layer N (больше = выше) и id имя.","text: color #RRGGBB и shadow. button: size ШxВ, run \"/команда\" или close. Кнопка с run закрывает экран и выполняет команду от игрока.","slot: предмет и количество, либо slot hotbar N, slot image \"картинка\", slot text \"текст\". no frame убирает рамку.","image: \"ns:textures/....png\", size ШxВ, texture ШxВ (размер файла), color — оттенок.","bar: value число|{переменная}|health|food|armor|air|xp|level, max, direction left_to_right|right_to_left|bottom_to_top|top_to_bottom, fill, background, text.","anchor: top_left, top, top_right, left, center, right, bottom_left, bottom, bottom_right. Минус в at — влево или вверх.","Картинки из scriptcraft/resources/assets/<ns>/textures/gui/ сервер шлёт сам, перезагрузка ресурсов не нужна."], en: ["Elements: text, button, slot, image, bar, hotbar. All of them take at X Y, anchor, layer N (higher draws above) and id name.","text: color #RRGGBB and shadow. button: size WxH, run \"/command\" or close. A button with run closes the screen and runs the command as the player.","slot: an item and a count, or slot hotbar N, slot image \"picture\", slot text \"text\". no frame removes the frame.","image: \"ns:textures/....png\", size WxH, texture WxH (the file size), color tints it.","bar: value number|{variable}|health|food|armor|air|xp|level, max, direction left_to_right|right_to_left|bottom_to_top|top_to_bottom, fill, background, text.","anchor: top_left, top, top_right, left, center, right, bottom_left, bottom, bottom_right. A negative at moves left or up.","Pictures in scriptcraft/resources/assets/<ns>/textures/gui/ are sent by the server; no resource reload is needed."] },
     related: ["eff-open-screen", "screen-text", "screen-button", "screen-slot", "screen-image", "hud-bar", "hud-layer", "struct-command"]
@@ -285,7 +318,7 @@ command /announce:
     title: { ru: "HUD: полосы, хотбар и ванильные части", en: "HUD: bars, a hotbar and vanilla parts" },
     intro: { ru: "Интерфейс поверх игры. Копируется выключенным: /sc enable hud.", en: "An overlay on the game. Copied disabled: /sc enable hud." },
     blocks: [
-      { lang: "sc", title: { ru: "scriptcraft/scripts/hud.sc", en: "scriptcraft/scripts/hud.sc" }, code: `# ==========================================================
+      { lang: "sc", title: { ru: "scriptcraft/scripts/-hud.sc", en: "scriptcraft/scripts/-hud.sc" }, code: `# ==========================================================
 #  hud.sc — свой интерфейс поверх игры
 #  При первой установке файл копируется ВЫКЛЮЧЕННЫМ (-hud.sc):
 #  он прячет ванильный хотбар. Включить: /sc enable hud
@@ -303,17 +336,11 @@ command /announce:
 #  Ваниль, которую можно спрятать:
 #    hotbar, health, food, armor, air, experience, mount_health, jump_bar,
 #    crosshair, effects, item_name, scoreboard, bossbar, hud, all
-#  Дальше по игре:
-#    set value|progress of bar "имя" for <цель> to <число>
-#    set max of bar "имя" ... to <число>
-#    set text of hud "имя" ... to "текст"
-#    show hud / hide hud / remove hud "имя" / clear hud
 #  {переменная} в тексте, value или max сама обновляет HUD в момент записи.
-#  Пакет уходит только если строка изменилась. %health% и остальные источники
-#  считает клиент каждый кадр, без пакетов.
 # ==========================================================
 
 on join or load:
+	set {-hud_on::%player%} to true
 	hide vanilla hotbar for player
 	hide vanilla health for player
 	hide vanilla food for player
@@ -337,26 +364,37 @@ on join or load:
 		bar "coins_goal" value {coins::%player%} max 100 at 4, 24 size 70x4 anchor top_left color #FFD700 layer 0
 		text "%script%" at -4, 4 anchor top_right color #666666 layer 1
 
-command /coinhud:
-	aliases: coinsui
-	set text of hud "coins_text" for player to "%{coins::%player%}%"
-	set value of bar "coins_goal" for player to {coins::%player%}
+function HudSetState(p: player, enabled: boolean):
+	set {-hud_on::%p%} to enabled
+	if enabled is true:
+		show hud "stats" to p
+		show hud "coins" to p
+		hide vanilla hotbar for p
+		hide vanilla health for p
+		hide vanilla food for p
+		hide vanilla armor for p
+		hide vanilla experience for p
+		send action bar "&aКастомный HUD включён" to p
+	else:
+		hide hud "stats" from p
+		hide hud "coins" from p
+		show vanilla hotbar for p
+		show vanilla health for p
+		show vanilla food for p
+		show vanilla armor for p
+		show vanilla experience for p
+		send action bar "&7Кастомный HUD скрыт" to p
 
-command /hudoff:
-	hide hud "stats" from player
-	show vanilla hotbar for player
-	show vanilla health for player
-	show vanilla food for player
-	show vanilla armor for player
-	show vanilla experience for player
-
-command /hudon:
-	show hud "stats" to player
-	hide vanilla hotbar for player
-	hide vanilla health for player
-	hide vanilla food for player
-	hide vanilla armor for player
-	hide vanilla experience for player
+# Единый переключатель кастомного HUD: /hud [on|off]
+command /hud [text]:
+	if arg-1 is "off":
+		HudSetState(player, false)
+	else if arg-1 is "on":
+		HudSetState(player, true)
+	else if {-hud_on::%player%} is true:
+		HudSetState(player, false)
+	else:
+		HudSetState(player, true)
 
 command /boss <integer>:
 	permission: 2
@@ -364,12 +402,7 @@ command /boss <integer>:
 	create hud "boss" for players in radius 30 of player:
 		text "Страж" at 0, 6 anchor top color #FF5555 shadow layer 1
 		bar "boss_hp" value 100 max 100 at 0, 18 size 182x6 anchor top color #AA0000 layer 0
-	set progress of bar "boss_hp" for players in radius 30 of player to arg-1
-
-command /hudreset:
-	permission: 2
-	clear hud for player
-	show vanilla all for player` }
+	set progress of bar "boss_hp" for players in radius 30 of player to arg-1` }
     ],
     notes: { ru: ["create hud \"группа\" for <цель>: — элементы с отступом. id имя нужно, чтобы потом менять элемент. layer < 0 рисуется под ванильным HUD.","Источники полосы: health, max_health, food, saturation, armor, air, max_air, xp, level, а также число, {переменная} и %плейсхолдер%.","direction: left_to_right, right_to_left, bottom_to_top, top_to_bottom. fill \"картинка\" или цвет, background цвет|\"картинка\"|none, text \"%value% %percent%%\".","Прячется ваниль: hotbar, health, food, armor, air, experience, mount_health, jump_bar, crosshair, effects, item_name, scoreboard, bossbar, hud, all.","Дальше по игре: set value|progress of bar \"имя\", set max of bar, set text of hud \"имя\", show hud, hide hud, remove hud, clear hud.","{переменная} в тексте, value или max обновляет HUD сама в момент записи. Пакет уходит только если строка изменилась. Источники health/food считает клиент, без пакетов.","/sc disable hud убирает группы этого скрипта и возвращает ванильные части, которые прятал только он."], en: ["create hud \"group\" for <target>: — elements indented below. id name is what you change later. layer < 0 draws under the vanilla HUD.","Bar sources: health, max_health, food, saturation, armor, air, max_air, xp, level, plus a number, a {variable} and a %placeholder%.","direction: left_to_right, right_to_left, bottom_to_top, top_to_bottom. fill is a picture or a color, background is a color, a picture or none, text can be \"%value% %percent%%\".","Vanilla parts you can hide: hotbar, health, food, armor, air, experience, mount_health, jump_bar, crosshair, effects, item_name, scoreboard, bossbar, hud, all.","Later in the game: set value|progress of bar \"name\", set max of bar, set text of hud \"name\", show hud, hide hud, remove hud, clear hud.","A {variable} in text, value or max updates the HUD when it is written. A packet is sent only if the text changed. health/food are read by the client, with no packets.","/sc disable hud removes this script's groups and restores vanilla parts that only it had hidden."] },
     related: ["hud-create", "hud-bar", "hud-bar-sources", "hud-hotbar", "hud-slot", "hud-layer", "hud-set-bar", "hud-set-text", "hud-show-hide", "hud-vanilla"]
@@ -379,7 +412,7 @@ command /hudreset:
     title: { ru: "Свой блок и предмет: все свойства", en: "A custom block and item: every property" },
     intro: { ru: "Блок и предмет example:ruby. Ресурсы лежат в scriptcraft/resources.", en: "The block and item example:ruby. Resources live in scriptcraft/resources." },
     blocks: [
-      { lang: "sc", title: { ru: "scriptcraft/scripts/ruby.sc", en: "scriptcraft/scripts/ruby.sc" }, code: `# ==========================================================
+      { lang: "sc", title: { ru: "scriptcraft/scripts/-ruby.sc", en: "scriptcraft/scripts/-ruby.sc" }, code: `# ==========================================================
 #  ruby.sc — свои блоки и предметы. Копируется выключенным: /sc enable ruby
 #  id только латиницей. Русское название — через name: или lang.
 #  Ресурсы: scriptcraft/resources/assets/example/  (модели, текстуры, lang)
@@ -498,7 +531,7 @@ command /ruby:
     title: { ru: "Экономика: переменные, шанс и перевод", en: "Economy: variables, chance and a transfer" },
     intro: { ru: "Баланс {coins::%player%} и перевод /pay.", en: "A {coins::%player%} balance and /pay." },
     blocks: [
-      { lang: "sc", title: { ru: "фрагмент welcome.sc", en: "excerpt of welcome.sc" }, code: `# Эти команды уже есть в welcome.sc. Здесь — только баланс.
+      { lang: "sc", title: { ru: "фрагмент -welcome.sc", en: "excerpt of -welcome.sc" }, code: `# Эти команды уже есть в welcome.sc. Здесь — только баланс и перевод.
 command /coins:
 	aliases: bal, balance
 	if {coins::%player%} is not set:
@@ -521,18 +554,13 @@ command /pay <player> <integer>:
 	aliases: transfer
 	if {coins::%player%} < arg-2:
 		send "&cНе хватает монет. Баланс: %{coins::%player%}%" to player
+	else if arg-2 < 1:
+		send "&cСумма должна быть больше нуля." to player
 	else:
-		if arg-2 < 1:
-			send "&cСумма должна быть больше нуля." to player
-		else:
-			remove arg-2 from {coins::%player%}
-			add arg-2 to {coins::%arg-1%}
-			send "&aПереведено &6%arg-2% &aмонет игроку &f%arg-1%" to player
-
-command /resetcoins:
-	permission: 2
-	delete {coins::%player%}
-	reply "Баланс сброшен"` }
+		remove arg-2 from {coins::%player%}
+		add arg-2 to {coins::%arg-1%}
+		send "&aПереведено &6%arg-2% &aмонет игроку &f%arg-1%" to player
+		send "&a%player% перевёл тебе &6%arg-2% &aмонет" to arg-1` }
     ],
     notes: { ru: ["add и remove считают незаданную переменную нулём. Текст в числовой переменной — ошибка выполнения.","else if, and и or есть: and связывается теснее. Вложенный if тоже годится.","chance of 25%: — случайная ветка. В имени переменной %arg-1% подставляется, поэтому {coins::%arg-1%} — баланс получателя."], en: ["add and remove treat an unset variable as 0. Text in a numeric variable is a runtime error.","else if, and and or exist: and binds tighter. A nested if is fine too.","chance of 25%: is a random branch. %arg-1% is expanded inside a variable name, so {coins::%arg-1%} is the recipient's balance."] },
     related: ["expr-variable", "expr-temp-variable", "eff-set-var", "eff-add-var", "struct-if", "struct-chance", "expr-argument", "cond-number"]
@@ -542,7 +570,7 @@ command /resetcoins:
     title: { ru: "Цели, взгляд и цикл", en: "Targets, looking and a loop" },
     intro: { ru: "Цель — набор игроков. Пустой набор ничего не делает.", en: "A target is a set of players. An empty set does nothing." },
     blocks: [
-      { lang: "sc", title: { ru: "фрагмент welcome.sc", en: "excerpt of welcome.sc" }, code: `# Эти команды уже есть в welcome.sc.
+      { lang: "sc", title: { ru: "фрагмент -welcome.sc", en: "excerpt of -welcome.sc" }, code: `# Эти команды уже есть в welcome.sc.
 command /look:
 	if targeted player is set:
 		send "&eТы смотришь на &6%targeted%" to player
@@ -591,7 +619,12 @@ command /nearbuff:
     title: { ru: "Чат, кубик, пауза и таймер", en: "Chat, a die, a pause and a timer" },
     intro: { ru: "every без игрока: внутри используйте loop.", en: "every has no player: use loop inside." },
     blocks: [
-      { lang: "sc", title: { ru: "scriptcraft/scripts/features.sc", en: "scriptcraft/scripts/features.sc" }, code: `on first join:
+      { lang: "sc", title: { ru: "scriptcraft/scripts/-features.sc", en: "scriptcraft/scripts/-features.sc" }, code: `# ==========================================================
+#  features.sc — первый вход, перехват чата, кубик с задержкой и таймер
+#  Копируется выключенным (-features.sc). Включить: /sc enable features
+# ==========================================================
+
+on first join:
 	give player bread 16
 	send "&aДобро пожаловать, %player%!" to player
 
@@ -667,7 +700,7 @@ command /bag take <text>:
       en: "A full arcade Snake game inside a custom GUI window: WASD and arrow keys without closing the GUI, dynamic tail segment creation/removal on the fly, collision-safe apple & bonus spawning, speed and portal-wall modes, and a persistent Top-10 leaderboard. Enable with /sc enable snake, play with /snake."
     },
     blocks: [
-      { lang: "sc", title: { ru: "scriptcraft/scripts/snake.sc", en: "scriptcraft/scripts/snake.sc" }, code: `# ==========================================================
+      { lang: "sc", title: { ru: "scriptcraft/scripts/-snake.sc", en: "scriptcraft/scripts/-snake.sc" }, code: `# ==========================================================
 #  snake.sc — Ультимативная ЗМЕЙКА в GUI с топ-10 лидербордом (/snake)
 #  Копируется выключенным. Включить: /sc enable snake
 #  Демонстрирует:
@@ -1207,7 +1240,7 @@ on quit:
       }
     ],
     blocks: [
-      { lang: "sc", title: { ru: "scriptcraft/scripts/dino.sc", en: "scriptcraft/scripts/dino.sc" }, code: `# ==========================================================
+      { lang: "sc", title: { ru: "scriptcraft/scripts/-dino.sc", en: "scriptcraft/scripts/-dino.sc" }, code: `# ==========================================================
 #  dino.sc — Chrome Dino Runner в GUI ScriptCraft
 #  Команда: /dino
 #  Управление:
@@ -1639,7 +1672,7 @@ function DinoGameOver(p: player):
       }
     ],
     blocks: [
-      { lang: "sc", title: { ru: "scriptcraft/scripts/td.sc", en: "scriptcraft/scripts/td.sc" }, code: `# ==========================================================
+      { lang: "sc", title: { ru: "scriptcraft/scripts/-td.sc", en: "scriptcraft/scripts/-td.sc" }, code: `# ==========================================================
 #  td.sc — Tower Defense Ultra HD v4 (ScriptCraft 0.8.3)
 #          5 уникальных HD-карт (включая Болото и Разлом с запретными зонами!)
 #          9 башен 64x64 HD (включая Боевой Маяк-Баффер #9!) | Лимит 32 башни
@@ -4881,7 +4914,7 @@ function TdSaveScore(g: player):
       }
     ],
     blocks: [
-      { lang: "sc", title: { ru: "scriptcraft/scripts/seabattle.sc", en: "scriptcraft/scripts/seabattle.sc" }, code: `# ==========================================================
+      { lang: "sc", title: { ru: "scriptcraft/scripts/-seabattle.sc", en: "scriptcraft/scripts/-seabattle.sc" }, code: `# ==========================================================
 #  seabattle.sc — Морской Бой на двоих в тетради в клетку!
 #  Команды:
 #    /seabattle           — открыть тетрадь Морского Боя
