@@ -4753,6 +4753,68 @@ text "&6Первая строка%nl%&7Вторая строка" at 0 -20 ancho
 send "&eСтрока 1%newline%&aСтрока 2" to player
 set lore of player's tool to "&6Редкий меч%nl%&7Урон: &c+15"`,
     since: "0.8.3", related: ["expr-colors", "eff-open-screen", "eff-item-lore-enchant", "eff-hologram"]
+  },
+  {
+    id: "eff-player-animation", category: "effects",
+    name: { ru: "Анимации игрока (PlayerAnimator + Bendy-lib)", en: "Player Animations (PlayerAnimator + Bendy-lib)" },
+    syntax: [
+      "play [player] animation \"<id>\" [on|of <цель>] [for|to <зрители>] [first person|no first person|first person <bool>] [speed <N>] [fade <тики>]",
+      "stop [player] animation [on|of <цель>] [for|to <зрители>] [fade <тики>]"
+    ],
+    desc: {
+      ru: "Проигрывает или останавливает 3D-анимацию модели игрока через опциональные клиентские библиотеки **PlayerAnimator** и **Bendy-lib** (сгибание конечностей).\n• **Загрузка из ресурсов**: положите файл анимации `.json` (формат Emotecraft / GeckoLib / Blockbench player animation) в `scriptcraft/resources/assets/<namespace>/player_animation/<name>.json` (или `player_animations/<name>.json`) и выполните `/sc reload resources` — файл синхронизируется клиентам и подхватывается сразу без перезагрузки ресурспаков! Если namespace не указан (`\"wave\"`), используется `scriptcraft:wave`.\n• `on|of <цель>` — на чьей модели проиграть анимацию (`player`, `targeted player`, `all players`, `{-team::*}`; по умолчанию `player`).\n• `for|to <зрители>` — кто увидит анимацию (`for player` — только один игрок, `for all players` — все; по умолчанию все игроки в том же мире).\n• `first person` (по умолчанию) / `no first person` (`without first person`) / `first person <bool>` — показывать ли анимацию рук и тела самому игроку от первого лица.\n• `speed <N>` (`0.05`–`10.0`, по умолчанию `1.0`) — множитель скорости.\n• `fade <тики>` (`0`–`40`, по умолчанию `4`) — плавный вход/выход между позами.",
+      en: "Plays or stops a 3D player model animation via optional client libraries **PlayerAnimator** and **Bendy-lib** (smooth limb bending).\n• **Loading from resources**: place `.json` animation files in `scriptcraft/resources/assets/<namespace>/player_animation/<name>.json` (or `player_animations/<name>.json`) and run `/sc reload resources` — synced to clients and hot-loaded without a full resourcepack reload. Omitting namespace (`\"wave\"`) defaults to `scriptcraft:wave`.\n• `on|of <target>` — player(s) whose model animates (default `player`).\n• `for|to <viewers>` — who sees the animation (`for player`, `for all players`; defaults to all players in the same world).\n• `first person` (default) / `no first person` (`without first person`) / `first person <bool>` — toggle first-person rendering.\n• `speed <N>` (`0.05`–`10.0`, default `1.0`) and `fade <ticks>` (`0`–`40`, default `4`)."
+    },
+    example: `# Помахать рукой (видят все вокруг и сам игрок от первого лица)
+command /wave:
+\tplay animation "myanim:wave" on player
+
+# Удар мечом быстрее обычного, без показа от первого лица
+play animation "combat:slash" on player no first person speed 1.4 fade 3 for all players
+
+# Проиграть анимацию на цели в прицеле только для самого игрока
+play animation "emotes:dance" on targeted player for player first person false
+
+# Плавно остановить анимацию за 6 тиков
+command /stopanim:
+\tstop animation of player fade 6`,
+    since: "0.8.8", related: ["cmd-reload", "target-varlist"]
+  },
+  {
+    id: "screen-gui-builder", category: "screen",
+    name: { ru: "Визуальный редактор экранов (GUI Builder) в Студии", en: "Visual GUI Screen Builder in Studio" },
+    syntax: [
+      "Кнопка «GUI» в верхней панели Студии (для любого .sc с open screen)"
+    ],
+    desc: {
+      ru: "Встроенный визуальный WYSIWYG-редактор экранов прямо внутри Студии (`F3 + ~`):\n• Автоматически находит все блоки `open screen` в открытом `.sc` файле и разделяет их на отдельные экраны.\n• **Холст 1-в-1 с игрой**: перетаскивание мышью, ресайз за уголки, сетка/привязка, скрываемые плавающие панели (палитра элементов, слои в стиле Photoshop с глазом/замком, инспектор свойств).\n• **Раскрываемые текстовые поля (`⤢`)** с предпросмотром цветов `&` и переносов строк.\n• **Отмена и возврат (`Ctrl+Z` / `Ctrl+Y`)** для всех правок холста и инспектора.\n• **Совместное редактирование GUI**: в `liveEdit`-режиме видно цветную рамку, голову и ник другого редактора прямо на редактируемом им элементе, в списке слоёв и в выборе экранов.",
+      en: "Built-in WYSIWYG screen builder inside Studio (`F3 + ~`):\n• Automatically parses all `open screen` blocks in any `.sc` script into selectable screens.\n• **1:1 live canvas**: drag-and-drop, corner resize, snap grid, collapsible floating docks (element palette, Photoshop-style layers with visibility/lock, property inspector).\n• **Expandable string fields (`⤢`)** with live `&`-color word-wrapped preview.\n• **`Ctrl+Z` / `Ctrl+Y` Undo & Redo** across canvas and inspector.\n• **Collaborative GUI editing**: shows each co-editor's custom colored frame, skin head, and name badge on selected elements, layers, and screens."
+    },
+    example: `# Любой блок open screen в .sc сразу открывается в визуальном GUI-редакторе Студии:
+command /menu:
+\topen screen "Главное меню" to player:
+\t\tbox at 0 0 size 240x150 color #CC0F172A gradient #CC1E293B radius 8 shadow layer 0 id bg
+\t\ttext "&6&lГЛАВНОЕ МЕНЮ" at 0 -56 anchor center shadow layer 2 id title
+\t\tbutton "&aИграть" at 0 0 size 120x22 anchor center run StartGame(player) layer 3 id btn_play`,
+    since: "0.8.8", related: ["eff-open-screen", "screen-box", "cfg-studioLiveEdit", "studio-libs-and-colors"]
+  },
+  {
+    id: "studio-libs-and-colors", category: "commands",
+    name: { ru: "Статус библиотек и цвет редактора в Студии", en: "Studio Library Status & Editor Color Palette" },
+    syntax: [
+      "Студия (F3 + ~) → Настройки (⚙)"
+    ],
+    desc: {
+      ru: "В настройках Студии (`⚙`) доступны диагностика подключённых интеграций и персонализация совместной работы:\n• **Библиотеки и интеграции**: показывает в реальном времени, загружены ли на клиенте `PlayerAnimator` и `Bendy-lib` (с версией мода), а также какой режим поддержки `LuckPerms` активен на сервере (`мод`, `плагин`, `мод и плагин`, `api` или `нет`).\n• **Палитра цвета редактора**: выбор из 12 цветов (или авто-цвет `A`), которым ваш курсор, выделение текста и рамка выбранного элемента в GUI-редакторе отображаются у всех остальных участников сессии.",
+      en: "Studio Settings (`⚙`) includes live integration diagnostics and co-editing customization:\n• **Libraries & Integrations**: displays live status and version for client-side `PlayerAnimator` and `Bendy-lib`, plus the server's active `LuckPerms` mode (`mod`, `plugin`, `mod and plugin`, `api`, or `no`).\n• **Editor Color Palette**: 12 swatches (including Auto `A`) synced live so other editors see your chosen color on carets, text selections, and GUI Builder element frames."
+    },
+    example: `# Проверка прав LuckPerms и запуск анимации PlayerAnimator в одном скрипте:
+command /vipwave:
+\tif player has permission "server.vip":
+\t\tplay animation "vip:royal_wave" on player for all players first person
+\telse:
+\t\tsend "&cНужна привилегия VIP!" to player`,
+    since: "0.8.8", related: ["eff-player-animation", "screen-gui-builder", "cfg-studioLiveEdit", "cmd-journal"]
   }
   ]
 };
