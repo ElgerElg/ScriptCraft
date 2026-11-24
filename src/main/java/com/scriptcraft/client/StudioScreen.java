@@ -142,7 +142,7 @@ public class StudioScreen extends Screen {
 
     // --- Анимации UI ---
     private final long openedAt = System.currentTimeMillis();
-    private long lastFrame = System.currentTimeMillis();
+    private long lastFrameNano = System.nanoTime();
     private float dt = 0.016f;
     private float gearAngle;
     private long menuOpenedAt;
@@ -224,8 +224,9 @@ public class StudioScreen extends Screen {
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         long now = System.currentTimeMillis();
-        dt = Math.max(0.001f, Math.min(0.08f, (now - lastFrame) / 1000f));
-        lastFrame = now;
+        long nowNano = System.nanoTime();
+        dt = Math.max(0.0005f, Math.min(0.08f, (nowNano - lastFrameNano) / 1_000_000_000f));
+        lastFrameNano = nowNano;
         float openT = easeOutCubic((now - openedAt) / 190f);
         String currentView = settings ? "settings" : String.valueOf(StudioSession.active);
         if (!currentView.equals(lastActiveView)) {

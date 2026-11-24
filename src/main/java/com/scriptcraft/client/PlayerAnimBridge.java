@@ -43,7 +43,9 @@ import java.util.WeakHashMap;
  */
 @OnlyIn(Dist.CLIENT)
 public final class PlayerAnimBridge {
+    @SuppressWarnings("removal")
     private static final ResourceLocation LAYER_ID = new ResourceLocation(ScriptCraft.MODID, "script_anim");
+    @SuppressWarnings("removal")
     private static final ResourceLocation STUDIO_LAYER_ID = new ResourceLocation(ScriptCraft.MODID, "studio_preview");
     private static final Map<ResourceLocation, KeyframeAnimation> CACHE = new HashMap<>();
     private static final Map<ModifierLayer<?>, SpeedModifier> SPEED_MODIFIERS = new WeakHashMap<>();
@@ -77,18 +79,13 @@ public final class PlayerAnimBridge {
         CACHE.clear();
     }
 
-    // --- Живой предпросмотр 3D-редактора в Студии (с поддержкой Bendy-lib) ---
+    // --- Быстрый живой предпросмотр 3D-редактора в Студии (без пересоздания слоёв на каждом кадре) ---
 
-    public static void applyStudioPreview(@Nullable StudioAnimModel.AnimDoc doc, float tick, boolean firstPerson) {
+    public static void beginViewportPreview(StudioAnimModel.AnimDoc doc, float tick, boolean firstPerson) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null) return;
+        if (mc.player == null || doc == null) return;
         ModifierLayer<IAnimation> layer = getLayerById(mc.player, STUDIO_LAYER_ID);
         if (layer == null) return;
-        if (doc == null) {
-            STUDIO_PREVIEW.active = false;
-            layer.setAnimation(null);
-            return;
-        }
         STUDIO_PREVIEW.doc = doc;
         STUDIO_PREVIEW.tick = tick;
         STUDIO_PREVIEW.firstPerson = firstPerson;
@@ -98,19 +95,24 @@ public final class PlayerAnimBridge {
         }
     }
 
+    public static void endViewportPreview() {
+        // Не сбрасываем setAnimation(null) каждый кадр (это вызывало лишние пересчёты!), просто выключаем флаг
+        STUDIO_PREVIEW.active = false;
+    }
+
     public static void clearStudioPreview() {
         STUDIO_PREVIEW.active = false;
         STUDIO_PREVIEW.doc = null;
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null) {
             ModifierLayer<IAnimation> layer = getLayerById(mc.player, STUDIO_LAYER_ID);
-            if (layer != null && layer.getAnimation() == STUDIO_PREVIEW) {
+            if (layer != null && layer.getAnimation() != null) {
                 layer.setAnimation(null);
             }
         }
     }
 
-    /** Проиграть текущую редактируемую в Студии анимацию прямо на локальном игроке (для проверки в мире). */
+    /** Проиграть текущую редактируемую в Студии анимацию прямо на локальном игроке в мире. */
     public static void playInMemoryOnLocalPlayer(StudioAnimModel.AnimDoc doc, boolean firstPerson, float speed) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || doc == null) return;
@@ -130,6 +132,15 @@ public final class PlayerAnimBridge {
         playerAnim.setFirstPersonMode(firstPerson ? FirstPersonMode.THIRD_PERSON_MODEL : FirstPersonMode.DISABLED);
         playerAnim.setFirstPersonConfiguration(new FirstPersonConfiguration(true, true, true, true));
         layer.setAnimation(playerAnim);
+    }
+
+    /** Остановить тестовую (и любую активную) анимацию на локальном игроке вне меню. */
+    public static void stopOnLocalPlayer() {
+        clearStudioPreview();
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player != null) {
+            stop(mc.player.getUUID(), 3);
+        }
     }
 
     // --- Конвертация StudioAnimModel.AnimDoc <-> KeyframeAnimation / JSON ---
@@ -177,7 +188,9 @@ public final class PlayerAnimBridge {
         }
         state.setEnabled(true);
         for (StudioAnimModel.KeyPoint kp : map.values()) {
-            float raw = angle ? (float) Math.toRadians(kp.value()) : (state.defaultValue + kp.value());
+            float raw = angle
+                    ? (float) Math.toRadians(kp.value())
+                    : StudioAnimModel.uiPosToEngine(bone, ch, kp.value(), state.defaultValue);
             Ease ease = toKosmxEase(kp.ease());
             state.addKeyFrame(kp.tick(), raw, ease);
         }
@@ -240,7 +253,9 @@ public final class PlayerAnimBridge {
         List<KeyframeAnimation.KeyFrame> kfs = state.getKeyFrames();
         if (kfs == null || kfs.isEmpty()) return;
         for (KeyframeAnimation.KeyFrame kf : kfs) {
-            float uiVal = angle ? (float) Math.toDegrees(kf.value) : (kf.value - state.defaultValue);
+            float uiVal = angle
+                    ? (float) Math.toDegrees(kf.value)
+                    : StudioAnimModel.enginePosToUi(bone, ch, kf.value, state.defaultValue);
             StudioAnimModel.EaseCurve ease = kf.ease == null
                     ? StudioAnimModel.EaseCurve.LINEAR
                     : StudioAnimModel.EaseCurve.parse(kf.ease.name());
@@ -258,10 +273,11 @@ public final class PlayerAnimBridge {
     }
 
     private static final class StudioLivePreview implements IAnimation {
-        volatile StudioAnimModel.AnimDoc doc;
-        volatile float tick;
-        volatile boolean active;
-        volatile boolean firstPerson = true;
+        private static final FirstPersonConfiguration FP_CFG = new FirstPersonConfiguration(true, true, true, true);
+        StudioAnimModel.AnimDoc doc;
+        float tick;
+        boolean active;
+        boolean firstPerson = true;
 
         @Override
         public boolean isActive() {
@@ -279,7 +295,7 @@ public final class PlayerAnimBridge {
 
         @Override
         public FirstPersonConfiguration getFirstPersonConfiguration(float tickDelta) {
-            return new FirstPersonConfiguration(true, true, true, true);
+            return FP_CFG;
         }
 
         @Override
@@ -291,29 +307,35 @@ public final class PlayerAnimBridge {
             float t = this.tick;
             return switch (type) {
                 case POSITION -> {
-                    float x = d.hasKeys(bone, StudioAnimModel.Channel.POS_X)
-                            ? bone.defX + d.eval(bone, StudioAnimModel.Channel.POS_X, t) : value0.getX();
-                    float y = d.hasKeys(bone, StudioAnimModel.Channel.POS_Y)
-                            ? bone.defY + d.eval(bone, StudioAnimModel.Channel.POS_Y, t) : value0.getY();
-                    float z = d.hasKeys(bone, StudioAnimModel.Channel.POS_Z)
-                            ? bone.defZ + d.eval(bone, StudioAnimModel.Channel.POS_Z, t) : value0.getZ();
+                    boolean hx = d.hasKeys(bone, StudioAnimModel.Channel.POS_X);
+                    boolean hy = d.hasKeys(bone, StudioAnimModel.Channel.POS_Y);
+                    boolean hz = d.hasKeys(bone, StudioAnimModel.Channel.POS_Z);
+                    if (!hx && !hy && !hz) yield value0;
+                    float x = hx ? StudioAnimModel.uiPosToEngine(bone, StudioAnimModel.Channel.POS_X,
+                            d.eval(bone, StudioAnimModel.Channel.POS_X, t), bone.defX) : value0.getX();
+                    float y = hy ? StudioAnimModel.uiPosToEngine(bone, StudioAnimModel.Channel.POS_Y,
+                            d.eval(bone, StudioAnimModel.Channel.POS_Y, t), bone.defY) : value0.getY();
+                    float z = hz ? StudioAnimModel.uiPosToEngine(bone, StudioAnimModel.Channel.POS_Z,
+                            d.eval(bone, StudioAnimModel.Channel.POS_Z, t), bone.defZ) : value0.getZ();
                     yield new Vec3f(x, y, z);
                 }
                 case ROTATION -> {
-                    float rx = d.hasKeys(bone, StudioAnimModel.Channel.ROT_X)
-                            ? (float) Math.toRadians(d.eval(bone, StudioAnimModel.Channel.ROT_X, t)) : value0.getX();
-                    float ry = d.hasKeys(bone, StudioAnimModel.Channel.ROT_Y)
-                            ? (float) Math.toRadians(d.eval(bone, StudioAnimModel.Channel.ROT_Y, t)) : value0.getY();
-                    float rz = d.hasKeys(bone, StudioAnimModel.Channel.ROT_Z)
-                            ? (float) Math.toRadians(d.eval(bone, StudioAnimModel.Channel.ROT_Z, t)) : value0.getZ();
+                    boolean hx = d.hasKeys(bone, StudioAnimModel.Channel.ROT_X);
+                    boolean hy = d.hasKeys(bone, StudioAnimModel.Channel.ROT_Y);
+                    boolean hz = d.hasKeys(bone, StudioAnimModel.Channel.ROT_Z);
+                    if (!hx && !hy && !hz) yield value0;
+                    float rx = hx ? (float) Math.toRadians(d.eval(bone, StudioAnimModel.Channel.ROT_X, t)) : value0.getX();
+                    float ry = hy ? (float) Math.toRadians(d.eval(bone, StudioAnimModel.Channel.ROT_Y, t)) : value0.getY();
+                    float rz = hz ? (float) Math.toRadians(d.eval(bone, StudioAnimModel.Channel.ROT_Z, t)) : value0.getZ();
                     yield new Vec3f(rx, ry, rz);
                 }
                 case BEND -> {
                     if (!bone.bendable) yield value0;
-                    float dir = d.hasKeys(bone, StudioAnimModel.Channel.BEND_DIR)
-                            ? (float) Math.toRadians(d.eval(bone, StudioAnimModel.Channel.BEND_DIR, t)) : value0.getX();
-                    float ang = d.hasKeys(bone, StudioAnimModel.Channel.BEND_ANG)
-                            ? (float) Math.toRadians(d.eval(bone, StudioAnimModel.Channel.BEND_ANG, t)) : value0.getY();
+                    boolean hd = d.hasKeys(bone, StudioAnimModel.Channel.BEND_DIR);
+                    boolean ha = d.hasKeys(bone, StudioAnimModel.Channel.BEND_ANG);
+                    if (!hd && !ha) yield value0;
+                    float dir = hd ? (float) Math.toRadians(d.eval(bone, StudioAnimModel.Channel.BEND_DIR, t)) : value0.getX();
+                    float ang = ha ? (float) Math.toRadians(d.eval(bone, StudioAnimModel.Channel.BEND_ANG, t)) : value0.getY();
                     yield new Vec3f(dir, ang, 0f);
                 }
             };

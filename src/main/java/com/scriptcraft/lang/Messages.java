@@ -328,13 +328,8 @@ public final class Messages {
         add("studio.anim.tool.bend", "⌒ Bend", "⌒ Изгиб");
         add("studio.anim.to_script", "→ .sc", "→ В скрипт");
         add("studio.anim.test_world", "▶ In-game", "▶ В игре");
+        add("studio.anim.stop_world", "■ Stop", "■ Стоп");
         add("studio.anim.bones", "Skeleton (1-9)", "Скелет (1-9)");
-        add("studio.anim.presets", "Starter Presets:", "Готовые шаблоны:");
-        add("studio.anim.preset.wave", "Friendly Wave", "Помахать рукой");
-        add("studio.anim.preset.slash", "Sword Slash", "Рубящий удар");
-        add("studio.anim.preset.flip", "Backflip", "Заднее сальто");
-        add("studio.anim.preset.dance", "Groove Loop", "Танец (цикл)");
-        add("studio.anim.preset.bow", "Royal Bow", "Поклон");
         add("studio.anim.bone.body", "Body (Root)", "Всё тело");
         add("studio.anim.bone.torso", "Torso", "Торс");
         add("studio.anim.bone.head", "Head", "Голова");
@@ -366,6 +361,7 @@ public final class Messages {
         add("studio.anim.tip.help", "Hotkeys & mouse controls", "Горячие клавиши и управление мышью");
         add("studio.anim.tip.to_script", "Insert 'play animation' into open .sc script or clipboard", "Вставить 'play animation' в открытый скрипт или буфер");
         add("studio.anim.tip.test_world", "Play current animation on your player in-world", "Проиграть текущую анимацию на вашем игроке в мире");
+        add("studio.anim.tip.stop_world", "Stop test animation on your player in-world", "Остановить тестовую анимацию на вашем игроке в мире");
         add("studio.anim.tip.vis", "Show / hide bone in preview", "Показать / скрыть часть тела в превью");
         add("studio.anim.tip.insert_key", "Keyframe selected bone at playhead", "Поставить ключевой кадр выбранной кости");
         add("studio.anim.tip.reset_bone", "Reset bone to neutral (0) at playhead", "Сбросить кость в 0 на текущем кадре");
@@ -380,6 +376,7 @@ public final class Messages {
         add("studio.anim.load_err", "&cFailed to parse animation: %s", "&cНе удалось разобрать JSON анимации: %s");
         add("studio.anim.mirrored", "&eMirrored pose at current tick", "&eПоза отзеркалена на текущем кадре");
         add("studio.anim.playing_world", "&aPlaying &f%s &aon your character", "&aПроигрываю &f%s &aна вашем персонаже");
+        add("studio.anim.stopped_world", "&eStopped test animation on your character", "&eТестовая анимация на персонаже остановлена");
         add("studio.anim.need_pa", "&eInstall PlayerAnimator on client for in-world playback", "&eУстановите мод PlayerAnimator на клиент для проигрывания в мире");
         add("studio.anim.inserted_code", "&aInserted 'play animation' into &f%s", "&aСтрока 'play animation' вставлена в &f%s");
         add("studio.anim.copied_code", "&aCopied: &f%s", "&aСкопировано: &f%s");
