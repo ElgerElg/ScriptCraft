@@ -1,6 +1,7 @@
 package com.scriptcraft.client;
 
 import com.mojang.blaze3d.platform.Lighting;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;
@@ -85,7 +86,11 @@ public final class StudioAnimEditor {
     private static float pxPerTick = 9.0f;
     private static int timelineScrollX = 0;
     private static int timelineScrollY = 0;
-    private static int timelineH = 132;
+    private static int timelineH = 112;
+    private static int leftBonesScroll = 0;
+    private static int leftBonesMaxScroll = 0;
+    private static int inspectorScroll = 0;
+    private static int inspectorMaxScroll = 0;
     private static final Set<KeyRef> selectedKeys = new LinkedHashSet<>();
 
     // Буфер обмена ключей / позы
@@ -319,7 +324,7 @@ public final class StudioAnimEditor {
 
         topBarY = y;
         int topBarH = 24;
-        tlH = Math.max(88, Math.min(h / 2, timelineH));
+        tlH = Math.max(84, Math.min(h / 2, timelineH));
         tlX = x;
         tlW = w;
         tlY = y + h - tlH;
@@ -328,21 +333,32 @@ public final class StudioAnimEditor {
         mainH = Math.max(70, tlY - mainY - 3);
 
         leftW = Math.max(118, Math.min(148, w / 5));
-        rightW = Math.max(162, Math.min(206, w / 4 + 16));
+        rightW = Math.max(166, Math.min(210, w / 4 + 18));
         leftX = x;
         rightX = x + w - rightW;
         vpX = leftX + leftW + 3;
         vpW = Math.max(80, rightX - vpX - 3);
 
-        renderTopBar(g, font, x, topBarY, w, topBarH, mx, my);
-        renderLeftBones(g, font, leftX, mainY, leftW, mainH, mx, my);
-        renderViewport3D(g, font, vpX, mainY, vpW, mainH, mx, my);
-        renderRightInspector(g, font, rightX, mainY, rightW, mainH, mx, my);
-        renderTimeline(g, font, tlX, tlY, tlW, tlH, mx, my);
+        boolean popupActive = openModal || newModal || easeDropdown || helpPopup;
+        int bgMx = popupActive ? -10000 : mx;
+        int bgMy = popupActive ? -10000 : my;
 
-        boolean splitHot = dragKind == DragKind.TIMELINE_RESIZE || (Math.abs(my - tlY) <= 2 && mx >= x && mx < x + w);
+        renderTopBar(g, font, x, topBarY, w, topBarH, bgMx, bgMy);
+        renderLeftBones(g, font, leftX, mainY, leftW, mainH, bgMx, bgMy);
+        renderViewport3D(g, font, vpX, mainY, vpW, mainH, bgMx, bgMy);
+        renderRightInspector(g, font, rightX, mainY, rightW, mainH, bgMx, bgMy);
+        renderTimeline(g, font, tlX, tlY, tlW, tlH, bgMx, bgMy);
+
+        boolean splitHot = !popupActive && (dragKind == DragKind.TIMELINE_RESIZE || (Math.abs(my - tlY) <= 2 && mx >= x && mx < x + w));
         if (splitHot) {
             g.fill(x, tlY - 1, x + w, tlY + 1, GOLD);
+        }
+
+        if (popupActive) {
+            // Полностью блокируем клики по фоновым полям и кнопкам под открытым списком/окном!
+            btns.clear();
+            fieldBoxes.clear();
+            hoverTip = null;
         }
 
         if (openModal) {
@@ -438,7 +454,7 @@ public final class StudioAnimEditor {
                     Messages.get("studio.anim.tip.mirror") + " (Ctrl+M)", false, GOLD) + 2;
             bx = drawBtn(g, font, mx, my, bx, by, font.width("1P") + 8, 16, "1P", "vp:1p",
                     Messages.get("studio.anim.tip.1p"), firstPersonPreview, GREEN) + 2;
-            bx = drawBtn(g, font, mx, my, bx, by, font.width("🎥") + 8, 16, "🎥", "vp:reset_cam",
+            bx = drawBtn(g, font, mx, my, bx, by, font.width("◎") + 8, 16, "◎", "vp:reset_cam",
                     Messages.get("studio.anim.tip.cam") + " [F]", false, TEXT) + 4;
         }
 
@@ -482,44 +498,58 @@ public final class StudioAnimEditor {
         g.fill(x + 1, y + 1, x + w - 1, y + 17, BAR);
         g.drawString(font, Messages.get("studio.anim.bones"), x + 6, y + 5, GOLD, false);
 
-        int curTick = Math.round(playhead);
-        int ry = y + 20;
+        int listTop = y + 18;
+        int listH = Math.max(16, h - 19);
         BoneId[] bones = BoneId.values();
+        int contentH = bones.length * 16 + 4;
+        leftBonesMaxScroll = Math.max(0, contentH - listH);
+        leftBonesScroll = Math.max(0, Math.min(leftBonesScroll, leftBonesMaxScroll));
+
+        int curTick = Math.round(playhead);
+        g.enableScissor(x + 1, listTop, x + w - 1, y + h - 1);
+        int ry = listTop + 2 - leftBonesScroll;
         for (int i = 0; i < bones.length; i++) {
             BoneId b = bones[i];
-            if (ry + 16 > y + h - 2) break;
-            boolean sel = b == selectedBone;
-            boolean hot = hover(mx, my, x + 2, ry, w - 4, 16);
-            g.fill(x + 2, ry, x + w - 2, ry + 16, sel ? 0xFF24344D : (hot ? ROW_HOT : ROW));
-            g.fill(x + 2, ry, x + 4, ry + 16, b.color);
-            if (sel) {
-                border(g, x + 2, ry, w - 4, 16, GOLD);
-            }
+            if (ry + 15 >= listTop && ry <= y + h - 1) {
+                boolean sel = b == selectedBone;
+                boolean hot = hover(mx, my, x + 2, ry, w - 5, 15);
+                g.fill(x + 2, ry, x + w - 3, ry + 15, sel ? 0xFF24344D : (hot ? ROW_HOT : ROW));
+                g.fill(x + 2, ry, x + 4, ry + 15, b.color);
+                if (sel) {
+                    border(g, x + 2, ry, w - 5, 15, GOLD);
+                }
 
-            boolean vis = DOC.isBoneVisible(b);
-            int eyeX = x + w - 15;
-            g.drawString(font, vis ? "◉" : "○", eyeX, ry + 4, vis ? MUTED : 0xFF475264, false);
-            btns.add(new BtnHit(eyeX - 1, ry, 13, 16, "vis:" + b.name(), Messages.get("studio.anim.tip.vis")));
+                boolean vis = DOC.isBoneVisible(b);
+                int eyeX = x + w - 16;
+                g.drawString(font, vis ? "◉" : "○", eyeX, ry + 4, vis ? MUTED : 0xFF475264, false);
+                if (ry >= listTop - 4 && ry + 11 <= y + h) {
+                    btns.add(new BtnHit(eyeX - 1, ry, 13, 15, "vis:" + b.name(), Messages.get("studio.anim.tip.vis")));
+                }
 
-            int rightLim = eyeX - 3;
-            if (b.bendable) {
-                rightLim -= 8;
-                g.drawString(font, "⌒", rightLim, ry + 3, PURPLE, false);
-            }
-            if (DOC.boneHasKeyAt(b, curTick)) {
-                rightLim -= 8;
-                g.drawString(font, "◆", rightLim, ry + 4, GOLD, false);
-            } else if (DOC.boneHasAnyKeys(b)) {
-                rightLim -= 7;
-                g.drawString(font, "•", rightLim, ry + 4, ACCENT, false);
-            }
+                int rightLim = eyeX - 3;
+                if (b.bendable) {
+                    rightLim -= 8;
+                    g.drawString(font, "⌒", rightLim, ry + 3, PURPLE, false);
+                }
+                if (DOC.boneHasKeyAt(b, curTick)) {
+                    rightLim -= 8;
+                    g.drawString(font, "◆", rightLim, ry + 4, GOLD, false);
+                } else if (DOC.boneHasAnyKeys(b)) {
+                    rightLim -= 7;
+                    g.drawString(font, "•", rightLim, ry + 4, ACCENT, false);
+                }
 
-            String label = (i + 1) + " " + Messages.get(b.langKey);
-            g.drawString(font, trim(font, label, Math.max(24, rightLim - (x + 7))), x + 7, ry + 4,
-                    sel ? GOLD : (vis ? TEXT : MUTED), false);
-            btns.add(new BtnHit(x + 2, ry, eyeX - x - 3, 16, "bone:" + b.name(), null));
-            ry += 17;
+                String label = (i + 1) + " " + Messages.get(b.langKey);
+                g.drawString(font, trim(font, label, Math.max(24, rightLim - (x + 7))), x + 7, ry + 4,
+                        sel ? GOLD : (vis ? TEXT : MUTED), false);
+                if (ry >= listTop - 4 && ry + 11 <= y + h) {
+                    btns.add(new BtnHit(x + 2, ry, eyeX - x - 3, 15, "bone:" + b.name(), null));
+                }
+            }
+            ry += 16;
         }
+        g.disableScissor();
+        drawMiniScrollbar(g, x + w - 3, listTop, listH, leftBonesScroll, leftBonesMaxScroll);
     }
 
     // -------------------------------------------------------------------------
@@ -573,6 +603,12 @@ public final class StudioAnimEditor {
         updateViewportHover(mx, my, x, y, w, h);
         renderSkeletonOverlayAndGizmo(g, font, mx, my);
 
+        // Сбрасываем состояние глубины и цвета после 3D-рендера, чтобы 2D-текст никогда не пропадал!
+        RenderSystem.disableDepthTest();
+        RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+
+        g.pose().pushPose();
+        g.pose().translate(0f, 0f, 330f);
         String topBadge = firstPersonPreview
                 ? Messages.get("studio.anim.vp.1p_badge")
                 : String.format(Locale.ROOT, "Yaw %.0f°  Pitch %.0f°  Zoom %.0f%%", camYaw, camPitch, camZoom * 100f);
@@ -588,6 +624,7 @@ public final class StudioAnimEditor {
                     : "PlayerAnimator ●  |  LMB: Gizmo/Bone/Orbit  MMB: Pan  Scroll: Zoom";
             g.drawString(font, trim(font, hint, w - 12), x + 6, y + h - 13, 0xAA8A96AA, false);
         }
+        g.pose().popPose();
 
         g.disableScissor();
     }
@@ -676,7 +713,11 @@ public final class StudioAnimEditor {
         g.flush();
         dispatcher.setRenderShadow(true);
         pose.popPose();
-        Lighting.setupFor3DItems();
+        Lighting.setupForFlatItems();
+        RenderSystem.disableDepthTest();
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
 
         player.yBodyRot = oldBodyRot;
         player.yBodyRotO = oldBodyRotO;
@@ -758,7 +799,11 @@ public final class StudioAnimEditor {
         restoreVisibility(model);
         pose.popPose();
         g.flush();
-        Lighting.setupFor3DItems();
+        Lighting.setupForFlatItems();
+        RenderSystem.disableDepthTest();
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
     }
 
     private static void applyStandaloneBone(ModelPart part, BoneId bone) {
@@ -1072,141 +1117,165 @@ public final class StudioAnimEditor {
             syncInspectorFromDoc(false);
         }
 
-        g.enableScissor(x + 1, y + 18, x + w - 1, y + h - 1);
-        int cy = y + 21;
+        int bodyTop = y + 18;
+        int bodyBottom = y + h - 1;
+        int bodyH = Math.max(20, bodyBottom - bodyTop);
+        int neededH = (selectedBone.bendable ? 208 : 168);
+        inspectorMaxScroll = Math.max(0, neededH - bodyH);
+        inspectorScroll = Math.max(0, Math.min(inspectorScroll, inspectorMaxScroll));
 
-        g.drawString(font, Messages.get("studio.anim.sec.rot"), x + 6, cy, MUTED, false);
-        cy += 11;
-        cy = renderChannelRow(g, font, mx, my, x + 6, cy, w - 12, 0, Channel.ROT_X, "X");
-        cy = renderChannelRow(g, font, mx, my, x + 6, cy, w - 12, 1, Channel.ROT_Y, "Y");
-        cy = renderChannelRow(g, font, mx, my, x + 6, cy, w - 12, 2, Channel.ROT_Z, "Z");
-        cy += 3;
+        int effMx = (my >= bodyTop && my < bodyBottom) ? mx : -10000;
+        int effMy = (my >= bodyTop && my < bodyBottom) ? my : -10000;
 
-        g.drawString(font, Messages.get("studio.anim.sec.pos"), x + 6, cy, MUTED, false);
-        cy += 11;
-        cy = renderChannelRow(g, font, mx, my, x + 6, cy, w - 12, 3, Channel.POS_X, "X");
-        cy = renderChannelRow(g, font, mx, my, x + 6, cy, w - 12, 4, Channel.POS_Y, "Y");
-        cy = renderChannelRow(g, font, mx, my, x + 6, cy, w - 12, 5, Channel.POS_Z, "Z");
-        cy += 3;
+        g.enableScissor(x + 1, bodyTop, x + w - 1, bodyBottom);
+        int cy = bodyTop + 3 - inspectorScroll;
+        int innerW = w - 13;
+
+        g.drawString(font, Messages.get("studio.anim.sec.rot"), x + 5, cy, MUTED, false);
+        cy += 10;
+        cy = renderChannelRow(g, font, effMx, effMy, x + 5, cy, innerW, 0, Channel.ROT_X, "X", bodyTop, bodyBottom);
+        cy = renderChannelRow(g, font, effMx, effMy, x + 5, cy, innerW, 1, Channel.ROT_Y, "Y", bodyTop, bodyBottom);
+        cy = renderChannelRow(g, font, effMx, effMy, x + 5, cy, innerW, 2, Channel.ROT_Z, "Z", bodyTop, bodyBottom);
+        cy += 2;
+
+        g.drawString(font, Messages.get("studio.anim.sec.pos"), x + 5, cy, MUTED, false);
+        cy += 10;
+        cy = renderChannelRow(g, font, effMx, effMy, x + 5, cy, innerW, 3, Channel.POS_X, "X", bodyTop, bodyBottom);
+        cy = renderChannelRow(g, font, effMx, effMy, x + 5, cy, innerW, 4, Channel.POS_Y, "Y", bodyTop, bodyBottom);
+        cy = renderChannelRow(g, font, effMx, effMy, x + 5, cy, innerW, 5, Channel.POS_Z, "Z", bodyTop, bodyBottom);
+        cy += 2;
 
         if (selectedBone.bendable) {
             boolean bendy = ModList.get().isLoaded("bendylib");
-            g.drawString(font, "Bendy-lib (°)", x + 6, cy, bendy ? PURPLE : MUTED, false);
-            cy += 11;
-            cy = renderChannelRow(g, font, mx, my, x + 6, cy, w - 12, 6, Channel.BEND_DIR, "D");
-            cy = renderChannelRow(g, font, mx, my, x + 6, cy, w - 12, 7, Channel.BEND_ANG, "B");
-            cy += 3;
+            g.drawString(font, "Bendy-lib (°)", x + 5, cy, bendy ? PURPLE : MUTED, false);
+            cy += 10;
+            cy = renderChannelRow(g, font, effMx, effMy, x + 5, cy, innerW, 6, Channel.BEND_DIR, "D", bodyTop, bodyBottom);
+            cy = renderChannelRow(g, font, effMx, effMy, x + 5, cy, innerW, 7, Channel.BEND_ANG, "B", bodyTop, bodyBottom);
+            cy += 2;
         }
 
-        g.fill(x + 6, cy, x + w - 6, cy + 1, EDGE);
+        g.fill(x + 5, cy, x + 5 + innerW, cy + 1, EDGE);
         cy += 4;
 
-        g.drawString(font, "Easing:", x + 6, cy + 3, MUTED, false);
-        int graphW = 46;
-        int graphH = 28;
-        int graphX = x + w - graphW - 6;
+        // Секция плавности (Easing) + квадрат живого графика кривой — рендерится ВСЕГДА!
+        g.drawString(font, "Easing:", x + 5, cy + 2, GOLD, false);
+        int graphW = 48;
+        int graphH = 30;
+        int graphX = x + 5 + innerW - graphW;
         int graphY = cy;
 
-        int selW = Math.max(58, graphX - (x + 6) - 4);
-        easeBtnX = x + 6;
+        int selW = Math.max(54, graphX - (x + 5) - 4);
+        easeBtnX = x + 5;
         easeBtnY = cy + 13;
         easeBtnW = selW;
-        drawBtn(g, font, mx, my, easeBtnX, easeBtnY, easeBtnW, 15, activeEase.name(), "ease:open",
-                Messages.get("studio.anim.tip.ease"), easeDropdown, ACCENT);
+        drawClippedBtn(g, font, effMx, effMy, easeBtnX, easeBtnY, easeBtnW, 16, activeEase.name(), "ease:open",
+                Messages.get("studio.anim.tip.ease"), easeDropdown, ACCENT, bodyTop, bodyBottom);
 
         renderEaseCurveGraph(g, graphX, graphY, graphW, graphH, activeEase);
-        cy += graphH + 5;
+        cy += graphH + 4;
 
-        if (cy + 34 <= y + h) {
-            g.fill(x + 6, cy, x + w - 6, cy + 1, EDGE);
-            cy += 4;
-            int halfW = (w - 16) / 2;
-            g.drawString(font, "End:", x + 6, cy + 3, MUTED, false);
-            int efX = x + 30;
-            int efW = Math.max(26, halfW - 24);
-            endTickField.render(g, font, efX, cy, efW, 13, activeFieldIdx == 8, "40", 0xFF0C1119,
-                    activeFieldIdx == 8 ? GOLD : EDGE, TEXT, MUTED);
+        g.fill(x + 5, cy, x + 5 + innerW, cy + 1, EDGE);
+        cy += 4;
+        int halfW = (innerW - 4) / 2;
+        g.drawString(font, "End:", x + 5, cy + 3, MUTED, false);
+        int efX = x + 28;
+        int efW = Math.max(24, halfW - 23);
+        endTickField.render(g, font, efX, cy, efW, 13, activeFieldIdx == 8, "40", 0xFF0C1119,
+                activeFieldIdx == 8 ? GOLD : EDGE, TEXT, MUTED);
+        if (cy + 13 > bodyTop && cy < bodyBottom) {
             fieldBoxes.add(new FieldBox(8, efX, cy, efW, 13, endTickField, null));
+        }
 
-            int fx = x + 8 + halfW;
-            g.drawString(font, "Fade:", fx, cy + 3, MUTED, false);
-            int ffX = fx + 28;
-            int ffW = Math.max(22, x + w - 6 - ffX);
-            fadeField.render(g, font, ffX, cy, ffW, 13, activeFieldIdx == 9, "2", 0xFF0C1119,
-                    activeFieldIdx == 9 ? GOLD : EDGE, TEXT, MUTED);
+        int fx = x + 7 + halfW;
+        g.drawString(font, "Fade:", fx, cy + 3, MUTED, false);
+        int ffX = fx + 27;
+        int ffW = Math.max(20, x + 5 + innerW - ffX);
+        fadeField.render(g, font, ffX, cy, ffW, 13, activeFieldIdx == 9, "2", 0xFF0C1119,
+                activeFieldIdx == 9 ? GOLD : EDGE, TEXT, MUTED);
+        if (cy + 13 > bodyTop && cy < bodyBottom) {
             fieldBoxes.add(new FieldBox(9, ffX, cy, ffW, 13, fadeField, null));
-            cy += 16;
+        }
+        cy += 15;
 
-            drawBtn(g, font, mx, my, x + 6, cy, halfW, 14,
-                    (DOC.looped ? "☑ " : "☐ ") + Messages.get("studio.anim.loop"),
-                    "anim:loop", Messages.get("studio.anim.tip.loop"), DOC.looped, GREEN);
-            g.drawString(font, "Ret:", fx, cy + 3, MUTED, false);
-            int rfX = fx + 24;
-            int rfW = Math.max(24, x + w - 6 - rfX);
-            returnTickField.render(g, font, rfX, cy, rfW, 14, activeFieldIdx == 10, "0", 0xFF0C1119,
-                    activeFieldIdx == 10 ? GOLD : EDGE, TEXT, MUTED);
+        drawClippedBtn(g, font, effMx, effMy, x + 5, cy, halfW, 14,
+                (DOC.looped ? "☑ " : "☐ ") + Messages.get("studio.anim.loop"),
+                "anim:loop", Messages.get("studio.anim.tip.loop"), DOC.looped, GREEN, bodyTop, bodyBottom);
+        g.drawString(font, "Ret:", fx, cy + 3, MUTED, false);
+        int rfX = fx + 23;
+        int rfW = Math.max(22, x + 5 + innerW - rfX);
+        returnTickField.render(g, font, rfX, cy, rfW, 14, activeFieldIdx == 10, "0", 0xFF0C1119,
+                activeFieldIdx == 10 ? GOLD : EDGE, TEXT, MUTED);
+        if (cy + 14 > bodyTop && cy < bodyBottom) {
             fieldBoxes.add(new FieldBox(10, rfX, cy, rfW, 14, returnTickField, null));
         }
 
         g.disableScissor();
+        drawMiniScrollbar(g, x + w - 3, bodyTop, bodyH, inspectorScroll, inspectorMaxScroll);
     }
 
     private static int renderChannelRow(GuiGraphics g, Font font, int mx, int my,
-                                        int x, int y, int w, int fieldIdx, Channel ch, String tag) {
+                                        int x, int y, int w, int fieldIdx, Channel ch, String tag,
+                                        int clipTop, int clipBottom) {
         int curTick = Math.round(playhead);
         boolean hasKeyHere = DOC.track(selectedBone, ch).containsKey(curTick);
+        boolean visible = (y + 12 > clipTop && y < clipBottom);
 
-        boolean tagHot = hover(mx, my, x, y, 13, 13);
-        g.fill(x, y, x + 13, y + 13, tagHot ? ROW_HOT : 0xFF101621);
-        border(g, x, y, 13, 13, ch.axisColor);
-        g.drawString(font, tag, x + 4, y + 3, ch.axisColor, false);
-        btns.add(new BtnHit(x, y, 13, 13, "scrub:" + ch.name(), Messages.get("studio.anim.tip.scrub")));
+        boolean tagHot = visible && hover(mx, my, x, y, 12, 12);
+        g.fill(x, y, x + 12, y + 12, tagHot ? ROW_HOT : 0xFF101621);
+        border(g, x, y, 12, 12, ch.axisColor);
+        g.drawString(font, tag, x + 3, y + 2, ch.axisColor, false);
+        if (visible) {
+            btns.add(new BtnHit(x, y, 12, 12, "scrub:" + ch.name(), Messages.get("studio.anim.tip.scrub")));
+        }
 
-        int minusX = x + 15;
-        drawBtn(g, font, mx, my, minusX, y, 11, 13, "-", "step:-:" + ch.name(), null, false, MUTED);
+        int minusX = x + 14;
+        drawClippedBtn(g, font, mx, my, minusX, y, 11, 12, "-", "step:-:" + ch.name(), null, false, MUTED, clipTop, clipBottom);
 
-        int keyBtnX = x + w - 13;
-        drawBtn(g, font, mx, my, keyBtnX, y, 13, 13, "◆", "kftog:" + ch.name(),
-                Messages.get("studio.anim.tip.kftog"), hasKeyHere, hasKeyHere ? GOLD : MUTED);
+        int keyBtnX = x + w - 12;
+        drawClippedBtn(g, font, mx, my, keyBtnX, y, 12, 12, "◆", "kftog:" + ch.name(),
+                Messages.get("studio.anim.tip.kftog"), hasKeyHere, hasKeyHere ? GOLD : MUTED, clipTop, clipBottom);
 
-        int plusX = keyBtnX - 13;
-        drawBtn(g, font, mx, my, plusX, y, 11, 13, "+", "step:+:" + ch.name(), null, false, MUTED);
+        int plusX = keyBtnX - 12;
+        drawClippedBtn(g, font, mx, my, plusX, y, 11, 12, "+", "step:+:" + ch.name(), null, false, MUTED, clipTop, clipBottom);
 
-        int fldX = minusX + 13;
-        int fldW = Math.max(28, plusX - fldX - 2);
+        int fldX = minusX + 12;
+        int fldW = Math.max(26, plusX - fldX - 1);
         StudioTextField tf = channelFields[fieldIdx];
-        tf.render(g, font, fldX, y, fldW, 13, activeFieldIdx == fieldIdx, "0", 0xFF0C1119,
+        tf.render(g, font, fldX, y, fldW, 12, activeFieldIdx == fieldIdx, "0", 0xFF0C1119,
                 activeFieldIdx == fieldIdx ? GOLD : (hasKeyHere ? 0xFF5A4A24 : EDGE), TEXT, MUTED);
-        fieldBoxes.add(new FieldBox(fieldIdx, fldX, y, fldW, 13, tf, ch));
+        if (visible) {
+            fieldBoxes.add(new FieldBox(fieldIdx, fldX, y, fldW, 12, tf, ch));
+        }
 
-        return y + 14;
+        return y + 13;
     }
 
     private static void renderEaseCurveGraph(GuiGraphics g, int x, int y, int w, int h, EaseCurve curve) {
         g.fill(x, y, x + w, y + h, 0xFF0B1018);
-        border(g, x, y, w, h, EDGE);
+        border(g, x, y, w, h, ACCENT);
         int padX = 4, padY = 5;
         int gw = w - padX * 2;
         int gh = h - padY * 2;
-        g.fill(x + padX, y + padY, x + padX + gw, y + padY + 1, 0x33425474);
-        g.fill(x + padX, y + padY + gh, x + padX + gw, y + padY + gh + 1, 0x33425474);
+        g.fill(x + padX, y + padY, x + padX + gw, y + padY + 1, 0x44425474);
+        g.fill(x + padX, y + padY + gh, x + padX + gw, y + padY + gh + 1, 0x44425474);
 
         float prevX = x + padX;
         float prevY = y + padY + gh;
-        int steps = 16;
+        int steps = 18;
         for (int i = 1; i <= steps; i++) {
             float t = i / (float) steps;
             float v = curve.eval(t);
             float sx = x + padX + t * gw;
-            float sy = Math.max(y + 1, Math.min(y + h - 2, y + padY + gh - v * gh));
-            drawSmoothLine(g, prevX, prevY, sx, sy, 1.3f, ACCENT);
+            float sy = Math.max(y + 2, Math.min(y + h - 2, y + padY + gh - v * gh));
+            drawSmoothLine(g, prevX, prevY, sx, sy, 1.5f, ACCENT);
             prevX = sx;
             prevY = sy;
         }
+        g.flush();
         float animT = (System.nanoTime() / 1_000_000L % 1400L) / 1400f;
         float dotX = x + padX + animT * gw;
-        float dotY = Math.max(y + 1, Math.min(y + h - 2, y + padY + gh - curve.eval(animT) * gh));
-        g.fill(Math.round(dotX) - 1, Math.round(dotY) - 1, Math.round(dotX) + 2, Math.round(dotY) + 2, GOLD);
+        float dotY = Math.max(y + 2, Math.min(y + h - 2, y + padY + gh - curve.eval(animT) * gh));
+        g.fill(Math.round(dotX) - 2, Math.round(dotY) - 2, Math.round(dotX) + 2, Math.round(dotY) + 2, GOLD);
     }
 
     // -------------------------------------------------------------------------
@@ -1251,7 +1320,7 @@ public final class StudioAnimEditor {
         rx -= 18;
         drawBtn(g, font, mx, my, rx, by, 16, 14, "-", "tl:zoom_out", "Zoom -", false, TEXT);
         if (!selectedKeys.isEmpty() && rx - 30 > bx) {
-            String delLbl = "🗑 " + selectedKeys.size();
+            String delLbl = "× " + selectedKeys.size();
             int dw = font.width(delLbl) + 10;
             rx -= (dw + 4);
             drawBtn(g, font, mx, my, rx, by, dw, 14, delLbl, "tl:del_sel", "[Delete]", false, RED);
@@ -1424,16 +1493,22 @@ public final class StudioAnimEditor {
             int ry = listY - openModalScroll;
             for (StudioExplorerPacket.Entry e : serverAnimFiles) {
                 if (ry + 16 >= listY && ry <= listY + listH) {
-                    boolean hot = hover(mx, my, mx0 + 4, ry, mw - 28, 15);
+                    int visTop = Math.max(listY, ry);
+                    int visBot = Math.min(listY + listH, ry + 15);
+                    boolean hot = visBot > visTop && hover(mx, my, mx0 + 4, visTop, mw - 28, visBot - visTop);
                     g.fill(mx0 + 4, ry, mx0 + mw - 24, ry + 15, hot ? ROW_HOT : ROW);
                     String shortDisp = e.name().replaceFirst("^resources/assets/", "");
                     g.drawString(font, trim(font, shortDisp, mw - 36), mx0 + 8, ry + 4, hot ? GOLD : TEXT, false);
-                    btns.add(new BtnHit(mx0 + 4, ry, mw - 28, 15, "openfile:" + e.name(), null));
-                    drawBtn(g, font, mx, my, mx0 + mw - 22, ry + 1, 16, 13, "×", "delfile:" + e.name(), null, false, RED);
+                    if (visBot > visTop) {
+                        btns.add(new BtnHit(mx0 + 4, visTop, mw - 28, visBot - visTop, "openfile:" + e.name(), null));
+                        drawClippedBtn(g, font, mx, my, mx0 + mw - 22, ry + 1, 16, 13, "×",
+                                "delfile:" + e.name(), null, false, RED, listY, listY + listH);
+                    }
                 }
                 ry += 16;
             }
             g.disableScissor();
+            drawMiniScrollbar(g, mx0 + mw - 4, listY, listH, openModalScroll, maxSc);
         }
         g.pose().popPose();
     }
@@ -1469,30 +1544,41 @@ public final class StudioAnimEditor {
 
     private static void renderEaseDropdown(GuiGraphics g, Font font, int mx, int my) {
         EaseCurve[] all = EaseCurve.values();
-        int dw = Math.max(118, easeBtnW);
-        int dh = 148;
-        int dx = Math.min(easeBtnX, rootX + rootW - dw - 6);
-        int dy = Math.max(rootY + 24, easeBtnY - dh - 2);
+        int dw = Math.max(126, easeBtnW);
+        int dh = Math.min(152, Math.max(78, rootH - 40));
+        int dx = Math.max(rootX + 4, Math.min(easeBtnX, rootX + rootW - dw - 6));
+        int dy = (easeBtnY - dh - 2 >= rootY + 24)
+                ? (easeBtnY - dh - 2)
+                : Math.min(rootY + rootH - dh - 4, easeBtnY + 17);
 
         g.pose().pushPose();
         g.pose().translate(0, 0, 410);
+        g.fill(dx - 2, dy - 2, dx + dw + 2, dy + dh + 2, 0x77000000);
         g.fill(dx, dy, dx + dw, dy + dh, 0xF8111722);
         border(g, dx, dy, dw, dh, ACCENT);
-        int maxSc = Math.max(0, all.length * 13 - (dh - 4));
+        int listTop = dy + 2;
+        int listBot = dy + dh - 2;
+        int listH = listBot - listTop;
+        int maxSc = Math.max(0, all.length * 13 - listH);
         easeModalScroll = Math.max(0, Math.min(easeModalScroll, maxSc));
-        g.enableScissor(dx + 1, dy + 2, dx + dw - 1, dy + dh - 2);
-        int ry = dy + 2 - easeModalScroll;
+        g.enableScissor(dx + 1, listTop, dx + dw - 1, listBot);
+        int ry = listTop - easeModalScroll;
         for (EaseCurve c : all) {
-            if (ry + 13 >= dy && ry <= dy + dh) {
+            if (ry + 13 > listTop && ry < listBot) {
+                int visTop = Math.max(listTop, ry);
+                int visBot = Math.min(listBot, ry + 13);
                 boolean on = c == activeEase;
-                boolean hot = hover(mx, my, dx + 2, ry, dw - 4, 13);
-                if (on || hot) g.fill(dx + 2, ry, dx + dw - 2, ry + 13, on ? 0xFF233856 : ROW_HOT);
+                boolean hot = visBot > visTop && hover(mx, my, dx + 2, visTop, dw - 7, visBot - visTop);
+                if (on || hot) g.fill(dx + 2, ry, dx + dw - 5, ry + 13, on ? 0xFF233856 : ROW_HOT);
                 g.drawString(font, c.name(), dx + 6, ry + 2, on ? GOLD : TEXT, false);
-                btns.add(new BtnHit(dx + 2, ry, dw - 4, 13, "setease:" + c.name(), null));
+                if (visBot > visTop) {
+                    btns.add(new BtnHit(dx + 2, visTop, dw - 7, visBot - visTop, "setease:" + c.name(), null));
+                }
             }
             ry += 13;
         }
         g.disableScissor();
+        drawMiniScrollbar(g, dx + dw - 4, listTop, listH, easeModalScroll, maxSc);
         g.pose().popPose();
     }
 
@@ -1777,6 +1863,14 @@ public final class StudioAnimEditor {
         }
         if (easeDropdown) {
             easeModalScroll = Math.max(0, easeModalScroll - step * 16);
+            return true;
+        }
+        if (hover(mx, my, rightX, mainY, rightW, mainH)) {
+            inspectorScroll = Math.max(0, Math.min(inspectorMaxScroll, inspectorScroll - step * 14));
+            return true;
+        }
+        if (hover(mx, my, leftX, mainY, leftW, mainH)) {
+            leftBonesScroll = Math.max(0, Math.min(leftBonesMaxScroll, leftBonesScroll - step * 14));
             return true;
         }
         if (hover(mx, my, vpX, mainY, vpW, mainH)) {
@@ -2505,11 +2599,45 @@ public final class StudioAnimEditor {
 
         Matrix4f pose = g.pose().last().pose();
         VertexConsumer vc = g.bufferSource().getBuffer(RenderType.gui());
-        // Два порядка обхода или двусторонний RenderType.gui() (в GUI cull выключен, но даём корректный CCW)
-        vc.vertex(pose, x0 + nx, y0 + ny, 0f).color(r, gr, b, a).endVertex();
+        // Строго против часовой стрелки (CCW) в экранных координатах (+X вправо, +Y вниз), как в GuiGraphics.fill,
+        // иначе GL_CULL_FACE в RenderType.gui() отбрасывает полигон!
         vc.vertex(pose, x0 - nx, y0 - ny, 0f).color(r, gr, b, a).endVertex();
-        vc.vertex(pose, x1 - nx, y1 - ny, 0f).color(r, gr, b, a).endVertex();
+        vc.vertex(pose, x0 + nx, y0 + ny, 0f).color(r, gr, b, a).endVertex();
         vc.vertex(pose, x1 + nx, y1 + ny, 0f).color(r, gr, b, a).endVertex();
+        vc.vertex(pose, x1 - nx, y1 - ny, 0f).color(r, gr, b, a).endVertex();
+    }
+
+    private static void drawMiniScrollbar(GuiGraphics g, int x, int y, int h, int scroll, int maxScroll) {
+        if (maxScroll <= 0 || h < 12) return;
+        g.fill(x, y, x + 2, y + h, 0x332B364A);
+        int thumbH = Math.max(10, Math.round(h * (h / (float) (h + maxScroll))));
+        int track = Math.max(1, h - thumbH);
+        int thumbY = y + Math.round((scroll / (float) maxScroll) * track);
+        g.fill(x, thumbY, x + 2, thumbY + thumbH, 0xAA8A96AA);
+    }
+
+    private static int drawClippedBtn(GuiGraphics g, Font font, int mx, int my, int x, int y, int w, int h,
+                                      String label, String id, String tipText, boolean active, int accentCol,
+                                      int clipTop, int clipBottom) {
+        int visTop = Math.max(clipTop, y);
+        int visBot = Math.min(clipBottom, y + h);
+        boolean hot = visBot > visTop && hover(mx, my, x, visTop, w, visBot - visTop);
+        int bg = active ? 0xFF23344E : (hot ? ROW_HOT : ROW);
+        int brd = active ? accentCol : (hot ? EDGE_HOT : EDGE);
+        g.fill(x, y, x + w, y + h, bg);
+        border(g, x, y, w, h, brd);
+        String s = trim(font, label, Math.max(8, w - 4));
+        g.drawString(font, s, x + (w - font.width(s)) / 2, y + (h - 8) / 2,
+                active ? accentCol : (hot ? 0xFFFFFFFF : TEXT), false);
+        if (visBot > visTop) {
+            btns.add(new BtnHit(x, visTop, w, visBot - visTop, id, tipText));
+            if (hot && tipText != null) {
+                hoverTip = tipText;
+                hoverTipX = mx + 6;
+                hoverTipY = my + 16;
+            }
+        }
+        return x + w;
     }
 
     private static int tickToX(int tick) {
