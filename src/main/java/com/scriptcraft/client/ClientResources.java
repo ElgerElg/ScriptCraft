@@ -234,6 +234,7 @@ public final class ClientResources {
         if (hasAnim && net.minecraftforge.fml.ModList.get().isLoaded("playeranimator")) {
             PlayerAnimBridge.invalidateCache();
         }
+        GuiEntityRenderer.invalidateCache();
         ScriptCraft.LOGGER.info("[ScriptCraft] Ресурсы обновлены: {} файлов, GUI-картинок без перезагрузки: {}", CHANGED.size(), gui);
         CHANGED.clear();
         if (needReload) {
@@ -243,10 +244,15 @@ public final class ClientResources {
         }
     }
 
-    /** assets/<ns>/textures/gui/... .png — картинки для экранов скриптов. */
+    /** assets/<ns>/textures/gui|skins/... .png — картинки и скины для экранов скриптов (без перезагрузки ресурспаков). */
     private static boolean isGuiTexture(String path) {
         String[] parts = path.split("/", 4);
-        return parts.length == 4 && parts[2].equals("textures") && parts[3].startsWith("gui/") && path.endsWith(".png");
+        if (!path.endsWith(".png")) return false;
+        if (parts.length == 4 && parts[2].equals("textures")
+                && (parts[3].startsWith("gui/") || parts[3].startsWith("skins/"))) {
+            return true;
+        }
+        return parts.length == 4 && parts[2].equals("skins");
     }
 
     /** assets/<ns>/player_animation(s)/... .json — анимации PlayerAnimator. */

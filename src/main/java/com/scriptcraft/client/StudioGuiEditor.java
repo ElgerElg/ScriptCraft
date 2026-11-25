@@ -6,6 +6,7 @@ import com.scriptcraft.screen.Anchor;
 import com.scriptcraft.screen.BarDirection;
 import com.scriptcraft.screen.BarElement;
 import com.scriptcraft.screen.ButtonElement;
+import com.scriptcraft.screen.EntityElement;
 import com.scriptcraft.screen.ImageElement;
 import com.scriptcraft.screen.InputElement;
 import com.scriptcraft.screen.Layout;
@@ -18,6 +19,7 @@ import com.scriptcraft.screen.TextElement;
 import com.scriptcraft.screen.ToggleElement;
 import com.scriptcraft.script.parser.Tokenizer;
 import com.scriptcraft.script.parser.Tokenizer.Token;
+import com.scriptcraft.script.runtime.VariableLists;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -82,9 +84,96 @@ public final class StudioGuiEditor {
             0xFFEF4444, 0xFFF43F5E, 0xFFA855F7, 0x00000000
     };
 
+    /** Описание одной строки внутри {@code list} в визуальном редакторе. */
+    public static final class ListRowNode {
+        public ListElement.RowKind kind = ListElement.RowKind.NORMAL;
+        public String text = "";
+        public String rightText = "";
+        public String icon = "";
+        public int iconCount = 1;
+        public String head = "";
+        public String badge = "";
+        public int badgeColor = 0xFFF59E0B;
+        public String barSpec = "";
+        public int barColor = 0xFF3B82F6;
+        public String buttonLabel = "";
+        public String buttonRun = "";
+        public int customWidth = 0;
+        public int customHeight = 0;
+        public byte align = ListElement.ALIGN_INHERIT;
+        public byte state = ListElement.STATE_NORMAL;
+        public int rowColor = 0;
+        public String tooltip = "";
+        public String runAction = "";
+        public boolean isFunctionCall = false;
+        public boolean keepOpen = false;
+
+        public ListRowNode copy() {
+            ListRowNode c = new ListRowNode();
+            c.kind = kind;
+            c.text = text;
+            c.rightText = rightText;
+            c.icon = icon;
+            c.iconCount = iconCount;
+            c.head = head;
+            c.badge = badge;
+            c.badgeColor = badgeColor;
+            c.barSpec = barSpec;
+            c.barColor = barColor;
+            c.buttonLabel = buttonLabel;
+            c.buttonRun = buttonRun;
+            c.customWidth = customWidth;
+            c.customHeight = customHeight;
+            c.align = align;
+            c.state = state;
+            c.rowColor = rowColor;
+            c.tooltip = tooltip;
+            c.runAction = runAction;
+            c.isFunctionCall = isFunctionCall;
+            c.keepOpen = keepOpen;
+            return c;
+        }
+
+        public ListElement.Row toPreviewRow(String sampleIdx, String sampleVal) {
+            java.util.function.UnaryOperator<String> sub = s -> {
+                if (s == null || s.isEmpty()) return "";
+                String r = s;
+                if (sampleIdx != null) r = r.replace("%loop-index%", sampleIdx);
+                if (sampleVal != null) r = r.replace("%loop-value%", sampleVal);
+                return colorize(r);
+            };
+            float prog = barSpec.isBlank() ? -1f : VariableLists.parseBarSpec(
+                    sampleVal != null ? barSpec.replace("%loop-value%", sampleVal).replace("%loop-index%", sampleIdx) : barSpec);
+            if (!barSpec.isBlank() && prog < 0f) prog = 0.65f;
+            String packedAct = ScreenMeta.pack("", keepOpen, "", false, runAction);
+            String packedBtn = buttonRun.isEmpty() ? "" : ScreenMeta.pack("", keepOpen, "", false, buttonRun);
+            return new ListElement.Row(
+                    kind,
+                    sub.apply(text),
+                    sub.apply(rightText),
+                    sub.apply(icon),
+                    iconCount,
+                    sub.apply(head),
+                    sub.apply(badge),
+                    badgeColor,
+                    prog,
+                    barColor,
+                    sub.apply(buttonLabel),
+                    packedBtn,
+                    customWidth,
+                    customHeight,
+                    align,
+                    state,
+                    rowColor,
+                    sub.apply(tooltip),
+                    packedAct
+            );
+        }
+    }
+
     /** Описание одного элемента на холсте. */
     public static final class GuiNode {
-        public String kind = "box"; // box, text, button, image, bar, slot, input, slider, toggle, list, raw
+        public String kind = "box"; // box, text, button, image, bar, slot, input, slider, toggle, list, entity, player, raw
         public String id = "";
         public int x = 0;
         public int y = 0;
@@ -96,7 +185,7 @@ public final class StudioGuiEditor {
         public boolean colorSet = false;
 
         // Primary content
-        public String text = ""; // text, button label, image texture, slot item, slider/toggle label, bar text
+        public String text = ""; // text, button label, image texture, slot item, slider/toggle label, bar text, entity id / player skin
         public boolean shadow = false;
 
         // Box properties
@@ -118,6 +207,31 @@ public final class StudioGuiEditor {
         public boolean followCursor = false;
         public int hoverCircle = 0;
         public int hoverCircleColor = 0x38BDF8;
+
+        // Entity / Player 3D Render properties
+        public String entSkin = "";
+        public EntityElement.ModelStyle entModelStyle = EntityElement.ModelStyle.AUTO;
+        public boolean entOverlay = true;
+        public double entScale = 0.0; // 0 = auto-fit to WxH
+        public double entYaw = 0.0;
+        public double entPitch = 0.0;
+        public double entRoll = 0.0;
+        public double entSpinSpeed = 0.0; // >0 right, <0 left
+        public EntityElement.LookMode entLookMode = EntityElement.LookMode.NONE;
+        public int entLookX = 0;
+        public int entLookY = 0;
+        public boolean entClip = false;
+        public boolean entBaby = false;
+        public boolean entSneaking = false;
+        public boolean entWalk = false;
+        public boolean entNametag = false;
+        public String entNbt = "";
+        public String entWeapon = "";
+        public String entOffhand = "";
+        public String entHelmet = "";
+        public String entChestplate = "";
+        public String entLeggings = "";
+        public String entBoots = "";
 
         // Slot properties
         public SlotElement.Content slotContent = SlotElement.Content.ITEM;
@@ -145,11 +259,18 @@ public final class StudioGuiEditor {
         // List properties
         public String listHeader = "";
         public String listFrom = "";
+        public String listEmptyText = "";
+        public String listColumns = "";
         public boolean listHoriz = false;
         public boolean listSelect = false;
         public boolean listNoScrollbar = false;
-        public final List<String> listRawRows = new ArrayList<>();
-        public final List<ListElement.Row> listPreviewRows = new ArrayList<>();
+        public int listRowHeight = ListElement.ROW;
+        public int listSpacing = 0;
+        public double listScale = 1.0;
+        public byte listAlign = ListElement.ALIGN_LEFT;
+        public int listBgColor = ListElement.DEFAULT_BG;
+        public int listBorderColor = ListElement.DEFAULT_BORDER;
+        public final List<ListRowNode> listRows = new ArrayList<>();
 
         // Actions & meta
         public String runAction = ""; // "", "close", "/cmd", "Func(player)"
@@ -158,6 +279,7 @@ public final class StudioGuiEditor {
         public String hotkey = "";
         public String tooltip = "";
         public boolean scriptHidden = false;
+        public boolean scriptDisabled = false;
 
         // Photoshop Layer states (editor-only)
         public boolean editorVisible = true;
@@ -199,6 +321,29 @@ public final class StudioGuiEditor {
             c.followCursor = followCursor;
             c.hoverCircle = hoverCircle;
             c.hoverCircleColor = hoverCircleColor;
+            c.entSkin = entSkin;
+            c.entModelStyle = entModelStyle;
+            c.entOverlay = entOverlay;
+            c.entScale = entScale;
+            c.entYaw = entYaw;
+            c.entPitch = entPitch;
+            c.entRoll = entRoll;
+            c.entSpinSpeed = entSpinSpeed;
+            c.entLookMode = entLookMode;
+            c.entLookX = entLookX;
+            c.entLookY = entLookY;
+            c.entClip = entClip;
+            c.entBaby = entBaby;
+            c.entSneaking = entSneaking;
+            c.entWalk = entWalk;
+            c.entNametag = entNametag;
+            c.entNbt = entNbt;
+            c.entWeapon = entWeapon;
+            c.entOffhand = entOffhand;
+            c.entHelmet = entHelmet;
+            c.entChestplate = entChestplate;
+            c.entLeggings = entLeggings;
+            c.entBoots = entBoots;
             c.slotContent = slotContent;
             c.slotCount = slotCount;
             c.slotFrame = slotFrame;
@@ -218,17 +363,25 @@ public final class StudioGuiEditor {
             c.toggleChecked = toggleChecked;
             c.listHeader = listHeader;
             c.listFrom = listFrom;
+            c.listEmptyText = listEmptyText;
+            c.listColumns = listColumns;
             c.listHoriz = listHoriz;
             c.listSelect = listSelect;
             c.listNoScrollbar = listNoScrollbar;
-            c.listRawRows.addAll(listRawRows);
-            c.listPreviewRows.addAll(listPreviewRows);
+            c.listRowHeight = listRowHeight;
+            c.listSpacing = listSpacing;
+            c.listScale = listScale;
+            c.listAlign = listAlign;
+            c.listBgColor = listBgColor;
+            c.listBorderColor = listBorderColor;
+            for (ListRowNode r : listRows) c.listRows.add(r.copy());
             c.runAction = runAction;
             c.isFunctionCall = isFunctionCall;
             c.keepOpen = keepOpen;
             c.hotkey = hotkey;
             c.tooltip = tooltip;
             c.scriptHidden = scriptHidden;
+            c.scriptDisabled = scriptDisabled;
             c.editorVisible = editorVisible;
             c.editorLocked = editorLocked;
             c.rawUnparsedLine = rawUnparsedLine;
@@ -346,12 +499,13 @@ public final class StudioGuiEditor {
     private static boolean allPanelsHiddenTab = false;
     private static boolean screenDropdownOpen = false;
     private static Integer layerFilter = null; // null = все слои, иначе конкретный номер layer
-    private static int colorTarget = 0; // 0 = color, 1 = gradient/barBg, 2 = border/hoverColor
+    private static int colorTarget = 0; // 0 = color, 1 = gradient/barBg/listBg, 2 = border/hoverColor/listBorder
+    private static int selectedListRowIdx = 0;
 
     // Три плавающие панели
-    private static final FloatingDock paletteDock = new FloatingDock("palette", 148, 224);
+    private static final FloatingDock paletteDock = new FloatingDock("palette", 150, 242);
     private static final FloatingDock layersDock = new FloatingDock("layers", 184, 186);
-    private static final FloatingDock inspectorDock = new FloatingDock("inspector", 198, 330);
+    private static final FloatingDock inspectorDock = new FloatingDock("inspector", 204, 344);
 
     // Ввод текста в инспекторе (полноценное поле с курсором, мышкой и выделением)
     private static String focusedField = null;
@@ -925,23 +1079,33 @@ public final class StudioGuiEditor {
                         idx = 2;
                     }
                 }
+                case "entity", "player", "skin" -> {
+                    boolean isPl = !kind.equals("entity");
+                    n.kind = isPl ? "player" : "entity";
+                    n.w = EntityElement.DEFAULT_WIDTH;
+                    n.h = EntityElement.DEFAULT_HEIGHT;
+                    idx = 1;
+                    if (t.size() > 1) {
+                        Token first = t.get(1);
+                        String fw = first.value().toLowerCase(Locale.ROOT);
+                        if (first.quoted() || !isEntityOptWord(fw)) {
+                            n.text = first.value();
+                            idx = 2;
+                        }
+                    }
+                    if (!isPl && ("player".equalsIgnoreCase(n.text) || "minecraft:player".equalsIgnoreCase(n.text) || "self".equalsIgnoreCase(n.text))) {
+                        n.kind = "player";
+                    }
+                }
                 case "list" -> {
                     n.kind = "list";
                     n.w = 120;
                     n.h = 140;
-                    n.listRawRows.addAll(nestedRows);
                     for (String rLine : nestedRows) {
-                        try {
-                            List<Token> rt = Tokenizer.tokenize(rLine);
-                            if (rt.size() >= 2 && word(rt, 0).equals("row")) {
-                                n.listPreviewRows.add(new ListElement.Row(rt.get(1).value(), ""));
-                            }
-                        } catch (Exception ignored) {
+                        ListRowNode parsedRow = parseListRowLine(rLine);
+                        if (parsedRow != null) {
+                            n.listRows.add(parsedRow);
                         }
-                    }
-                    if (n.listPreviewRows.isEmpty()) {
-                        n.listPreviewRows.add(new ListElement.Row("&7Строка 1", ""));
-                        n.listPreviewRows.add(new ListElement.Row("&7Строка 2", ""));
                     }
                 }
                 default -> {
@@ -1005,7 +1169,13 @@ public final class StudioGuiEditor {
                         idx += 2;
                     }
                     case "border" -> {
-                        if (idx + 1 < t.size()) n.boxBorder = parseColorSafe(t.get(idx + 1).value(), 0);
+                        if (idx + 1 < t.size()) {
+                            if ("list".equals(n.kind)) {
+                                n.listBorderColor = word(t, idx + 1).equals("none") ? 0 : parseColorSafe(t.get(idx + 1).value(), ListElement.DEFAULT_BORDER);
+                            } else {
+                                n.boxBorder = parseColorSafe(t.get(idx + 1).value(), 0);
+                            }
+                        }
                         idx += 2;
                     }
                     case "border_width", "border-width" -> {
@@ -1095,8 +1265,53 @@ public final class StudioGuiEditor {
                         }
                     }
                     case "placeholder", "hint" -> {
-                        if (idx + 1 < t.size()) n.placeholder = t.get(idx + 1).value();
+                        if (idx + 1 < t.size()) {
+                            if ("list".equals(n.kind)) n.listEmptyText = t.get(idx + 1).value();
+                            else n.placeholder = t.get(idx + 1).value();
+                        }
                         idx += 2;
+                    }
+                    case "empty_text", "empty-text", "empty" -> {
+                        if (idx + 1 < t.size()) n.listEmptyText = t.get(idx + 1).value();
+                        idx += 2;
+                    }
+                    case "columns", "widths" -> {
+                        if (idx + 1 < t.size()) n.listColumns = t.get(idx + 1).value();
+                        idx += 2;
+                    }
+                    case "row_height", "row-height", "item_height", "item-height", "row_size", "row-size" -> {
+                        if (idx + 1 < t.size()) n.listRowHeight = Math.max(8, Math.min(120, parseIntSafe(t.get(idx + 1).value(), ListElement.ROW)));
+                        idx += 2;
+                    }
+                    case "spacing", "gap" -> {
+                        if (idx + 1 < t.size()) n.listSpacing = Math.max(0, Math.min(32, parseIntSafe(t.get(idx + 1).value(), 0)));
+                        idx += 2;
+                    }
+                    case "align" -> {
+                        if (idx + 1 < t.size()) n.listAlign = ListElement.parseAlign(t.get(idx + 1).value(), ListElement.ALIGN_LEFT);
+                        idx += 2;
+                    }
+                    case "centered" -> {
+                        n.listAlign = ListElement.ALIGN_CENTER;
+                        idx++;
+                    }
+                    case "disabled", "inactive" -> {
+                        if (idx + 1 < t.size() && (word(t, idx + 1).equals("true") || word(t, idx + 1).equals("false"))) {
+                            n.scriptDisabled = word(t, idx + 1).equals("true");
+                            idx += 2;
+                        } else {
+                            n.scriptDisabled = true;
+                            idx++;
+                        }
+                    }
+                    case "active", "enabled" -> {
+                        if (idx + 1 < t.size() && (word(t, idx + 1).equals("true") || word(t, idx + 1).equals("false"))) {
+                            n.scriptDisabled = word(t, idx + 1).equals("false");
+                            idx += 2;
+                        } else {
+                            n.scriptDisabled = false;
+                            idx++;
+                        }
                     }
                     case "length" -> {
                         if (idx + 1 < t.size()) n.maxLength = parseIntSafe(t.get(idx + 1).value(), 64);
@@ -1109,13 +1324,18 @@ public final class StudioGuiEditor {
                         }
                         idx += 2;
                     }
-                    case "background" -> {
+                    case "background", "bg" -> {
                         if (idx + 1 < t.size()) {
-                            if (t.get(idx + 1).quoted()) n.barBgTex = t.get(idx + 1).value();
-                            else if (word(t, idx + 1).equals("none")) {
+                            if ("list".equals(n.kind)) {
+                                n.listBgColor = word(t, idx + 1).equals("none") ? 0 : parseColorSafe(t.get(idx + 1).value(), ListElement.DEFAULT_BG);
+                            } else if (t.get(idx + 1).quoted()) {
+                                n.barBgTex = t.get(idx + 1).value();
+                            } else if (word(t, idx + 1).equals("none")) {
                                 n.barBgColor = 0;
                                 n.barBgTex = "";
-                            } else n.barBgColor = parseColorSafe(t.get(idx + 1).value(), 0x80000000);
+                            } else {
+                                n.barBgColor = parseColorSafe(t.get(idx + 1).value(), 0x80000000);
+                            }
                         }
                         idx += 2;
                     }
@@ -1133,26 +1353,178 @@ public final class StudioGuiEditor {
                         if (idx + 1 < t.size()) n.text = t.get(idx + 1).value();
                         idx += 2;
                     }
-                    case "no" -> {
+                    case "no", "without" -> {
                         String nw = word(t, idx + 1);
                         if (nw.equals("frame")) n.slotFrame = false;
                         else if (nw.equals("scrollbar") || nw.equals("slider")) n.listNoScrollbar = true;
+                        else if (nw.equals("overlay")) n.entOverlay = false;
                         idx += 2;
                     }
                     case "scrollbar", "slider" -> {
                         n.listNoScrollbar = false;
                         idx++;
                     }
-                    case "scale" -> {
-                        if (idx + 1 < t.size()) n.scale = parseDoubleSafe(t.get(idx + 1).value(), 1.0);
+                    case "scale", "entity_size", "entity-size", "row_scale", "row-scale", "text_scale", "text-scale" -> {
+                        if (idx + 1 < t.size()) {
+                            double sv = parseDoubleSafe(t.get(idx + 1).value(), 1.0);
+                            if ("entity".equals(n.kind) || "player".equals(n.kind)) n.entScale = sv;
+                            else if ("list".equals(n.kind)) n.listScale = sv;
+                            else n.scale = sv;
+                        }
                         idx += 2;
                     }
                     case "hscale", "hover_scale", "hover-scale" -> {
                         if (idx + 1 < t.size()) n.hoverScale = parseDoubleSafe(t.get(idx + 1).value(), 1.0);
                         idx += 2;
                     }
-                    case "rotate", "rotation" -> {
-                        if (idx + 1 < t.size()) n.rotation = parseDoubleSafe(t.get(idx + 1).value(), 0.0);
+                    case "yaw", "rotate", "rotation" -> {
+                        if (idx + 1 < t.size()) {
+                            double rv = parseDoubleSafe(t.get(idx + 1).value(), 0.0);
+                            if ("entity".equals(n.kind) || "player".equals(n.kind)) n.entYaw = rv;
+                            else n.rotation = rv;
+                        }
+                        idx += 2;
+                    }
+                    case "pitch" -> {
+                        if (idx + 1 < t.size()) n.entPitch = parseDoubleSafe(t.get(idx + 1).value(), 0.0);
+                        idx += 2;
+                    }
+                    case "roll" -> {
+                        if (idx + 1 < t.size()) n.entRoll = parseDoubleSafe(t.get(idx + 1).value(), 0.0);
+                        idx += 2;
+                    }
+                    case "skin" -> {
+                        if (idx + 1 < t.size()) {
+                            n.entSkin = t.get(idx + 1).value();
+                            n.kind = "player";
+                        }
+                        idx += 2;
+                    }
+                    case "model" -> {
+                        if (idx + 1 < t.size()) {
+                            EntityElement.ModelStyle ms = EntityElement.ModelStyle.byName(t.get(idx + 1).value());
+                            if (ms != null) n.entModelStyle = ms;
+                        }
+                        idx += 2;
+                    }
+                    case "auto" -> {
+                        n.entModelStyle = EntityElement.ModelStyle.AUTO;
+                        idx++;
+                    }
+                    case "slim", "alex" -> {
+                        n.entModelStyle = EntityElement.ModelStyle.SLIM;
+                        n.kind = "player";
+                        idx++;
+                    }
+                    case "wide", "steve", "classic" -> {
+                        n.entModelStyle = EntityElement.ModelStyle.WIDE;
+                        n.kind = "player";
+                        idx++;
+                    }
+                    case "overlay" -> {
+                        if (idx + 1 < t.size() && (word(t, idx + 1).equals("true") || word(t, idx + 1).equals("false"))) {
+                            n.entOverlay = word(t, idx + 1).equals("true");
+                            idx += 2;
+                        } else {
+                            n.entOverlay = true;
+                            idx++;
+                        }
+                    }
+                    case "spin" -> {
+                        int cur = idx + 1;
+                        double sign = 1.0;
+                        if (cur < t.size()) {
+                            String dir = word(t, cur);
+                            if (dir.equals("left") || dir.equals("ccw")) {
+                                sign = -1.0;
+                                cur++;
+                            } else if (dir.equals("right") || dir.equals("cw")) {
+                                sign = 1.0;
+                                cur++;
+                            } else if (dir.equals("off") || dir.equals("none")) {
+                                n.entSpinSpeed = 0.0;
+                                idx = cur + 1;
+                                break;
+                            }
+                        }
+                        if (cur < t.size() && word(t, cur).equals("speed")) cur++;
+                        if (cur < t.size() && !t.get(cur).quoted() && t.get(cur).value().matches("-?\\d+(\\.\\d+)?")) {
+                            n.entSpinSpeed = parseDoubleSafe(t.get(cur).value(), 35.0) * sign;
+                            idx = cur + 1;
+                        } else {
+                            n.entSpinSpeed = 35.0 * sign;
+                            idx = cur;
+                        }
+                    }
+                    case "look" -> {
+                        int cur = idx + 1;
+                        if (cur < t.size() && word(t, cur).equals("at")) cur++;
+                        String lw = word(t, cur);
+                        if (lw.equals("cursor") || lw.equals("mouse")) {
+                            n.entLookMode = EntityElement.LookMode.CURSOR;
+                            idx = cur + 1;
+                        } else if (lw.equals("none") || lw.equals("fixed") || lw.equals("off")) {
+                            n.entLookMode = EntityElement.LookMode.NONE;
+                            idx = cur + 1;
+                        } else {
+                            if (lw.equals("point") || lw.equals("target")) cur++;
+                            if (cur + 1 < t.size()) {
+                                n.entLookMode = EntityElement.LookMode.POINT;
+                                n.entLookX = parseIntSafe(t.get(cur).value(), 0);
+                                n.entLookY = parseIntSafe(t.get(cur + 1).value(), 0);
+                                idx = cur + 2;
+                            } else {
+                                idx = cur;
+                            }
+                        }
+                    }
+                    case "clip" -> {
+                        n.entClip = true;
+                        idx++;
+                    }
+                    case "baby", "child" -> {
+                        n.entBaby = true;
+                        idx++;
+                    }
+                    case "sneak", "sneaking", "crouch", "crouching" -> {
+                        n.entSneaking = true;
+                        idx++;
+                    }
+                    case "walk", "walking" -> {
+                        n.entWalk = true;
+                        idx++;
+                    }
+                    case "nametag" -> {
+                        n.entNametag = true;
+                        idx++;
+                    }
+                    case "nbt" -> {
+                        if (idx + 1 < t.size()) n.entNbt = t.get(idx + 1).value();
+                        idx += 2;
+                    }
+                    case "with" -> idx++;
+                    case "weapon", "hand", "mainhand" -> {
+                        if (idx + 1 < t.size()) n.entWeapon = t.get(idx + 1).value();
+                        idx += 2;
+                    }
+                    case "offhand", "shield" -> {
+                        if (idx + 1 < t.size()) n.entOffhand = t.get(idx + 1).value();
+                        idx += 2;
+                    }
+                    case "helmet", "head" -> {
+                        if (idx + 1 < t.size()) n.entHelmet = t.get(idx + 1).value();
+                        idx += 2;
+                    }
+                    case "chestplate", "chest" -> {
+                        if (idx + 1 < t.size()) n.entChestplate = t.get(idx + 1).value();
+                        idx += 2;
+                    }
+                    case "leggings", "legs" -> {
+                        if (idx + 1 < t.size()) n.entLeggings = t.get(idx + 1).value();
+                        idx += 2;
+                    }
+                    case "boots", "feet" -> {
+                        if (idx + 1 < t.size()) n.entBoots = t.get(idx + 1).value();
                         idx += 2;
                     }
                     case "frames" -> {
@@ -1253,6 +1625,308 @@ public final class StudioGuiEditor {
         return n;
     }
 
+    private static boolean isEntityOptWord(String w) {
+        return switch (w) {
+            case "at", "size", "anchor", "color", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey",
+                    "hidden", "disabled", "inactive", "tooltip", "hover", "scale", "entity_size", "entity-size",
+                    "hscale", "hover_scale", "hover-scale", "follow", "hover_circle", "hover-circle", "hover_color", "hover-color",
+                    "skin", "model", "auto", "slim", "alex", "wide", "steve", "classic", "overlay", "no", "without",
+                    "yaw", "rotate", "rotation", "pitch", "roll", "spin", "look", "clip",
+                    "baby", "child", "sneak", "sneaking", "crouch", "crouching", "walk", "walking", "nametag", "nbt",
+                    "with", "weapon", "hand", "mainhand", "offhand", "shield", "helmet", "head", "chestplate", "chest",
+                    "leggings", "legs", "boots", "feet" -> true;
+            default -> false;
+        };
+    }
+
+    private static ListRowNode parseListRowLine(String lineText) {
+        try {
+            List<Token> t = Tokenizer.tokenize(lineText);
+            if (t.isEmpty()) return null;
+            String head = word(t, 0);
+            ListRowNode r = new ListRowNode();
+            if (head.equals("separator") || head.equals("divider")) {
+                r.kind = ListElement.RowKind.SEPARATOR;
+                int idx = 1;
+                if (idx < t.size() && t.get(idx).quoted()) {
+                    r.text = t.get(idx).value();
+                    idx++;
+                }
+                while (idx < t.size()) {
+                    String opt = word(t, idx);
+                    switch (opt) {
+                        case "color" -> {
+                            if (idx + 1 < t.size()) r.rowColor = parseColorSafe(t.get(idx + 1).value(), 0);
+                            idx += 2;
+                        }
+                        case "height", "h" -> {
+                            if (idx + 1 < t.size()) r.customHeight = Math.max(0, parseIntSafe(t.get(idx + 1).value(), 0));
+                            idx += 2;
+                        }
+                        case "width", "w" -> {
+                            if (idx + 1 < t.size()) r.customWidth = Math.max(0, parseIntSafe(t.get(idx + 1).value(), 0));
+                            idx += 2;
+                        }
+                        case "align" -> {
+                            if (idx + 1 < t.size()) r.align = ListElement.parseAlign(t.get(idx + 1).value(), ListElement.ALIGN_CENTER);
+                            idx += 2;
+                        }
+                        case "left", "center", "centered", "right" -> {
+                            r.align = ListElement.parseAlign(opt.equals("centered") ? "center" : opt, ListElement.ALIGN_CENTER);
+                            idx++;
+                        }
+                        default -> idx++;
+                    }
+                }
+                return r;
+            }
+            if (head.equals("empty") || head.equals("spacer") || head.equals("blank")) {
+                r.kind = ListElement.RowKind.EMPTY;
+                int idx = 1;
+                if (idx < t.size() && !t.get(idx).quoted() && t.get(idx).value().matches("\\d+")) {
+                    r.customHeight = Math.max(0, parseIntSafe(t.get(idx).value(), 0));
+                    idx++;
+                }
+                while (idx < t.size()) {
+                    String opt = word(t, idx);
+                    switch (opt) {
+                        case "height", "h" -> {
+                            if (idx + 1 < t.size()) r.customHeight = Math.max(0, parseIntSafe(t.get(idx + 1).value(), 0));
+                            idx += 2;
+                        }
+                        case "width", "w" -> {
+                            if (idx + 1 < t.size()) r.customWidth = Math.max(0, parseIntSafe(t.get(idx + 1).value(), 0));
+                            idx += 2;
+                        }
+                        default -> idx++;
+                    }
+                }
+                return r;
+            }
+            if (!head.equals("row")) return null;
+            r.kind = ListElement.RowKind.NORMAL;
+            int idx = 1;
+            if (idx < t.size() && t.get(idx).quoted()) {
+                r.text = t.get(idx).value();
+                idx++;
+            }
+            while (idx < t.size()) {
+                String opt = word(t, idx);
+                switch (opt) {
+                    case "width", "w" -> {
+                        if (idx + 1 < t.size()) r.customWidth = Math.max(0, parseIntSafe(t.get(idx + 1).value(), 0));
+                        idx += 2;
+                    }
+                    case "height", "h" -> {
+                        if (idx + 1 < t.size()) r.customHeight = Math.max(0, parseIntSafe(t.get(idx + 1).value(), 0));
+                        idx += 2;
+                    }
+                    case "align" -> {
+                        if (idx + 1 < t.size()) r.align = ListElement.parseAlign(t.get(idx + 1).value(), ListElement.ALIGN_LEFT);
+                        idx += 2;
+                    }
+                    case "left", "center", "centered" -> {
+                        r.align = ListElement.parseAlign(opt.equals("centered") ? "center" : opt, ListElement.ALIGN_LEFT);
+                        idx++;
+                    }
+                    case "right" -> {
+                        if (idx + 1 < t.size() && t.get(idx + 1).quoted()) {
+                            r.rightText = t.get(idx + 1).value();
+                            idx += 2;
+                        } else {
+                            r.align = ListElement.ALIGN_RIGHT;
+                            idx++;
+                        }
+                    }
+                    case "active", "selected", "current" -> {
+                        r.state = ListElement.STATE_ACTIVE;
+                        idx++;
+                    }
+                    case "disabled", "inactive" -> {
+                        r.state = ListElement.STATE_DISABLED;
+                        idx++;
+                    }
+                    case "color", "background", "bg" -> {
+                        if (idx + 1 < t.size()) r.rowColor = parseColorSafe(t.get(idx + 1).value(), 0);
+                        idx += 2;
+                    }
+                    case "tooltip", "hover" -> {
+                        if (idx + 1 < t.size()) r.tooltip = t.get(idx + 1).value();
+                        idx += 2;
+                    }
+                    case "subtext", "right_text", "right-text" -> {
+                        if (idx + 1 < t.size()) r.rightText = t.get(idx + 1).value();
+                        idx += 2;
+                    }
+                    case "icon", "image" -> {
+                        if (idx + 1 < t.size()) r.icon = t.get(idx + 1).value();
+                        idx += 2;
+                    }
+                    case "item" -> {
+                        if (idx + 1 < t.size()) r.icon = t.get(idx + 1).value();
+                        idx += 2;
+                        if (idx < t.size() && !t.get(idx).quoted() && t.get(idx).value().matches("\\d+")) {
+                            r.iconCount = Math.max(1, parseIntSafe(t.get(idx).value(), 1));
+                            idx++;
+                        }
+                    }
+                    case "head", "skin" -> {
+                        if (idx + 1 < t.size()) r.head = t.get(idx + 1).value();
+                        idx += 2;
+                    }
+                    case "badge" -> {
+                        if (idx + 1 < t.size()) r.badge = t.get(idx + 1).value();
+                        idx += 2;
+                    }
+                    case "badge_color", "badge-color" -> {
+                        if (idx + 1 < t.size()) r.badgeColor = parseColorSafe(t.get(idx + 1).value(), 0xFFF59E0B);
+                        idx += 2;
+                    }
+                    case "bar", "progress" -> {
+                        if (idx + 1 < t.size()) r.barSpec = t.get(idx + 1).value();
+                        idx += 2;
+                    }
+                    case "bar_color", "bar-color" -> {
+                        if (idx + 1 < t.size()) r.barColor = parseColorSafe(t.get(idx + 1).value(), 0xFF3B82F6);
+                        idx += 2;
+                    }
+                    case "button", "btn" -> {
+                        if (idx + 1 < t.size()) r.buttonLabel = t.get(idx + 1).value();
+                        idx += 2;
+                    }
+                    case "button_run", "button-run" -> {
+                        if (idx + 1 < t.size()) r.buttonRun = t.get(idx + 1).value();
+                        idx += 2;
+                    }
+                    case "keep", "stay" -> {
+                        r.keepOpen = true;
+                        idx += 2;
+                    }
+                    case "close" -> {
+                        r.runAction = "close";
+                        r.isFunctionCall = false;
+                        idx++;
+                    }
+                    case "run", "function" -> {
+                        boolean forceFn = opt.equals("function");
+                        int cur = idx + 1;
+                        if (!forceFn && cur < t.size() && word(t, cur).equals("function")) {
+                            forceFn = true;
+                            cur++;
+                        }
+                        if (cur < t.size()) {
+                            if (t.get(cur).quoted()) {
+                                r.runAction = t.get(cur).value();
+                                r.isFunctionCall = forceFn;
+                                idx = cur + 1;
+                            } else {
+                                String fnName = t.get(cur).value();
+                                int p = cur + 1;
+                                if (p < t.size() && word(t, p).equals("(")) {
+                                    int depth = 0;
+                                    int closeIdx = p;
+                                    StringBuilder args = new StringBuilder();
+                                    for (int k = p; k < t.size(); k++) {
+                                        String v = t.get(k).value();
+                                        if (!t.get(k).quoted() && v.equals("(")) {
+                                            depth++;
+                                            if (depth == 1) continue;
+                                        } else if (!t.get(k).quoted() && v.equals(")")) {
+                                            depth--;
+                                            if (depth == 0) {
+                                                closeIdx = k;
+                                                break;
+                                            }
+                                        }
+                                        if (!args.isEmpty()) args.append(", ");
+                                        args.append(t.get(k).quoted() ? "\"" + v + "\"" : v);
+                                    }
+                                    r.runAction = fnName + "(" + args + ")";
+                                    r.isFunctionCall = true;
+                                    idx = closeIdx + 1;
+                                } else {
+                                    r.runAction = fnName + "()";
+                                    r.isFunctionCall = true;
+                                    idx = p;
+                                }
+                            }
+                        } else {
+                            idx++;
+                        }
+                    }
+                    default -> idx++;
+                }
+            }
+            return r;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static String formatListRowLine(ListRowNode r) {
+        StringBuilder sb = new StringBuilder();
+        if (r.kind == ListElement.RowKind.SEPARATOR) {
+            sb.append("separator");
+            if (!r.text.isEmpty()) sb.append(" \"").append(escapeQuotes(r.text)).append("\"");
+            if (r.rowColor != 0) sb.append(" color ").append(formatHexColor(r.rowColor, true));
+            if (r.customHeight > 0) sb.append(" height ").append(r.customHeight);
+            if (r.customWidth > 0) sb.append(" width ").append(r.customWidth);
+            if (r.align != ListElement.ALIGN_INHERIT) sb.append(" align ").append(ListElement.alignName(r.align));
+            return sb.toString();
+        }
+        if (r.kind == ListElement.RowKind.EMPTY) {
+            sb.append("empty");
+            if (r.customHeight > 0) sb.append(" height ").append(r.customHeight);
+            if (r.customWidth > 0) sb.append(" width ").append(r.customWidth);
+            return sb.toString();
+        }
+        sb.append("row \"").append(escapeQuotes(r.text)).append("\"");
+        if (!r.head.isEmpty()) sb.append(" head \"").append(escapeQuotes(r.head)).append("\"");
+        if (!r.icon.isEmpty()) {
+            if (r.icon.endsWith(".png") || r.icon.contains("/")) {
+                sb.append(" icon \"").append(escapeQuotes(r.icon)).append("\"");
+            } else {
+                sb.append(" item ").append(r.icon);
+                if (r.iconCount > 1) sb.append(' ').append(r.iconCount);
+            }
+        }
+        if (!r.badge.isEmpty()) {
+            sb.append(" badge \"").append(escapeQuotes(r.badge)).append("\"");
+            if ((r.badgeColor & 0x00FFFFFF) != 0xF59E0B) {
+                sb.append(" badge_color ").append(formatHexColor(r.badgeColor, false));
+            }
+        }
+        if (!r.rightText.isEmpty()) sb.append(" right \"").append(escapeQuotes(r.rightText)).append("\"");
+        if (!r.barSpec.isBlank()) {
+            sb.append(" bar ").append(r.barSpec.strip());
+            if ((r.barColor & 0x00FFFFFF) != 0x3B82F6) {
+                sb.append(" bar_color ").append(formatHexColor(r.barColor, false));
+            }
+        }
+        if (!r.buttonLabel.isEmpty()) {
+            sb.append(" button \"").append(escapeQuotes(r.buttonLabel)).append("\"");
+            if (!r.buttonRun.isEmpty()) sb.append(" button_run \"").append(escapeQuotes(r.buttonRun)).append("\"");
+        }
+        if (r.customWidth > 0) sb.append(" width ").append(r.customWidth);
+        if (r.customHeight > 0) sb.append(" height ").append(r.customHeight);
+        if (r.align != ListElement.ALIGN_INHERIT) sb.append(" align ").append(ListElement.alignName(r.align));
+        if (r.state == ListElement.STATE_ACTIVE) sb.append(" active");
+        else if (r.state == ListElement.STATE_DISABLED) sb.append(" disabled");
+        if (r.rowColor != 0) sb.append(" color ").append(formatHexColor(r.rowColor, true));
+        if (!r.runAction.isEmpty()) {
+            if ("close".equalsIgnoreCase(r.runAction)) {
+                sb.append(" close");
+            } else if (r.isFunctionCall || (!r.runAction.startsWith("/") && r.runAction.contains("(") && r.runAction.endsWith(")"))) {
+                sb.append(" run ").append(r.runAction);
+            } else {
+                sb.append(" run \"").append(escapeQuotes(r.runAction)).append("\"");
+            }
+        }
+        if (r.keepOpen) sb.append(" keep open");
+        if (!r.tooltip.isEmpty()) sb.append(" tooltip \"").append(escapeQuotes(r.tooltip)).append("\"");
+        return sb.toString();
+    }
+
     // =========================================================================
     // 2. ГЕНЕРАЦИЯ КОДА OPEN SCREEN И ЗАПИСЬ ОБРАТНО В СКРИПТ
     // =========================================================================
@@ -1277,12 +1951,11 @@ public final class StudioGuiEditor {
             out.add(bInd + formatNodeLine(n));
             if ("list".equals(n.kind)) {
                 String rInd = bInd + (bInd.startsWith(" ") ? "    " : "\t");
-                if (!n.listRawRows.isEmpty()) {
-                    for (String r : n.listRawRows) {
-                        out.add(rInd + r);
+                if (!n.listRows.isEmpty()) {
+                    int lim = !n.listFrom.isEmpty() ? 1 : n.listRows.size();
+                    for (int ri = 0; ri < lim; ri++) {
+                        out.add(rInd + formatListRowLine(n.listRows.get(ri)));
                     }
-                } else if (n.listFrom.isEmpty()) {
-                    out.add(rInd + "row \"&fСтрока 1\"");
                 }
             }
         }
@@ -1402,6 +2075,53 @@ public final class StudioGuiEditor {
                 sb.append(" size ").append(Math.max(1, n.w)).append('x').append(Math.max(1, n.h));
                 sb.append(" anchor ").append(n.anchor.name().toLowerCase(Locale.ROOT));
             }
+            case "entity", "player" -> {
+                boolean isPl = "player".equals(n.kind);
+                sb.append(isPl ? "player" : "entity");
+                String tgt = n.text == null ? "" : n.text.strip();
+                if (!tgt.isEmpty()) {
+                    sb.append(" \"").append(escapeQuotes(tgt)).append("\"");
+                } else if (!isPl) {
+                    sb.append(" \"minecraft:zombie\"");
+                }
+                if (!n.entSkin.isEmpty()) {
+                    sb.append(" skin \"").append(escapeQuotes(n.entSkin)).append("\"");
+                }
+                if (isPl && n.entModelStyle != EntityElement.ModelStyle.AUTO) {
+                    sb.append(" model ").append(n.entModelStyle == EntityElement.ModelStyle.SLIM ? "slim" : "wide");
+                }
+                if (isPl && !n.entOverlay) {
+                    sb.append(" no overlay");
+                }
+                sb.append(" at ").append(n.x).append(' ').append(n.y);
+                sb.append(" size ").append(Math.max(1, n.w)).append('x').append(Math.max(1, n.h));
+                sb.append(" anchor ").append(n.anchor.name().toLowerCase(Locale.ROOT));
+                if (n.entScale > 0.01) sb.append(" scale ").append(fmtNum(n.entScale));
+                if (Math.abs(n.entYaw) > 0.01) sb.append(" yaw ").append(fmtNum(n.entYaw));
+                if (Math.abs(n.entPitch) > 0.01) sb.append(" pitch ").append(fmtNum(n.entPitch));
+                if (Math.abs(n.entRoll) > 0.01) sb.append(" roll ").append(fmtNum(n.entRoll));
+                if (Math.abs(n.entSpinSpeed) > 0.01) {
+                    sb.append(" spin ").append(n.entSpinSpeed < 0 ? "left" : "right")
+                            .append(" speed ").append(fmtNum(Math.abs(n.entSpinSpeed)));
+                }
+                if (n.entLookMode == EntityElement.LookMode.CURSOR) {
+                    sb.append(" look cursor");
+                } else if (n.entLookMode == EntityElement.LookMode.POINT) {
+                    sb.append(" look at ").append(n.entLookX).append(' ').append(n.entLookY);
+                }
+                if (n.entClip) sb.append(" clip");
+                if (n.entBaby) sb.append(" baby");
+                if (n.entSneaking) sb.append(" sneaking");
+                if (n.entWalk) sb.append(" walk");
+                if (n.entNametag) sb.append(" nametag");
+                if (!n.entWeapon.isEmpty()) sb.append(" weapon ").append(n.entWeapon);
+                if (!n.entOffhand.isEmpty()) sb.append(" offhand ").append(n.entOffhand);
+                if (!n.entHelmet.isEmpty()) sb.append(" helmet ").append(n.entHelmet);
+                if (!n.entChestplate.isEmpty()) sb.append(" chestplate ").append(n.entChestplate);
+                if (!n.entLeggings.isEmpty()) sb.append(" leggings ").append(n.entLeggings);
+                if (!n.entBoots.isEmpty()) sb.append(" boots ").append(n.entBoots);
+                if (!n.entNbt.isEmpty()) sb.append(" nbt \"").append(escapeQuotes(n.entNbt)).append("\"");
+            }
             case "list" -> {
                 sb.append("list");
                 if (!n.listFrom.isEmpty()) sb.append(" from {").append(n.listFrom).append("}");
@@ -1409,15 +2129,28 @@ public final class StudioGuiEditor {
                 if (n.listSelect) sb.append(" select");
                 if (n.listNoScrollbar) sb.append(" no scrollbar");
                 if (!n.listHeader.isEmpty()) sb.append(" header \"").append(escapeQuotes(n.listHeader)).append("\"");
+                if (!n.listEmptyText.isEmpty()) sb.append(" empty_text \"").append(escapeQuotes(n.listEmptyText)).append("\"");
+                if (!n.listColumns.isEmpty()) sb.append(" columns \"").append(escapeQuotes(n.listColumns)).append("\"");
+                if (n.listRowHeight != ListElement.ROW) sb.append(" row_height ").append(n.listRowHeight);
+                if (n.listSpacing > 0) sb.append(" spacing ").append(n.listSpacing);
+                if (Math.abs(n.listScale - 1.0) > 0.01) sb.append(" scale ").append(fmtNum(n.listScale));
+                if (n.listAlign != ListElement.ALIGN_LEFT) sb.append(" align ").append(ListElement.alignName(n.listAlign));
+                if (n.colorSet && n.color != 0xFFFFFFFF) sb.append(" color ").append(formatHexColor(n.color, false));
+                if (n.listBgColor == 0) sb.append(" background none");
+                else if (n.listBgColor != ListElement.DEFAULT_BG) sb.append(" background ").append(formatHexColor(n.listBgColor, true));
+                if (n.listBorderColor == 0) sb.append(" border none");
+                else if (n.listBorderColor != ListElement.DEFAULT_BORDER) sb.append(" border ").append(formatHexColor(n.listBorderColor, true));
                 sb.append(" at ").append(n.x).append(' ').append(n.y);
                 sb.append(" size ").append(Math.max(1, n.w)).append('x').append(Math.max(1, n.h));
                 sb.append(" anchor ").append(n.anchor.name().toLowerCase(Locale.ROOT));
             }
         }
 
-        if (Math.abs(n.scale - 1.0) > 0.001) sb.append(" scale ").append(fmtNum(n.scale));
+        if (!"entity".equals(n.kind) && !"player".equals(n.kind) && !"list".equals(n.kind)) {
+            if (Math.abs(n.scale - 1.0) > 0.001) sb.append(" scale ").append(fmtNum(n.scale));
+            if (Math.abs(n.rotation) > 0.01) sb.append(" rotate ").append(fmtNum(n.rotation));
+        }
         if (Math.abs(n.hoverScale - 1.0) > 0.001) sb.append(" hover_scale ").append(fmtNum(n.hoverScale));
-        if (Math.abs(n.rotation) > 0.01) sb.append(" rotate ").append(fmtNum(n.rotation));
         if (n.followCursor) sb.append(" follow cursor");
         if (n.hoverCircle > 0) {
             sb.append(" hover_circle ").append(n.hoverCircle);
@@ -1425,13 +2158,14 @@ public final class StudioGuiEditor {
                 sb.append(" hover_color ").append(formatHexColor(0xFF000000 | n.hoverCircleColor, false));
             }
         }
-        if (n.layer != 0 || "box".equals(n.kind) || "image".equals(n.kind) || "text".equals(n.kind)) {
+        if (n.layer != 0 || "box".equals(n.kind) || "image".equals(n.kind) || "text".equals(n.kind)
+                || "entity".equals(n.kind) || "player".equals(n.kind)) {
             sb.append(" layer ").append(n.layer);
         }
         if (!n.id.isEmpty() && !"bar".equals(n.kind) && !"input".equals(n.kind)) {
             sb.append(" id ").append(n.id);
         }
-        if (!n.runAction.isEmpty()) {
+        if (!n.runAction.isEmpty() && !"list".equals(n.kind)) {
             if ("close".equalsIgnoreCase(n.runAction)) {
                 sb.append(" close");
             } else if (n.isFunctionCall || (!n.runAction.startsWith("/") && n.runAction.contains("(") && n.runAction.endsWith(")"))) {
@@ -1440,11 +2174,12 @@ public final class StudioGuiEditor {
                 sb.append(" run \"").append(escapeQuotes(n.runAction)).append("\"");
             }
         }
-        if (n.keepOpen) sb.append(" keep open");
-        if (!n.hotkey.isEmpty()) sb.append(" key ").append(n.hotkey);
+        if (n.keepOpen && !"list".equals(n.kind)) sb.append(" keep open");
+        if (!n.hotkey.isEmpty() && !"list".equals(n.kind)) sb.append(" key ").append(n.hotkey);
         if (!n.tooltip.isEmpty()) sb.append(" tooltip \"").append(escapeQuotes(n.tooltip)).append("\"");
+        if (n.scriptDisabled) sb.append(" disabled");
         if (n.scriptHidden) sb.append(" hidden");
-        if ("list".equals(n.kind) && (!n.listRawRows.isEmpty() || n.listFrom.isEmpty())) {
+        if ("list".equals(n.kind) && (!n.listRows.isEmpty() || n.listFrom.isEmpty())) {
             sb.append(':');
         }
         return sb.toString();
@@ -1517,7 +2252,7 @@ public final class StudioGuiEditor {
             n.sourceLine = curLine;
             curLine++;
             if ("list".equals(n.kind)) {
-                curLine += !n.listRawRows.isEmpty() ? n.listRawRows.size() : (n.listFrom.isEmpty() ? 1 : 0);
+                curLine += !n.listRows.isEmpty() ? (!n.listFrom.isEmpty() ? 1 : n.listRows.size()) : 0;
             }
         }
         // Ставим курсор документа на выбранный элемент, чтобы пиры видели, что мы редактируем
@@ -1542,14 +2277,18 @@ public final class StudioGuiEditor {
     private static ScreenElement toPreviewElement(GuiNode n) {
         Layout layout = new Layout(n.x, n.y, n.w, n.h, n.anchor, n.color, n.layer);
         StringBuilder extra = new StringBuilder();
-        if (Math.abs(n.scale - 1.0) > 0.001) {
+        if (n.scriptDisabled) {
+            extra.append("dis1");
+        }
+        if (!"entity".equals(n.kind) && !"player".equals(n.kind) && !"list".equals(n.kind) && Math.abs(n.scale - 1.0) > 0.001) {
+            if (!extra.isEmpty()) extra.append(';');
             extra.append("sc").append(String.format(Locale.ROOT, "%.3f", n.scale));
         }
         if (Math.abs(n.hoverScale - 1.0) > 0.001) {
             if (!extra.isEmpty()) extra.append(';');
             extra.append("hs").append(String.format(Locale.ROOT, "%.3f", n.hoverScale));
         }
-        if (Math.abs(n.rotation) > 0.01) {
+        if (!"entity".equals(n.kind) && !"player".equals(n.kind) && Math.abs(n.rotation) > 0.01) {
             if (!extra.isEmpty()) extra.append(';');
             extra.append("rt").append(String.format(Locale.ROOT, "%.2f", n.rotation));
         }
@@ -1582,12 +2321,65 @@ public final class StudioGuiEditor {
             case "input" -> new InputElement(layout, colorize(n.inputValue), colorize(n.placeholder), n.maxLength, packed);
             case "slider" -> new SliderElement(layout, colorize(n.text), n.sliderMin, n.sliderMax, n.sliderVal, n.sliderStep, packed);
             case "toggle" -> new ToggleElement(layout, colorize(n.text), n.toggleChecked, packed);
+            case "entity", "player" -> {
+                boolean isPl = "player".equals(n.kind);
+                String previewTarget = n.text;
+                if (previewTarget != null && previewTarget.contains("%player%")) {
+                    String selfName = Minecraft.getInstance().player != null
+                            ? Minecraft.getInstance().player.getGameProfile().getName() : "self";
+                    previewTarget = previewTarget.replace("%player%", selfName);
+                }
+                String previewSkin = n.entSkin;
+                if (previewSkin != null && previewSkin.contains("%player%")) {
+                    String selfName = Minecraft.getInstance().player != null
+                            ? Minecraft.getInstance().player.getGameProfile().getName() : "self";
+                    previewSkin = previewSkin.replace("%player%", selfName);
+                }
+                StringBuilder eq = new StringBuilder();
+                appendEquip(eq, "mainhand", n.entWeapon);
+                appendEquip(eq, "offhand", n.entOffhand);
+                appendEquip(eq, "head", n.entHelmet);
+                appendEquip(eq, "chest", n.entChestplate);
+                appendEquip(eq, "legs", n.entLeggings);
+                appendEquip(eq, "feet", n.entBoots);
+                yield new EntityElement(layout, isPl, previewTarget == null ? "" : previewTarget,
+                        previewSkin == null ? "" : previewSkin, n.entModelStyle, n.entOverlay,
+                        (float) n.entScale, (float) n.entYaw, (float) n.entPitch, (float) n.entRoll,
+                        (float) n.entSpinSpeed, n.entLookMode, n.entLookX, n.entLookY,
+                        n.entClip, n.entBaby, n.entSneaking, n.entWalk, n.entNametag,
+                        n.entNbt, eq.toString(), packed);
+            }
             case "list" -> {
-                String pHdr = ScreenMeta.pack(n.id, false, n.listNoScrollbar ? "noslider" : "", false, colorize(n.tooltip), colorize(n.listHeader));
-                yield new ListElement(layout, pHdr, n.listHoriz, n.listSelect, n.listPreviewRows);
+                String pHdr = ScreenMeta.pack(n.id, false, n.listNoScrollbar ? "noslider" : "", false,
+                        colorize(n.tooltip), n.scriptDisabled ? "dis1" : "", colorize(n.listHeader));
+                List<ListElement.Row> pvRows = new ArrayList<>();
+                if (!n.listFrom.isEmpty()) {
+                    ListRowNode tpl = n.listRows.isEmpty() ? null : n.listRows.get(0);
+                    if (tpl != null) {
+                        pvRows.add(tpl.toPreviewRow("1", "100"));
+                        pvRows.add(tpl.toPreviewRow("2", "250"));
+                    } else {
+                        pvRows.add(new ListElement.Row(colorize("&fЭлемент 1 &7x100"), ""));
+                        pvRows.add(new ListElement.Row(colorize("&fЭлемент 2 &7x250"), ""));
+                    }
+                } else {
+                    for (ListRowNode rn : n.listRows) {
+                        pvRows.add(rn.toPreviewRow(null, null));
+                    }
+                }
+                yield new ListElement(layout, pHdr, n.listHoriz, n.listSelect, n.scriptDisabled,
+                        n.listRowHeight, n.listSpacing, (float) n.listScale, n.listAlign,
+                        n.listBgColor, n.listBorderColor, colorize(n.listEmptyText), n.listColumns, pvRows);
             }
             default -> new TextElement(layout, colorize(n.rawUnparsedLine == null ? "?" : n.rawUnparsedLine), true, packed);
         };
+    }
+
+    private static void appendEquip(StringBuilder sb, String key, String val) {
+        if (val != null && !val.isBlank()) {
+            if (!sb.isEmpty()) sb.append(';');
+            sb.append(key).append('=').append(val.strip());
+        }
     }
 
     private static String previewBarNum(String raw, String fallback) {
@@ -1728,6 +2520,15 @@ public final class StudioGuiEditor {
                 // Если у элемента есть hover_circle — показываем его пунктирный радиус
                 if (sel.hoverCircle > 0) {
                     drawPreviewCircle(g, bx + bw / 2, by + bh / 2, sel.hoverCircle, sel.hoverCircleColor);
+                }
+
+                // Если у 3D-сущности/игрока выбран режим взгляда в точку (look at X Y) — рисуем прицел точки взгляда
+                if (("entity".equals(sel.kind) || "player".equals(sel.kind)) && sel.entLookMode == EntityElement.LookMode.POINT) {
+                    int lpx = virtualW / 2 + sel.entLookX;
+                    int lpy = virtualH / 2 + sel.entLookY;
+                    g.fill(lpx - 5, lpy, lpx + 6, lpy + 1, ACCENT);
+                    g.fill(lpx, lpy - 5, lpx + 1, lpy + 6, ACCENT);
+                    border(g, lpx - 3, lpy - 3, 7, 7, ACCENT);
                 }
 
                 // Линия от точки Anchor к элементу
@@ -2059,12 +2860,14 @@ public final class StudioGuiEditor {
                 {"text", "+ Text", tr("Текстовая надпись", "Text label")},
                 {"button", "+ Button", tr("Интерактивная кнопка", "Interactive button")},
                 {"image", "+ Image", tr("Картинка / спрайт из текстур", "Texture image / sprite")},
-                {"bar", "+ Bar", tr("Полоса прогресса / здоровья", "Progress bar")},
+                {"player", "+ Player", tr("3D-игрок со скином (по нику, ссылке или из ресурсов), оверлеем и автоподбором Алекс/Стив", "3D Player / custom skin render")},
+                {"entity", "+ Entity", tr("3D-рендер любой сущности / моба с размером, вращением и слежением взгляда", "3D Entity / Mob render")},
+                {"list", "+ List", tr("Продвинутый список (высота строк, разделители, тултипы, иконки, выравнивание)", "Rich scrollable list")},
                 {"slot", "+ Slot", tr("Слот с предметом / иконкой", "Item or icon slot")},
+                {"bar", "+ Bar", tr("Полоса прогресса / здоровья", "Progress bar")},
                 {"input", "+ Input", tr("Поле ввода текста", "Text input field")},
                 {"slider", "+ Slider", tr("Ползунок выбора числа", "Numeric slider")},
-                {"toggle", "+ Toggle", tr("Чекбокс / переключатель", "Toggle switch")},
-                {"list", "+ List", tr("Прокручиваемый список строк", "Scrollable list")}
+                {"toggle", "+ Toggle", tr("Чекбокс / переключатель", "Toggle switch")}
         };
         int colW = (iw - 4) / 2;
         for (int i = 0; i < types.length; i++) {
@@ -2240,6 +3043,8 @@ public final class StudioGuiEditor {
             case "slider" -> "Sld";
             case "toggle" -> "Tgl";
             case "list" -> "Lst";
+            case "entity" -> "Ent";
+            case "player" -> "Plr";
             default -> "Raw";
         };
     }
@@ -2410,16 +3215,228 @@ public final class StudioGuiEditor {
                 drawDockBtn(g, font, mx, my, ix, cy, iw, 14, "Checked: " + n.toggleChecked, "tog:toggleChecked", null, n.toggleChecked, inspectorHits);
                 cy += 17;
             }
+            case "entity", "player" -> {
+                boolean isPl = "player".equals(n.kind);
+                drawDockBtn(g, font, mx, my, ix, cy, half, 13, tr("Игрок / Скин", "Player / Skin"),
+                        "ent_kind:player", tr("Рендер игрока со скином по нику, URL или из ресурсов", "Render player with skin"), isPl, inspectorHits);
+                drawDockBtn(g, font, mx, my, ix + half + 4, cy, half, 13, tr("Моб / Энтити", "Mob / Entity"),
+                        "ent_kind:entity", tr("Рендер любой сущности Minecraft по ID", "Render any entity by ID"), !isPl, inspectorHits);
+                cy += 16;
+
+                if (isPl) {
+                    g.drawString(font, tr("Скин:", "Skin:"), ix, cy + 3, MUTED, false);
+                    cy = drawField(g, font, mx, my, ix + 30, cy, iw - 30, "text", n.text, inspectorHits) + 3;
+                    int mw = (iw - 6) / 4;
+                    drawDockBtn(g, font, mx, my, ix, cy, mw, 13, "Auto", "ent_mdl:AUTO",
+                            tr("Автоподбор модели Стив/Алекс по профилю или PNG", "Auto-detect Alex/Steve"),
+                            n.entModelStyle == EntityElement.ModelStyle.AUTO, inspectorHits);
+                    drawDockBtn(g, font, mx, my, ix + mw + 2, cy, mw, 13, "Steve", "ent_mdl:WIDE",
+                            tr("Широкие руки 4px (Стив)", "Wide 4px arms (Steve)"),
+                            n.entModelStyle == EntityElement.ModelStyle.WIDE, inspectorHits);
+                    drawDockBtn(g, font, mx, my, ix + (mw + 2) * 2, cy, mw, 13, "Alex", "ent_mdl:SLIM",
+                            tr("Тонкие руки 3px (Алекс)", "Slim 3px arms (Alex)"),
+                            n.entModelStyle == EntityElement.ModelStyle.SLIM, inspectorHits);
+                    drawDockBtn(g, font, mx, my, ix + (mw + 2) * 3, cy, iw - (mw + 2) * 3, 13, "Ovrl", "tog:entOverlay",
+                            tr("Второй слой скина (шляпа, куртка, рукава, штаны)", "2nd skin overlay layer"),
+                            n.entOverlay, inspectorHits);
+                    cy += 16;
+                } else {
+                    g.drawString(font, "Entity:", ix, cy + 3, MUTED, false);
+                    cy = drawField(g, font, mx, my, ix + 34, cy, iw - 34, "text", n.text, inspectorHits) + 3;
+                    g.drawString(font, "NBT:", ix, cy + 3, MUTED, false);
+                    cy = drawField(g, font, mx, my, ix + 26, cy, iw - 26, "entNbt", n.entNbt, inspectorHits) + 3;
+                }
+
+                // Размер (Scale: 0 = авто по рамке WxH) и углы поворота
+                cy = drawStepperRow(g, font, mx, my, ix, cy, iw,
+                        "Scl", "entScale", (int) Math.round(n.entScale),
+                        "Yaw", "entYaw", (int) Math.round(n.entYaw)) + 3;
+                cy = drawStepperRow(g, font, mx, my, ix, cy, iw,
+                        "Pit", "entPitch", (int) Math.round(n.entPitch),
+                        "Rol", "entRoll", (int) Math.round(n.entRoll)) + 4;
+
+                // Вращение (Spin: Выкл / Влево / Вправо + Скорость град/сек)
+                g.drawString(font, tr("Вращ.:", "Spin:"), ix, cy + 3, MUTED, false);
+                int spX = ix + 34;
+                int spBtnW = 22;
+                drawDockBtn(g, font, mx, my, spX, cy, spBtnW, 14, "Off", "ent_spin:0",
+                        tr("Без постоянного вращения", "No continuous spin"), Math.abs(n.entSpinSpeed) < 0.01, inspectorHits);
+                drawDockBtn(g, font, mx, my, spX + spBtnW + 2, cy, spBtnW, 14, "↺L", "ent_spin:-1",
+                        tr("Крутиться влево", "Spin left"), n.entSpinSpeed < -0.01, inspectorHits);
+                drawDockBtn(g, font, mx, my, spX + (spBtnW + 2) * 2, cy, spBtnW, 14, "↻R", "ent_spin:1",
+                        tr("Крутиться вправо", "Spin right"), n.entSpinSpeed > 0.01, inspectorHits);
+                int spdX = spX + (spBtnW + 2) * 3 + 2;
+                drawField(g, font, mx, my, spdX, cy, Math.max(24, ix + iw - spdX), "entSpinAbs",
+                        fmtNum(Math.abs(n.entSpinSpeed)), inspectorHits);
+                cy += 17;
+
+                // Режим взгляда (Look: Фикс / За курсором / В точку X,Y)
+                int lkw = (iw - 4) / 3;
+                drawDockBtn(g, font, mx, my, ix, cy, lkw, 13, tr("Фикс", "Fixed"), "ent_look:NONE",
+                        tr("Фиксированный угол Yaw/Pitch", "Fixed Yaw/Pitch"), n.entLookMode == EntityElement.LookMode.NONE, inspectorHits);
+                drawDockBtn(g, font, mx, my, ix + lkw + 2, cy, lkw, 13, tr("Курсор", "Cursor"), "ent_look:CURSOR",
+                        tr("Следить взглядом за курсором мыши", "Look at mouse cursor"), n.entLookMode == EntityElement.LookMode.CURSOR, inspectorHits);
+                drawDockBtn(g, font, mx, my, ix + (lkw + 2) * 2, cy, iw - (lkw + 2) * 2, 13, tr("Точка", "Point"), "ent_look:POINT",
+                        tr("Смотреть в конкретную точку экрана (LX, LY)", "Look at target point (LX, LY)"), n.entLookMode == EntityElement.LookMode.POINT, inspectorHits);
+                cy += 15;
+                if (n.entLookMode == EntityElement.LookMode.POINT) {
+                    cy = drawStepperRow(g, font, mx, my, ix, cy, iw, "LX", "entLookX", n.entLookX, "LY", "entLookY", n.entLookY) + 3;
+                }
+
+                // Поза и экипировка
+                int qw = (iw - 6) / 4;
+                drawDockBtn(g, font, mx, my, ix, cy, qw, 13, "Walk", "tog:entWalk",
+                        tr("Анимация ходьбы", "Walking animation"), n.entWalk, inspectorHits);
+                drawDockBtn(g, font, mx, my, ix + qw + 2, cy, qw, 13, "Sneak", "tog:entSneaking",
+                        tr("Приседание (Shift)", "Sneaking pose"), n.entSneaking, inspectorHits);
+                drawDockBtn(g, font, mx, my, ix + (qw + 2) * 2, cy, qw, 13, "Baby", "tog:entBaby",
+                        tr("Детская модель", "Baby model"), n.entBaby, inspectorHits);
+                drawDockBtn(g, font, mx, my, ix + (qw + 2) * 3, cy, iw - (qw + 2) * 3, 13, "Clip", "tog:entClip",
+                        tr("Обрезать рендер по рамке W×H", "Clip to WxH bounds"), n.entClip, inspectorHits);
+                cy += 16;
+
+                g.drawString(font, "Hand:", ix, cy + 3, MUTED, false);
+                drawField(g, font, mx, my, ix + 28, cy, half - 28, "entWeapon", n.entWeapon, inspectorHits);
+                g.drawString(font, "Helm:", ix + half + 4, cy + 3, MUTED, false);
+                cy = drawField(g, font, mx, my, ix + half + 32, cy, half - 28, "entHelmet", n.entHelmet, inspectorHits) + 3;
+            }
             case "list" -> {
                 g.drawString(font, "Hdr:", ix, cy + 3, MUTED, false);
                 cy = drawField(g, font, mx, my, ix + 26, cy, iw - 26, "listHeader", n.listHeader, inspectorHits) + 3;
                 g.drawString(font, "From:", ix, cy + 3, MUTED, false);
                 cy = drawField(g, font, mx, my, ix + 30, cy, iw - 30, "listFrom", n.listFrom, inspectorHits) + 3;
+                g.drawString(font, "Emp:", ix, cy + 3, MUTED, false);
+                cy = drawField(g, font, mx, my, ix + 26, cy, iw - 26, "listEmptyText", n.listEmptyText, inspectorHits) + 3;
+
+                // Высота строк (RowH) и отступ (Gap)
+                cy = drawStepperRow(g, font, mx, my, ix, cy, iw, "RowH", "listRowHeight", n.listRowHeight, "Gap", "listSpacing", n.listSpacing) + 3;
+
+                // Масштаб текста и Выравнивание (Left / Center / Right)
+                g.drawString(font, "Scl:", ix, cy + 3, MUTED, false);
+                drawField(g, font, mx, my, ix + 22, cy, 34, "listScale", fmtNum(n.listScale), inspectorHits);
+                int alX = ix + 60;
+                int alW = (iw - 60 - 4) / 3;
+                drawDockBtn(g, font, mx, my, alX, cy, alW, 14, "L", "list_align:0",
+                        tr("Выравнивание влево", "Align left"), n.listAlign == ListElement.ALIGN_LEFT, inspectorHits);
+                drawDockBtn(g, font, mx, my, alX + alW + 2, cy, alW, 14, "C", "list_align:1",
+                        tr("Выравнивание по центру", "Align center"), n.listAlign == ListElement.ALIGN_CENTER, inspectorHits);
+                drawDockBtn(g, font, mx, my, alX + (alW + 2) * 2, cy, iw - 60 - (alW + 2) * 2, 14, "R", "list_align:2",
+                        tr("Выравнивание вправо", "Align right"), n.listAlign == ListElement.ALIGN_RIGHT, inspectorHits);
+                cy += 17;
+
                 int third = (iw - 4) / 3;
                 drawDockBtn(g, font, mx, my, ix, cy, third, 14, n.listHoriz ? "Horiz" : "Vert", "tog:listHoriz", null, n.listHoriz, inspectorHits);
                 drawDockBtn(g, font, mx, my, ix + third + 2, cy, third, 14, "Select", "tog:listSelect", null, n.listSelect, inspectorHits);
                 drawDockBtn(g, font, mx, my, ix + (third + 2) * 2, cy, iw - (third + 2) * 2, 14, "Scroll", "tog:listScroll", null, !n.listNoScrollbar, inspectorHits);
-                cy += 17;
+                cy += 16;
+
+                drawDockBtn(g, font, mx, my, ix, cy, half, 13,
+                        n.scriptDisabled ? tr("⊘ Неактивен", "⊘ Inactive") : tr("✓ Активен", "✓ Active"),
+                        "tog:scriptDisabled", tr("Активный или неактивный (disabled) список", "Toggle active / disabled list"),
+                        !n.scriptDisabled, inspectorHits);
+                g.drawString(font, "Cols:", ix + half + 4, cy + 3, MUTED, false);
+                cy = drawField(g, font, mx, my, ix + half + 30, cy, half - 26, "listColumns", n.listColumns, inspectorHits) + 4;
+
+                // Цвета списка: Текст / Фон / Рамка
+                int cTabW = (iw - 4) / 3;
+                drawDockBtn(g, font, mx, my, ix, cy, cTabW, 13, tr("Текст", "Text"), "ctarg:0", null, colorTarget == 0, inspectorHits);
+                drawDockBtn(g, font, mx, my, ix + cTabW + 2, cy, cTabW, 13, tr("Фон", "Bg"), "ctarg:1", null, colorTarget == 1, inspectorHits);
+                drawDockBtn(g, font, mx, my, ix + (cTabW + 2) * 2, cy, iw - (cTabW + 2) * 2, 13, tr("Рамка", "Bord"), "ctarg:2", null, colorTarget == 2, inspectorHits);
+                cy += 15;
+                String lcField = colorTarget == 0 ? "color" : (colorTarget == 1 ? "listBgColor" : "listBorderColor");
+                int lcVal = colorTarget == 0 ? n.color : (colorTarget == 1 ? n.listBgColor : n.listBorderColor);
+                cy = drawColorSection(g, font, mx, my, ix, cy, iw, lcField, lcVal) + 4;
+
+                // Редактор строк списка (row / separator / empty + вложенные элементы строки)
+                g.fill(ix, cy, ix + iw, cy + 1, EDGE);
+                cy += 4;
+                g.drawString(font, !n.listFrom.isEmpty()
+                        ? tr("Шаблон строки (from):", "Row template:")
+                        : tr("Строки списка [", "Rows [") + n.listRows.size() + "]:", ix, cy, GOLD, false);
+                cy += 11;
+
+                int b3 = (iw - 10) / 6;
+                drawDockBtn(g, font, mx, my, ix, cy, b3 + 8, 13, "+Row", "lrow:add_row",
+                        tr("Добавить обычную строку (row)", "Add row"), false, inspectorHits);
+                drawDockBtn(g, font, mx, my, ix + b3 + 10, cy, b3 + 6, 13, "+Sep", "lrow:add_sep",
+                        tr("Добавить разделитель (separator)", "Add separator"), false, inspectorHits);
+                drawDockBtn(g, font, mx, my, ix + (b3 + 8) * 2, cy, b3 + 6, 13, "+Emp", "lrow:add_emp",
+                        tr("Добавить пустой отступ (empty)", "Add empty spacer"), false, inspectorHits);
+                int rActX = ix + iw - 42;
+                drawDockBtn(g, font, mx, my, rActX, cy, 13, 13, "▲", "lrow:up", tr("Строку вверх", "Move row up"), false, inspectorHits);
+                drawDockBtn(g, font, mx, my, rActX + 14, cy, 13, 13, "▼", "lrow:down", tr("Строку вниз", "Move row down"), false, inspectorHits);
+                drawDockBtn(g, font, mx, my, rActX + 28, cy, 14, 13, "×", "lrow:del", tr("Удалить строку", "Delete row"), false, inspectorHits);
+                cy += 15;
+
+                if (!n.listRows.isEmpty()) {
+                    selectedListRowIdx = Math.max(0, Math.min(selectedListRowIdx, n.listRows.size() - 1));
+                    int maxShow = Math.min(n.listRows.size(), 6);
+                    int startIdx = Math.max(0, Math.min(selectedListRowIdx - maxShow / 2, n.listRows.size() - maxShow));
+                    for (int ri = startIdx; ri < startIdx + maxShow; ri++) {
+                        ListRowNode rn = n.listRows.get(ri);
+                        String tag = rn.kind == ListElement.RowKind.SEPARATOR ? "─── " + rn.text
+                                : (rn.kind == ListElement.RowKind.EMPTY ? "[пусто / spacer]" : rn.text);
+                        String rowChip = "#" + (ri + 1) + " " + (tag.isEmpty() ? "(без текста)" : tag);
+                        drawDockBtn(g, font, mx, my, ix, cy, iw, 13, rowChip, "lrow:sel:" + ri, null,
+                                ri == selectedListRowIdx, inspectorHits);
+                        cy += 14;
+                    }
+                    cy += 2;
+
+                    ListRowNode sr = n.listRows.get(selectedListRowIdx);
+                    int rThird = (iw - 4) / 3;
+                    String kindLbl = sr.kind == ListElement.RowKind.SEPARATOR ? "Sep"
+                            : (sr.kind == ListElement.RowKind.EMPTY ? "Empty" : "Row");
+                    String stateLbl = sr.state == ListElement.STATE_ACTIVE ? "Active★"
+                            : (sr.state == ListElement.STATE_DISABLED ? "Disab⊘" : "Normal");
+                    String alLbl = sr.align == ListElement.ALIGN_INHERIT ? "Al:Auto"
+                            : ("Al:" + ListElement.alignName(sr.align).substring(0, 1).toUpperCase(Locale.ROOT));
+                    drawDockBtn(g, font, mx, my, ix, cy, rThird, 13, kindLbl, "lrow:kind",
+                            tr("Тип позиции: Row / Separator / Empty", "Cycle Row / Separator / Empty"), false, inspectorHits);
+                    drawDockBtn(g, font, mx, my, ix + rThird + 2, cy, rThird, 13, stateLbl, "lrow:state",
+                            tr("Состояние строки: Обычная / Активная / Неактивная", "Cycle Normal / Active / Disabled"),
+                            sr.state != ListElement.STATE_NORMAL, inspectorHits);
+                    drawDockBtn(g, font, mx, my, ix + (rThird + 2) * 2, cy, iw - (rThird + 2) * 2, 13, alLbl, "lrow:align",
+                            tr("Выравнивание этой строки: Auto / Left / Center / Right", "Cycle row alignment"),
+                            sr.align != ListElement.ALIGN_INHERIT, inspectorHits);
+                    cy += 15;
+
+                    // Индивидуальная ширина и высота конкретной позиции списка
+                    cy = drawStepperRow(g, font, mx, my, ix, cy, iw, "RW", "r_width", sr.customWidth, "RH", "r_height", sr.customHeight) + 3;
+
+                    if (sr.kind != ListElement.RowKind.EMPTY) {
+                        g.drawString(font, "Txt:", ix, cy + 3, MUTED, false);
+                        cy = drawField(g, font, mx, my, ix + 24, cy, iw - 24, "r_text", sr.text, inspectorHits) + 3;
+                    }
+                    if (sr.kind == ListElement.RowKind.NORMAL) {
+                        g.drawString(font, "Rgt:", ix, cy + 3, MUTED, false);
+                        cy = drawField(g, font, mx, my, ix + 24, cy, iw - 24, "r_right", sr.rightText, inspectorHits) + 3;
+
+                        g.drawString(font, "Ico:", ix, cy + 3, MUTED, false);
+                        drawField(g, font, mx, my, ix + 22, cy, half - 22, "r_icon", sr.icon, inspectorHits);
+                        g.drawString(font, "Hd:", ix + half + 4, cy + 3, MUTED, false);
+                        cy = drawField(g, font, mx, my, ix + half + 22, cy, half - 18, "r_head", sr.head, inspectorHits) + 3;
+
+                        g.drawString(font, "Bdg:", ix, cy + 3, MUTED, false);
+                        drawField(g, font, mx, my, ix + 24, cy, half - 24, "r_badge", sr.badge, inspectorHits);
+                        g.drawString(font, "Bar:", ix + half + 4, cy + 3, MUTED, false);
+                        cy = drawField(g, font, mx, my, ix + half + 26, cy, half - 22, "r_bar", sr.barSpec, inspectorHits) + 3;
+
+                        g.drawString(font, "Btn:", ix, cy + 3, MUTED, false);
+                        cy = drawField(g, font, mx, my, ix + 24, cy, iw - 24, "r_btn", sr.buttonLabel, inspectorHits) + 3;
+
+                        g.drawString(font, "Run:", ix, cy + 3, MUTED, false);
+                        cy = drawField(g, font, mx, my, ix + 24, cy, iw - 24, "r_run", sr.runAction, inspectorHits) + 3;
+
+                        g.drawString(font, "Tip:", ix, cy + 3, MUTED, false);
+                        cy = drawField(g, font, mx, my, ix + 24, cy, iw - 24, "r_tooltip", sr.tooltip, inspectorHits) + 3;
+
+                        drawDockBtn(g, font, mx, my, ix, cy, iw, 13, "Row Keep Open", "lrow:keep",
+                                tr("Не закрывать экран при клике по этой строке", "Keep screen open on row click"),
+                                sr.keepOpen, inspectorHits);
+                        cy += 15;
+                    }
+                }
             }
         }
 
@@ -2438,10 +3455,14 @@ public final class StudioGuiEditor {
         drawDockBtn(g, font, mx, my, ix + half + 4, cy, half, 14, "Keep Open", "tog:keepOpen", null, n.keepOpen, inspectorHits);
         cy += 17;
 
-        drawDockBtn(g, font, mx, my, ix, cy, half, 14, "Hidden", "tog:scriptHidden",
+        int fThird = (iw - 4) / 3;
+        drawDockBtn(g, font, mx, my, ix, cy, fThird, 14, "Hidden", "tog:scriptHidden",
                 tr("Скрыть элемент при старте экрана (флаг hidden в скрипте)", "Start element hidden in script"),
                 n.scriptHidden, inspectorHits);
-        drawDockBtn(g, font, mx, my, ix + half + 4, cy, half, 14, tr("🔒 Блок.", "🔒 Lock"), "layer:lock_sel",
+        drawDockBtn(g, font, mx, my, ix + fThird + 2, cy, fThird, 14, "Disab", "tog:scriptDisabled",
+                tr("Неактивный элемент при старте (флаг disabled в скрипте)", "Start element disabled in script"),
+                n.scriptDisabled, inspectorHits);
+        drawDockBtn(g, font, mx, my, ix + (fThird + 2) * 2, cy, iw - (fThird + 2) * 2, 14, tr("🔒 Блок.", "🔒 Lock"), "layer:lock_sel",
                 tr("Заблокировать перемещение мышкой на холсте", "Lock dragging on canvas"),
                 n.editorLocked, inspectorHits);
         cy += 18;
@@ -2505,7 +3526,8 @@ public final class StudioGuiEditor {
     private static boolean isExpandableField(String fieldId) {
         return switch (fieldId) {
             case "text", "tooltip", "runAction", "placeholder", "inputValue",
-                    "listHeader", "listFrom", "scr_title", "scr_target" -> true;
+                    "listHeader", "listFrom", "listEmptyText", "scr_title", "scr_target",
+                    "entSkin", "entNbt", "r_text", "r_right", "r_tooltip", "r_run" -> true;
             default -> false;
         };
     }
@@ -3168,6 +4190,128 @@ public final class StudioGuiEditor {
             }
             return;
         }
+        if (id.startsWith("ent_kind:") && sel != null) {
+            pushUndo();
+            String nextK = id.substring("ent_kind:".length());
+            sel.kind = nextK;
+            if ("player".equals(nextK) && (sel.text.isEmpty() || sel.text.startsWith("minecraft:"))) {
+                sel.text = "%player%";
+            } else if ("entity".equals(nextK) && (sel.text.isEmpty() || "%player%".equals(sel.text))) {
+                sel.text = "minecraft:zombie";
+            }
+            syncLiveIfNeeded(doc);
+            return;
+        }
+        if (id.startsWith("ent_mdl:") && sel != null) {
+            pushUndo();
+            sel.entModelStyle = EntityElement.ModelStyle.valueOf(id.substring("ent_mdl:".length()));
+            syncLiveIfNeeded(doc);
+            return;
+        }
+        if (id.startsWith("ent_spin:") && sel != null) {
+            pushUndo();
+            int dir = parseIntSafe(id.substring("ent_spin:".length()), 0);
+            double mag = Math.abs(sel.entSpinSpeed) > 0.1 ? Math.abs(sel.entSpinSpeed) : 35.0;
+            sel.entSpinSpeed = dir * mag;
+            syncLiveIfNeeded(doc);
+            return;
+        }
+        if (id.startsWith("ent_look:") && sel != null) {
+            pushUndo();
+            sel.entLookMode = EntityElement.LookMode.valueOf(id.substring("ent_look:".length()));
+            syncLiveIfNeeded(doc);
+            return;
+        }
+        if (id.startsWith("list_align:") && sel != null) {
+            pushUndo();
+            sel.listAlign = (byte) parseIntSafe(id.substring("list_align:".length()), 0);
+            syncLiveIfNeeded(doc);
+            return;
+        }
+        if (id.startsWith("lrow:") && sel != null && "list".equals(sel.kind)) {
+            String sub = id.substring("lrow:".length());
+            if (sub.startsWith("sel:")) {
+                selectedListRowIdx = parseIntSafe(sub.substring(4), 0);
+                return;
+            }
+            pushUndo();
+            switch (sub) {
+                case "add_row" -> {
+                    ListRowNode nr = new ListRowNode();
+                    nr.text = "&fПункт " + (sel.listRows.size() + 1);
+                    sel.listRows.add(nr);
+                    selectedListRowIdx = sel.listRows.size() - 1;
+                }
+                case "add_sep" -> {
+                    ListRowNode nr = new ListRowNode();
+                    nr.kind = ListElement.RowKind.SEPARATOR;
+                    nr.text = "&7Раздел";
+                    sel.listRows.add(nr);
+                    selectedListRowIdx = sel.listRows.size() - 1;
+                }
+                case "add_emp" -> {
+                    ListRowNode nr = new ListRowNode();
+                    nr.kind = ListElement.RowKind.EMPTY;
+                    nr.customHeight = 8;
+                    sel.listRows.add(nr);
+                    selectedListRowIdx = sel.listRows.size() - 1;
+                }
+                case "del" -> {
+                    if (!sel.listRows.isEmpty() && selectedListRowIdx >= 0 && selectedListRowIdx < sel.listRows.size()) {
+                        sel.listRows.remove(selectedListRowIdx);
+                        selectedListRowIdx = Math.max(0, Math.min(selectedListRowIdx, sel.listRows.size() - 1));
+                    }
+                }
+                case "up" -> {
+                    if (selectedListRowIdx > 0 && selectedListRowIdx < sel.listRows.size()) {
+                        ListRowNode tmp = sel.listRows.get(selectedListRowIdx - 1);
+                        sel.listRows.set(selectedListRowIdx - 1, sel.listRows.get(selectedListRowIdx));
+                        sel.listRows.set(selectedListRowIdx, tmp);
+                        selectedListRowIdx--;
+                    }
+                }
+                case "down" -> {
+                    if (selectedListRowIdx >= 0 && selectedListRowIdx + 1 < sel.listRows.size()) {
+                        ListRowNode tmp = sel.listRows.get(selectedListRowIdx + 1);
+                        sel.listRows.set(selectedListRowIdx + 1, sel.listRows.get(selectedListRowIdx));
+                        sel.listRows.set(selectedListRowIdx, tmp);
+                        selectedListRowIdx++;
+                    }
+                }
+                case "kind" -> {
+                    if (!sel.listRows.isEmpty() && selectedListRowIdx >= 0 && selectedListRowIdx < sel.listRows.size()) {
+                        ListRowNode sr = sel.listRows.get(selectedListRowIdx);
+                        ListElement.RowKind[] ks = ListElement.RowKind.values();
+                        sr.kind = ks[(sr.kind.ordinal() + 1) % ks.length];
+                    }
+                }
+                case "state" -> {
+                    if (!sel.listRows.isEmpty() && selectedListRowIdx >= 0 && selectedListRowIdx < sel.listRows.size()) {
+                        ListRowNode sr = sel.listRows.get(selectedListRowIdx);
+                        sr.state = (byte) ((sr.state + 1) % 3);
+                    }
+                }
+                case "align" -> {
+                    if (!sel.listRows.isEmpty() && selectedListRowIdx >= 0 && selectedListRowIdx < sel.listRows.size()) {
+                        ListRowNode sr = sel.listRows.get(selectedListRowIdx);
+                        sr.align = switch (sr.align) {
+                            case ListElement.ALIGN_INHERIT -> ListElement.ALIGN_LEFT;
+                            case ListElement.ALIGN_LEFT -> ListElement.ALIGN_CENTER;
+                            case ListElement.ALIGN_CENTER -> ListElement.ALIGN_RIGHT;
+                            default -> ListElement.ALIGN_INHERIT;
+                        };
+                    }
+                }
+                case "keep" -> {
+                    if (!sel.listRows.isEmpty() && selectedListRowIdx >= 0 && selectedListRowIdx < sel.listRows.size()) {
+                        ListRowNode sr = sel.listRows.get(selectedListRowIdx);
+                        sr.keepOpen = !sr.keepOpen;
+                    }
+                }
+            }
+            syncLiveIfNeeded(doc);
+            return;
+        }
         if (id.startsWith("step:") && sel != null) {
             String[] parts = id.split(":");
             if (parts.length == 3) {
@@ -3189,6 +4333,26 @@ public final class StudioGuiEditor {
                     case "hoverCircle" -> sel.hoverCircle = Math.max(0, sel.hoverCircle + delta);
                     case "rotation" -> sel.rotation += delta * 5;
                     case "slotCount" -> sel.slotCount = Math.max(1, Math.min(64, sel.slotCount + delta));
+                    case "entScale" -> sel.entScale = Math.max(0, Math.min(400, sel.entScale + delta * 2));
+                    case "entYaw" -> sel.entYaw += delta * 5;
+                    case "entPitch" -> sel.entPitch = Math.max(-90, Math.min(90, sel.entPitch + delta * 5));
+                    case "entRoll" -> sel.entRoll += delta * 5;
+                    case "entLookX" -> sel.entLookX += delta * 4;
+                    case "entLookY" -> sel.entLookY += delta * 4;
+                    case "listRowHeight" -> sel.listRowHeight = Math.max(8, Math.min(120, sel.listRowHeight + delta));
+                    case "listSpacing" -> sel.listSpacing = Math.max(0, Math.min(32, sel.listSpacing + delta));
+                    case "r_width" -> {
+                        if (!sel.listRows.isEmpty() && selectedListRowIdx >= 0 && selectedListRowIdx < sel.listRows.size()) {
+                            ListRowNode sr = sel.listRows.get(selectedListRowIdx);
+                            sr.customWidth = Math.max(0, Math.min(1000, sr.customWidth + delta * 4));
+                        }
+                    }
+                    case "r_height" -> {
+                        if (!sel.listRows.isEmpty() && selectedListRowIdx >= 0 && selectedListRowIdx < sel.listRows.size()) {
+                            ListRowNode sr = sel.listRows.get(selectedListRowIdx);
+                            sr.customHeight = Math.max(0, Math.min(160, sr.customHeight + delta));
+                        }
+                    }
                 }
                 syncLiveIfNeeded(doc);
             }
@@ -3208,6 +4372,12 @@ public final class StudioGuiEditor {
                 case "listScroll" -> sel.listNoScrollbar = !sel.listNoScrollbar;
                 case "keepOpen" -> sel.keepOpen = !sel.keepOpen;
                 case "scriptHidden" -> sel.scriptHidden = !sel.scriptHidden;
+                case "scriptDisabled" -> sel.scriptDisabled = !sel.scriptDisabled;
+                case "entOverlay" -> sel.entOverlay = !sel.entOverlay;
+                case "entWalk" -> sel.entWalk = !sel.entWalk;
+                case "entSneaking" -> sel.entSneaking = !sel.entSneaking;
+                case "entBaby" -> sel.entBaby = !sel.entBaby;
+                case "entClip" -> sel.entClip = !sel.entClip;
             }
             syncLiveIfNeeded(doc);
             return;
@@ -3413,13 +4583,45 @@ public final class StudioGuiEditor {
                 n.h = 20;
                 n.toggleChecked = true;
             }
+            case "player" -> {
+                n.text = "%player%";
+                n.w = EntityElement.DEFAULT_WIDTH;
+                n.h = EntityElement.DEFAULT_HEIGHT;
+                n.entModelStyle = EntityElement.ModelStyle.AUTO;
+                n.entOverlay = true;
+                n.entLookMode = EntityElement.LookMode.CURSOR;
+            }
+            case "entity" -> {
+                n.text = "minecraft:zombie";
+                n.w = EntityElement.DEFAULT_WIDTH;
+                n.h = EntityElement.DEFAULT_HEIGHT;
+                n.entSpinSpeed = 35.0;
+            }
             case "list" -> {
-                n.w = 130;
-                n.h = 110;
+                n.w = 150;
+                n.h = 120;
                 n.listHeader = "&6Список";
+                n.listRowHeight = 18;
+                n.listSpacing = 2;
                 n.listSelect = true;
-                n.listPreviewRows.add(new ListElement.Row("&fПункт 1", ""));
-                n.listPreviewRows.add(new ListElement.Row("&fПункт 2", ""));
+                n.listEmptyText = "&7Список пуст";
+                ListRowNode r1 = new ListRowNode();
+                r1.text = "&fАлмазный меч";
+                r1.icon = "diamond_sword";
+                r1.rightText = "&e250 ⛁";
+                r1.tooltip = "&bНажмите для покупки";
+                ListRowNode sep = new ListRowNode();
+                sep.kind = ListElement.RowKind.SEPARATOR;
+                sep.text = "&7Разное";
+                ListRowNode r2 = new ListRowNode();
+                r2.text = "&fЗолотое яблоко";
+                r2.icon = "golden_apple";
+                r2.badge = "NEW";
+                r2.rightText = "&a50 ⛁";
+                n.listRows.add(r1);
+                n.listRows.add(sep);
+                n.listRows.add(r2);
+                selectedListRowIdx = 0;
             }
         }
         scr.nodes.add(n);
@@ -3486,6 +4688,42 @@ public final class StudioGuiEditor {
             case "sliderStep" -> fmtNum(n.sliderStep);
             case "listHeader" -> n.listHeader;
             case "listFrom" -> n.listFrom;
+            case "listEmptyText" -> n.listEmptyText;
+            case "listColumns" -> n.listColumns;
+            case "listRowHeight" -> Integer.toString(n.listRowHeight);
+            case "listSpacing" -> Integer.toString(n.listSpacing);
+            case "listScale" -> fmtNum(n.listScale);
+            case "listBgColor" -> n.listBgColor == 0 ? "#00000000" : formatHexColor(n.listBgColor, true);
+            case "listBorderColor" -> n.listBorderColor == 0 ? "#00000000" : formatHexColor(n.listBorderColor, true);
+            case "entSkin" -> n.entSkin;
+            case "entNbt" -> n.entNbt;
+            case "entScale" -> Integer.toString((int) Math.round(n.entScale));
+            case "entYaw" -> Integer.toString((int) Math.round(n.entYaw));
+            case "entPitch" -> Integer.toString((int) Math.round(n.entPitch));
+            case "entRoll" -> Integer.toString((int) Math.round(n.entRoll));
+            case "entSpinAbs" -> fmtNum(Math.abs(n.entSpinSpeed));
+            case "entLookX" -> Integer.toString(n.entLookX);
+            case "entLookY" -> Integer.toString(n.entLookY);
+            case "entWeapon" -> n.entWeapon;
+            case "entHelmet" -> n.entHelmet;
+            case "r_text", "r_right", "r_icon", "r_head", "r_badge", "r_bar", "r_btn", "r_run", "r_tooltip", "r_width", "r_height" -> {
+                if (n.listRows.isEmpty() || selectedListRowIdx < 0 || selectedListRowIdx >= n.listRows.size()) yield "";
+                ListRowNode sr = n.listRows.get(selectedListRowIdx);
+                yield switch (field) {
+                    case "r_text" -> sr.text;
+                    case "r_right" -> sr.rightText;
+                    case "r_icon" -> sr.icon;
+                    case "r_head" -> sr.head;
+                    case "r_badge" -> sr.badge;
+                    case "r_bar" -> sr.barSpec;
+                    case "r_btn" -> sr.buttonLabel;
+                    case "r_run" -> sr.runAction;
+                    case "r_tooltip" -> sr.tooltip;
+                    case "r_width" -> Integer.toString(sr.customWidth);
+                    case "r_height" -> Integer.toString(sr.customHeight);
+                    default -> "";
+                };
+            }
             case "runAction" -> n.runAction;
             case "tooltip" -> n.tooltip;
             case "hotkey" -> n.hotkey;
@@ -3523,7 +4761,7 @@ public final class StudioGuiEditor {
             case "w" -> n.w = Math.max(1, parseIntSafe(raw, n.w));
             case "h" -> n.h = Math.max(1, parseIntSafe(raw, n.h));
             case "text" -> n.text = raw;
-            case "color", "boxGrad", "boxBorder", "barBgColor" -> {
+            case "color", "boxGrad", "boxBorder", "barBgColor", "listBgColor", "listBorderColor" -> {
                 if (raw.matches("#?([0-9a-fA-F]{6}|[0-9a-fA-F]{8})")) {
                     String hex = raw.startsWith("#") ? raw : "#" + raw;
                     applyColorField(n, field, parseColorSafe(hex, 0));
@@ -3549,6 +4787,47 @@ public final class StudioGuiEditor {
             case "sliderStep" -> n.sliderStep = Math.max(0.01, parseDoubleSafe(raw, n.sliderStep));
             case "listHeader" -> n.listHeader = raw;
             case "listFrom" -> n.listFrom = raw.strip().replace("{", "").replace("}", "");
+            case "listEmptyText" -> n.listEmptyText = raw;
+            case "listColumns" -> n.listColumns = raw;
+            case "listRowHeight" -> n.listRowHeight = Math.max(8, Math.min(120, parseIntSafe(raw, n.listRowHeight)));
+            case "listSpacing" -> n.listSpacing = Math.max(0, Math.min(32, parseIntSafe(raw, n.listSpacing)));
+            case "listScale" -> n.listScale = Math.max(0.5, Math.min(3.0, parseDoubleSafe(raw, n.listScale)));
+            case "entSkin" -> n.entSkin = raw.strip();
+            case "entNbt" -> n.entNbt = raw.strip();
+            case "entScale" -> n.entScale = Math.max(0, Math.min(400, parseDoubleSafe(raw, n.entScale)));
+            case "entYaw" -> n.entYaw = parseDoubleSafe(raw, n.entYaw);
+            case "entPitch" -> n.entPitch = Math.max(-90, Math.min(90, parseDoubleSafe(raw, n.entPitch)));
+            case "entRoll" -> n.entRoll = parseDoubleSafe(raw, n.entRoll);
+            case "entSpinAbs" -> {
+                double mag = Math.max(0, Math.min(720, parseDoubleSafe(raw, Math.abs(n.entSpinSpeed))));
+                double sign = n.entSpinSpeed < -0.001 ? -1.0 : 1.0;
+                n.entSpinSpeed = mag * sign;
+            }
+            case "entLookX" -> n.entLookX = parseIntSafe(raw, n.entLookX);
+            case "entLookY" -> n.entLookY = parseIntSafe(raw, n.entLookY);
+            case "entWeapon" -> n.entWeapon = raw.strip();
+            case "entHelmet" -> n.entHelmet = raw.strip();
+            case "r_text", "r_right", "r_icon", "r_head", "r_badge", "r_bar", "r_btn", "r_run", "r_tooltip", "r_width", "r_height" -> {
+                if (!n.listRows.isEmpty() && selectedListRowIdx >= 0 && selectedListRowIdx < n.listRows.size()) {
+                    ListRowNode sr = n.listRows.get(selectedListRowIdx);
+                    switch (field) {
+                        case "r_text" -> sr.text = raw;
+                        case "r_right" -> sr.rightText = raw;
+                        case "r_icon" -> sr.icon = raw.strip();
+                        case "r_head" -> sr.head = raw.strip();
+                        case "r_badge" -> sr.badge = raw;
+                        case "r_bar" -> sr.barSpec = raw.strip();
+                        case "r_btn" -> sr.buttonLabel = raw;
+                        case "r_run" -> {
+                            sr.runAction = raw.strip();
+                            sr.isFunctionCall = !sr.runAction.startsWith("/") && sr.runAction.contains("(") && sr.runAction.endsWith(")");
+                        }
+                        case "r_tooltip" -> sr.tooltip = raw;
+                        case "r_width" -> sr.customWidth = Math.max(0, Math.min(1000, parseIntSafe(raw, sr.customWidth)));
+                        case "r_height" -> sr.customHeight = Math.max(0, Math.min(160, parseIntSafe(raw, sr.customHeight)));
+                    }
+                }
+            }
             case "runAction" -> {
                 n.runAction = raw.strip();
                 n.isFunctionCall = !n.runAction.startsWith("/") && n.runAction.contains("(") && n.runAction.endsWith(")");
@@ -3567,6 +4846,8 @@ public final class StudioGuiEditor {
             case "boxGrad" -> n.boxGrad = col;
             case "boxBorder" -> n.boxBorder = col;
             case "barBgColor" -> n.barBgColor = col;
+            case "listBgColor" -> n.listBgColor = col;
+            case "listBorderColor" -> n.listBorderColor = col;
         }
     }
 

@@ -491,6 +491,80 @@ public final class Actions {
         }
     }
 
+    public record ScreenSetDisabled(Target target, String id, boolean disabled) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            String resolvedId = ctx.format(id);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                com.scriptcraft.screen.ScreenManager.mutateElement(p, resolvedId, e -> com.scriptcraft.screen.ScreenMeta.withDisabled(e, disabled));
+            }
+        }
+    }
+
+    public record ScreenSetSize(Target target, String id, Expression w, Expression h) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            String resolvedId = ctx.format(id);
+            int pw = Math.max(1, (int) Math.round(Effects.number(w, ctx)));
+            int ph = Math.max(1, (int) Math.round(Effects.number(h, ctx)));
+            for (ServerPlayer p : target.resolve(ctx)) {
+                com.scriptcraft.screen.ScreenManager.mutateElement(p, resolvedId, e -> com.scriptcraft.screen.ScreenMeta.withSize(e, pw, ph));
+            }
+        }
+    }
+
+    public record ScreenSetSkin(Target target, String id, Expression skin) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            String resolvedId = ctx.format(id);
+            String val = ctx.format(Expression.toText(skin.evaluate(ctx))).strip();
+            for (ServerPlayer p : target.resolve(ctx)) {
+                com.scriptcraft.screen.ScreenManager.mutateElement(p, resolvedId,
+                        e -> e instanceof com.scriptcraft.screen.EntityElement ent ? ent.withSkin(val) : com.scriptcraft.screen.ScreenMeta.withTexture(e, val));
+            }
+        }
+    }
+
+    public record ScreenSetEntity(Target target, String id, Expression entityId) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            String resolvedId = ctx.format(id);
+            String val = ctx.format(Expression.toText(entityId.evaluate(ctx))).strip();
+            boolean isPl = "player".equalsIgnoreCase(val) || "minecraft:player".equalsIgnoreCase(val) || "self".equalsIgnoreCase(val);
+            for (ServerPlayer p : target.resolve(ctx)) {
+                com.scriptcraft.screen.ScreenManager.mutateElement(p, resolvedId,
+                        e -> e instanceof com.scriptcraft.screen.EntityElement ent ? ent.withTarget(val, isPl) : e);
+            }
+        }
+    }
+
+    public record ScreenSetSpin(Target target, String id, Expression speed, float sign) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            String resolvedId = ctx.format(id);
+            float sp = speed == null ? 0f : (float) Effects.number(speed, ctx) * sign;
+            for (ServerPlayer p : target.resolve(ctx)) {
+                com.scriptcraft.screen.ScreenManager.mutateElement(p, resolvedId,
+                        e -> e instanceof com.scriptcraft.screen.EntityElement ent ? ent.withSpin(sp) : e);
+            }
+        }
+    }
+
+    public record ScreenSetLook(Target target, String id, com.scriptcraft.screen.EntityElement.LookMode mode,
+                                @org.jetbrains.annotations.Nullable Expression lookX,
+                                @org.jetbrains.annotations.Nullable Expression lookY) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            String resolvedId = ctx.format(id);
+            int lx = lookX == null ? 0 : (int) Math.round(Effects.number(lookX, ctx));
+            int ly = lookY == null ? 0 : (int) Math.round(Effects.number(lookY, ctx));
+            for (ServerPlayer p : target.resolve(ctx)) {
+                com.scriptcraft.screen.ScreenManager.mutateElement(p, resolvedId,
+                        e -> e instanceof com.scriptcraft.screen.EntityElement ent ? ent.withLook(mode, lx, ly) : e);
+            }
+        }
+    }
+
     public record ScreenSetBar(Target target, String id, @org.jetbrains.annotations.Nullable Expression value,
                                @org.jetbrains.annotations.Nullable Expression max) implements Action {
         @Override

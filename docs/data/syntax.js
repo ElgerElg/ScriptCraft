@@ -3125,28 +3125,31 @@ text "&cВыход" at 0, 60 close`,
   },
   {
     id: "screen-list", category: "screen",
-    name: { ru: "Список (со скроллбаром и no slider)", en: "List (with scrollbar & no slider)" },
+    name: { ru: "Продвинутый список (размер, разделители, иконки, тултипы, выравнивание)", en: "Advanced List (sizing, separators, inline elements, tooltips, alignment)" },
     syntax: [
-      "list vertical [at <X> <Y>] [size <W>x<H>] [header \"<текст>\"] [select] [no scrollbar|no slider]:",
-      "list horizontal [at <X> <Y>] [size <W>x<H>] [header \"<текст>\"] [select]:",
-      "list from {<имя>::*} vertical [at <X> <Y>] [size <W>x<H>] [header \"<текст>\"] [select] [no scrollbar|no slider]:",
-      "row \"<текст>\" run \"/<команда>\" [keep open]",
-      "row \"<текст>\" run <Функция>(<аргументы>) [keep open]",
-      "row \"<текст>\" close",
-      "row \"<текст>\""
+      "list [from {<имя>::*}] [vertical|horizontal] [at <X> <Y>] [size <W>x<H>] [row_height <N>] [spacing <N>] [scale <S>] [align left|center|right] [header \"<текст>\"] [empty_text \"<текст>\"] [columns \"W1,W2,...\"] [select] [disabled|active] [background #hex|none] [border #hex|none] [tooltip \"<текст>\"] [no scrollbar|no slider]:",
+      "row \"<текст>\" [width <W>] [height <H>] [align left|center|right] [active|disabled] [item <id> [<N>] | icon \"<путь>\"] [head \"<ник|URL|ресурс>\"] [badge \"<тег>\" [badge_color #hex]] [right \"<текст>\"] [bar <0..100|V/M> [bar_color #hex]] [button \"<текст>\" [button_run ...]] [color #hex] [tooltip \"<текст>\"] [run ... | close] [keep open]",
+      "separator [\"<заголовок раздела>\"] [color #hex] [height <H>] [align left|center|right]",
+      "empty [<высота>] [height <H>] [width <W>]"
     ],
     desc: {
-      ru: "Панель строк. `vertical` — столбец, `horizontal` — ряд. `header` — строка над списком. `select` подсвечивает строку под курсором. Если строк больше, чем помещается в `size`, список прокручивается колёсиком мыши и интерактивным **ползунком-скроллбаром** справа (его можно тянуть мышкой). Чтобы скрыть ползунок прокрутки (оставив только прокрутку колёсиком), добавьте `no scrollbar` или `no slider`. При динамическом добавлении строк через `update screen` список автоматически прокручивается к концу.",
-      en: "A panel of rows. `vertical` is a column, `horizontal` is a row. `header` is a line above the list. `select` highlights the hovered row. When rows exceed `size`, the list scrolls with the mouse wheel and displays an interactive **draggable scrollbar slider** on the right. Add `no scrollbar` or `no slider` to hide the scrollbar thumb (wheel scrolling still works). Appending new rows via `update screen` auto-scrolls to the bottom."
+      ru: "Полноценный прокручиваемый список для магазинов, лидербордов, инвентарей, вкладок и журналов квестов:\n• **Размер и масштаб**: `size <W>x<H>` задаёт область списка, `row_height <N>` (по умолчанию `14`) увеличивает высоту строк, `spacing <N>` (`gap`) добавляет отступ между позициями, а `scale <S>` масштабирует текст внутри строк.\n• **Индивидуальная ширина и высота позиций**: у любой строки можно указать `width <W>` (например, разная ширина вкладок в `horizontal`-списке или суженная карточка в `vertical`) и `height <H>`, а также задать табличные колонки `columns \"30, 120, 60\"` с разделением ячеек через `|` или `||`.\n• **Разделители и пустые списки**: строка `separator [\"Раздел\"]` рисует линию-разделитель с подписью, `empty [N]` (`spacer`) — пустой отступ. Сам блок `list:` может быть пустым (без строк), а параметр `empty_text \"&7Список пуст\"` автоматически выводит надпись, когда список или `{переменная::*}` пусты.\n• **Активные и неактивные списки / строки**: флаг `disabled` (`inactive`) на `list` делает весь список неактивным (приглушается, клики блокируются; переключается на лету через `enable screen \"id\"` / `disable screen \"id\"`). На отдельных `row` доступны `active` (`selected` — акцентная подсветка выбранного пункта) и `disabled` (строка недоступна для нажатия).\n• **Тултипы**: `tooltip \"...\"` работает и на всём `list`, и индивидуально на каждой строке `row` (а при наведении на `item` без кастомного тултипа показывается ванильное описание предмета).\n• **Элементы внутри строки**: `item <предмет> [<кол-во>]` или `icon \"ns:textures/...\"`, 2D-голова скина `head \"<ник|URL|ресурс>\"`, цветной тег `badge \"VIP\"`, правая подпись/цена `right \"&e500 ⛁\"`, мини-полоса `bar 7/10` и встроенная кнопка `button \"Купить\"`.\n• **Выравнивание**: `align left | center | right` задаётся как для всего списка (включая `header`), так и отдельно для конкретной `row` или `separator`.",
+      en: "Full-featured scrollable list for shops, leaderboards, tabs, quest logs, and menus:\n• **Sizing & Scale**: `size <W>x<H>`, `row_height <N>` (default `14`), `spacing <N>` (`gap`), and `scale <S>`.\n• **Per-item Width & Columns**: set `width <W>` and `height <H>` on any specific `row` (ideal for variable-width `horizontal` tabs or custom vertical cards), or define multi-column widths via `columns \"30, 120, 60\"` using `|` / `||` in row text.\n• **Separators & Empty Lists**: `separator [\"Section\"]` draws a labeled divider; `empty [N]` (`spacer`) adds blank space; empty `list:` blocks are valid and `empty_text \"&7Empty\"` displays centered text when 0 rows exist.\n• **Active / Inactive Lists & Rows**: `disabled` (`inactive`) dims the entire list and blocks clicks (toggle live via `enable/disable screen \"id\"`); per-row `active` (`selected`) highlights the active entry and `disabled` locks an individual row.\n• **Tooltips**: `tooltip \"...\"` is supported both on the `list` and on each individual `row` (plus vanilla item tooltips on inline `item` icons).\n• **Inline Row Elements**: `item <id> [<count>]` / `icon \"...\"`, 2D player face `head \"<nick|URL|resource>\"`, `badge \"VIP\"`, right-aligned `right \"&e500\"`, inline `bar 7/10`, and mini action `button \"Buy\"`.\n• **Alignment**: `align left | center | right` on the `list` and per `row` / `separator`."
     },
-    example: `# Обычный список со скроллбаром-слайдером:
-list from {bag::%player%::*} vertical at -70, 0 size 130x140 header "&7Предметы" select:
-	row "&f%loop-index% &8x%loop-value%" run TakeFromBag(player, "%loop-index%") keep open
+    example: `# Продвинутый магазин с иконками, разделителями, бейджами, ценами и тултипами:
+list vertical at -75 0 size 195x155 row_height 20 spacing 2 header "&6&lЛавка снаряжения" align left empty_text "&7Товаров пока нет" select id shop_list:
+	row "&fАлмазный меч" item diamond_sword badge "ХИТ" right "&e500 ⛁" tooltip "&bУрон +7%nl%&aНажмите для покупки" run Buy(player, "diamond_sword") keep open
+	separator "&7Зелья и еда" align center
+	row "&fЗолотое яблоко" item golden_apple 4 right "&e120 ⛁" active run Buy(player, "golden_apple") keep open
+	empty 6
+	row "&7Элитры" item elytra right "&c2500 ⛁" disabled tooltip "&cТребуется 25 уровень!"
 
-# Список без видимого ползунка (прокрутка только колёсиком):
-list from {chat::*} at 70, 0 size 150x140 header "&6История" no slider:
-	row "%loop-value%"`,
-    since: "0.3.7", related: ["screen-click","eff-open-screen","screen-dynamic","expr-variable","ph-loop-index","struct-function"]
+# Горизонтальные вкладки с разной шириной конкретных позиций:
+list horizontal at 0 -90 size 240x22 row_height 18 spacing 4 align center no scrollbar:
+	row "&eПрофиль" width 68 active keep open
+	row "&fДостижения и квесты" width 118 run OpenQuests(player) keep open
+	row "&7⚙" width 28 tooltip "&7Настройки" run OpenSettings(player) keep open`,
+    since: "0.3.7", related: ["screen-entity-player","screen-click","eff-open-screen","screen-dynamic","expr-variable","ph-loop-index","struct-function"]
   },
   {
     id: "screen-dynamic", category: "screen",
@@ -3155,10 +3158,17 @@ list from {chat::*} at 70, 0 size 150x140 header "&6История" no slider:
       "update screen [\"<заголовок>\"] [for <цель>]:",
       "set text of screen \"<id>\" [for <цель>] to \"<текст>\"",
       "set image of screen \"<id>\" [for <цель>] to \"<текстура>\"",
+      "set skin of screen \"<id>\" [for <цель>] to \"<ник|URL|ресурс>\"",
+      "set entity of screen \"<id>\" [for <цель>] to \"<entity_id>\"",
+      "set spin of screen \"<id>\" [for <цель>] to [left|right] <скорость>",
+      "set look of screen \"<id>\" [for <цель>] to cursor | none | <X> <Y>",
       "set position of screen \"<id>\" [for <цель>] to <X> <Y>",
+      "set size of screen \"<id>\" [for <цель>] to <W> <H>",
       "move screen \"<id>\" [for <цель>] to <X> <Y>",
       "set item of screen \"<id>\" [for <цель>] to <предмет> [<кол-во>]",
       "set value of screen bar \"<id>\" [for <цель>] to <значение>",
+      "enable screen \"<id>\" [for <цель>]",
+      "disable screen \"<id>\" [for <цель>]",
       "show screen \"<id>\" [for <цель>]",
       "hide screen \"<id>\" [for <цель>]",
       "remove screen \"<id>\" [from <цель>]",
@@ -3166,20 +3176,20 @@ list from {chat::*} at 70, 0 size 150x140 header "&6История" no slider:
       "close screen [of <цель>]"
     ],
     desc: {
-      ru: "Обновляет уже открытый кастомный экран игрока на лету **без повторного `open screen` и без пересоздания окна** (фокус, прокрутка и зажатые клавиши сохраняются). Блок `update screen for player:` добавляет новые элементы или заменяет существующие элементы с тем же `id`. Точечные эффекты изменяют текст, картинку, координаты (`at X Y`), предмет слота, значение полосы и видимость (`show`/`hide`) элемента по его `id`, либо удаляют элемент (`remove screen \"id\"`). Если новое состояние элемента или экрана не отличается от текущего, пакет по сети не отправляется. Для проверки открытого экрана используйте условия `if player has screen open:`, `if player has screen \"Меню\" open:`, `if player is in screen \"Меню\":` или выражение `screen of player` / `%screen%`.",
-      en: "Updates a player's currently open custom screen on the fly **without re-running `open screen` and without recreating the GUI** (focus, scroll and held keys are preserved). The `update screen for player:` block adds new elements or replaces existing elements with the same `id`. Targeted effects change the text, texture, coordinates (`at X Y`), slot item, bar value or visibility (`show`/`hide`) of an element by its `id`, or remove it (`remove screen \"id\"`). If the new state is identical to the current one, no network packet is sent. Check the active screen with `if player has screen open:`, `if player has screen \"Menu\" open:`, `if player is in screen \"Menu\":` or the `screen of player` / `%screen%` expression."
+      ru: "Обновляет уже открытый кастомный экран игрока на лету **без повторного `open screen` и без пересоздания окна** (фокус, прокрутка и зажатые клавиши сохраняются). Блок `update screen for player:` добавляет новые элементы или заменяет существующие элементы с тем же `id`. Точечные эффекты изменяют текст, картинку, скин/моба/вращение/взгляд 3D-рендера, координаты (`at X Y`), размер (`set size`), предмет слота, значение полосы, активность (`enable`/`disable`) и видимость (`show`/`hide`) элемента по его `id`, либо удаляют элемент (`remove screen \"id\"`). Если новое состояние элемента или экрана не отличается от текущего, пакет по сети не отправляется. Для проверки открытого экрана используйте условия `if player has screen open:`, `if player has screen \"Меню\" open:`, `if player is in screen \"Меню\":` или выражение `screen of player` / `%screen%`.",
+      en: "Updates a player's currently open custom screen on the fly **without re-running `open screen` and without recreating the GUI** (focus, scroll and held keys are preserved). The `update screen for player:` block adds new elements or replaces existing elements with the same `id`. Targeted effects change text, texture, 3D skin/entity/spin/look, coordinates, size (`set size`), slot item, bar value, active state (`enable`/`disable`), or visibility (`show`/`hide`) by `id`, or remove an element (`remove screen \"id\"`). Check the active screen with `if player has screen open:`, `if player has screen \"Menu\" open:`, `if player is in screen \"Menu\":` or `screen of player` / `%screen%`."
     },
-    example: `# Точечное обновление текста, позиции, картинки и видимости
+    example: `# Точечное обновление текста, скин-модели, активности списка и видимости
 set text of screen "score" for player to "&eОчки: &f%{score::%player%}%"
-move screen "player_icon" for player to {-px} {-py}
-set image of screen "status_icon" for player to "example:textures/gui/ok.png"
-hide screen "hint" for player
-show screen "win_banner" for player
+set skin of screen "hero_preview" for player to "ElgerElg"
+set spin of screen "hero_preview" for player to right 45
+disable screen "shop_list" for player
+enable screen "shop_list" for player
 
 # Пакетное обновление или добавление элементов без переоткрытия экрана
 update screen for player:
 	image "example:textures/gui/coin.png" id "apple" at {-ax} {-ay} size 12x12`,
-    since: "0.6.2", related: ["eff-open-screen","screen-button","event-screen-open","event-key"]
+    since: "0.6.2", related: ["eff-open-screen","screen-entity-player","screen-list","screen-button","event-screen-open","event-key"]
   },
   {
     id: "hud-create", category: "hud",
@@ -4797,14 +4807,38 @@ command /slash:
     since: "0.8.8", related: ["eff-player-animation", "studio-libs-and-colors", "screen-gui-builder"]
   },
   {
+    id: "screen-entity-player", category: "screen",
+    name: { ru: "3D-рендер сущностей, игроков и скинов (entity / player / skin)", en: "3D Entity, Player & Skin Render (entity / player / skin)" },
+    syntax: [
+      "player [\"<ник|URL|ресурс>\"] [at <X> <Y>] [size <W>x<H>] [scale <S>] [model auto|slim|wide] [overlay|no overlay] [spin [left|right] [speed <deg>]] [look cursor | look at <X> <Y> | yaw <Y> [pitch <P>]] [walk] [sneaking] [baby] [weapon <id>] [helmet <id>] [chestplate <id>] [leggings <id>] [boots <id>] [clip] [id <id>] [tooltip \"...\"] [run ...]",
+      "skin \"<ник | https://... | ns:textures/skins/file.png>\" [at <X> <Y>] [size <W>x<H>] [scale <S>] [model auto|slim|wide] [no overlay] [spin left|right speed <N>] [look cursor | look at <X> <Y>]",
+      "entity \"<ns:entity_id>\" [at <X> <Y>] [size <W>x<H>] [scale <S>] [spin [left|right] [speed <deg>]] [look cursor | look at <X> <Y> | yaw <Y> [pitch <P>]] [nbt \"{...}\"] [baby] [walk] [weapon <id>] [helmet <id>] [clip] [id <id>]"
+    ],
+    desc: {
+      ru: "Рендерит живые 3D-модели игроков, кастомных скинов и любых ванильных/модовых сущностей прямо в `open screen` и `create hud`:\n• **Игроки и 3 источника скинов**: укажите **никнейм** (`\"%player%\"`, `\"ElgerElg\"` — мгновенно берётся из таб-листа или асинхронно через Mojang API), **прямую ссылку** (`\"https://.../skin.png\"`) или **файл из ресурсов** (`\"mypack:textures/skins/knight.png\"` в `scriptcraft/resources/assets/...` — подхватывается без перезагрузки ресурспаков!). Старые скины `64×32` автоматически конвертируются в `64×64`.\n• **Автоподбор модели Алекс / Стив и второй слой (overlay)**: по умолчанию `model auto` сам определяет тонкие руки **Alex (`slim`, 3px)** или классические **Steve (`wide`, 4px)** по профилю игрока или прозрачности пикселей PNG! Можно задать вручную (`slim`/`alex` или `wide`/`steve`). Второй объёмный слой скина (шляпа, куртка, рукава, штаны) включён по умолчанию и отключается флагом `no overlay`.\n• **Размер и обрезка**: `size <W>x<H>` задаёт область и хитбокс (при отсутствии `scale` модель автоматически вписывается в `WxH`, учитывая габариты моба), `scale <S>` задаёт точный масштаб в пикселях на блок, `clip` обрезает выход за границы `WxH`.\n• **Вращение и слежение взглядом**:\n  – `spin right speed 40` / `spin left speed 60` (`spin -45`) — плавное вращение в выбранную сторону с заданной скоростью (градусов/сек);\n  – `look cursor` (`look mouse`) — персонаж или моб плавно поворачивает голову и корпус вслед за курсором мыши;\n  – `look at <X> <Y>` — сущность смотрит в конкретную точку экрана `<X> <Y>` относительно центра;\n  – `yaw <deg>`, `pitch <deg>`, `roll <deg>` — фиксированный ракурс (можно комбинировать со `spin`).\n• **Экипировка, позы и NBT**: поддерживаются `weapon`, `offhand`, `helmet`, `chestplate`, `leggings`, `boots`, `walk` (анимация шага), `sneaking`, `baby` и `nbt \"{...}\"` (например, заряженный крипер `{powered:1b}` или профессия жителя).",
+      en: "Renders live 3D players, custom skins, and any vanilla or modded entity inside `open screen` and `create hud`:\n• **3 Skin Sources**: by **nickname** (`\"%player%\"`, `\"ElgerElg\"` via tablist or async Mojang API), **HTTP/HTTPS URL** (`\"https://.../skin.png\"`), or **mod resources** (`\"mypack:textures/skins/knight.png\"`, hot-loaded without resourcepack reload). Legacy `64×32` skins auto-upgrade to `64×64`.\n• **Auto Alex / Steve Model & Skin Overlay**: `model auto` (default) automatically selects **Alex (`slim`, 3px)** or **Steve (`wide`, 4px)** from profile metadata or PNG pixel alpha! Override with `slim`/`alex` or `wide`/`steve`. 2nd skin layer (`hat`, `jacket`, `sleeves`, `pants`) is shown by default (`no overlay` hides it).\n• **Size & Clipping**: `size <W>x<H>` sets bounds & auto-fits large/small mobs unless exact `scale <S>` (px/block) is set; `clip` scissors to `WxH`.\n• **Spin & Look Modes**:\n  – `spin right speed 40` / `spin left speed 60` — smooth continuous rotation in either direction;\n  – `look cursor` — smoothly tracks the live mouse cursor with head and torso;\n  – `look at <X> <Y>` — looks toward a specific screen point `<X> <Y>`;\n  – `yaw`, `pitch`, `roll` — static angles.\n• **Gear, Poses & NBT**: `weapon`, `offhand`, `helmet`, `chestplate`, `leggings`, `boots`, `walk`, `sneaking`, `baby`, and `nbt \"{...}\"`."
+    },
+    example: `command /profile:
+\topen screen "Профиль героя" to player:
+\t\tbox at 0 0 size 260x165 color #E60F172A border #FF38BDF8 radius 8 shadow layer 0
+\t\t# Свой персонаж со снаряжением следит взглядом за курсором мыши
+\t\tplayer "%player%" at -78 6 size 76x115 scale 36 look cursor weapon diamond_sword helmet diamond_helmet id hero layer 2
+\t\t# Кастомный NPC-скин из ресурсов или по ссылке, плавно крутящийся вправо
+\t\tskin "mypack:textures/skins/guard.png" at 0 6 size 70x110 model auto spin right speed 35 walk layer 2
+\t\t# Заряженный крипер, смотрящий в точку кнопки (0, 62)
+\t\tentity "minecraft:creeper" at 78 10 size 68x100 nbt "{powered:1b}" look at 0 62 id mob_preview layer 2
+\t\tbutton "&aСменить скин" at 0 62 size 110x20 run SetGuardSkin(player) keep open layer 3`,
+    since: "0.8.8", related: ["eff-open-screen", "screen-dynamic", "screen-list", "screen-gui-builder", "hud-create"]
+  },
+  {
     id: "screen-gui-builder", category: "screen",
     name: { ru: "Визуальный редактор экранов (GUI Builder) в Студии", en: "Visual GUI Screen Builder in Studio" },
     syntax: [
       "Кнопка «GUI» в верхней панели Студии (для любого .sc с open screen)"
     ],
     desc: {
-      ru: "Встроенный визуальный WYSIWYG-редактор экранов прямо внутри Студии (`F3 + ~`):\n• Автоматически находит все блоки `open screen` в открытом `.sc` файле и разделяет их на отдельные экраны.\n• **Холст 1-в-1 с игрой**: перетаскивание мышью, ресайз за уголки, сетка/привязка, скрываемые плавающие панели (палитра элементов, слои в стиле Photoshop с глазом/замком, инспектор свойств).\n• **Раскрываемые текстовые поля (`⤢`)** с предпросмотром цветов `&` и переносов строк.\n• **Отмена и возврат (`Ctrl+Z` / `Ctrl+Y`)** для всех правок холста и инспектора.\n• **Совместное редактирование GUI**: в `liveEdit`-режиме видно цветную рамку, голову и ник другого редактора прямо на редактируемом им элементе, в списке слоёв и в выборе экранов.",
-      en: "Built-in WYSIWYG screen builder inside Studio (`F3 + ~`):\n• Automatically parses all `open screen` blocks in any `.sc` script into selectable screens.\n• **1:1 live canvas**: drag-and-drop, corner resize, snap grid, collapsible floating docks (element palette, Photoshop-style layers with visibility/lock, property inspector).\n• **Expandable string fields (`⤢`)** with live `&`-color word-wrapped preview.\n• **`Ctrl+Z` / `Ctrl+Y` Undo & Redo** across canvas and inspector.\n• **Collaborative GUI editing**: shows each co-editor's custom colored frame, skin head, and name badge on selected elements, layers, and screens."
+      ru: "Встроенный визуальный WYSIWYG-редактор экранов прямо внутри Студии (`F3 + ~`):\n• Автоматически находит все блоки `open screen` и `create hud` в открытом `.sc` файле и разделяет их на отдельные экраны.\n• **Холст 1-в-1 с игрой (включая 3D-сущности и списки)**: перетаскивание мышью, ресайз за уголки, сетка/привязка, палитра элементов (`+ Box`, `+ Text`, `+ Button`, `+ Image`, `+ Player`, `+ Entity`, `+ List`, `+ Slot`, `+ Bar`, `+ Input`, `+ Slider`, `+ Toggle`), слои в стиле Photoshop и инспектор свойств.\n• **Инспектор 3D-рендеров и списков**: настройка скина (ник / URL / ресурс), автоподбора Alex/Steve, второго слоя, скорости/направления вращения, взгляда за курсором или в точку (с прицелом на холсте), а также визуальный конструктор строк списка (`+Row`, `+Sep`, `+Empty`, ширина/высота позиции, иконки, головы, бейджи, выравнивание, активность и тултипы).\n• **Раскрываемые текстовые поля (`⤢`)**, **`Ctrl+Z` / `Ctrl+Y`** и **совместное редактирование GUI (`liveEdit`)**.",
+      en: "Built-in WYSIWYG screen builder inside Studio (`F3 + ~`):\n• Automatically parses all `open screen` and `create hud` blocks in any `.sc` script into selectable screens.\n• **1:1 live canvas (including 3D Entities/Players & Rich Lists)**: drag-and-drop, corner resize, snap grid, element palette (`+ Box`, `+ Text`, `+ Button`, `+ Image`, `+ Player`, `+ Entity`, `+ List`, `+ Slot`, `+ Bar`, `+ Input`, `+ Slider`, `+ Toggle`), Photoshop-style layers, and property inspector.\n• **3D Render & List Row Inspector**: configure skin source (nick/URL/resource), Alex/Steve model, overlay, spin direction/speed, cursor/point look target (with canvas crosshair), plus an interactive list row builder (`+Row`, `+Sep`, `+Empty`, custom width/height, icons, heads, badges, alignment, active/disabled states, and tooltips).\n• **Expandable string fields (`⤢`)**, **`Ctrl+Z` / `Ctrl+Y`**, and **collaborative GUI editing (`liveEdit`)**."
     },
     example: `# Любой блок open screen в .sc сразу открывается в визуальном GUI-редакторе Студии:
 command /menu:

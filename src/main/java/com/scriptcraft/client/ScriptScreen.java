@@ -338,6 +338,7 @@ public class ScriptScreen extends Screen {
                 Button widget = Button.builder(Component.literal(button.label()), b -> onButton(button))
                         .bounds(x, y, w, h)
                         .build();
+                widget.active = !ScreenMeta.isDisabled(button);
                 buttons.put(element, addWidget(widget));
             } else if (element instanceof InputElement in) {
                 Layout l = in.layout();
@@ -348,6 +349,7 @@ public class ScriptScreen extends Screen {
                 String id = ScreenMeta.elementId(in);
                 EditBox box = new EditBox(this.font, x, y, w, h, Component.literal(in.placeholder()));
                 box.setMaxLength(Math.max(1, Math.min(1024, in.maxLength())));
+                box.setEditable(!ScreenMeta.isDisabled(in));
                 String val = !id.isEmpty() && inputDrafts.containsKey(id) ? inputDrafts.get(id) : in.value();
                 box.setValue(val);
                 if (!in.placeholder().isEmpty()) {
@@ -474,9 +476,10 @@ public class ScriptScreen extends Screen {
             if (ElementRenderer.drawsItem(element)) {
                 z = Math.min(z + ElementRenderer.ITEM_Z_STEP, ElementRenderer.MAX_Z);
             }
+            int elScroll = rawElement instanceof ListElement list ? scroll.getOrDefault(list, 0) : 0;
             boolean hovered = ElementRenderer.isHovered(this.font, element, this.width, this.height, mouseX, mouseY);
             if (hovered) {
-                String tip = ScreenMeta.elementTooltip(element);
+                String tip = ElementRenderer.hoveredTooltip(this.font, element, this.width, this.height, mouseX, mouseY, elScroll);
                 if (!tip.isEmpty()) {
                     hoveredTooltip = tip;
                 }
@@ -640,12 +643,14 @@ public class ScriptScreen extends Screen {
             if (element instanceof ButtonElement || element instanceof InputElement || ScreenMeta.isHidden(element)) {
                 continue;
             }
-            if (element instanceof SliderElement sl && ElementRenderer.isHovered(this.font, sl, this.width, this.height, mouseX, mouseY)) {
+            if (element instanceof SliderElement sl && !ScreenMeta.isDisabled(sl)
+                    && ElementRenderer.isHovered(this.font, sl, this.width, this.height, mouseX, mouseY)) {
                 draggingSlider = sl;
                 updateSliderFromMouse(sl, mouseX, true);
                 return true;
             }
-            if (element instanceof ToggleElement tg && ElementRenderer.isHovered(this.font, tg, this.width, this.height, mouseX, mouseY)) {
+            if (element instanceof ToggleElement tg && !ScreenMeta.isDisabled(tg)
+                    && ElementRenderer.isHovered(this.font, tg, this.width, this.height, mouseX, mouseY)) {
                 String id = ScreenMeta.elementId(tg);
                 boolean cur = !id.isEmpty() && toggleValues.containsKey(id) ? toggleValues.get(id) : tg.value();
                 boolean next = !cur;
@@ -711,11 +716,12 @@ public class ScriptScreen extends Screen {
             if (!(ordered.get(i) instanceof ListElement list) || ScreenMeta.isHidden(list)) {
                 continue;
             }
-            if (ElementRenderer.clickAction(this.font, list, this.width, this.height, mouseX, mouseY, 0) == null) {
+            if (!ElementRenderer.isHovered(this.font, list, this.width, this.height, mouseX, mouseY)) {
                 continue;
             }
             int max = ElementRenderer.listMaxScroll(this.font, list, this.width, this.height);
-            int next = scroll.getOrDefault(list, 0) - (int) Math.signum(delta) * ListElement.ROW;
+            int stepPx = Math.max(ListElement.ROW, list.rowHeight());
+            int next = scroll.getOrDefault(list, 0) - (int) Math.signum(delta) * stepPx;
             scroll.put(list, Math.max(0, Math.min(max, next)));
             return true;
         }
@@ -820,6 +826,7 @@ public class ScriptScreen extends Screen {
         if (element instanceof TextElement t) return t.action();
         if (element instanceof ImageElement i) return i.action();
         if (element instanceof SlotElement s) return s.action();
+        if (element instanceof com.scriptcraft.screen.EntityElement e) return e.action();
         return null;
     }
 

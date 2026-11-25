@@ -270,6 +270,92 @@ final class EffectPatterns {
         rule("hide screen element %text%", c -> new Actions.ScreenSetVisible(new Target.Self(), hudName(c.text(0)), false));
         rule("hide screen %text%", c -> new Actions.ScreenSetVisible(new Target.Self(), hudName(c.text(0)), false));
 
+        rule("enable screen element %text% to|for %target%", c -> new Actions.ScreenSetDisabled(c.target(1), hudName(c.text(0)), false));
+        rule("enable screen %text% to|for %target%", c -> new Actions.ScreenSetDisabled(c.target(1), hudName(c.text(0)), false));
+        rule("enable screen element %text%", c -> new Actions.ScreenSetDisabled(new Target.Self(), hudName(c.text(0)), false));
+        rule("enable screen %text%", c -> new Actions.ScreenSetDisabled(new Target.Self(), hudName(c.text(0)), false));
+        rule("disable screen element %text% from|for %target%", c -> new Actions.ScreenSetDisabled(c.target(1), hudName(c.text(0)), true));
+        rule("disable screen %text% from|for %target%", c -> new Actions.ScreenSetDisabled(c.target(1), hudName(c.text(0)), true));
+        rule("disable screen element %text%", c -> new Actions.ScreenSetDisabled(new Target.Self(), hudName(c.text(0)), true));
+        rule("disable screen %text%", c -> new Actions.ScreenSetDisabled(new Target.Self(), hudName(c.text(0)), true));
+
+        rule("set size of screen element %text% for|of %target% to %num% %num%",
+                c -> new Actions.ScreenSetSize(c.target(1), hudName(c.text(0)), c.num(2), c.num(3)));
+        rule("set size of screen %text% for|of %target% to %num% %num%",
+                c -> new Actions.ScreenSetSize(c.target(1), hudName(c.text(0)), c.num(2), c.num(3)));
+        rule("set size of screen element %text% to %num% %num%",
+                c -> new Actions.ScreenSetSize(new Target.Self(), hudName(c.text(0)), c.num(1), c.num(2)));
+        rule("set size of screen %text% to %num% %num%",
+                c -> new Actions.ScreenSetSize(new Target.Self(), hudName(c.text(0)), c.num(1), c.num(2)));
+
+        rule("set skin of screen element %text% for|of %target% to %expr%",
+                c -> new Actions.ScreenSetSkin(c.target(1), hudName(c.text(0)), c.expr(2)));
+        rule("set skin of screen %text% for|of %target% to %expr%",
+                c -> new Actions.ScreenSetSkin(c.target(1), hudName(c.text(0)), c.expr(2)));
+        rule("set skin of screen element %text% to %expr%",
+                c -> new Actions.ScreenSetSkin(new Target.Self(), hudName(c.text(0)), c.expr(1)));
+        rule("set skin of screen %text% to %expr%",
+                c -> new Actions.ScreenSetSkin(new Target.Self(), hudName(c.text(0)), c.expr(1)));
+
+        rule("set entity of screen element %text% for|of %target% to %expr%",
+                c -> new Actions.ScreenSetEntity(c.target(1), hudName(c.text(0)), c.expr(2)));
+        rule("set entity of screen %text% for|of %target% to %expr%",
+                c -> new Actions.ScreenSetEntity(c.target(1), hudName(c.text(0)), c.expr(2)));
+        rule("set entity of screen element %text% to %expr%",
+                c -> new Actions.ScreenSetEntity(new Target.Self(), hudName(c.text(0)), c.expr(1)));
+        rule("set entity of screen %text% to %expr%",
+                c -> new Actions.ScreenSetEntity(new Target.Self(), hudName(c.text(0)), c.expr(1)));
+
+        rule("set spin of screen element %text% for|of %target% to left %num%",
+                c -> new Actions.ScreenSetSpin(c.target(1), hudName(c.text(0)), c.num(2), -1f));
+        rule("set spin of screen %text% for|of %target% to left %num%",
+                c -> new Actions.ScreenSetSpin(c.target(1), hudName(c.text(0)), c.num(2), -1f));
+        rule("set spin of screen element %text% for|of %target% to right %num%",
+                c -> new Actions.ScreenSetSpin(c.target(1), hudName(c.text(0)), c.num(2), 1f));
+        rule("set spin of screen %text% for|of %target% to right %num%",
+                c -> new Actions.ScreenSetSpin(c.target(1), hudName(c.text(0)), c.num(2), 1f));
+        rule("set spin of screen element %text% for|of %target% to %num%",
+                c -> new Actions.ScreenSetSpin(c.target(1), hudName(c.text(0)), c.num(2), 1f));
+        rule("set spin of screen %text% for|of %target% to %num%",
+                c -> new Actions.ScreenSetSpin(c.target(1), hudName(c.text(0)), c.num(2), 1f));
+        rule("set spin of screen element %text% to left %num%",
+                c -> new Actions.ScreenSetSpin(new Target.Self(), hudName(c.text(0)), c.num(1), -1f));
+        rule("set spin of screen %text% to left %num%",
+                c -> new Actions.ScreenSetSpin(new Target.Self(), hudName(c.text(0)), c.num(1), -1f));
+        rule("set spin of screen element %text% to right %num%",
+                c -> new Actions.ScreenSetSpin(new Target.Self(), hudName(c.text(0)), c.num(1), 1f));
+        rule("set spin of screen %text% to right %num%",
+                c -> new Actions.ScreenSetSpin(new Target.Self(), hudName(c.text(0)), c.num(1), 1f));
+        rule("set spin of screen element %text% to %num%",
+                c -> new Actions.ScreenSetSpin(new Target.Self(), hudName(c.text(0)), c.num(1), 1f));
+        rule("set spin of screen %text% to %num%",
+                c -> new Actions.ScreenSetSpin(new Target.Self(), hudName(c.text(0)), c.num(1), 1f));
+
+        rule("set look of screen element %text% for|of %target% to cursor|mouse",
+                c -> new Actions.ScreenSetLook(c.target(1), hudName(c.text(0)), com.scriptcraft.screen.EntityElement.LookMode.CURSOR, null, null));
+        rule("set look of screen %text% for|of %target% to cursor|mouse",
+                c -> new Actions.ScreenSetLook(c.target(1), hudName(c.text(0)), com.scriptcraft.screen.EntityElement.LookMode.CURSOR, null, null));
+        rule("set look of screen element %text% to cursor|mouse",
+                c -> new Actions.ScreenSetLook(new Target.Self(), hudName(c.text(0)), com.scriptcraft.screen.EntityElement.LookMode.CURSOR, null, null));
+        rule("set look of screen %text% to cursor|mouse",
+                c -> new Actions.ScreenSetLook(new Target.Self(), hudName(c.text(0)), com.scriptcraft.screen.EntityElement.LookMode.CURSOR, null, null));
+        rule("set look of screen element %text% for|of %target% to none|fixed|off",
+                c -> new Actions.ScreenSetLook(c.target(1), hudName(c.text(0)), com.scriptcraft.screen.EntityElement.LookMode.NONE, null, null));
+        rule("set look of screen %text% for|of %target% to none|fixed|off",
+                c -> new Actions.ScreenSetLook(c.target(1), hudName(c.text(0)), com.scriptcraft.screen.EntityElement.LookMode.NONE, null, null));
+        rule("set look of screen element %text% to none|fixed|off",
+                c -> new Actions.ScreenSetLook(new Target.Self(), hudName(c.text(0)), com.scriptcraft.screen.EntityElement.LookMode.NONE, null, null));
+        rule("set look of screen %text% to none|fixed|off",
+                c -> new Actions.ScreenSetLook(new Target.Self(), hudName(c.text(0)), com.scriptcraft.screen.EntityElement.LookMode.NONE, null, null));
+        rule("set look of screen element %text% for|of %target% to %num% %num%",
+                c -> new Actions.ScreenSetLook(c.target(1), hudName(c.text(0)), com.scriptcraft.screen.EntityElement.LookMode.POINT, c.num(2), c.num(3)));
+        rule("set look of screen %text% for|of %target% to %num% %num%",
+                c -> new Actions.ScreenSetLook(c.target(1), hudName(c.text(0)), com.scriptcraft.screen.EntityElement.LookMode.POINT, c.num(2), c.num(3)));
+        rule("set look of screen element %text% to %num% %num%",
+                c -> new Actions.ScreenSetLook(new Target.Self(), hudName(c.text(0)), com.scriptcraft.screen.EntityElement.LookMode.POINT, c.num(1), c.num(2)));
+        rule("set look of screen %text% to %num% %num%",
+                c -> new Actions.ScreenSetLook(new Target.Self(), hudName(c.text(0)), com.scriptcraft.screen.EntityElement.LookMode.POINT, c.num(1), c.num(2)));
+
         rule("remove screen element %text% from|for %target%", c -> new Actions.ScreenRemove(c.target(1), hudName(c.text(0))));
         rule("remove screen %text% from|for %target%", c -> new Actions.ScreenRemove(c.target(1), hudName(c.text(0))));
         rule("remove screen element %text%", c -> new Actions.ScreenRemove(new Target.Self(), hudName(c.text(0))));

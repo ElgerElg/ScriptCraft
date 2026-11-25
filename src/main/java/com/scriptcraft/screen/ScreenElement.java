@@ -9,7 +9,8 @@ import java.util.function.UnaryOperator;
  * сервер её собирает и сериализует, клиент читает и рисует в {@code com.scriptcraft.client.ScriptScreen}.
  * Здесь нет ни одного клиентского класса, поэтому выделенный сервер не упадёт.
  */
-public sealed interface ScreenElement permits TextElement, ButtonElement, SlotElement, ImageElement, BarElement, ListElement, VariableListElement, InputElement, SliderElement, ToggleElement {
+public sealed interface ScreenElement permits TextElement, ButtonElement, SlotElement, ImageElement, BarElement,
+        ListElement, VariableListElement, InputElement, SliderElement, ToggleElement, EntityElement {
     ElementType type();
 
     Layout layout();
@@ -39,6 +40,7 @@ public sealed interface ScreenElement permits TextElement, ButtonElement, SlotEl
             case INPUT -> InputElement.readData(layout, buf);
             case SLIDER -> SliderElement.readData(layout, buf);
             case TOGGLE -> ToggleElement.readData(layout, buf);
+            case ENTITY -> EntityElement.readData(layout, buf);
         };
     }
 }

@@ -3,10 +3,10 @@ package com.scriptcraft.screen;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Упаковка дополнительных свойств элемента экрана (id, keep open, горячая клавиша, скрытость, tooltip)
+ * Упаковка дополнительных свойств элемента экрана (id, keep open, горячая клавиша, скрытость, tooltip, extraTags)
  * внутрь строкового поля элемента.
  *
- * Формат: "\u0001id\u0002keep(0/1)\u0002key\u0002hidden(0/1)\u0002tooltip\u0001rawAction"
+ * Формат: "\u0001id\u0002keep(0/1)\u0002key\u0002hidden(0/1)\u0002tooltip[\u0002extraTags]\u0001rawAction"
  */
 public record ScreenMeta(String id, boolean keepOpen, String hotkey, boolean hidden, String tooltip, String rawAction) {
     private static final char MARK = '\u0001';
@@ -74,6 +74,7 @@ public record ScreenMeta(String id, boolean keepOpen, String hotkey, boolean hid
         if (e instanceof InputElement in) return unpack(in.action()).id();
         if (e instanceof SliderElement sl) return unpack(sl.action()).id();
         if (e instanceof ToggleElement tg) return unpack(tg.action()).id();
+        if (e instanceof EntityElement ent) return unpack(ent.action()).id();
         return "";
     }
 
@@ -87,6 +88,7 @@ public record ScreenMeta(String id, boolean keepOpen, String hotkey, boolean hid
         if (e instanceof InputElement in) return unpack(in.action()).tooltip();
         if (e instanceof SliderElement sl) return unpack(sl.action()).tooltip();
         if (e instanceof ToggleElement tg) return unpack(tg.action()).tooltip();
+        if (e instanceof EntityElement ent) return unpack(ent.action()).tooltip();
         return "";
     }
 
@@ -98,6 +100,7 @@ public record ScreenMeta(String id, boolean keepOpen, String hotkey, boolean hid
         if (e instanceof InputElement in) return in.action();
         if (e instanceof SliderElement sl) return sl.action();
         if (e instanceof ToggleElement tg) return tg.action();
+        if (e instanceof EntityElement ent) return ent.action();
         return "";
     }
 
@@ -111,6 +114,7 @@ public record ScreenMeta(String id, boolean keepOpen, String hotkey, boolean hid
         if (e instanceof InputElement in) return unpack(in.action()).hidden();
         if (e instanceof SliderElement sl) return unpack(sl.action()).hidden();
         if (e instanceof ToggleElement tg) return unpack(tg.action()).hidden();
+        if (e instanceof EntityElement ent) return unpack(ent.action()).hidden();
         return false;
     }
 
@@ -123,7 +127,7 @@ public record ScreenMeta(String id, boolean keepOpen, String hotkey, boolean hid
             String[] parts = raw.substring(1, end).split(String.valueOf(SEP), -1);
             return parts.length > 2 ? parts[2] : "";
         }
-        String packed = elementPackedAction(e);
+        String packed = (e instanceof ListElement list) ? list.header() : elementPackedAction(e);
         if (packed == null || packed.isEmpty() || packed.charAt(0) != MARK) {
             return "";
         }
@@ -163,6 +167,20 @@ public record ScreenMeta(String id, boolean keepOpen, String hotkey, boolean hid
         return sb.toString();
     }
 
+    public static boolean isDisabled(ScreenElement e) {
+        if (e instanceof ListElement list) {
+            return list.disabled() || "1".equals(tagValue(list, "dis"));
+        }
+        return "1".equals(tagValue(e, "dis"));
+    }
+
+    public static ScreenElement withDisabled(ScreenElement e, boolean disabled) {
+        if (e instanceof ListElement list) {
+            return list.withDisabled(disabled);
+        }
+        return withExtraTag(e, "dis", disabled ? "1" : "");
+    }
+
     public static int tweenMs(ScreenElement e) {
         String v = tagValue(e, "tw");
         if (v == null) return 0;
@@ -174,6 +192,9 @@ public record ScreenMeta(String id, boolean keepOpen, String hotkey, boolean hid
     }
 
     public static float elementScale(ScreenElement e) {
+        if (e instanceof EntityElement ent) {
+            return ent.scale();
+        }
         String v = tagValue(e, "sc");
         if (v == null) return 1f;
         try {
@@ -194,6 +215,9 @@ public record ScreenMeta(String id, boolean keepOpen, String hotkey, boolean hid
     }
 
     public static float elementRotation(ScreenElement e) {
+        if (e instanceof EntityElement ent) {
+            return ent.yaw();
+        }
         String v = tagValue(e, "rt");
         if (v == null) return 0f;
         try {
@@ -272,6 +296,11 @@ public record ScreenMeta(String id, boolean keepOpen, String hotkey, boolean hid
             return new BarElement(bar.layout(), nextId, bar.value(), bar.max(), bar.direction(),
                     bar.backgroundColor(), bar.fillTexture(), bar.backgroundTexture(), bar.textureWidth(), bar.textureHeight(), bar.text(), bar.shadow());
         }
+        if (e instanceof ListElement list) {
+            ScreenMeta m = unpack(list.header());
+            String nextHdr = pack(m.id(), m.keepOpen(), m.hotkey(), m.hidden(), m.tooltip(), nextExtra, m.rawAction());
+            return list.withHeader(nextHdr);
+        }
         String packed = elementPackedAction(e);
         if (packed == null) {
             return e;
@@ -285,6 +314,7 @@ public record ScreenMeta(String id, boolean keepOpen, String hotkey, boolean hid
         if (e instanceof InputElement in) return new InputElement(in.layout(), in.value(), in.placeholder(), in.maxLength(), nextPacked);
         if (e instanceof SliderElement sl) return new SliderElement(sl.layout(), sl.label(), sl.min(), sl.max(), sl.value(), sl.step(), nextPacked);
         if (e instanceof ToggleElement tg) return new ToggleElement(tg.layout(), tg.label(), tg.value(), nextPacked);
+        if (e instanceof EntityElement ent) return ent.withAction(nextPacked);
         return e;
     }
 
@@ -296,10 +326,16 @@ public record ScreenMeta(String id, boolean keepOpen, String hotkey, boolean hid
     }
 
     public static ScreenElement withScale(ScreenElement e, float scale) {
+        if (e instanceof EntityElement ent) {
+            return ent.withScaleVal(scale);
+        }
         return withExtraTag(e, "sc", String.format(java.util.Locale.ROOT, "%.3f", Math.max(0.1f, Math.min(10f, scale))));
     }
 
     public static ScreenElement withRotation(ScreenElement e, float degrees) {
+        if (e instanceof EntityElement ent) {
+            return ent.withYawVal(degrees);
+        }
         return withExtraTag(e, "rt", String.format(java.util.Locale.ROOT, "%.2f", degrees));
     }
 
@@ -391,17 +427,24 @@ public record ScreenMeta(String id, boolean keepOpen, String hotkey, boolean hid
                     bar.backgroundColor(), bar.fillTexture(), bar.backgroundTexture(), bar.textureWidth(), bar.textureHeight(), bar.text(), bar.shadow());
         }
         if (e instanceof ListElement list) {
-            return new ListElement(list.layout(), repackAction(list.header(), hidden), list.horizontal(), list.select(), list.rows());
+            return list.withHeader(repackAction(list.header(), hidden));
         }
         if (e instanceof InputElement in) return new InputElement(in.layout(), in.value(), in.placeholder(), in.maxLength(), repackAction(in.action(), hidden));
         if (e instanceof SliderElement sl) return new SliderElement(sl.layout(), sl.label(), sl.min(), sl.max(), sl.value(), sl.step(), repackAction(sl.action(), hidden));
         if (e instanceof ToggleElement tg) return new ToggleElement(tg.layout(), tg.label(), tg.value(), repackAction(tg.action(), hidden));
+        if (e instanceof EntityElement ent) return ent.withAction(repackAction(ent.action(), hidden));
         return e;
     }
 
     public static ScreenElement withPosition(ScreenElement e, int x, int y) {
         Layout old = e.layout();
         Layout next = new Layout(x, y, old.width(), old.height(), old.anchor(), old.color(), old.layer());
+        return withLayout(e, next);
+    }
+
+    public static ScreenElement withSize(ScreenElement e, int w, int h) {
+        Layout old = e.layout();
+        Layout next = new Layout(old.x(), old.y(), Math.max(1, w), Math.max(1, h), old.anchor(), old.color(), old.layer());
         return withLayout(e, next);
     }
 
@@ -421,11 +464,12 @@ public record ScreenMeta(String id, boolean keepOpen, String hotkey, boolean hid
                     bar.backgroundColor(), bar.fillTexture(), bar.backgroundTexture(), bar.textureWidth(), bar.textureHeight(), bar.text(), bar.shadow());
         }
         if (e instanceof ListElement list) {
-            return new ListElement(next, list.header(), list.horizontal(), list.select(), list.rows());
+            return list.withLayout(next);
         }
         if (e instanceof InputElement in) return new InputElement(next, in.value(), in.placeholder(), in.maxLength(), in.action());
         if (e instanceof SliderElement sl) return new SliderElement(next, sl.label(), sl.min(), sl.max(), sl.value(), sl.step(), sl.action());
         if (e instanceof ToggleElement tg) return new ToggleElement(next, tg.label(), tg.value(), tg.action());
+        if (e instanceof EntityElement ent) return ent.withLayout(next);
         return e;
     }
 
@@ -439,7 +483,10 @@ public record ScreenMeta(String id, boolean keepOpen, String hotkey, boolean hid
         if (e instanceof ToggleElement tg) return new ToggleElement(tg.layout(), text, tg.value(), tg.action());
         if (e instanceof ListElement list) {
             ScreenMeta m = unpack(list.header());
-            return new ListElement(list.layout(), pack(m.id(), m.keepOpen(), m.hotkey(), m.hidden(), m.tooltip(), text), list.horizontal(), list.select(), list.rows());
+            return list.withHeader(pack(m.id(), m.keepOpen(), m.hotkey(), m.hidden(), m.tooltip(), extraTagsOf(list), text));
+        }
+        if (e instanceof EntityElement ent) {
+            return ent.withTarget(text, ent.playerMode());
         }
         return e;
     }
@@ -465,6 +512,7 @@ public record ScreenMeta(String id, boolean keepOpen, String hotkey, boolean hid
     public static ScreenElement withTexture(ScreenElement e, String texture) {
         if (e instanceof ImageElement i) return new ImageElement(i.layout(), texture, i.textureWidth(), i.textureHeight(), i.action());
         if (e instanceof SlotElement s && s.content() == SlotElement.Content.IMAGE) return s.withValue(texture);
+        if (e instanceof EntityElement ent) return ent.withSkin(texture);
         return e;
     }
 

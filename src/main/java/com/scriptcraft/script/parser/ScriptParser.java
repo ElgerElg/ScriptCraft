@@ -1968,18 +1968,23 @@ public final class ScriptParser {
         boolean horizontal = false;
         boolean select = false;
         boolean hidden = false;
+        boolean disabled = false;
         boolean noScrollbar = false;
         String header = "";
         String from = "";
         String id = "";
         String tooltip = "";
+        String emptyText = "";
+        String columnWidths = "";
+        int rowHeight = ListElement.ROW;
+        int spacing = 0;
+        float rowScale = 1.0f;
+        byte align = ListElement.ALIGN_LEFT;
+        int bgColor = ListElement.DEFAULT_BG;
+        int borderColor = ListElement.DEFAULT_BORDER;
         int x = 0, y = 0, w = 120, h = 140, layer = 0;
         int color = 0xFFFFFFFF;
         Anchor anchor = Anchor.CENTER;
-        int boxGrad = 0;
-        int boxBorder = 0;
-        int boxBorderW = 1;
-        boolean boxHoriz = false;
         while (idx < t.size()) {
             String opt = word(t, idx);
             switch (opt) {
@@ -1995,6 +2000,24 @@ public final class ScriptParser {
                     select = true;
                     idx++;
                 }
+                case "disabled", "inactive" -> {
+                    if (idx + 1 < t.size() && (word(t, idx + 1).equals("true") || word(t, idx + 1).equals("false"))) {
+                        disabled = word(t, idx + 1).equals("true");
+                        idx += 2;
+                    } else {
+                        disabled = true;
+                        idx++;
+                    }
+                }
+                case "active", "enabled" -> {
+                    if (idx + 1 < t.size() && (word(t, idx + 1).equals("true") || word(t, idx + 1).equals("false"))) {
+                        disabled = word(t, idx + 1).equals("false");
+                        idx += 2;
+                    } else {
+                        disabled = false;
+                        idx++;
+                    }
+                }
                 case "from" -> {
                     if (idx + 1 >= t.size() || !t.get(idx + 1).value().endsWith("::*}")) {
                         throw new ParseException("нужно: from {имя::*}");
@@ -2005,6 +2028,54 @@ public final class ScriptParser {
                 }
                 case "header" -> {
                     header = quoted(t, idx + 1);
+                    idx += 2;
+                }
+                case "empty_text", "empty-text", "empty", "placeholder" -> {
+                    emptyText = quoted(t, idx + 1);
+                    idx += 2;
+                }
+                case "columns", "widths" -> {
+                    columnWidths = quoted(t, idx + 1);
+                    idx += 2;
+                }
+                case "row_height", "row-height", "item_height", "item-height", "row_size", "row-size" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: row_height <число>");
+                    rowHeight = Math.max(8, Math.min(120, parseInt(t.get(idx + 1).value())));
+                    idx += 2;
+                }
+                case "spacing", "gap" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: spacing <число>");
+                    spacing = Math.max(0, Math.min(32, parseInt(t.get(idx + 1).value())));
+                    idx += 2;
+                }
+                case "scale", "row_scale", "row-scale", "text_scale", "text-scale" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: scale <число>");
+                    rowScale = (float) Math.max(0.5, Math.min(3.0, parseDouble(t.get(idx + 1).value())));
+                    idx += 2;
+                }
+                case "align" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: align left|center|right");
+                    align = ListElement.parseAlign(t.get(idx + 1).value(), ListElement.ALIGN_LEFT);
+                    idx += 2;
+                }
+                case "centered" -> {
+                    align = ListElement.ALIGN_CENTER;
+                    idx++;
+                }
+                case "background", "bg" -> {
+                    if (idx + 1 < t.size() && word(t, idx + 1).equals("none")) {
+                        bgColor = 0;
+                    } else {
+                        bgColor = parseColor(idx + 1 < t.size() ? t.get(idx + 1).value() : "");
+                    }
+                    idx += 2;
+                }
+                case "border" -> {
+                    if (idx + 1 < t.size() && word(t, idx + 1).equals("none")) {
+                        borderColor = 0;
+                    } else {
+                        borderColor = parseColor(idx + 1 < t.size() ? t.get(idx + 1).value() : "");
+                    }
                     idx += 2;
                 }
                 case "at" -> {
@@ -2070,79 +2141,276 @@ public final class ScriptParser {
                     tooltip = quoted(t, idx + 1);
                     idx += 2;
                 }
-                default -> throw new ParseException("у list нет параметра '" + opt + "' (from, vertical, horizontal, select, header, at, size, anchor, layer, color, id, hidden, tooltip, no scrollbar, no slider)");
+                default -> throw new ParseException("у list нет параметра '" + opt + "' (from, vertical, horizontal, select, header, row_height, spacing, scale, align, disabled, active, empty_text, columns, background, border, at, size, anchor, layer, color, id, hidden, tooltip, no scrollbar)");
             }
         }
         Layout layout = new Layout(x, y, w, h, anchor, color, layer);
-        String packedHeader = com.scriptcraft.screen.ScreenMeta.pack(id, false, noScrollbar ? "noslider" : "", hidden, tooltip, header);
+        String packedHeader = com.scriptcraft.screen.ScreenMeta.pack(id, false, noScrollbar ? "noslider" : "", hidden, tooltip,
+                disabled ? "dis1" : "", header);
         if (!from.isEmpty()) {
             if (nested.size() > 1) {
                 throw new ParseException("у list from одна строка-шаблон: row \"%loop-index%\"");
             }
-            String rowText = "%loop-index% x%loop-value%";
-            String rowAction = "";
-            if (!nested.isEmpty()) {
-                ListElement.Row template = parseRow(nested.get(0));
-                rowText = template.text();
-                rowAction = template.action();
-            }
-            return new ParsedElement(id, new VariableListElement(layout, packedHeader, horizontal, select, from, rowText, rowAction));
+            ParsedRowResult template = nested.isEmpty()
+                    ? new ParsedRowResult(new ListElement.Row("%loop-index% x%loop-value%", ""), "")
+                    : parseRow(nested.get(0));
+            return new ParsedElement(id, new VariableListElement(
+                    layout, packedHeader, horizontal, select, disabled, rowHeight, spacing, rowScale,
+                    align, bgColor, borderColor, emptyText, columnWidths,
+                    from, template.row(), template.rawBarExpr()));
         }
-        if (nested.isEmpty()) {
-            throw new ParseException("у list нет строк: row \"текст\" run \"/команда\"");
-        }
-        int base = nested.get(0).indent();
         List<ListElement.Row> rows = new ArrayList<>();
-        int i = 0;
-        while (i < nested.size()) {
-            Line rowLine = nested.get(i);
-            int rowEnd = blockEnd(nested, i);
-            if (rowLine.indent() != base) {
-                error(rowLine, "неверный отступ");
-            } else if (rowEnd > i + 1) {
-                error(nested.get(i + 1), "у row нет вложенных строк");
-            } else {
-                rows.add(parseRow(rowLine));
+        if (!nested.isEmpty()) {
+            int base = nested.get(0).indent();
+            int i = 0;
+            while (i < nested.size()) {
+                Line rowLine = nested.get(i);
+                int rowEnd = blockEnd(nested, i);
+                if (rowLine.indent() != base) {
+                    error(rowLine, "неверный отступ");
+                } else if (rowEnd > i + 1) {
+                    error(nested.get(i + 1), "у строки списка нет вложенных строк");
+                } else {
+                    rows.add(parseRow(rowLine).row());
+                }
+                i = rowEnd;
             }
-            i = rowEnd;
         }
-        if (rows.isEmpty()) {
-            throw new ParseException("у list нет строк row");
-        }
-        return new ParsedElement(id, new ListElement(layout, packedHeader, horizontal, select, List.copyOf(rows)));
+        return new ParsedElement(id, new ListElement(layout, packedHeader, horizontal, select, disabled,
+                rowHeight, spacing, rowScale, align, bgColor, borderColor, emptyText, columnWidths, List.copyOf(rows)));
     }
 
-    private ListElement.Row parseRow(Line line) throws ParseException {
+    private record ParsedRowResult(ListElement.Row row, String rawBarExpr) {
+    }
+
+    private ParsedRowResult parseRow(Line line) throws ParseException {
         List<Token> t = Tokenizer.tokenize(line.text());
-        if (!word(t, 0).equals("row")) {
-            throw new ParseException("внутри list пишется row \"текст\" [run \"/команда\" | close]");
+        String head = word(t, 0);
+        if (head.equals("separator") || head.equals("divider")) {
+            int idx = 1;
+            String label = "";
+            if (idx < t.size() && t.get(idx).quoted()) {
+                label = t.get(idx).value();
+                idx++;
+            }
+            int sepColor = 0;
+            int customH = 0;
+            int customW = 0;
+            byte align = ListElement.ALIGN_INHERIT;
+            while (idx < t.size()) {
+                String opt = word(t, idx);
+                switch (opt) {
+                    case "color" -> {
+                        sepColor = parseColor(idx + 1 < t.size() ? t.get(idx + 1).value() : "");
+                        idx += 2;
+                    }
+                    case "height", "h" -> {
+                        if (idx + 1 >= t.size()) throw new ParseException("нужно: height <число>");
+                        customH = Math.max(2, Math.min(80, parseInt(t.get(idx + 1).value())));
+                        idx += 2;
+                    }
+                    case "width", "w" -> {
+                        if (idx + 1 >= t.size()) throw new ParseException("нужно: width <число>");
+                        customW = Math.max(2, Math.min(1000, parseInt(t.get(idx + 1).value())));
+                        idx += 2;
+                    }
+                    case "align" -> {
+                        if (idx + 1 >= t.size()) throw new ParseException("нужно: align left|center|right");
+                        align = ListElement.parseAlign(t.get(idx + 1).value(), ListElement.ALIGN_CENTER);
+                        idx += 2;
+                    }
+                    case "left", "center", "centered", "right" -> {
+                        align = ListElement.parseAlign(opt.equals("centered") ? "center" : opt, ListElement.ALIGN_CENTER);
+                        idx++;
+                    }
+                    default -> throw new ParseException("у separator нет параметра '" + opt + "' (color, height, width, align)");
+                }
+            }
+            ListElement.Row sep = new ListElement.Row(
+                    ListElement.RowKind.SEPARATOR, label, "", "", 1, "", "", 0,
+                    -1f, 0, "", "", customW, customH, align, ListElement.STATE_NORMAL, sepColor, "", "");
+            return new ParsedRowResult(sep, "");
         }
-        String label = quoted(t, 1);
+        if (head.equals("empty") || head.equals("spacer") || head.equals("blank")) {
+            int idx = 1;
+            int customH = 0;
+            int customW = 0;
+            if (idx < t.size() && !t.get(idx).quoted() && t.get(idx).value().matches("\\d+")) {
+                customH = Math.max(2, Math.min(160, parseInt(t.get(idx).value())));
+                idx++;
+            }
+            while (idx < t.size()) {
+                String opt = word(t, idx);
+                switch (opt) {
+                    case "height", "h" -> {
+                        if (idx + 1 >= t.size()) throw new ParseException("нужно: height <число>");
+                        customH = Math.max(2, Math.min(160, parseInt(t.get(idx + 1).value())));
+                        idx += 2;
+                    }
+                    case "width", "w" -> {
+                        if (idx + 1 >= t.size()) throw new ParseException("нужно: width <число>");
+                        customW = Math.max(2, Math.min(1000, parseInt(t.get(idx + 1).value())));
+                        idx += 2;
+                    }
+                    default -> throw new ParseException("у empty/spacer нет параметра '" + opt + "' (height, width)");
+                }
+            }
+            return new ParsedRowResult(ListElement.Row.empty(customW, customH), "");
+        }
+        if (!head.equals("row")) {
+            throw new ParseException("внутри list пишется row \"текст\" [...], separator [\"текст\"] или empty [высота]");
+        }
+        int idx = 1;
+        String label = "";
+        if (idx < t.size() && t.get(idx).quoted()) {
+            label = t.get(idx).value();
+            idx++;
+        }
+        String rightText = "";
+        String icon = "";
+        int iconCount = 1;
+        String headSkin = "";
+        String badge = "";
+        int badgeColor = 0xFFF59E0B;
+        float barProgress = -1f;
+        String rawBarExpr = "";
+        int barColor = 0xFF3B82F6;
+        String buttonLabel = "";
+        String buttonRawAction = "";
+        int customW = 0;
+        int customH = 0;
+        byte align = ListElement.ALIGN_INHERIT;
+        byte state = ListElement.STATE_NORMAL;
+        int rowColor = 0;
+        String tooltip = "";
         String action = "";
         boolean keepOpen = false;
-        int idx = 2;
-        int boxGrad = 0;
-        int boxBorder = 0;
-        int boxBorderW = 1;
-        boolean boxHoriz = false;
+
         while (idx < t.size()) {
             String opt = word(t, idx);
-            if (opt.equals("run") || opt.equals("function")) {
-                ParsedScreenRun parsedRun = parseScreenRun(line, t, idx, opt.equals("function"));
-                action = parsedRun.action();
-                idx = parsedRun.nextIdx();
-            } else if (opt.equals("close")) {
-                action = "close";
-                idx++;
-            } else if (opt.equals("keep") || opt.equals("stay")) {
-                expectWord(t, idx + 1, "open");
-                keepOpen = true;
-                idx += 2;
-            } else {
-                throw new ParseException("у row ожидается run \"/команда\", run Func(...), keep open или close");
+            switch (opt) {
+                case "run", "function" -> {
+                    ParsedScreenRun parsedRun = parseScreenRun(line, t, idx, opt.equals("function"));
+                    action = parsedRun.action();
+                    idx = parsedRun.nextIdx();
+                }
+                case "close" -> {
+                    action = "close";
+                    idx++;
+                }
+                case "keep", "stay" -> {
+                    expectWord(t, idx + 1, "open");
+                    keepOpen = true;
+                    idx += 2;
+                }
+                case "width", "w" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: width <число>");
+                    customW = Math.max(8, Math.min(1000, parseInt(t.get(idx + 1).value())));
+                    idx += 2;
+                }
+                case "height", "h" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: height <число>");
+                    customH = Math.max(8, Math.min(160, parseInt(t.get(idx + 1).value())));
+                    idx += 2;
+                }
+                case "align" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: align left|center|right");
+                    align = ListElement.parseAlign(t.get(idx + 1).value(), ListElement.ALIGN_LEFT);
+                    idx += 2;
+                }
+                case "left", "center", "centered" -> {
+                    align = ListElement.parseAlign(opt.equals("centered") ? "center" : opt, ListElement.ALIGN_LEFT);
+                    idx++;
+                }
+                case "right" -> {
+                    if (idx + 1 < t.size() && t.get(idx + 1).quoted()) {
+                        rightText = t.get(idx + 1).value();
+                        idx += 2;
+                    } else {
+                        align = ListElement.ALIGN_RIGHT;
+                        idx++;
+                    }
+                }
+                case "active", "selected", "current" -> {
+                    state = ListElement.STATE_ACTIVE;
+                    idx++;
+                }
+                case "disabled", "inactive" -> {
+                    state = ListElement.STATE_DISABLED;
+                    idx++;
+                }
+                case "color", "background", "bg" -> {
+                    rowColor = parseColor(idx + 1 < t.size() ? t.get(idx + 1).value() : "");
+                    idx += 2;
+                }
+                case "tooltip", "hover" -> {
+                    tooltip = quoted(t, idx + 1);
+                    idx += 2;
+                }
+                case "subtext", "right_text", "right-text" -> {
+                    rightText = quoted(t, idx + 1);
+                    idx += 2;
+                }
+                case "icon", "image" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: icon \"<текстура или предмет>\"");
+                    icon = t.get(idx + 1).value();
+                    idx += 2;
+                }
+                case "item" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: item <предмет> [количество]");
+                    icon = t.get(idx + 1).value();
+                    idx += 2;
+                    if (idx < t.size() && !t.get(idx).quoted() && t.get(idx).value().matches("\\d+")) {
+                        iconCount = Math.max(1, Math.min(64, parseInt(t.get(idx).value())));
+                        idx++;
+                    }
+                }
+                case "head", "skin" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: head \"<ник|ссылка|ресурс>\"");
+                    headSkin = t.get(idx + 1).value();
+                    idx += 2;
+                }
+                case "badge" -> {
+                    badge = quoted(t, idx + 1);
+                    idx += 2;
+                }
+                case "badge_color", "badge-color" -> {
+                    badgeColor = parseColor(idx + 1 < t.size() ? t.get(idx + 1).value() : "");
+                    idx += 2;
+                }
+                case "bar", "progress" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: bar <0..100 или V/M>");
+                    rawBarExpr = t.get(idx + 1).value();
+                    barProgress = com.scriptcraft.script.runtime.VariableLists.parseBarSpec(rawBarExpr);
+                    if (barProgress < 0f && !rawBarExpr.contains("%") && !rawBarExpr.contains("{")) {
+                        throw new ParseException("ожидается число 0..100 или дробь V/M для bar в row");
+                    }
+                    if (barProgress < 0f) barProgress = 0f;
+                    idx += 2;
+                }
+                case "bar_color", "bar-color" -> {
+                    barColor = parseColor(idx + 1 < t.size() ? t.get(idx + 1).value() : "");
+                    idx += 2;
+                }
+                case "button", "btn" -> {
+                    buttonLabel = quoted(t, idx + 1);
+                    idx += 2;
+                }
+                case "button_run", "button-run" -> {
+                    ParsedScreenRun parsedRun = parseScreenRun(line, t, idx, false);
+                    buttonRawAction = parsedRun.action();
+                    idx = parsedRun.nextIdx();
+                }
+                default -> throw new ParseException("у row нет параметра '" + opt + "' (run, keep open, close, width, height, align, active, disabled, tooltip, icon, item, head, right, badge, bar, button, color)");
             }
         }
-        return new ListElement.Row(label, com.scriptcraft.screen.ScreenMeta.pack("", keepOpen, "", false, action));
+        String packedAct = com.scriptcraft.screen.ScreenMeta.pack("", keepOpen, "", false, action);
+        String packedBtn = buttonRawAction.isEmpty() ? "" : com.scriptcraft.screen.ScreenMeta.pack("", keepOpen, "", false, buttonRawAction);
+        ListElement.Row row = new ListElement.Row(
+                ListElement.RowKind.NORMAL, label, rightText, icon, iconCount, headSkin,
+                badge, badgeColor, barProgress, barColor, buttonLabel, packedBtn,
+                customW, customH, align, state, rowColor, tooltip, packedAct);
+        return new ParsedRowResult(row, rawBarExpr);
     }
 
     private record ParsedScreenRun(String action, int nextIdx) {
@@ -2264,23 +2532,34 @@ public final class ScriptParser {
     }
 
     /** Какие параметры допустимы у каждого вида элемента (лишний параметр — понятная ошибка, а не тихое игнорирование). */
+    private static final Set<String> ENTITY_OPT_SET = Set.of(
+            "at", "size", "anchor", "color", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey",
+            "hidden", "disabled", "inactive", "tooltip", "hover", "scale", "entity_size", "entity-size",
+            "hscale", "hover_scale", "hover-scale", "follow", "hover_circle", "hover-circle", "hover_color", "hover-color",
+            "skin", "model", "auto", "slim", "alex", "wide", "steve", "classic", "overlay", "no", "without",
+            "yaw", "rotate", "rotation", "pitch", "roll", "spin", "look", "clip",
+            "baby", "child", "sneak", "sneaking", "crouch", "crouching", "walk", "walking", "nametag", "nbt",
+            "with", "weapon", "hand", "mainhand", "offhand", "shield", "helmet", "head", "chestplate", "chest", "leggings", "legs", "boots", "feet"
+    );
+
     private static final Map<String, Set<String>> ELEMENT_OPTIONS = Map.ofEntries(
-            Map.entry("text", Set.of("at", "anchor", "color", "shadow", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "tooltip", "hover",
+            Map.entry("text", Set.of("at", "anchor", "color", "shadow", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "disabled", "inactive", "tooltip", "hover",
                     "scale", "rotate", "rotation", "hscale", "hover_scale", "hover-scale", "follow", "hover_circle", "hover-circle", "hover_color", "hover-color")),
-            Map.entry("button", Set.of("at", "size", "anchor", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "layer", "id", "tooltip", "hover")),
-            Map.entry("image", Set.of("at", "size", "texture", "anchor", "color", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "tooltip", "hover",
+            Map.entry("button", Set.of("at", "size", "anchor", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "disabled", "inactive", "layer", "id", "tooltip", "hover")),
+            Map.entry("image", Set.of("at", "size", "texture", "anchor", "color", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "disabled", "inactive", "tooltip", "hover",
                     "scale", "rotate", "rotation", "hscale", "hover_scale", "hover-scale", "frames", "fps", "follow", "hover_circle", "hover-circle", "hover_color", "hover-color")),
             Map.entry("box", Set.of("at", "size", "anchor", "color", "gradient", "to", "horizontal", "vertical", "border", "border_width", "border-width",
                     "radius", "shadow", "blur", "scale", "rotate", "rotation", "hscale", "hover_scale", "hover-scale", "follow", "hover_circle", "hover-circle", "hover_color", "hover-color",
-                    "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "tooltip", "hover")),
-            Map.entry("slot", Set.of("at", "size", "anchor", "color", "no", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "tooltip", "hover",
+                    "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "disabled", "inactive", "tooltip", "hover")),
+            Map.entry("slot", Set.of("at", "size", "anchor", "color", "no", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "disabled", "inactive", "tooltip", "hover",
                     "follow", "hover_circle", "hover-circle", "hover_color", "hover-color")),
             Map.entry("bar", Set.of("at", "size", "texture", "anchor", "color", "layer", "id", "value", "max", "direction",
                     "background", "fill", "text", "shadow", "hidden", "tooltip", "hover")),
             Map.entry("hotbar", Set.of("at", "size", "anchor", "color", "no", "layer", "id", "spacing")),
-            Map.entry("input", Set.of("at", "size", "anchor", "color", "layer", "id", "value", "placeholder", "hint", "max", "length", "run", "function", "hidden", "tooltip", "hover")),
-            Map.entry("slider", Set.of("at", "size", "anchor", "color", "layer", "id", "from", "to", "min", "max", "value", "step", "run", "function", "hidden", "tooltip", "hover")),
-            Map.entry("toggle", Set.of("at", "size", "anchor", "color", "layer", "id", "value", "checked", "run", "function", "hidden", "tooltip", "hover")));
+            Map.entry("input", Set.of("at", "size", "anchor", "color", "layer", "id", "value", "placeholder", "hint", "max", "length", "run", "function", "hidden", "disabled", "inactive", "tooltip", "hover")),
+            Map.entry("slider", Set.of("at", "size", "anchor", "color", "layer", "id", "from", "to", "min", "max", "value", "step", "run", "function", "hidden", "disabled", "inactive", "tooltip", "hover")),
+            Map.entry("toggle", Set.of("at", "size", "anchor", "color", "layer", "id", "value", "checked", "run", "function", "hidden", "disabled", "inactive", "tooltip", "hover")),
+            Map.entry("entity", ENTITY_OPT_SET));
 
     /**
      * Элемент экрана или HUD (одна строка; "hotbar" раскладывается в 9 слотов):
@@ -2301,10 +2580,26 @@ public final class ScriptParser {
         String id = "";
         int count = 1;
         SlotElement.Content slotContent = SlotElement.Content.ITEM;
+        boolean entPlayerMode = false;
         switch (kind) {
             case "text", "button", "image" -> {
                 main = quoted(t, 1);
                 idx = 2;
+            }
+            case "entity", "player", "skin" -> {
+                entPlayerMode = !kind.equals("entity");
+                kind = "entity";
+                idx = 1;
+                if (t.size() > 1) {
+                    Token first = t.get(1);
+                    if (first.quoted() || !ENTITY_OPT_SET.contains(first.value().toLowerCase(Locale.ROOT))) {
+                        main = first.value();
+                        idx = 2;
+                    }
+                }
+                if (!entPlayerMode && ("player".equalsIgnoreCase(main) || "minecraft:player".equalsIgnoreCase(main) || "self".equalsIgnoreCase(main))) {
+                    entPlayerMode = true;
+                }
             }
             case "box", "rect" -> {
                 kind = "box";
@@ -2367,14 +2662,14 @@ public final class ScriptParser {
                     idx = 2;
                 }
             }
-            default -> throw new ParseException("неизвестный элемент: " + kind + " (text, button, image, slot, bar, hotbar, input, slider, toggle)");
+            default -> throw new ParseException("неизвестный элемент: " + kind + " (text, button, image, box, slot, bar, hotbar, list, entity, player, skin, input, slider, toggle)");
         }
 
         int x = 0, y = 0, w = 0, h = 0, texW = 0, texH = 0, layer = 0, spacing = -1;
         int color = 0xFFFFFFFF;
         boolean colorSet = false, atSet = false, anchorSet = false;
         Anchor anchor = Anchor.CENTER;
-        boolean shadow = false, frame = true, keepOpen = false, hidden = false;
+        boolean shadow = false, frame = true, keepOpen = false, hidden = false, disabled = false;
         String hotkey = "";
         String tooltip = "";
         // У кнопки клик без run всё равно закрывает экран. У текста, картинки и слота клика нет, пока не написать run или close.
@@ -2395,7 +2690,7 @@ public final class ScriptParser {
         int boxRadius = 0;
         boolean boxHoriz = false;
         boolean boxBlur = false;
-        double elScale = 1.0;
+        double elScale = kind.equals("entity") ? 0.0 : 1.0;
         double elHoverScale = 1.0;
         double elRotation = 0.0;
         int spriteFrames = 1;
@@ -2403,6 +2698,17 @@ public final class ScriptParser {
         boolean followCursor = false;
         int hoverCircle = 0;
         int hoverCircleColor = 0x38BDF8;
+
+        // Параметры 3D-рендера сущности / игрока / скина
+        String entSkin = "";
+        com.scriptcraft.screen.EntityElement.ModelStyle entModelStyle = com.scriptcraft.screen.EntityElement.ModelStyle.AUTO;
+        boolean entOverlay = true;
+        float entPitch = 0f, entRoll = 0f, entSpinSpeed = 0f;
+        com.scriptcraft.screen.EntityElement.LookMode entLookMode = com.scriptcraft.screen.EntityElement.LookMode.NONE;
+        int entLookX = 0, entLookY = 0;
+        boolean entClip = false, entBaby = false, entSneaking = false, entWalk = false, entNametag = false;
+        String entNbt = "";
+        Map<String, String> entEquip = new LinkedHashMap<>();
         while (idx < t.size()) {
             String opt = word(t, idx);
             if (allowed == null || !allowed.contains(opt)) {
@@ -2472,6 +2778,10 @@ public final class ScriptParser {
                     hidden = true;
                     idx++;
                 }
+                case "disabled", "inactive" -> {
+                    disabled = true;
+                    idx++;
+                }
                 case "tooltip", "hover" -> {
                     tooltip = quoted(t, idx + 1);
                     idx += 2;
@@ -2523,10 +2833,17 @@ public final class ScriptParser {
                     id = EffectPatterns.hudName(t.get(idx + 1).value());
                     idx += 2;
                 }
-                case "no" -> {
-                    expectWord(t, idx + 1, "frame");
-                    frame = false;
-                    idx += 2;
+                case "no", "without" -> {
+                    String nw = word(t, idx + 1);
+                    if (nw.equals("frame") && !kind.equals("entity")) {
+                        frame = false;
+                        idx += 2;
+                    } else if (nw.equals("overlay") && kind.equals("entity")) {
+                        entOverlay = false;
+                        idx += 2;
+                    } else {
+                        throw new ParseException(kind.equals("entity") ? "ожидается 'no overlay'" : "ожидается 'no frame'");
+                    }
                 }
                 case "spacing" -> {
                     if (idx + 1 >= t.size()) throw new ParseException("нужно: spacing N");
@@ -2621,7 +2938,7 @@ public final class ScriptParser {
                     boxBlur = true;
                     idx++;
                 }
-                case "scale" -> {
+                case "scale", "entity_size", "entity-size" -> {
                     elScale = parseDouble(idx + 1 < t.size() ? t.get(idx + 1).value() : "1");
                     idx += 2;
                 }
@@ -2629,8 +2946,162 @@ public final class ScriptParser {
                     elHoverScale = parseDouble(idx + 1 < t.size() ? t.get(idx + 1).value() : "1");
                     idx += 2;
                 }
-                case "rotate", "rotation" -> {
+                case "yaw", "rotate", "rotation" -> {
                     elRotation = parseDouble(idx + 1 < t.size() ? t.get(idx + 1).value() : "0");
+                    idx += 2;
+                }
+                case "pitch" -> {
+                    entPitch = (float) parseDouble(idx + 1 < t.size() ? t.get(idx + 1).value() : "0");
+                    idx += 2;
+                }
+                case "roll" -> {
+                    entRoll = (float) parseDouble(idx + 1 < t.size() ? t.get(idx + 1).value() : "0");
+                    idx += 2;
+                }
+                case "skin" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: skin \"<ник|ссылка|ресурс>\"");
+                    entSkin = t.get(idx + 1).value();
+                    entPlayerMode = true;
+                    idx += 2;
+                }
+                case "model" -> {
+                    com.scriptcraft.screen.EntityElement.ModelStyle ms =
+                            com.scriptcraft.screen.EntityElement.ModelStyle.byName(idx + 1 < t.size() ? t.get(idx + 1).value() : "");
+                    if (ms == null) throw new ParseException("ожидается model auto, slim (alex) или wide (steve)");
+                    entModelStyle = ms;
+                    idx += 2;
+                }
+                case "auto" -> {
+                    entModelStyle = com.scriptcraft.screen.EntityElement.ModelStyle.AUTO;
+                    idx++;
+                }
+                case "slim", "alex" -> {
+                    entModelStyle = com.scriptcraft.screen.EntityElement.ModelStyle.SLIM;
+                    entPlayerMode = true;
+                    idx++;
+                }
+                case "wide", "steve", "classic" -> {
+                    entModelStyle = com.scriptcraft.screen.EntityElement.ModelStyle.WIDE;
+                    entPlayerMode = true;
+                    idx++;
+                }
+                case "overlay" -> {
+                    if (idx + 1 < t.size() && (word(t, idx + 1).equals("true") || word(t, idx + 1).equals("false"))) {
+                        entOverlay = word(t, idx + 1).equals("true");
+                        idx += 2;
+                    } else {
+                        entOverlay = true;
+                        idx++;
+                    }
+                }
+                case "spin" -> {
+                    int cur = idx + 1;
+                    float sign = 1f;
+                    if (cur < t.size()) {
+                        String dir = word(t, cur);
+                        if (dir.equals("left") || dir.equals("ccw")) {
+                            sign = -1f;
+                            cur++;
+                        } else if (dir.equals("right") || dir.equals("cw")) {
+                            sign = 1f;
+                            cur++;
+                        } else if (dir.equals("off") || dir.equals("none")) {
+                            entSpinSpeed = 0f;
+                            idx = cur + 1;
+                            break;
+                        }
+                    }
+                    if (cur < t.size() && word(t, cur).equals("speed")) {
+                        cur++;
+                    }
+                    if (cur < t.size() && !t.get(cur).quoted() && NUMBER.matcher(t.get(cur).value()).matches()) {
+                        entSpinSpeed = (float) parseDouble(t.get(cur).value()) * sign;
+                        idx = cur + 1;
+                    } else {
+                        entSpinSpeed = 35f * sign;
+                        idx = cur;
+                    }
+                }
+                case "look" -> {
+                    int cur = idx + 1;
+                    if (cur < t.size() && word(t, cur).equals("at")) {
+                        cur++;
+                    }
+                    String lw = word(t, cur);
+                    if (lw.equals("cursor") || lw.equals("mouse")) {
+                        entLookMode = com.scriptcraft.screen.EntityElement.LookMode.CURSOR;
+                        idx = cur + 1;
+                    } else if (lw.equals("none") || lw.equals("fixed") || lw.equals("off")) {
+                        entLookMode = com.scriptcraft.screen.EntityElement.LookMode.NONE;
+                        idx = cur + 1;
+                    } else {
+                        if (lw.equals("point") || lw.equals("target")) {
+                            cur++;
+                        }
+                        if (cur + 1 >= t.size()) {
+                            throw new ParseException("нужно: look cursor  или  look at <X> <Y>");
+                        }
+                        entLookMode = com.scriptcraft.screen.EntityElement.LookMode.POINT;
+                        entLookX = parseInt(t.get(cur).value());
+                        entLookY = parseInt(t.get(cur + 1).value());
+                        idx = cur + 2;
+                    }
+                }
+                case "clip" -> {
+                    entClip = true;
+                    idx++;
+                }
+                case "baby", "child" -> {
+                    entBaby = true;
+                    idx++;
+                }
+                case "sneak", "sneaking", "crouch", "crouching" -> {
+                    entSneaking = true;
+                    idx++;
+                }
+                case "walk", "walking" -> {
+                    entWalk = true;
+                    idx++;
+                }
+                case "nametag" -> {
+                    entNametag = true;
+                    idx++;
+                }
+                case "nbt" -> {
+                    entNbt = quoted(t, idx + 1);
+                    idx += 2;
+                }
+                case "with" -> {
+                    idx++;
+                }
+                case "weapon", "hand", "mainhand" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: weapon <предмет>");
+                    entEquip.put("mainhand", t.get(idx + 1).value());
+                    idx += 2;
+                }
+                case "offhand", "shield" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: offhand <предмет>");
+                    entEquip.put("offhand", t.get(idx + 1).value());
+                    idx += 2;
+                }
+                case "helmet", "head" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: helmet <предмет>");
+                    entEquip.put("head", t.get(idx + 1).value());
+                    idx += 2;
+                }
+                case "chestplate", "chest" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: chestplate <предмет>");
+                    entEquip.put("chest", t.get(idx + 1).value());
+                    idx += 2;
+                }
+                case "leggings", "legs" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: leggings <предмет>");
+                    entEquip.put("legs", t.get(idx + 1).value());
+                    idx += 2;
+                }
+                case "boots", "feet" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: boots <предмет>");
+                    entEquip.put("feet", t.get(idx + 1).value());
                     idx += 2;
                 }
                 case "frames" -> {
@@ -2671,15 +3142,23 @@ public final class ScriptParser {
             if (w <= 0) w = 100;
             if (h <= 0) h = 60;
         }
+        if (kind.equals("entity")) {
+            if (w <= 0) w = com.scriptcraft.screen.EntityElement.DEFAULT_WIDTH;
+            if (h <= 0) h = com.scriptcraft.screen.EntityElement.DEFAULT_HEIGHT;
+        }
         StringBuilder extraTags = new StringBuilder();
-        if (Math.abs(elScale - 1.0) > 0.001) {
+        if (disabled) {
+            extraTags.append("dis1");
+        }
+        if (!kind.equals("entity") && Math.abs(elScale - 1.0) > 0.001) {
+            if (!extraTags.isEmpty()) extraTags.append(';');
             extraTags.append("sc").append(String.format(Locale.ROOT, "%.3f", Math.max(0.1, Math.min(10.0, elScale))));
         }
         if (Math.abs(elHoverScale - 1.0) > 0.001) {
             if (!extraTags.isEmpty()) extraTags.append(';');
             extraTags.append("hs").append(String.format(Locale.ROOT, "%.3f", Math.max(0.1, Math.min(10.0, elHoverScale))));
         }
-        if (Math.abs(elRotation) > 0.01) {
+        if (!kind.equals("entity") && Math.abs(elRotation) > 0.01) {
             if (!extraTags.isEmpty()) extraTags.append(';');
             extraTags.append("rt").append(String.format(Locale.ROOT, "%.2f", elRotation));
         }
@@ -2723,6 +3202,20 @@ public final class ScriptParser {
                 yield new com.scriptcraft.screen.SliderElement(layout, main, sliderMin, sliderMax, initVal, sliderStep, packedAction).withValue(initVal);
             }
             case "toggle" -> new com.scriptcraft.screen.ToggleElement(layout, main, toggleVal, packedAction);
+            case "entity" -> {
+                StringBuilder eqStr = new StringBuilder();
+                for (Map.Entry<String, String> ee : entEquip.entrySet()) {
+                    if (!eqStr.isEmpty()) eqStr.append(';');
+                    eqStr.append(ee.getKey()).append('=').append(ee.getValue());
+                }
+                yield new com.scriptcraft.screen.EntityElement(
+                        layout, entPlayerMode, main, entSkin, entModelStyle, entOverlay,
+                        (float) Math.max(0.0, Math.min(400.0, elScale)),
+                        (float) elRotation, entPitch, entRoll, entSpinSpeed,
+                        entLookMode, entLookX, entLookY,
+                        entClip, entBaby, entSneaking, entWalk, entNametag,
+                        entNbt, eqStr.toString(), packedAction);
+            }
             default -> new ImageElement(layout, main, texW, texH, packedAction);
         };
         return List.of(new ParsedElement(id, element));
