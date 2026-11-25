@@ -98,6 +98,11 @@ public final class PlayerAnimBridge {
     public static void endViewportPreview() {
         // Не сбрасываем setAnimation(null) каждый кадр (это вызывало лишние пересчёты!), просто выключаем флаг
         STUDIO_PREVIEW.active = false;
+        FirstPersonMode.setFirstPersonPass(false);
+    }
+
+    public static void setFirstPersonPass(boolean pass) {
+        FirstPersonMode.setFirstPersonPass(pass);
     }
 
     public static void clearStudioPreview() {

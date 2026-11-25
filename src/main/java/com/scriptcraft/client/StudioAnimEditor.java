@@ -4,7 +4,9 @@ import com.mojang.blaze3d.platform.Lighting;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.blaze3d.vertex.VertexSorting;
 import com.mojang.math.Axis;
+import com.scriptcraft.client.ClientUiSettings.AnimPanelState;
 import com.scriptcraft.client.StudioAnimModel.AnimDoc;
 import com.scriptcraft.client.StudioAnimModel.BoneId;
 import com.scriptcraft.client.StudioAnimModel.Channel;
@@ -35,6 +37,7 @@ import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector4f;
 import org.lwjgl.glfw.GLFW;
+import org.lwjgl.opengl.GL11;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -44,16 +47,17 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * Полноценный высокопроизводительный 3D-редактор анимаций игрока в Студии:
- * — Аппаратная отрисовка всех линий 1-квадом через GPU (без попиксельных циклов g.fill) и O(1) проверка изменений;
- * — Единая матрица поворотного стола (платформа + персонаж крутятся идеально ровно без наклона/дребезга);
- * — Проекционный экранный Якобиан 3D-Гизмо: перетаскивание Поворота [R], Сдвига [G] и Изгиба [B] всегда идёт
- *   строго за курсором мыши под любым ракурсом камеры;
- * — Кнопки «▶ В игре» и «■ Стоп» для проверки и мгновенной остановки анимации на игроке вне меню.
+ * Полноценный 3D-редактор анимаций игрока в Студии:
+ * — Строгий ортогональный 3D-Гизмо в суставе (X вправо, Y строго вверх, Z вперёд) + 2 отдельные
+ *   стрелки изгиба Bendy-lib (B — угол, D — направление) посередине сгибаемых костей без слияния;
+ * — Настоящий перспективный предпросмотр от 1-го лица (1P, FOV 75°) из глаз игрока;
+ * — Отсоединяемые, сворачиваемые и масштабируемые панели (Скелет, Инспектор, Таймлайн)
+ *   с сохранением всех пропорций на клиенте (client-ui.properties).
  */
 @OnlyIn(Dist.CLIENT)
 public final class StudioAnimEditor {
     private static final int SURFACE = 0xF2161D29;
+    private static final int SURFACE_FLOAT = 0xF7141B27;
     private static final int BAR = 0xF518202D;
     private static final int EDGE = 0xFF2B364A;
     private static final int EDGE_HOT = 0xFF425474;
@@ -61,13 +65,21 @@ public final class StudioAnimEditor {
     private static final int ACCENT = 0xFF58A6FF;
     private static final int GREEN = 0xFF4CC38A;
     private static final int RED = 0xFFE56B6F;
-    private static final int PURPLE = 0xFFC678DD;
+    private static final int PURPLE = 0xFFA855F7;
+    private static final int PINK = 0xFFEC4899;
     private static final int TEXT = 0xFFE8EDF5;
     private static final int MUTED = 0xFF8A96AA;
     private static final int ROW = 0xFF1D2636;
     private static final int ROW_HOT = 0xFF27344A;
 
-    public enum ToolMode { ROTATE, MOVE, BEND }
+    public enum ToolMode { ROTATE, MOVE }
+
+    public enum PanelId {
+        LEFT("left"), RIGHT("right"), TIMELINE("tl");
+        public final String key;
+        PanelId(String key) { this.key = key; }
+        public AnimPanelState state() { return ClientUiSettings.animPanel(key); }
+    }
 
     private static final AnimDoc DOC = new AnimDoc();
     private static boolean initialized = false;
@@ -86,46 +98,54 @@ public final class StudioAnimEditor {
     private static float pxPerTick = 9.0f;
     private static int timelineScrollX = 0;
     private static int timelineScrollY = 0;
-    private static int timelineH = 112;
     private static int leftBonesScroll = 0;
     private static int leftBonesMaxScroll = 0;
     private static int inspectorScroll = 0;
     private static int inspectorMaxScroll = 0;
     private static final Set<KeyRef> selectedKeys = new LinkedHashSet<>();
 
-    // Буфер обмена ключей / позы
     private record CopiedKey(BoneId bone, Channel ch, int relTick, float value, EaseCurve ease) {}
     private static final List<CopiedKey> keyClipboard = new ArrayList<>();
 
-    // Камера 3D-вьюпорта (ровный поворотный стол)
+    // Камера 3-го лица и 1-го лица
     private static float camYaw = 26f;
     private static float camPitch = 16f;
     private static float camZoom = 1.0f;
     private static float camPanX = 0f;
     private static float camPanY = 0f;
     private static boolean firstPersonPreview = false;
+    private static float fpYaw = 0f;
+    private static float fpPitch = 20f;
     private static boolean showGrid = true;
 
-    // Кэшированные матрицы последнего кадра для точного 1:1 проекционного Гизмо
     private static final Matrix4f lastEntityToScreen = new Matrix4f();
+
+    // Прямоугольники панелей и порядок Z плавающих панелей (последний — самый верхний)
+    private static final int[][] panelRects = new int[3][4]; // [PanelId.ordinal()][x, y, w, h]
+    private static final List<PanelId> floatOrder = new ArrayList<>(List.of(PanelId.LEFT, PanelId.RIGHT, PanelId.TIMELINE));
+    private static int vpX, vpY, vpW, vpH;
 
     // Состояние перетаскивания мыши
     private enum DragKind {
-        NONE, ORBIT, PAN, GIZMO_POSE, SCRUB_PLAYHEAD, MARQUEE_SELECT, MOVE_KEYS, TIMELINE_RESIZE, VALUE_SCRUB
+        NONE, ORBIT, PAN, GIZMO_POSE, SCRUB_PLAYHEAD, MARQUEE_SELECT, MOVE_KEYS, VALUE_SCRUB,
+        DOCK_RESIZE, FLOAT_MOVE, FLOAT_RESIZE
     }
     private static DragKind dragKind = DragKind.NONE;
+    private static PanelId dragPanel = null;
+    private static int dragResizeMask = 0; // 1=W, 2=E, 4=N, 8=S
+    private static float dragPanelOrigRatio, dragPanelOrigFx, dragPanelOrigFy, dragPanelOrigFw, dragPanelOrigFh;
+
     private static int dragStartX, dragStartY, dragCurX, dragCurY;
     private static float dragStartYaw, dragStartPitch, dragStartPanX, dragStartPanY;
-    private static int dragGizmoAxis = -1; // -1=свободно, 0=X, 1=Y, 2=Z
+    /** Индекс ручки Гизмо: -1=свободно, 0=X, 1=Y, 2=Z, 3=BendAngle(B), 4=BendDir(D). */
+    private static int dragGizmoHandle = -1;
     private static float dragInitA, dragInitB, dragInitC;
-    /** Экранные производные (px на 1 ед. параметра) в момент начала захвата Гизмо — гарантируют отсутствие инверсии! */
-    private static final float[] dragJacX = new float[3];
-    private static final float[] dragJacY = new float[3];
+    private static final float[] dragJacX = new float[5];
+    private static final float[] dragJacY = new float[5];
     private static Channel scrubChannel = null;
     private static float scrubInitVal = 0f;
     private static int dragKeyOriginTick = 0;
     private static final List<CopiedKey> dragMovingSnapshot = new ArrayList<>();
-    private static int dragStartTimelineH = 132;
 
     // Поля ввода инспектора и диалогов
     private static final StudioTextField[] channelFields = new StudioTextField[8];
@@ -149,30 +169,35 @@ public final class StudioAnimEditor {
     private static List<StudioExplorerPacket.Entry> serverAnimFiles = List.of();
     private static long lastListReqMs = 0L;
 
-    // Автономные модели игрока (если PlayerAnimator не загружен)
     private static PlayerModel<?> fallbackWide;
     private static PlayerModel<?> fallbackSlim;
 
-    // Области разметки и проекции 3D-скелета
-    private static int rootX, rootY, rootW, rootH;
-    private static int topBarY, mainY, mainH;
-    private static int leftX, leftW, vpX, vpW, rightX, rightW;
-    private static int tlX, tlY, tlW, tlH, tlTrackX, tlTrackY, tlTrackW, tlTrackH;
+    private static int rootX, rootY, rootW, rootH, workY, workH;
+    private static int tlTrackX, tlTrackY, tlTrackW, tlTrackH, tlRulerY;
     private static int easeBtnX, easeBtnY, easeBtnW;
 
-    private record BtnHit(int x, int y, int w, int h, String id, String tip) {}
+    /** ownerLayer: 0 = топ-бар / привязанная панель, 1..3 = плавающая панель, 10 = модальное окно. */
+    private static int currentLayerTag = 0;
+    private record BtnHit(int x, int y, int w, int h, String id, String tip, int layer) {}
     private static final List<BtnHit> btns = new ArrayList<>();
+
+    private record FieldBox(int idx, int x, int y, int w, int h, StudioTextField field, Channel ch, int layer) {}
+    private static final List<FieldBox> fieldBoxes = new ArrayList<>();
 
     private record ProjectedBone(BoneId bone, float sx, float sy, float ex, float ey, float depth) {}
     private static final List<ProjectedBone> projectedBones = new ArrayList<>();
     private static BoneId hoveredViewportBone = null;
-    private static int hoveredGizmoAxis = -1;
+    /** -1 = ничего, 0=X, 1=Y, 2=Z, 3=BendAngle(B), 4=BendDir(D). */
+    private static int hoveredGizmoHandle = -1;
+
+    // Координаты суставного X/Y/Z Гизмо и срединного Гизмо Изгиба (B / D)
     private static float gizmoOriginX, gizmoOriginY;
     private static final float[] gizmoTipX = new float[3];
     private static final float[] gizmoTipY = new float[3];
-
-    private record FieldBox(int idx, int x, int y, int w, int h, StudioTextField field, Channel ch) {}
-    private static final List<FieldBox> fieldBoxes = new ArrayList<>();
+    private static boolean hasBendGizmo = false;
+    private static float bendOriginX, bendOriginY;
+    private static final float[] bendTipX = new float[2]; // 0 = Bend Angle (B), 1 = Bend Dir (D)
+    private static final float[] bendTipY = new float[2];
 
     private record DiamondHit(KeyRef ref, int x, int y) {}
     private static final List<DiamondHit> diamondHits = new ArrayList<>();
@@ -302,6 +327,124 @@ public final class StudioAnimEditor {
     }
 
     // =========================================================================
+    //  РАСЧЁТ КОМПОНОВКИ ПАНЕЛЕЙ (ПРИВЯЗАННЫЕ И ПЛАВАЮЩИЕ С СОХРАНЕНИЕМ ПРОПОРЦИЙ)
+    // =========================================================================
+
+    private static void computeLayout(int x, int y, int w, int h) {
+        rootX = x;
+        rootY = y;
+        rootW = Math.max(200, w);
+        rootH = Math.max(120, h);
+
+        int topBarH = 24;
+        workY = y + topBarH + 3;
+        workH = Math.max(80, h - topBarH - 3);
+
+        AnimPanelState stLeft = PanelId.LEFT.state();
+        AnimPanelState stRight = PanelId.RIGHT.state();
+        AnimPanelState stTl = PanelId.TIMELINE.state();
+
+        // 1) Привязанный снизу Таймлайн
+        int midH = workH;
+        if (stTl.docked) {
+            int th = stTl.collapsed ? 18 : clampInt(Math.round(rootH * stTl.dockedRatio), 78, Math.max(80, workH * 60 / 100));
+            setPanelRect(PanelId.TIMELINE, x, workY + workH - th, w, th);
+            midH = Math.max(54, workH - th - 3);
+        }
+
+        // 2) Привязанные слева и справа панели
+        int curVpX = x;
+        int curVpRight = x + w;
+        if (stLeft.docked) {
+            int lw = stLeft.collapsed ? 18 : clampInt(Math.round(rootW * stLeft.dockedRatio), 108, Math.max(110, w * 40 / 100));
+            setPanelRect(PanelId.LEFT, x, workY, lw, midH);
+            curVpX = x + lw + 3;
+        }
+        if (stRight.docked) {
+            int rw = stRight.collapsed ? 18 : clampInt(Math.round(rootW * stRight.dockedRatio), 156, Math.max(158, w * 45 / 100));
+            if (curVpRight - rw - 3 < curVpX + 60) {
+                rw = Math.max(120, curVpRight - curVpX - 63);
+            }
+            setPanelRect(PanelId.RIGHT, x + w - rw, workY, rw, midH);
+            curVpRight = x + w - rw - 3;
+        }
+
+        // 3) 3D-Вьюпорт занимает всё оставшееся место!
+        vpX = curVpX;
+        vpY = workY;
+        vpW = Math.max(60, curVpRight - curVpX);
+        vpH = Math.max(54, midH);
+
+        // 4) Плавающие (отсоединённые) панели
+        for (PanelId pid : PanelId.values()) {
+            AnimPanelState st = pid.state();
+            if (st.docked) continue;
+            int minW = pid == PanelId.LEFT ? 112 : (pid == PanelId.RIGHT ? 160 : 220);
+            int minH = pid == PanelId.TIMELINE ? 78 : 96;
+            int fw = clampInt(Math.round(rootW * st.fw), minW, Math.max(minW, rootW - 6));
+            int fh = st.collapsed ? 18 : clampInt(Math.round(rootH * st.fh), minH, Math.max(minH, workH - 2));
+            int fx = clampInt(Math.round(rootX + rootW * st.fx), rootX + 2, Math.max(rootX + 2, rootX + rootW - fw - 2));
+            int fy = clampInt(Math.round(rootY + rootH * st.fy), workY, Math.max(workY, rootY + rootH - fh - 2));
+            setPanelRect(pid, fx, fy, fw, fh);
+        }
+    }
+
+    private static void setPanelRect(PanelId pid, int x, int y, int w, int h) {
+        int[] r = panelRects[pid.ordinal()];
+        r[0] = x; r[1] = y; r[2] = w; r[3] = h;
+    }
+
+    private static int[] rectOf(PanelId pid) {
+        return panelRects[pid.ordinal()];
+    }
+
+    private static PanelId topmostFloatingAt(int mx, int my) {
+        for (int i = floatOrder.size() - 1; i >= 0; i--) {
+            PanelId pid = floatOrder.get(i);
+            if (!pid.state().docked) {
+                int[] r = rectOf(pid);
+                if (hover(mx, my, r[0], r[1], r[2], r[3])) {
+                    return pid;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static void bringFloatingToFront(PanelId pid) {
+        floatOrder.remove(pid);
+        floatOrder.add(pid);
+    }
+
+    private static void togglePanelDock(PanelId pid) {
+        AnimPanelState st = pid.state();
+        int[] cur = rectOf(pid);
+        if (st.docked) {
+            // При отсоединении берём текущие экранные координаты и чуть сдвигаем внутрь
+            int nx = clampInt(cur[0] + 6, rootX + 4, Math.max(rootX + 4, rootX + rootW - cur[2] - 4));
+            int ny = clampInt(cur[1] + 6, workY + 2, Math.max(workY + 2, rootY + rootH - cur[3] - 4));
+            int nw = Math.max(pid == PanelId.TIMELINE ? 240 : 140, Math.min(cur[2], rootW - 16));
+            int nh = st.collapsed ? Math.round(rootH * 0.34f) : Math.max(90, cur[3]);
+            st.fx = (nx - rootX) / (float) Math.max(1, rootW);
+            st.fy = (ny - rootY) / (float) Math.max(1, rootH);
+            st.fw = nw / (float) Math.max(1, rootW);
+            st.fh = nh / (float) Math.max(1, rootH);
+            st.docked = false;
+            st.collapsed = false;
+            bringFloatingToFront(pid);
+        } else {
+            st.docked = true;
+        }
+        ClientUiSettings.saveAnimPanels();
+    }
+
+    private static void togglePanelCollapse(PanelId pid) {
+        AnimPanelState st = pid.state();
+        st.collapsed = !st.collapsed;
+        ClientUiSettings.saveAnimPanels();
+    }
+
+    // =========================================================================
     //  ОТРИСОВКА
     // =========================================================================
 
@@ -317,50 +460,52 @@ public final class StudioAnimEditor {
             requestServerFiles();
         }
 
-        rootX = x;
-        rootY = y;
-        rootW = w;
-        rootH = h;
-
-        topBarY = y;
-        int topBarH = 24;
-        tlH = Math.max(84, Math.min(h / 2, timelineH));
-        tlX = x;
-        tlW = w;
-        tlY = y + h - tlH;
-
-        mainY = y + topBarH + 3;
-        mainH = Math.max(70, tlY - mainY - 3);
-
-        leftW = Math.max(118, Math.min(148, w / 5));
-        rightW = Math.max(166, Math.min(210, w / 4 + 18));
-        leftX = x;
-        rightX = x + w - rightW;
-        vpX = leftX + leftW + 3;
-        vpW = Math.max(80, rightX - vpX - 3);
+        computeLayout(x, y, w, h);
 
         boolean popupActive = openModal || newModal || easeDropdown || helpPopup;
-        int bgMx = popupActive ? -10000 : mx;
-        int bgMy = popupActive ? -10000 : my;
+        PanelId hoveredFloat = popupActive ? null : topmostFloatingAt(mx, my);
 
-        renderTopBar(g, font, x, topBarY, w, topBarH, bgMx, bgMy);
-        renderLeftBones(g, font, leftX, mainY, leftW, mainH, bgMx, bgMy);
-        renderViewport3D(g, font, vpX, mainY, vpW, mainH, bgMx, bgMy);
-        renderRightInspector(g, font, rightX, mainY, rightW, mainH, bgMx, bgMy);
-        renderTimeline(g, font, tlX, tlY, tlW, tlH, bgMx, bgMy);
+        // 1) Верхняя панель
+        currentLayerTag = 0;
+        renderTopBar(g, font, x, y, w, 24, popupActive ? -10000 : mx, popupActive ? -10000 : my);
 
-        boolean splitHot = !popupActive && (dragKind == DragKind.TIMELINE_RESIZE || (Math.abs(my - tlY) <= 2 && mx >= x && mx < x + w));
-        if (splitHot) {
-            g.fill(x, tlY - 1, x + w, tlY + 1, GOLD);
+        // 2) Центральный 3D-вьюпорт (если мышь над плавающей панелью — маскируем hover во вьюпорте)
+        int vpMx = (popupActive || hoveredFloat != null) ? -10000 : mx;
+        int vpMy = (popupActive || hoveredFloat != null) ? -10000 : my;
+        renderViewport3D(g, font, vpX, vpY, vpW, vpH, vpMx, vpMy);
+
+        // 3) Привязанные панели + подсветка разделителей ресайза
+        for (PanelId pid : PanelId.values()) {
+            AnimPanelState st = pid.state();
+            if (!st.docked) continue;
+            currentLayerTag = 0;
+            int pmx = (popupActive || hoveredFloat != null) ? -10000 : mx;
+            int pmy = (popupActive || hoveredFloat != null) ? -10000 : my;
+            renderPanelById(g, font, pid, pmx, pmy, false);
+            renderDockedSplitterHighlight(g, pid, pmx, pmy);
+        }
+
+        // 4) Плавающие панели (в порядке Z, поверх 3D-сцены и привязанных панелей!)
+        for (int i = 0; i < floatOrder.size(); i++) {
+            PanelId pid = floatOrder.get(i);
+            if (pid.state().docked) continue;
+            currentLayerTag = i + 1;
+            int pmx = (popupActive || hoveredFloat != pid) ? -10000 : mx;
+            int pmy = (popupActive || hoveredFloat != pid) ? -10000 : my;
+            g.pose().pushPose();
+            g.pose().translate(0f, 0f, 340f + i * 18f);
+            renderPanelById(g, font, pid, pmx, pmy, true);
+            g.flush();
+            g.pose().popPose();
         }
 
         if (popupActive) {
-            // Полностью блокируем клики по фоновым полям и кнопкам под открытым списком/окном!
             btns.clear();
             fieldBoxes.clear();
             hoverTip = null;
         }
 
+        currentLayerTag = 10;
         if (openModal) {
             renderOpenModal(g, font, mx, my);
         } else if (newModal) {
@@ -376,11 +521,50 @@ public final class StudioAnimEditor {
             int tx = Math.max(4, Math.min(hoverTipX, x + w - tw - 4));
             int ty = Math.max(18, Math.min(hoverTipY, y + h - 4));
             g.pose().pushPose();
-            g.pose().translate(0, 0, 450);
+            g.pose().translate(0, 0, 460);
             g.fill(tx, ty - 14, tx + tw, ty, 0xF5101622);
             border(g, tx, ty - 14, tw, 14, EDGE_HOT);
             g.drawString(font, hoverTip, tx + 5, ty - 11, TEXT, false);
             g.pose().popPose();
+        }
+    }
+
+    private static void renderPanelById(GuiGraphics g, Font font, PanelId pid, int mx, int my, boolean floating) {
+        int[] r = rectOf(pid);
+        switch (pid) {
+            case LEFT -> renderLeftBones(g, font, r[0], r[1], r[2], r[3], mx, my, floating);
+            case RIGHT -> renderRightInspector(g, font, r[0], r[1], r[2], r[3], mx, my, floating);
+            case TIMELINE -> renderTimeline(g, font, r[0], r[1], r[2], r[3], mx, my, floating);
+        }
+        if (floating && !pid.state().collapsed) {
+            // Уголок масштабирования плавающего окна справа-снизу
+            int gx = r[0] + r[2] - 6;
+            int gy = r[1] + r[3] - 6;
+            g.fill(gx + 3, gy + 1, gx + 5, gy + 5, GOLD);
+            g.fill(gx + 1, gy + 3, gx + 5, gy + 5, GOLD);
+        }
+    }
+
+    private static void renderDockedSplitterHighlight(GuiGraphics g, PanelId pid, int mx, int my) {
+        AnimPanelState st = pid.state();
+        if (!st.docked || st.collapsed) return;
+        int[] r = rectOf(pid);
+        boolean active = (dragKind == DragKind.DOCK_RESIZE && dragPanel == pid);
+        if (pid == PanelId.LEFT) {
+            int sx = r[0] + r[2] + 1;
+            if (active || (Math.abs(mx - sx) <= 2 && my >= r[1] && my < r[1] + r[3])) {
+                g.fill(sx - 1, r[1], sx + 1, r[1] + r[3], GOLD);
+            }
+        } else if (pid == PanelId.RIGHT) {
+            int sx = r[0] - 2;
+            if (active || (Math.abs(mx - sx) <= 2 && my >= r[1] && my < r[1] + r[3])) {
+                g.fill(sx, r[1], sx + 2, r[1] + r[3], GOLD);
+            }
+        } else if (pid == PanelId.TIMELINE) {
+            int sy = r[1] - 2;
+            if (active || (Math.abs(my - sy) <= 2 && mx >= r[0] && mx < r[0] + r[2])) {
+                g.fill(r[0], sy, r[0] + r[2], sy + 2, GOLD);
+            }
         }
     }
 
@@ -407,7 +591,7 @@ public final class StudioAnimEditor {
     }
 
     // -------------------------------------------------------------------------
-    //  1. ВЕРХНЯЯ ПАНЕЛЬ ИНСТРУМЕНТОВ
+    //  1. ВЕРХНЯЯ ПАНЕЛЬ ИНСТРУМЕНТОВ (без лишней кнопки Bend — изгиб прямо на костях!)
     // -------------------------------------------------------------------------
 
     private static void renderTopBar(GuiGraphics g, Font font, int x, int y, int w, int h, int mx, int my) {
@@ -418,7 +602,7 @@ public final class StudioAnimEditor {
 
         boolean dirty = DOC.isDirty();
         String idBadge = (dirty ? "* " : "") + DOC.fullId();
-        int idW = Math.min(132, font.width(idBadge) + 14);
+        int idW = Math.min(136, font.width(idBadge) + 14);
         bx = drawBtn(g, font, mx, my, bx, by, idW, 16, idBadge, "file:open",
                 Messages.get("studio.anim.tip.open"), openModal, dirty ? GOLD : ACCENT) + 3;
 
@@ -430,18 +614,13 @@ public final class StudioAnimEditor {
         g.fill(bx, y + 4, bx + 1, y + h - 4, EDGE);
         bx += 5;
 
-        // Режимы гизмо: Rotate [R], Move [G], Bend [B]
+        // Режимы суставного Гизмо: Поворот [R] и Сдвиг [G] (стрелки Изгиба B/D всегда доступны прямо на кости!)
         bx = drawBtn(g, font, mx, my, bx, by, font.width(Messages.get("studio.anim.tool.rot")) + 10, 16,
                 Messages.get("studio.anim.tool.rot"), "tool:rot", "[R]", toolMode == ToolMode.ROTATE, GOLD) + 2;
         bx = drawBtn(g, font, mx, my, bx, by, font.width(Messages.get("studio.anim.tool.pos")) + 10, 16,
-                Messages.get("studio.anim.tool.pos"), "tool:pos", "[G]", toolMode == ToolMode.MOVE, ACCENT) + 2;
-        boolean bendyLoaded = ModList.get().isLoaded("bendylib");
-        bx = drawBtn(g, font, mx, my, bx, by, font.width(Messages.get("studio.anim.tool.bend")) + 10, 16,
-                Messages.get("studio.anim.tool.bend"), "tool:bend",
-                "[B] Bendy-lib: " + Messages.get(bendyLoaded ? "studio.lib.loaded" : "studio.lib.missing"),
-                toolMode == ToolMode.BEND, PURPLE) + 4;
+                Messages.get("studio.anim.tool.pos"), "tool:pos", "[G]", toolMode == ToolMode.MOVE, ACCENT) + 4;
 
-        // Оси X / Y / Z
+        // Фиксация осей X / Y / Z
         bx = drawBtn(g, font, mx, my, bx, by, 14, 16, "X", "axis:0", "Axis X", axisLock == 0, 0xFFEF4444) + 1;
         bx = drawBtn(g, font, mx, my, bx, by, 14, 16, "Y", "axis:1", "Axis Y", axisLock == 1, 0xFF22C55E) + 1;
         bx = drawBtn(g, font, mx, my, bx, by, 14, 16, "Z", "axis:2", "Axis Z", axisLock == 2, 0xFF3B82F6) + 4;
@@ -458,7 +637,6 @@ public final class StudioAnimEditor {
                     Messages.get("studio.anim.tip.cam") + " [F]", false, TEXT) + 4;
         }
 
-        // Правая часть топ-бара: [▶ В игре] [■ Стоп] [→ В скрипт] [?]
         int rx = x + w - 5;
         rx -= 16;
         drawBtn(g, font, mx, my, rx, by, 16, 16, "?", "ui:help", Messages.get("studio.anim.tip.help"), helpPopup, GOLD);
@@ -489,14 +667,31 @@ public final class StudioAnimEditor {
     }
 
     // -------------------------------------------------------------------------
-    //  2. ЛЕВАЯ ПАНЕЛЬ: ДЕРЕВО КОСТЕЙ (без лишних шаблонов)
+    //  2. ЛЕВАЯ ПАНЕЛЬ: ДЕРЕВО КОСТЕЙ (привязанная / плавающая / сворачиваемая)
     // -------------------------------------------------------------------------
 
-    private static void renderLeftBones(GuiGraphics g, Font font, int x, int y, int w, int h, int mx, int my) {
-        g.fill(x, y, x + w, y + h, SURFACE);
-        border(g, x, y, w, h, EDGE);
+    private static void renderLeftBones(GuiGraphics g, Font font, int x, int y, int w, int h, int mx, int my, boolean floating) {
+        AnimPanelState st = PanelId.LEFT.state();
+        if (floating) {
+            g.fill(x + 2, y + 2, x + w + 3, y + h + 3, 0x66000000);
+        }
+        g.fill(x, y, x + w, y + h, floating ? SURFACE_FLOAT : SURFACE);
+        border(g, x, y, w, h, floating ? EDGE_HOT : EDGE);
+
+        // Вертикальная узкая полоска, когда панель привязана слева и свёрнута
+        if (st.docked && st.collapsed) {
+            drawBtn(g, font, mx, my, x + 2, y + 2, 14, 14, "▸", "panel:collapse:LEFT",
+                    Messages.get("studio.anim.panel.expand"), false, GOLD);
+            drawBtn(g, font, mx, my, x + 2, y + 18, 14, 14, "⧉", "panel:dock:LEFT",
+                    Messages.get("studio.anim.panel.detach"), false, ACCENT);
+            return;
+        }
+
         g.fill(x + 1, y + 1, x + w - 1, y + 17, BAR);
-        g.drawString(font, Messages.get("studio.anim.bones"), x + 6, y + 5, GOLD, false);
+        g.drawString(font, trim(font, Messages.get("studio.anim.bones"), Math.max(20, w - 38)), x + 6, y + 5, GOLD, false);
+        drawPanelHeaderControls(g, font, mx, my, x + w - 32, y + 2, PanelId.LEFT, st);
+
+        if (st.collapsed) return;
 
         int listTop = y + 18;
         int listH = Math.max(16, h - 19);
@@ -523,13 +718,13 @@ public final class StudioAnimEditor {
                 int eyeX = x + w - 16;
                 g.drawString(font, vis ? "◉" : "○", eyeX, ry + 4, vis ? MUTED : 0xFF475264, false);
                 if (ry >= listTop - 4 && ry + 11 <= y + h) {
-                    btns.add(new BtnHit(eyeX - 1, ry, 13, 15, "vis:" + b.name(), Messages.get("studio.anim.tip.vis")));
+                    btns.add(new BtnHit(eyeX - 1, ry, 13, 15, "vis:" + b.name(), Messages.get("studio.anim.tip.vis"), currentLayerTag));
                 }
 
                 int rightLim = eyeX - 3;
                 if (b.bendable) {
                     rightLim -= 8;
-                    g.drawString(font, "⌒", rightLim, ry + 3, PURPLE, false);
+                    g.drawString(font, "⌒", rightLim, ry + 3, PINK, false);
                 }
                 if (DOC.boneHasKeyAt(b, curTick)) {
                     rightLim -= 8;
@@ -540,10 +735,10 @@ public final class StudioAnimEditor {
                 }
 
                 String label = (i + 1) + " " + Messages.get(b.langKey);
-                g.drawString(font, trim(font, label, Math.max(24, rightLim - (x + 7))), x + 7, ry + 4,
+                g.drawString(font, trim(font, label, Math.max(20, rightLim - (x + 7))), x + 7, ry + 4,
                         sel ? GOLD : (vis ? TEXT : MUTED), false);
                 if (ry >= listTop - 4 && ry + 11 <= y + h) {
-                    btns.add(new BtnHit(x + 2, ry, eyeX - x - 3, 15, "bone:" + b.name(), null));
+                    btns.add(new BtnHit(x + 2, ry, eyeX - x - 3, 15, "bone:" + b.name(), null, currentLayerTag));
                 }
             }
             ry += 16;
@@ -552,16 +747,48 @@ public final class StudioAnimEditor {
         drawMiniScrollbar(g, x + w - 3, listTop, listH, leftBonesScroll, leftBonesMaxScroll);
     }
 
+    private static void drawPanelHeaderControls(GuiGraphics g, Font font, int mx, int my,
+                                                int bx, int by, PanelId pid, AnimPanelState st) {
+        String colSym = st.collapsed ? "▸" : "▾";
+        String colTip = Messages.get(st.collapsed ? "studio.anim.panel.expand" : "studio.anim.panel.collapse");
+        drawBtn(g, font, mx, my, bx, by, 14, 13, colSym, "panel:collapse:" + pid.name(), colTip, false, GOLD);
+
+        String dockSym = st.docked ? "⧉" : "▣";
+        String dockTip = Messages.get(st.docked ? "studio.anim.panel.detach" : "studio.anim.panel.dock");
+        drawBtn(g, font, mx, my, bx + 15, by, 14, 13, dockSym, "panel:dock:" + pid.name(), dockTip, !st.docked, ACCENT);
+    }
+
     // -------------------------------------------------------------------------
-    //  3. ЦЕНТРАЛЬНЫЙ 3D-ВЬЮПОРТ (РОВНЫЙ ПОВОРОТНЫЙ СТОЛ + GPU-ЛИНИИ + ГИЗМО)
+    //  3. ЦЕНТРАЛЬНЫЙ 3D-ВЬЮПОРТ (3-Е ЛИЦО С ОРТОГОНАЛЬНЫМ + BEND ГИЗМО И НАСТОЯЩИЙ 1P FOV 75°)
     // -------------------------------------------------------------------------
 
     private static void renderViewport3D(GuiGraphics g, Font font, int x, int y, int w, int h, int mx, int my) {
-        g.fillGradient(x, y, x + w, y + h, 0xFF0E1420, 0xFF172234);
+        g.fillGradient(x, y, x + w, y + h, firstPersonPreview ? 0xFF142033 : 0xFF0E1420,
+                firstPersonPreview ? 0xFF1E2D44 : 0xFF172234);
         border(g, x, y, w, h, EDGE);
 
         boolean paLoaded = ModList.get().isLoaded("playeranimator");
         boolean bendyLoaded = ModList.get().isLoaded("bendylib");
+        Minecraft mc = Minecraft.getInstance();
+
+        if (firstPersonPreview) {
+            hoveredGizmoHandle = -1;
+            hoveredViewportBone = null;
+            renderTrueFirstPersonPerspective(g, mc, paLoaded, x + 1, y + 1, Math.max(2, w - 2), Math.max(2, h - 2));
+
+            // Прицел и подпись режима от 1-го лица поверх 3D
+            g.enableScissor(x + 1, y + 1, x + w - 1, y + h - 1);
+            g.pose().pushPose();
+            g.pose().translate(0f, 0f, 325f);
+            int chX = x + w / 2;
+            int chY = y + h / 2;
+            g.fill(chX - 4, chY, chX + 5, chY + 1, 0x99FFFFFF);
+            g.fill(chX, chY - 4, chX + 1, chY + 5, 0x99FFFFFF);
+            g.drawString(font, Messages.get("studio.anim.vp.1p_badge"), x + 6, y + 6, GREEN, true);
+            g.pose().popPose();
+            g.disableScissor();
+            return;
+        }
 
         g.enableScissor(x + 1, y + 1, x + w - 1, y + h - 1);
 
@@ -569,49 +796,37 @@ public final class StudioAnimEditor {
         float cy = y + h * 0.54f + camPanY;
         float baseScale = Math.max(26f, Math.min(w * 0.34f, h * 0.41f));
         float pxPerBlock = baseScale * camZoom;
+        float pivotY = 0.90f;
 
-        float effPitch = firstPersonPreview ? -18f : camPitch;
-        float effYaw = firstPersonPreview ? 180f : camYaw;
-        float pivotY = firstPersonPreview ? 1.50f : 0.90f;
-
-        // Строго ортогональный поворотный стол вокруг центра персонажа (0, pivotY, 0):
-        // -effPitch даёт правильный взгляд СВЕРХУ при camPitch > 0, а +effYaw крутит платформу и модель синхронно вокруг вертикали Y!
         PoseStack camStack = new PoseStack();
         camStack.translate(cx, cy, 220f);
         camStack.mulPoseMatrix(new Matrix4f().scaling(pxPerBlock, pxPerBlock, -pxPerBlock));
         camStack.mulPose(Axis.ZP.rotationDegrees(180f));
-        camStack.mulPose(Axis.XP.rotationDegrees(-effPitch));
-        camStack.mulPose(Axis.YP.rotationDegrees(effYaw));
+        camStack.mulPose(Axis.XP.rotationDegrees(-camPitch));
+        camStack.mulPose(Axis.YP.rotationDegrees(camYaw));
         camStack.translate(0f, -pivotY, 0f);
         lastEntityToScreen.set(camStack.last().pose());
 
-        // 1) Сглаженная GPU-сетка платформы (1 квад на линию, субпиксельная точность без дрожания!)
-        if (showGrid && !firstPersonPreview) {
+        if (showGrid) {
             renderFloorGridSmooth(g, lastEntityToScreen);
         }
 
-        // 2) Рендер 3D-модели игрока
-        Minecraft mc = Minecraft.getInstance();
         if (paLoaded && mc.player != null) {
-            renderLivePlayerWithMods(g, mc.player, cx, cy, pxPerBlock, effPitch, effYaw, pivotY);
+            renderLivePlayerWithMods(g, mc.player, cx, cy, pxPerBlock, camPitch, camYaw, pivotY);
         } else {
-            renderStandalonePlayerModel(g, mc, cx, cy, pxPerBlock, effPitch, effYaw, pivotY);
+            renderStandalonePlayerModel(g, mc, cx, cy, pxPerBlock, camPitch, camYaw, pivotY);
         }
 
-        // 3) Проекция скелета и точный экранно-проекционный 3D-Гизмо
         computeBoneProjections(lastEntityToScreen);
         updateViewportHover(mx, my, x, y, w, h);
         renderSkeletonOverlayAndGizmo(g, font, mx, my);
 
-        // Сбрасываем состояние глубины и цвета после 3D-рендера, чтобы 2D-текст никогда не пропадал!
         RenderSystem.disableDepthTest();
         RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
 
         g.pose().pushPose();
         g.pose().translate(0f, 0f, 330f);
-        String topBadge = firstPersonPreview
-                ? Messages.get("studio.anim.vp.1p_badge")
-                : String.format(Locale.ROOT, "Yaw %.0f°  Pitch %.0f°  Zoom %.0f%%", camYaw, camPitch, camZoom * 100f);
+        String topBadge = String.format(Locale.ROOT, "Yaw %.0f°  Pitch %.0f°  Zoom %.0f%%", camYaw, camPitch, camZoom * 100f);
         g.drawString(font, topBadge, x + 6, y + 6, MUTED, false);
 
         if (!paLoaded) {
@@ -620,13 +835,151 @@ public final class StudioAnimEditor {
             g.drawString(font, trim(font, warn, w - 16), x + 8, y + h - 15, GOLD, false);
         } else {
             String hint = bendyLoaded
-                    ? "PlayerAnimator + Bendy-lib ●  |  LMB: Gizmo/Bone/Orbit  MMB: Pan  Scroll: Zoom"
-                    : "PlayerAnimator ●  |  LMB: Gizmo/Bone/Orbit  MMB: Pan  Scroll: Zoom";
+                    ? "PlayerAnimator + Bendy-lib ●  |  XYZ: Сустав  |  B/D: Изгиб  |  LMB: Орбита  MMB: Сдвиг"
+                    : "PlayerAnimator ●  |  XYZ: Сустав  |  B/D: Изгиб  |  LMB: Орбита  MMB: Сдвиг";
             g.drawString(font, trim(font, hint, w - 12), x + 6, y + h - 13, 0xAA8A96AA, false);
         }
         g.pose().popPose();
 
         g.disableScissor();
+    }
+
+    /**
+     * Настоящий перспективный рендер от 1-го лица (FOV 75°) прямо из глаз игрока!
+     * Запускает штатный FirstPersonMode проход PlayerAnimator (скрывает голову/шляпу и рендерит руки + предметы в перспективе).
+     */
+    private static void renderTrueFirstPersonPerspective(GuiGraphics g, Minecraft mc, boolean paLoaded,
+                                                         int vx, int vy, int vw, int vh) {
+        g.flush();
+        var win = mc.getWindow();
+        double guiScale = win.getGuiScale();
+        int glX = Math.max(0, (int) Math.round(vx * guiScale));
+        int glW = Math.max(1, (int) Math.round(vw * guiScale));
+        int glH = Math.max(1, (int) Math.round(vh * guiScale));
+        int glY = Math.max(0, win.getHeight() - (int) Math.round((vy + vh) * guiScale));
+
+        RenderSystem.backupProjectionMatrix();
+        try {
+            RenderSystem.viewport(glX, glY, glW, glH);
+            RenderSystem.clear(GL11.GL_DEPTH_BUFFER_BIT, Minecraft.ON_OSX);
+            RenderSystem.enableDepthTest();
+
+            Matrix4f persp = new Matrix4f().perspective(
+                    (float) Math.toRadians(75.0f),
+                    (float) vw / Math.max(1.0f, (float) vh),
+                    0.04f,
+                    32.0f);
+            RenderSystem.setProjectionMatrix(persp, VertexSorting.DISTANCE_TO_ORIGIN);
+
+            // Позиция глаз с учётом смещения корневой кости BODY
+            float bodyOffX = StudioAnimModel.uiPosToEngine(BoneId.BODY, Channel.POS_X, DOC.eval(BoneId.BODY, Channel.POS_X, playhead), 0f);
+            float bodyOffY = StudioAnimModel.uiPosToEngine(BoneId.BODY, Channel.POS_Y, DOC.eval(BoneId.BODY, Channel.POS_Y, playhead), 0f);
+            float bodyOffZ = StudioAnimModel.uiPosToEngine(BoneId.BODY, Channel.POS_Z, DOC.eval(BoneId.BODY, Channel.POS_Z, playhead), 0f);
+
+            PoseStack viewPose = new PoseStack();
+            viewPose.mulPose(Axis.XP.rotationDegrees(fpPitch));
+            viewPose.mulPose(Axis.YP.rotationDegrees(fpYaw));
+            // Глаза находятся на высоте 1.54 блока и чуть позади линии плеч (+0.10 по Z), чтобы руки были прямо перед глазами
+            viewPose.translate(-bodyOffX, -(1.54f + bodyOffY), -(0.10f + bodyOffZ));
+
+            // 3D-сетка пола в перспективе для ощущения пространства
+            if (showGrid) {
+                VertexConsumer lvc = g.bufferSource().getBuffer(RenderType.lines());
+                Matrix4f lm = viewPose.last().pose();
+                org.joml.Matrix3f nm = viewPose.last().normal();
+                for (float d = -3f; d <= 3.01f; d += 0.5f) {
+                    boolean c = Math.abs(d) < 0.01f;
+                    int r = c ? 88 : 50, gr = c ? 166 : 68, b = c ? 255 : 98, a = c ? 170 : 95;
+                    lvc.vertex(lm, d, 0f, -3f).color(r, gr, b, a).normal(nm, 0f, 1f, 0f).endVertex();
+                    lvc.vertex(lm, d, 0f, 3f).color(r, gr, b, a).normal(nm, 0f, 1f, 0f).endVertex();
+                    lvc.vertex(lm, -3f, 0f, d).color(r, gr, b, a).normal(nm, 1f, 0f, 0f).endVertex();
+                    lvc.vertex(lm, 3f, 0f, d).color(r, gr, b, a).normal(nm, 1f, 0f, 0f).endVertex();
+                }
+                g.flush();
+            }
+
+            Lighting.setupForEntityInInventory();
+            if (paLoaded && mc.player != null) {
+                AbstractClientPlayer player = mc.player;
+                PlayerAnimBridge.beginViewportPreview(DOC, playhead, true);
+                PlayerAnimBridge.setFirstPersonPass(true);
+
+                float oldBodyRot = player.yBodyRot, oldBodyRotO = player.yBodyRotO;
+                float oldYRot = player.getYRot(), oldYRotO = player.yRotO;
+                float oldXRot = player.getXRot(), oldXRotO = player.xRotO;
+                float oldHeadRot = player.yHeadRot, oldHeadRotO = player.yHeadRotO;
+                float oldWalk = player.walkAnimation.speed();
+                float oldAtk = player.attackAnim, oldOAtk = player.oAttackAnim;
+                Pose oldPose = player.getPose();
+
+                player.yBodyRot = player.yBodyRotO = 180f;
+                player.setYRot(180f); player.yRotO = 180f;
+                player.setXRot(0f); player.xRotO = 0f;
+                player.yHeadRot = player.yHeadRotO = 180f;
+                player.walkAnimation.setSpeed(0f);
+                player.attackAnim = player.oAttackAnim = 0f;
+                if (oldPose == Pose.CROUCHING) player.setPose(Pose.STANDING);
+
+                EntityRenderDispatcher dispatcher = mc.getEntityRenderDispatcher();
+                dispatcher.setRenderShadow(false);
+                try {
+                    dispatcher.render(player, 0.0, 0.0, 0.0, 0.0f, 0.0f, viewPose, g.bufferSource(), 0xF000F0);
+                    g.flush();
+                } finally {
+                    dispatcher.setRenderShadow(true);
+                    PlayerAnimBridge.setFirstPersonPass(false);
+                    PlayerAnimBridge.endViewportPreview();
+                    player.yBodyRot = oldBodyRot; player.yBodyRotO = oldBodyRotO;
+                    player.setYRot(oldYRot); player.yRotO = oldYRotO;
+                    player.setXRot(oldXRot); player.xRotO = oldXRotO;
+                    player.yHeadRot = oldHeadRot; player.yHeadRotO = oldHeadRotO;
+                    player.walkAnimation.setSpeed(oldWalk);
+                    player.attackAnim = oldAtk; player.oAttackAnim = oldOAtk;
+                    if (oldPose == Pose.CROUCHING) player.setPose(oldPose);
+                }
+            } else if (mc.getEntityModels() != null) {
+                boolean slim = mc.player != null && "slim".equals(mc.player.getModelName());
+                ResourceLocation skin = mc.player != null ? mc.player.getSkinTextureLocation() : DefaultPlayerSkin.getDefaultSkin();
+                PlayerModel<?> model = getFallbackModel(mc, slim);
+                model.young = false;
+                applyStandaloneBone(model.rightArm, BoneId.RIGHT_ARM);
+                applyStandaloneBone(model.leftArm, BoneId.LEFT_ARM);
+
+                viewPose.pushPose();
+                viewPose.translate(bodyOffX, bodyOffY + 0.7f, bodyOffZ);
+                viewPose.mulPose(Axis.ZP.rotationDegrees(DOC.eval(BoneId.BODY, Channel.ROT_Z, playhead)));
+                viewPose.mulPose(Axis.YP.rotationDegrees(DOC.eval(BoneId.BODY, Channel.ROT_Y, playhead)));
+                viewPose.mulPose(Axis.XP.rotationDegrees(DOC.eval(BoneId.BODY, Channel.ROT_X, playhead)));
+                viewPose.translate(0f, -0.7f, 0f);
+                viewPose.scale(-0.9375f, -0.9375f, 0.9375f);
+                viewPose.translate(0f, -1.501f, 0f);
+
+                model.setAllVisible(false);
+                model.rightArm.visible = DOC.isBoneVisible(BoneId.RIGHT_ARM);
+                model.leftArm.visible = DOC.isBoneVisible(BoneId.LEFT_ARM);
+                model.renderToBuffer(viewPose, g.bufferSource().getBuffer(RenderType.entityCutoutNoCull(skin)),
+                        0xF000F0, OverlayTexture.NO_OVERLAY, 1f, 1f, 1f, 1f);
+                model.rightArm.visible = false;
+                model.leftArm.visible = false;
+                model.rightSleeve.visible = DOC.isBoneVisible(BoneId.RIGHT_ARM);
+                model.leftSleeve.visible = DOC.isBoneVisible(BoneId.LEFT_ARM);
+                model.rightSleeve.copyFrom(model.rightArm);
+                model.leftSleeve.copyFrom(model.leftArm);
+                model.renderToBuffer(viewPose, g.bufferSource().getBuffer(RenderType.entityCutoutNoCullZOffset(skin)),
+                        0xF000F0, OverlayTexture.NO_OVERLAY, 1f, 1f, 1f, 1f);
+                restoreVisibility(model);
+                viewPose.popPose();
+                g.flush();
+            }
+        } finally {
+            RenderSystem.viewport(0, 0, win.getWidth(), win.getHeight());
+            RenderSystem.restoreProjectionMatrix();
+            Lighting.setupForFlatItems();
+            RenderSystem.disableDepthTest();
+            RenderSystem.enableBlend();
+            RenderSystem.defaultBlendFunc();
+            RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+        }
     }
 
     private static void renderFloorGridSmooth(GuiGraphics g, Matrix4f mat) {
@@ -644,7 +997,6 @@ public final class StudioAnimEditor {
             Vector4f b2 = project(mat, extent, 0f, v);
             drawSmoothLine(g, b1.x, b1.y, b2.x, b2.y, center ? 1.4f : 1.0f, colX);
         }
-        // Стрелка направления лица персонажа (-Z в entity space при yBodyRot=180)
         Vector4f f0 = project(mat, 0f, 0.005f, -0.75f);
         Vector4f f1 = project(mat, 0f, 0.005f, -1.25f);
         Vector4f fl = project(mat, -0.16f, 0.005f, -1.05f);
@@ -658,36 +1010,25 @@ public final class StudioAnimEditor {
     private static void renderLivePlayerWithMods(GuiGraphics g, AbstractClientPlayer player,
                                                  float cx, float cy, float pxPerBlock,
                                                  float effPitch, float effYaw, float pivotY) {
-        PlayerAnimBridge.beginViewportPreview(DOC, playhead, firstPersonPreview);
+        PlayerAnimBridge.beginViewportPreview(DOC, playhead, false);
 
-        // Полностью изолируем позу рендера от движения, приседа, покачивания плаща и удара в мире
-        float oldBodyRot = player.yBodyRot;
-        float oldBodyRotO = player.yBodyRotO;
-        float oldYRot = player.getYRot();
-        float oldYRotO = player.yRotO;
-        float oldXRot = player.getXRot();
-        float oldXRotO = player.xRotO;
-        float oldHeadRot = player.yHeadRot;
-        float oldHeadRotO = player.yHeadRotO;
+        float oldBodyRot = player.yBodyRot, oldBodyRotO = player.yBodyRotO;
+        float oldYRot = player.getYRot(), oldYRotO = player.yRotO;
+        float oldXRot = player.getXRot(), oldXRotO = player.xRotO;
+        float oldHeadRot = player.yHeadRot, oldHeadRotO = player.yHeadRotO;
         float oldWalkSpeed = player.walkAnimation.speed();
-        float oldAttack = player.attackAnim;
-        float oldOAttack = player.oAttackAnim;
+        float oldAttack = player.attackAnim, oldOAttack = player.oAttackAnim;
         Pose oldPose = player.getPose();
         double oldCloakX = player.xCloak, oldCloakOX = player.xCloakO;
         double oldCloakY = player.yCloak, oldCloakOY = player.yCloakO;
         double oldCloakZ = player.zCloak, oldCloakOZ = player.zCloakO;
 
-        player.yBodyRot = 180f;
-        player.yBodyRotO = 180f;
-        player.setYRot(180f);
-        player.yRotO = 180f;
-        player.setXRot(0f);
-        player.xRotO = 0f;
-        player.yHeadRot = 180f;
-        player.yHeadRotO = 180f;
+        player.yBodyRot = player.yBodyRotO = 180f;
+        player.setYRot(180f); player.yRotO = 180f;
+        player.setXRot(0f); player.xRotO = 0f;
+        player.yHeadRot = player.yHeadRotO = 180f;
         player.walkAnimation.setSpeed(0f);
-        player.attackAnim = 0f;
-        player.oAttackAnim = 0f;
+        player.attackAnim = player.oAttackAnim = 0f;
         if (oldPose == Pose.CROUCHING) {
             player.setPose(Pose.STANDING);
         }
@@ -719,17 +1060,12 @@ public final class StudioAnimEditor {
         RenderSystem.defaultBlendFunc();
         RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
 
-        player.yBodyRot = oldBodyRot;
-        player.yBodyRotO = oldBodyRotO;
-        player.setYRot(oldYRot);
-        player.yRotO = oldYRotO;
-        player.setXRot(oldXRot);
-        player.xRotO = oldXRotO;
-        player.yHeadRot = oldHeadRot;
-        player.yHeadRotO = oldHeadRotO;
+        player.yBodyRot = oldBodyRot; player.yBodyRotO = oldBodyRotO;
+        player.setYRot(oldYRot); player.yRotO = oldYRotO;
+        player.setXRot(oldXRot); player.xRotO = oldXRotO;
+        player.yHeadRot = oldHeadRot; player.yHeadRotO = oldHeadRotO;
         player.walkAnimation.setSpeed(oldWalkSpeed);
-        player.attackAnim = oldAttack;
-        player.oAttackAnim = oldOAttack;
+        player.attackAnim = oldAttack; player.oAttackAnim = oldOAttack;
         if (oldPose == Pose.CROUCHING) {
             player.setPose(oldPose);
         }
@@ -773,7 +1109,6 @@ public final class StudioAnimEditor {
         pose.mulPose(Axis.XP.rotationDegrees(-effPitch));
         pose.mulPose(Axis.YP.rotationDegrees(effYaw));
         pose.translate(0f, -pivotY, 0f);
-        // Точная копия PlayerRendererMixin.applyBodyTransforms ДО scale(-0.9375, -0.9375, 0.9375)!
         pose.translate(bx, by + 0.7f, bz);
         pose.mulPose(Axis.ZP.rotationDegrees(brz));
         pose.mulPose(Axis.YP.rotationDegrees(bry));
@@ -849,9 +1184,8 @@ public final class StudioAnimEditor {
         m.hat.visible = m.jacket.visible = m.rightSleeve.visible = m.leftSleeve.visible = m.rightPants.visible = m.leftPants.visible = true;
     }
 
-    // --- 3D проецирование скелета + экранно-проекционный Гизмо (100% совпадение с движком!) ---
+    // --- 3D проецирование скелета + ортогональный X/Y/Z Гизмо + 2 отдельные стрелки изгиба (B / D) ---
 
-    /** Строит матрицу ModelPart-пространства с учётом BODY, опционально подменяя 1 канал на delta для расчёта Якобиана. */
     private static Matrix4f buildModelRootMatrix(Matrix4f entityToScreen, BoneId pertBone, Channel pertCh, float pertDelta) {
         float px = evalPert(BoneId.BODY, Channel.POS_X, pertBone, pertCh, pertDelta);
         float py = evalPert(BoneId.BODY, Channel.POS_Y, pertBone, pertCh, pertDelta);
@@ -879,14 +1213,12 @@ public final class StudioAnimEditor {
         return (b == pertBone && c == pertCh) ? v + pertDelta : v;
     }
 
-    /** Экранная точка репрезентативного конца кости при подстановке pertDelta (для 100% точного Якобиана). */
     private static Vector4f evalBoneFeatureScreen(Matrix4f entityToScreen, BoneId targetBone,
                                                   BoneId pertBone, Channel pertCh, float pertDelta,
                                                   boolean tipPoint) {
         Matrix4f modelRoot = buildModelRootMatrix(entityToScreen, pertBone, pertCh, pertDelta);
         if (targetBone == BoneId.BODY) {
             if (!tipPoint) return project(modelRoot, 0f, 11.2f / 16f, 0f);
-            // Для вращения BODY берём рычаг в зависимости от оси вращения
             if (pertCh == Channel.ROT_Y) return project(modelRoot, 0f, 11.2f / 16f, -6f / 16f);
             return project(modelRoot, 0f, 3f / 16f, 0f);
         }
@@ -955,37 +1287,95 @@ public final class StudioAnimEditor {
         addLimbProjection(BoneId.RIGHT_LEG, modelRoot, 0f, 12f, 0f);
         addLimbProjection(BoneId.LEFT_LEG, modelRoot, 0f, 12f, 0f);
 
-        // Ориентация ручек Гизмо: стрелка каждой оси указывает СТРОГО туда, куда сдвинется/наклонится кость при +значении!
+        // 1) Ортогональный 3D-Гизмо в суставе выбранной кости:
+        //    X (красный) = Вправо, Y (зелёный) = СТРОГО ВВЕРХ, Z (синий) = Вперёд (перпендикулярно X и Y — никогда не сливается с Y!)
         Vector4f origin = evalBoneFeatureScreen(entityToScreen, selectedBone, null, null, 0f, false);
         gizmoOriginX = origin.x;
         gizmoOriginY = origin.y;
 
-        float handleLenPx = 28f;
-        Channel[] activeChs = activeToolChannels();
-        for (int a = 0; a < activeChs.length; a++) {
-            Channel ch = activeChs[a];
-            boolean useTip = toolMode != ToolMode.MOVE;
-            Vector4f p0 = evalBoneFeatureScreen(entityToScreen, selectedBone, selectedBone, ch, 0f, useTip);
-            Vector4f p1 = evalBoneFeatureScreen(entityToScreen, selectedBone, selectedBone, ch, ch.angle ? 5f : 2f, useTip);
-            float dx = p1.x - p0.x;
-            float dy = p1.y - p0.y;
-            float len = (float) Math.hypot(dx, dy);
-            if (len < 0.001f) {
-                dx = (a == 0) ? 1f : 0f;
-                dy = (a == 1) ? -1f : 0.5f;
-                len = (float) Math.hypot(dx, dy);
+        // Проецируем строгие ортогональные 3D-направления сцены через верхнюю 3×3 часть entityToScreen
+        Vector4f wZero = project(entityToScreen, 0f, 0f, 0f);
+        Vector4f wRight = project(entityToScreen, -1f, 0f, 0f); // +X сцены (вправо при взгляде спереди)
+        Vector4f wUp = project(entityToScreen, 0f, 1f, 0f);     // +Y сцены (СТРОГО ВВЕРХ!)
+        Vector4f wFwd = project(entityToScreen, 0f, 0f, -1f);   // Вперёд к зрителю (ортогонально X и Y)
+
+        float handleLen = 28f;
+        setAxisTip(0, wRight.x - wZero.x, wRight.y - wZero.y, 1f, 0f, handleLen);
+        setAxisTip(1, wUp.x - wZero.x, wUp.y - wZero.y, 0f, -1f, handleLen);
+
+        float zDx = wFwd.x - wZero.x;
+        float zDy = wFwd.y - wZero.y;
+        float zLen = (float) Math.hypot(zDx, zDy);
+        // Защита от слияния Z с Y при взгляде строго анфас (Yaw≈0) или сверху: уводим Z в чистую изометрическую диагональ!
+        float yDx = gizmoTipX[1] - gizmoOriginX;
+        float yDy = gizmoTipY[1] - gizmoOriginY;
+        float yNorm = Math.max(1f, (float) Math.hypot(yDx, yDy));
+        float cosZY = zLen > 0.001f ? Math.abs((zDx * yDx + zDy * yDy) / (zLen * yNorm)) : 1f;
+        if (zLen < 7f || cosZY > 0.90f) {
+            zDx = -0.76f;
+            zDy = 0.65f;
+        }
+        setAxisTip(2, zDx, zDy, -0.76f, 0.65f, handleLen);
+
+        // 2) Две отдельные изгибочные стрелки Bendy-lib (B = угол, D = направление) посередине сгибаемой кости!
+        hasBendGizmo = selectedBone.bendable;
+        if (hasBendGizmo) {
+            ProjectedBone selSeg = null;
+            for (ProjectedBone pb : projectedBones) {
+                if (pb.bone == selectedBone) {
+                    selSeg = pb;
+                    break;
+                }
             }
-            gizmoTipX[a] = gizmoOriginX + (dx / len) * handleLenPx;
-            gizmoTipY[a] = gizmoOriginY + (dy / len) * handleLenPx;
+            if (selSeg != null) {
+                float sx = selSeg.ex - selSeg.sx;
+                float sy = selSeg.ey - selSeg.sy;
+                float segLen = (float) Math.hypot(sx, sy);
+                if (segLen >= 26f) {
+                    // Размещаем узел изгиба в локте / колене / середине спины (62% длины кости)
+                    bendOriginX = selSeg.sx + sx * 0.62f;
+                    bendOriginY = selSeg.sy + sy * 0.62f;
+                } else {
+                    // Если кость короткая (например BODY) или смотрит в камеру — выносим узел вправо-вниз на 26px от сустава
+                    bendOriginX = gizmoOriginX + 22f;
+                    bendOriginY = gizmoOriginY + 18f;
+                }
+            } else {
+                bendOriginX = gizmoOriginX + 22f;
+                bendOriginY = gizmoOriginY + 18f;
+            }
+
+            // Направление стрелки B (угол изгиба) — по реальной 2D-производной изгиба кости
+            Vector4f bp0 = evalBoneFeatureScreen(entityToScreen, selectedBone, selectedBone, Channel.BEND_ANG, 0f, true);
+            Vector4f bp1 = evalBoneFeatureScreen(entityToScreen, selectedBone, selectedBone, Channel.BEND_ANG, 5f, true);
+            float bdx = bp1.x - bp0.x;
+            float bdy = bp1.y - bp0.y;
+            float blen = (float) Math.hypot(bdx, bdy);
+            if (blen < 0.4f) {
+                bdx = -0.85f;
+                bdy = -0.52f;
+                blen = (float) Math.hypot(bdx, bdy);
+            }
+            float ux = bdx / blen;
+            float uy = bdy / blen;
+            bendTipX[0] = bendOriginX + ux * 23f;
+            bendTipY[0] = bendOriginY + uy * 23f;
+
+            // Стрелка D (направление изгиба) — строго под +90° к стрелке B, поэтому они НИКОГДА не сливаются!
+            bendTipX[1] = bendOriginX - uy * 21f;
+            bendTipY[1] = bendOriginY + ux * 21f;
         }
     }
 
-    private static Channel[] activeToolChannels() {
-        return switch (toolMode) {
-            case ROTATE -> new Channel[]{Channel.ROT_X, Channel.ROT_Y, Channel.ROT_Z};
-            case MOVE -> new Channel[]{Channel.POS_X, Channel.POS_Y, Channel.POS_Z};
-            case BEND -> new Channel[]{Channel.BEND_DIR, Channel.BEND_ANG};
-        };
+    private static void setAxisTip(int idx, float dx, float dy, float defX, float defY, float lenPx) {
+        float l = (float) Math.hypot(dx, dy);
+        if (l < 0.001f) {
+            dx = defX;
+            dy = defY;
+            l = (float) Math.hypot(dx, dy);
+        }
+        gizmoTipX[idx] = gizmoOriginX + (dx / l) * lenPx;
+        gizmoTipY[idx] = gizmoOriginY + (dy / l) * lenPx;
     }
 
     private static Matrix4f addLimbProjection(BoneId bone, Matrix4f modelRoot, float tipDx, float tipDy, float tipDz) {
@@ -1017,20 +1407,28 @@ public final class StudioAnimEditor {
     }
 
     private static void updateViewportHover(int mx, int my, int x, int y, int w, int h) {
-        hoveredGizmoAxis = -1;
+        hoveredGizmoHandle = -1;
         hoveredViewportBone = null;
         if (!hover(mx, my, x, y, w, h)) return;
 
-        float bestAxisDist = 10f;
-        int maxAxes = toolMode == ToolMode.BEND ? 2 : 3;
-        for (int a = 0; a < maxAxes; a++) {
+        float bestDist = 9.5f;
+        for (int a = 0; a < 3; a++) {
             float d = distToSegment(mx, my, gizmoOriginX, gizmoOriginY, gizmoTipX[a], gizmoTipY[a]);
-            if (d < bestAxisDist) {
-                bestAxisDist = d;
-                hoveredGizmoAxis = a;
+            if (d < bestDist) {
+                bestDist = d;
+                hoveredGizmoHandle = a;
             }
         }
-        if (hoveredGizmoAxis >= 0) return;
+        if (hasBendGizmo) {
+            for (int b = 0; b < 2; b++) {
+                float d = distToSegment(mx, my, bendOriginX, bendOriginY, bendTipX[b], bendTipY[b]);
+                if (d < bestDist) {
+                    bestDist = d;
+                    hoveredGizmoHandle = 3 + b;
+                }
+            }
+        }
+        if (hoveredGizmoHandle >= 0) return;
 
         float bestScore = 15f;
         for (ProjectedBone pb : projectedBones) {
@@ -1067,51 +1465,100 @@ public final class StudioAnimEditor {
             }
         }
 
-        int[] axisColors = toolMode == ToolMode.BEND
-                ? new int[]{0xFFA855F7, 0xFFEC4899, 0xFF3B82F6}
-                : new int[]{0xFFEF4444, 0xFF22C55E, 0xFF3B82F6};
-        String[] axisNames = toolMode == ToolMode.BEND ? new String[]{"Dir", "Bend", "Z"} : new String[]{"X", "Y", "Z"};
-        int maxAxes = toolMode == ToolMode.BEND ? 2 : 3;
-
-        for (int a = 0; a < maxAxes; a++) {
-            boolean active = (dragKind == DragKind.GIZMO_POSE && dragGizmoAxis == a)
-                    || hoveredGizmoAxis == a || axisLock == a;
+        // 1) Ортогональные оси X, Y (вверх), Z в суставе
+        int[] axisColors = {0xFFEF4444, 0xFF22C55E, 0xFF3B82F6};
+        String[] axisNames = {"X", "Y", "Z"};
+        for (int a = 0; a < 3; a++) {
+            boolean active = (dragKind == DragKind.GIZMO_POSE && dragGizmoHandle == a)
+                    || hoveredGizmoHandle == a || axisLock == a;
             int col = active ? 0xFFFFE066 : axisColors[a];
-            drawSmoothLine(g, gizmoOriginX, gizmoOriginY, gizmoTipX[a], gizmoTipY[a], active ? 2.2f : 1.5f, col);
-            int tx = Math.round(gizmoTipX[a]);
-            int ty = Math.round(gizmoTipY[a]);
-            g.fill(tx - 3, ty - 3, tx + 3, ty + 3, col);
-            if (active) {
-                g.drawString(font, axisNames[a], tx + 5, ty - 4, col, true);
+            drawArrowHandle(g, gizmoOriginX, gizmoOriginY, gizmoTipX[a], gizmoTipY[a],
+                    active ? 2.2f : 1.5f, col, toolMode == ToolMode.ROTATE);
+            if (active || a == 1) {
+                g.drawString(font, axisNames[a], Math.round(gizmoTipX[a]) + 4, Math.round(gizmoTipY[a]) - 4, col, true);
             }
         }
         int ox = Math.round(gizmoOriginX);
         int oy = Math.round(gizmoOriginY);
         g.fill(ox - 3, oy - 3, ox + 3, oy + 3, GOLD);
         g.fill(ox - 1, oy - 1, ox + 1, oy + 1, 0xFF0E1420);
-        g.flush();
 
+        // 2) Две отдельные стрелки Изгиба (B — угол, D — направление) в локте / колене / центре кости
+        if (hasBendGizmo) {
+            int[] bendCols = {PINK, PURPLE};
+            String[] bendNames = {"B⌒", "D⟳"};
+            for (int b = 0; b < 2; b++) {
+                int hIdx = 3 + b;
+                boolean active = (dragKind == DragKind.GIZMO_POSE && dragGizmoHandle == hIdx)
+                        || hoveredGizmoHandle == hIdx;
+                int col = active ? 0xFFFFE066 : bendCols[b];
+                drawArrowHandle(g, bendOriginX, bendOriginY, bendTipX[b], bendTipY[b],
+                        active ? 2.2f : 1.5f, col, false);
+                g.drawString(font, active ? bendNames[b] : (b == 0 ? "B" : "D"),
+                        Math.round(bendTipX[b]) + 4, Math.round(bendTipY[b]) - 4, col, true);
+            }
+            int bx = Math.round(bendOriginX);
+            int by = Math.round(bendOriginY);
+            drawDiamond(g, bx, by, PINK, false);
+        }
+
+        g.flush();
         g.pose().popPose();
+    }
+
+    /** Рисует стрелку Гизмо с острым наконечником (Move / Bend) или кольцом вращения (Rotate). */
+    private static void drawArrowHandle(GuiGraphics g, float x0, float y0, float x1, float y1,
+                                        float width, int col, boolean ringTip) {
+        drawSmoothLine(g, x0, y0, x1, y1, width, col);
+        float dx = x1 - x0, dy = y1 - y0;
+        float len = (float) Math.hypot(dx, dy);
+        if (len > 4f) {
+            float ux = dx / len, uy = dy / len;
+            float px = -uy, py = ux;
+            if (ringTip) {
+                int tx = Math.round(x1), ty = Math.round(y1);
+                g.fill(tx - 3, ty - 3, tx + 3, ty + 3, col);
+                g.fill(tx - 1, ty - 1, tx + 1, ty + 1, 0xFF0E1420);
+            } else {
+                drawSmoothLine(g, x1, y1, x1 - ux * 5.5f + px * 3.2f, y1 - uy * 5.5f + py * 3.2f, width, col);
+                drawSmoothLine(g, x1, y1, x1 - ux * 5.5f - px * 3.2f, y1 - uy * 5.5f - py * 3.2f, width, col);
+            }
+        }
     }
 
     // -------------------------------------------------------------------------
     //  4. ПРАВАЯ ПАНЕЛЬ: ИНСПЕКТОР КОСТИ, ГРАФИК EASING И НАСТРОЙКИ
     // -------------------------------------------------------------------------
 
-    private static void renderRightInspector(GuiGraphics g, Font font, int x, int y, int w, int h, int mx, int my) {
-        g.fill(x, y, x + w, y + h, SURFACE);
-        border(g, x, y, w, h, EDGE);
-        g.fill(x + 1, y + 1, x + w - 1, y + 17, BAR);
+    private static void renderRightInspector(GuiGraphics g, Font font, int x, int y, int w, int h, int mx, int my, boolean floating) {
+        AnimPanelState st = PanelId.RIGHT.state();
+        if (floating) {
+            g.fill(x + 2, y + 2, x + w + 3, y + h + 3, 0x66000000);
+        }
+        g.fill(x, y, x + w, y + h, floating ? SURFACE_FLOAT : SURFACE);
+        border(g, x, y, w, h, floating ? EDGE_HOT : EDGE);
 
+        if (st.docked && st.collapsed) {
+            drawBtn(g, font, mx, my, x + 2, y + 2, 14, 14, "◂", "panel:collapse:RIGHT",
+                    Messages.get("studio.anim.panel.expand"), false, GOLD);
+            drawBtn(g, font, mx, my, x + 2, y + 18, 14, 14, "⧉", "panel:dock:RIGHT",
+                    Messages.get("studio.anim.panel.detach"), false, ACCENT);
+            return;
+        }
+
+        g.fill(x + 1, y + 1, x + w - 1, y + 17, BAR);
         String boneTitle = Messages.get(selectedBone.langKey);
-        g.fill(x + 6, y + 5, x + 10, y + 13, selectedBone.color);
-        g.drawString(font, trim(font, boneTitle, w - 64), x + 14, y + 5, GOLD, false);
+        g.fill(x + 5, y + 5, x + 9, y + 13, selectedBone.color);
+        g.drawString(font, trim(font, boneTitle, Math.max(24, w - 92)), x + 12, y + 5, GOLD, false);
 
         int curTick = Math.round(playhead);
-        drawBtn(g, font, mx, my, x + w - 50, y + 2, 24, 14, "+◆", "bone:key_all",
+        drawBtn(g, font, mx, my, x + w - 76, y + 2, 22, 13, "+◆", "bone:key_all",
                 Messages.get("studio.anim.tip.insert_key") + " [I]", DOC.boneHasKeyAt(selectedBone, curTick), GOLD);
-        drawBtn(g, font, mx, my, x + w - 24, y + 2, 21, 14, "↺", "bone:reset",
+        drawBtn(g, font, mx, my, x + w - 53, y + 2, 19, 13, "↺", "bone:reset",
                 Messages.get("studio.anim.tip.reset_bone"), false, RED);
+        drawPanelHeaderControls(g, font, mx, my, x + w - 32, y + 2, PanelId.RIGHT, st);
+
+        if (st.collapsed) return;
 
         if (activeFieldIdx < 0) {
             syncInspectorFromDoc(false);
@@ -1147,7 +1594,7 @@ public final class StudioAnimEditor {
 
         if (selectedBone.bendable) {
             boolean bendy = ModList.get().isLoaded("bendylib");
-            g.drawString(font, "Bendy-lib (°)", x + 5, cy, bendy ? PURPLE : MUTED, false);
+            g.drawString(font, "Bendy-lib (°)", x + 5, cy, bendy ? PINK : MUTED, false);
             cy += 10;
             cy = renderChannelRow(g, font, effMx, effMy, x + 5, cy, innerW, 6, Channel.BEND_DIR, "D", bodyTop, bodyBottom);
             cy = renderChannelRow(g, font, effMx, effMy, x + 5, cy, innerW, 7, Channel.BEND_ANG, "B", bodyTop, bodyBottom);
@@ -1157,7 +1604,6 @@ public final class StudioAnimEditor {
         g.fill(x + 5, cy, x + 5 + innerW, cy + 1, EDGE);
         cy += 4;
 
-        // Секция плавности (Easing) + квадрат живого графика кривой — рендерится ВСЕГДА!
         g.drawString(font, "Easing:", x + 5, cy + 2, GOLD, false);
         int graphW = 48;
         int graphH = 30;
@@ -1183,7 +1629,7 @@ public final class StudioAnimEditor {
         endTickField.render(g, font, efX, cy, efW, 13, activeFieldIdx == 8, "40", 0xFF0C1119,
                 activeFieldIdx == 8 ? GOLD : EDGE, TEXT, MUTED);
         if (cy + 13 > bodyTop && cy < bodyBottom) {
-            fieldBoxes.add(new FieldBox(8, efX, cy, efW, 13, endTickField, null));
+            fieldBoxes.add(new FieldBox(8, efX, cy, efW, 13, endTickField, null, currentLayerTag));
         }
 
         int fx = x + 7 + halfW;
@@ -1193,7 +1639,7 @@ public final class StudioAnimEditor {
         fadeField.render(g, font, ffX, cy, ffW, 13, activeFieldIdx == 9, "2", 0xFF0C1119,
                 activeFieldIdx == 9 ? GOLD : EDGE, TEXT, MUTED);
         if (cy + 13 > bodyTop && cy < bodyBottom) {
-            fieldBoxes.add(new FieldBox(9, ffX, cy, ffW, 13, fadeField, null));
+            fieldBoxes.add(new FieldBox(9, ffX, cy, ffW, 13, fadeField, null, currentLayerTag));
         }
         cy += 15;
 
@@ -1206,7 +1652,7 @@ public final class StudioAnimEditor {
         returnTickField.render(g, font, rfX, cy, rfW, 14, activeFieldIdx == 10, "0", 0xFF0C1119,
                 activeFieldIdx == 10 ? GOLD : EDGE, TEXT, MUTED);
         if (cy + 14 > bodyTop && cy < bodyBottom) {
-            fieldBoxes.add(new FieldBox(10, rfX, cy, rfW, 14, returnTickField, null));
+            fieldBoxes.add(new FieldBox(10, rfX, cy, rfW, 14, returnTickField, null, currentLayerTag));
         }
 
         g.disableScissor();
@@ -1225,7 +1671,7 @@ public final class StudioAnimEditor {
         border(g, x, y, 12, 12, ch.axisColor);
         g.drawString(font, tag, x + 3, y + 2, ch.axisColor, false);
         if (visible) {
-            btns.add(new BtnHit(x, y, 12, 12, "scrub:" + ch.name(), Messages.get("studio.anim.tip.scrub")));
+            btns.add(new BtnHit(x, y, 12, 12, "scrub:" + ch.name(), Messages.get("studio.anim.tip.scrub"), currentLayerTag));
         }
 
         int minusX = x + 14;
@@ -1239,12 +1685,12 @@ public final class StudioAnimEditor {
         drawClippedBtn(g, font, mx, my, plusX, y, 11, 12, "+", "step:+:" + ch.name(), null, false, MUTED, clipTop, clipBottom);
 
         int fldX = minusX + 12;
-        int fldW = Math.max(26, plusX - fldX - 1);
+        int fldW = Math.max(24, plusX - fldX - 1);
         StudioTextField tf = channelFields[fieldIdx];
         tf.render(g, font, fldX, y, fldW, 12, activeFieldIdx == fieldIdx, "0", 0xFF0C1119,
                 activeFieldIdx == fieldIdx ? GOLD : (hasKeyHere ? 0xFF5A4A24 : EDGE), TEXT, MUTED);
         if (visible) {
-            fieldBoxes.add(new FieldBox(fieldIdx, fldX, y, fldW, 12, tf, ch));
+            fieldBoxes.add(new FieldBox(fieldIdx, fldX, y, fldW, 12, tf, ch, currentLayerTag));
         }
 
         return y + 13;
@@ -1279,91 +1725,111 @@ public final class StudioAnimEditor {
     }
 
     // -------------------------------------------------------------------------
-    //  5. НИЖНЯЯ ПАНЕЛЬ: МНОГОДОРОЖЕЧНЫЙ ТАЙМЛАЙН КЛЮЧЕВЫХ КАДРОВ
+    //  5. НИЖНЯЯ ПАНЕЛЬ: ТАЙМЛАЙН КЛЮЧЕВЫХ КАДРОВ (привязанная / плавающая / сворачиваемая)
     // -------------------------------------------------------------------------
 
-    private static void renderTimeline(GuiGraphics g, Font font, int x, int y, int w, int h, int mx, int my) {
-        g.fill(x, y, x + w, y + h, SURFACE);
-        border(g, x, y, w, h, EDGE);
+    private static void renderTimeline(GuiGraphics g, Font font, int x, int y, int w, int h, int mx, int my, boolean floating) {
+        AnimPanelState st = PanelId.TIMELINE.state();
+        if (floating) {
+            g.fill(x + 2, y + 2, x + w + 3, y + h + 3, 0x66000000);
+        }
+        g.fill(x, y, x + w, y + h, floating ? SURFACE_FLOAT : SURFACE);
+        border(g, x, y, w, h, floating ? EDGE_HOT : EDGE);
 
-        int barH = 20;
+        int barH = st.collapsed ? 16 : 20;
         g.fill(x + 1, y + 1, x + w - 1, y + barH, BAR);
-        g.fill(x + 1, y + barH, x + w - 1, y + barH + 1, EDGE);
-
-        int bx = x + 5;
-        int by = y + 3;
-        bx = drawBtn(g, font, mx, my, bx, by, 16, 14, "|<", "tl:start", "[Home]", false, TEXT) + 2;
-        bx = drawBtn(g, font, mx, my, bx, by, 15, 14, "<", "tl:prev", "[←]", false, TEXT) + 2;
-        bx = drawBtn(g, font, mx, my, bx, by, 22, 14, playing ? "||" : "▶", "tl:play",
-                "[Space]", playing, GREEN) + 2;
-        bx = drawBtn(g, font, mx, my, bx, by, 16, 14, "■", "tl:stop", "Stop", false, RED) + 2;
-        bx = drawBtn(g, font, mx, my, bx, by, 15, 14, ">", "tl:next", "[→]", false, TEXT) + 2;
-        bx = drawBtn(g, font, mx, my, bx, by, 16, 14, ">|", "tl:end", "[End]", false, TEXT) + 6;
-
-        String timeStr = "T: " + formatOneDec(playhead) + " / " + DOC.endTick + " (" + formatOneDec(playhead / 20f) + "s)";
-        g.drawString(font, timeStr, bx, y + 6, GOLD, false);
-        bx += font.width(timeStr) + 8;
-
-        String spdLbl = formatSpeed(playbackSpeed);
-        bx = drawBtn(g, font, mx, my, bx, by, font.width(spdLbl) + 10, 14, spdLbl, "tl:speed",
-                Messages.get("studio.anim.tip.speed"), false, ACCENT) + 4;
-
-        String modeLbl = expandChannels
-                ? Messages.get("studio.anim.tl.channels")
-                : Messages.get("studio.anim.tl.bones");
-        bx = drawBtn(g, font, mx, my, bx, by, font.width(modeLbl) + 10, 14, modeLbl, "tl:mode",
-                Messages.get("studio.anim.tip.tl_mode"), expandChannels, GOLD) + 4;
-
-        int rx = x + w - 5;
-        rx -= 16;
-        drawBtn(g, font, mx, my, rx, by, 16, 14, "+", "tl:zoom_in", "Zoom +", false, TEXT);
-        rx -= 18;
-        drawBtn(g, font, mx, my, rx, by, 16, 14, "-", "tl:zoom_out", "Zoom -", false, TEXT);
-        if (!selectedKeys.isEmpty() && rx - 30 > bx) {
-            String delLbl = "× " + selectedKeys.size();
-            int dw = font.width(delLbl) + 10;
-            rx -= (dw + 4);
-            drawBtn(g, font, mx, my, rx, by, dw, 14, delLbl, "tl:del_sel", "[Delete]", false, RED);
+        if (!st.collapsed) {
+            g.fill(x + 1, y + barH, x + w - 1, y + barH + 1, EDGE);
         }
 
-        int labelColW = 114;
-        int rulerY = y + barH + 1;
+        int bx = x + 5;
+        int by = y + (st.collapsed ? 2 : 3);
+        int bh = st.collapsed ? 13 : 14;
+        bx = drawBtn(g, font, mx, my, bx, by, 16, bh, "|<", "tl:start", "[Home]", false, TEXT) + 2;
+        bx = drawBtn(g, font, mx, my, bx, by, 14, bh, "<", "tl:prev", "[←]", false, TEXT) + 2;
+        bx = drawBtn(g, font, mx, my, bx, by, 20, bh, playing ? "||" : "▶", "tl:play",
+                "[Space]", playing, GREEN) + 2;
+        bx = drawBtn(g, font, mx, my, bx, by, 15, bh, "■", "tl:stop", "Stop", false, RED) + 2;
+        bx = drawBtn(g, font, mx, my, bx, by, 14, bh, ">", "tl:next", "[→]", false, TEXT) + 2;
+        bx = drawBtn(g, font, mx, my, bx, by, 16, bh, ">|", "tl:end", "[End]", false, TEXT) + 6;
+
+        String timeStr = "T: " + formatOneDec(playhead) + "/" + DOC.endTick;
+        if (bx + font.width(timeStr) < x + w - 42) {
+            g.drawString(font, timeStr, bx, y + (st.collapsed ? 5 : 6), GOLD, false);
+            bx += font.width(timeStr) + 6;
+        }
+
+        if (!st.collapsed && bx + 90 < x + w - 40) {
+            String spdLbl = formatSpeed(playbackSpeed);
+            bx = drawBtn(g, font, mx, my, bx, by, font.width(spdLbl) + 8, bh, spdLbl, "tl:speed",
+                    Messages.get("studio.anim.tip.speed"), false, ACCENT) + 3;
+
+            String modeLbl = expandChannels
+                    ? Messages.get("studio.anim.tl.channels")
+                    : Messages.get("studio.anim.tl.bones");
+            bx = drawBtn(g, font, mx, my, bx, by, font.width(modeLbl) + 8, bh, modeLbl, "tl:mode",
+                    Messages.get("studio.anim.tip.tl_mode"), expandChannels, GOLD) + 4;
+        }
+
+        // Кнопки сворачивания и отсоединения таймлайна справа
+        int rx = x + w - 33;
+        drawPanelHeaderControls(g, font, mx, my, rx, y + (st.collapsed ? 2 : 3), PanelId.TIMELINE, st);
+
+        if (st.collapsed) {
+            tlTrackW = 0;
+            tlTrackH = 0;
+            return;
+        }
+
+        rx -= 17;
+        if (rx > bx) drawBtn(g, font, mx, my, rx, by, 15, bh, "+", "tl:zoom_in", "Zoom +", false, TEXT);
+        rx -= 17;
+        if (rx > bx) drawBtn(g, font, mx, my, rx, by, 15, bh, "-", "tl:zoom_out", "Zoom -", false, TEXT);
+        if (!selectedKeys.isEmpty() && rx - 34 > bx) {
+            String delLbl = "× " + selectedKeys.size();
+            int dw = font.width(delLbl) + 8;
+            rx -= (dw + 3);
+            drawBtn(g, font, mx, my, rx, by, dw, bh, delLbl, "tl:del_sel", "[Delete]", false, RED);
+        }
+
+        int labelColW = Math.min(114, Math.max(76, w / 4));
+        tlRulerY = y + barH + 1;
         int rulerH = 14;
         tlTrackX = x + labelColW;
-        tlTrackW = Math.max(40, w - labelColW - 2);
-        tlTrackY = rulerY + rulerH;
-        tlTrackH = Math.max(20, y + h - tlTrackY - 1);
+        tlTrackW = Math.max(30, w - labelColW - 2);
+        tlTrackY = tlRulerY + rulerH;
+        tlTrackH = Math.max(16, y + h - tlTrackY - 1);
 
-        g.fill(x + 1, rulerY, tlTrackX, rulerY + rulerH, 0xFF121824);
+        g.fill(x + 1, tlRulerY, tlTrackX, tlRulerY + rulerH, 0xFF121824);
         g.drawString(font, expandChannels ? trim(font, Messages.get(selectedBone.langKey), labelColW - 8) : "Track",
-                x + 6, rulerY + 3, MUTED, false);
-        g.fill(tlTrackX - 1, rulerY, tlTrackX, y + h - 1, EDGE);
+                x + 6, tlRulerY + 3, MUTED, false);
+        g.fill(tlTrackX - 1, tlRulerY, tlTrackX, y + h - 1, EDGE);
 
-        g.fill(tlTrackX, rulerY, x + w - 1, rulerY + rulerH, 0xFF101520);
+        g.fill(tlTrackX, tlRulerY, x + w - 1, tlRulerY + rulerH, 0xFF101520);
         g.fill(x + 1, tlTrackY - 1, x + w - 1, tlTrackY, EDGE);
 
         int maxVisTick = Math.max(DOC.stopTick + 10, (int) ((timelineScrollX + tlTrackW) / pxPerTick) + 5);
         int tickStep = pxPerTick >= 10f ? 5 : (pxPerTick >= 5f ? 10 : 20);
 
-        g.enableScissor(tlTrackX, rulerY, x + w - 1, y + h - 1);
+        g.enableScissor(tlTrackX, tlRulerY, x + w - 1, y + h - 1);
         for (int t = 0; t <= maxVisTick; t++) {
             int tx = tickToX(t);
             if (tx < tlTrackX - 10 || tx > x + w + 10) continue;
             if (t % tickStep == 0) {
-                g.fill(tx, rulerY + 8, tx + 1, rulerY + rulerH, EDGE_HOT);
+                g.fill(tx, tlRulerY + 8, tx + 1, tlRulerY + rulerH, EDGE_HOT);
                 g.fill(tx, tlTrackY, tx + 1, y + h - 1, 0x222B364A);
-                g.drawString(font, Integer.toString(t), tx + 2, rulerY + 2, t == DOC.endTick ? GOLD : MUTED, false);
+                g.drawString(font, Integer.toString(t), tx + 2, tlRulerY + 2, t == DOC.endTick ? GOLD : MUTED, false);
             } else if (pxPerTick >= 6f) {
-                g.fill(tx, rulerY + 11, tx + 1, rulerY + rulerH, 0x552B364A);
+                g.fill(tx, tlRulerY + 11, tx + 1, tlRulerY + rulerH, 0x552B364A);
             }
         }
 
         if (DOC.looped) {
             int rtx = tickToX(DOC.returnTick);
-            g.fill(rtx, rulerY, rtx + 1, y + h - 1, 0x884CC38A);
+            g.fill(rtx, tlRulerY, rtx + 1, y + h - 1, 0x884CC38A);
         }
         int etx = tickToX(DOC.endTick);
-        g.fill(etx, rulerY, etx + 1, y + h - 1, 0xAAF0B85B);
+        g.fill(etx, tlRulerY, etx + 1, y + h - 1, 0xAAF0B85B);
         g.disableScissor();
 
         int rowH = 13;
@@ -1385,14 +1851,16 @@ public final class StudioAnimEditor {
                 Channel ch = Channel.values()[i];
                 g.fill(x + 3, ry + 3, x + 6, ry + rowH - 3, ch.axisColor);
                 g.drawString(font, ch.shortLabel, x + 9, ry + 3, TEXT, false);
-                renderChannelDiamonds(g, selectedBone, ch, ry + rowH / 2);
+                renderChannelDiamonds(g, selectedBone, ch, ry + rowH / 2, x + w - 1);
             } else {
                 BoneId b = BoneId.values()[i];
                 g.fill(x + 3, ry + 2, x + 5, ry + rowH - 2, b.color);
                 g.drawString(font, trim(font, Messages.get(b.langKey), labelColW - 10),
                         x + 8, ry + 3, rowSel ? GOLD : TEXT, false);
-                btns.add(new BtnHit(x + 1, ry, labelColW - 2, rowH, "bone:" + b.name(), null));
-                renderBoneSummaryDiamonds(g, b, ry + rowH / 2);
+                if (ry >= tlTrackY - 3 && ry + 10 <= y + h) {
+                    btns.add(new BtnHit(x + 1, ry, labelColW - 2, rowH, "bone:" + b.name(), null, currentLayerTag));
+                }
+                renderBoneSummaryDiamonds(g, b, ry + rowH / 2, x + w - 1);
             }
         }
 
@@ -1400,33 +1868,33 @@ public final class StudioAnimEditor {
             int bx0 = Math.min(dragStartX, dragCurX);
             int by0 = Math.min(dragStartY, dragCurY);
             int bw = Math.abs(dragCurX - dragStartX);
-            int bh = Math.abs(dragCurY - dragStartY);
-            g.fill(bx0, by0, bx0 + bw, by0 + bh, 0x3858A6FF);
-            border(g, bx0, by0, Math.max(1, bw), Math.max(1, bh), ACCENT);
+            int bh2 = Math.abs(dragCurY - dragStartY);
+            g.fill(bx0, by0, bx0 + bw, by0 + bh2, 0x3858A6FF);
+            border(g, bx0, by0, Math.max(1, bw), Math.max(1, bh2), ACCENT);
         }
         g.disableScissor();
 
         int phX = Math.round(tlTrackX + playhead * pxPerTick - timelineScrollX);
         if (phX >= tlTrackX && phX < x + w - 1) {
-            g.fill(phX - 3, rulerY, phX + 4, rulerY + 5, RED);
-            g.fill(phX, rulerY, phX + 1, y + h - 1, RED);
+            g.fill(phX - 3, tlRulerY, phX + 4, tlRulerY + 5, RED);
+            g.fill(phX, tlRulerY, phX + 1, y + h - 1, RED);
         }
     }
 
-    private static void renderChannelDiamonds(GuiGraphics g, BoneId bone, Channel ch, int centerY) {
+    private static void renderChannelDiamonds(GuiGraphics g, BoneId bone, Channel ch, int centerY, int rightEdge) {
         int deltaTick = dragKind == DragKind.MOVE_KEYS ? xToTick(dragCurX) - dragKeyOriginTick : 0;
         for (KeyPoint kp : DOC.track(bone, ch).values()) {
             KeyRef ref = new KeyRef(bone, ch, kp.tick());
             boolean sel = selectedKeys.contains(ref);
             int drawTick = sel ? Math.max(0, kp.tick() + deltaTick) : kp.tick();
             int dx = tickToX(drawTick);
-            if (dx < tlTrackX - 4 || dx > rootX + rootW) continue;
+            if (dx < tlTrackX - 2 || dx > rightEdge) continue;
             drawDiamond(g, dx, centerY, sel ? GOLD : ch.axisColor, sel);
             diamondHits.add(new DiamondHit(ref, dx, centerY));
         }
     }
 
-    private static void renderBoneSummaryDiamonds(GuiGraphics g, BoneId bone, int centerY) {
+    private static void renderBoneSummaryDiamonds(GuiGraphics g, BoneId bone, int centerY, int rightEdge) {
         int deltaTick = dragKind == DragKind.MOVE_KEYS ? xToTick(dragCurX) - dragKeyOriginTick : 0;
         Set<Integer> ticks = new LinkedHashSet<>();
         for (Channel ch : Channel.values()) {
@@ -1444,7 +1912,7 @@ public final class StudioAnimEditor {
             }
             int drawTick = anySel ? Math.max(0, t + deltaTick) : t;
             int dx = tickToX(drawTick);
-            if (dx < tlTrackX - 4 || dx > rootX + rootW) continue;
+            if (dx < tlTrackX - 2 || dx > rightEdge) continue;
             drawDiamond(g, dx, centerY, anySel ? GOLD : bone.color, anySel);
             if (firstRef != null) {
                 diamondHits.add(new DiamondHit(firstRef, dx, centerY));
@@ -1473,7 +1941,7 @@ public final class StudioAnimEditor {
         int my0 = rootY + (rootH - mh) / 2;
 
         g.pose().pushPose();
-        g.pose().translate(0, 0, 400);
+        g.pose().translate(0, 0, 410);
         g.fill(rootX, rootY, rootX + rootW, rootY + rootH, 0x88000000);
         g.fill(mx0, my0, mx0 + mw, my0 + mh, 0xF8131A26);
         border(g, mx0, my0, mw, mh, GOLD);
@@ -1500,7 +1968,7 @@ public final class StudioAnimEditor {
                     String shortDisp = e.name().replaceFirst("^resources/assets/", "");
                     g.drawString(font, trim(font, shortDisp, mw - 36), mx0 + 8, ry + 4, hot ? GOLD : TEXT, false);
                     if (visBot > visTop) {
-                        btns.add(new BtnHit(mx0 + 4, visTop, mw - 28, visBot - visTop, "openfile:" + e.name(), null));
+                        btns.add(new BtnHit(mx0 + 4, visTop, mw - 28, visBot - visTop, "openfile:" + e.name(), null, currentLayerTag));
                         drawClippedBtn(g, font, mx, my, mx0 + mw - 22, ry + 1, 16, 13, "×",
                                 "delfile:" + e.name(), null, false, RED, listY, listY + listH);
                     }
@@ -1519,7 +1987,7 @@ public final class StudioAnimEditor {
         int my0 = rootY + (rootH - mh) / 2;
 
         g.pose().pushPose();
-        g.pose().translate(0, 0, 400);
+        g.pose().translate(0, 0, 410);
         g.fill(rootX, rootY, rootX + rootW, rootY + rootH, 0x88000000);
         g.fill(mx0, my0, mx0 + mw, my0 + mh, 0xF8131A26);
         border(g, mx0, my0, mw, mh, GREEN);
@@ -1530,12 +1998,12 @@ public final class StudioAnimEditor {
         g.drawString(font, "Namespace:", mx0 + 10, my0 + 28, MUTED, false);
         newNsField.render(g, font, mx0 + 78, my0 + 25, mw - 88, 15, activeFieldIdx == 12, "scriptcraft",
                 0xFF0C1119, activeFieldIdx == 12 ? GOLD : EDGE, TEXT, MUTED);
-        fieldBoxes.add(new FieldBox(12, mx0 + 78, my0 + 25, mw - 88, 15, newNsField, null));
+        fieldBoxes.add(new FieldBox(12, mx0 + 78, my0 + 25, mw - 88, 15, newNsField, null, currentLayerTag));
 
         g.drawString(font, Messages.get("studio.anim.name") + ":", mx0 + 10, my0 + 48, MUTED, false);
         newNameField.render(g, font, mx0 + 78, my0 + 45, mw - 88, 15, activeFieldIdx == 13, "my_emote",
                 0xFF0C1119, activeFieldIdx == 13 ? GOLD : EDGE, TEXT, MUTED);
-        fieldBoxes.add(new FieldBox(13, mx0 + 78, my0 + 45, mw - 88, 15, newNameField, null));
+        fieldBoxes.add(new FieldBox(13, mx0 + 78, my0 + 45, mw - 88, 15, newNameField, null, currentLayerTag));
 
         String createLbl = Messages.get("studio.anim.create_btn");
         drawBtn(g, font, mx, my, mx0 + mw - 86, my0 + mh - 22, 76, 16, createLbl, "modal:create_confirm", null, true, GREEN);
@@ -1552,7 +2020,7 @@ public final class StudioAnimEditor {
                 : Math.min(rootY + rootH - dh - 4, easeBtnY + 17);
 
         g.pose().pushPose();
-        g.pose().translate(0, 0, 410);
+        g.pose().translate(0, 0, 420);
         g.fill(dx - 2, dy - 2, dx + dw + 2, dy + dh + 2, 0x77000000);
         g.fill(dx, dy, dx + dw, dy + dh, 0xF8111722);
         border(g, dx, dy, dw, dh, ACCENT);
@@ -1572,7 +2040,7 @@ public final class StudioAnimEditor {
                 if (on || hot) g.fill(dx + 2, ry, dx + dw - 5, ry + 13, on ? 0xFF233856 : ROW_HOT);
                 g.drawString(font, c.name(), dx + 6, ry + 2, on ? GOLD : TEXT, false);
                 if (visBot > visTop) {
-                    btns.add(new BtnHit(dx + 2, visTop, dw - 7, visBot - visTop, "setease:" + c.name(), null));
+                    btns.add(new BtnHit(dx + 2, visTop, dw - 7, visBot - visTop, "setease:" + c.name(), null, currentLayerTag));
                 }
             }
             ry += 13;
@@ -1586,20 +2054,20 @@ public final class StudioAnimEditor {
         String[] lines = {
                 Messages.get("studio.anim.hk.title"),
                 "Space — Play / Pause   |   ← / → — ±1 tick   |   Home / End",
-                "R / G / B — Rotate / Move / Bend   |   X / Y / Z — Axis lock",
+                "R / G — Rotate / Move   |   X / Y / Z — Axis lock   |   B / D — Bend arrows",
                 "1..9 — Select bone   |   F — Reset camera   |   I / K — Keyframe",
-                "LMB (3D) — Pick bone / Drag Gizmo / Orbit   |   MMB — Pan",
-                "LMB (Timeline) — Box-select / Drag keys   |   Del — Remove keys",
+                "LMB (3D) — Pick bone / Drag XYZ or Bend / Orbit   |   MMB — Pan",
+                "Panels [▾] Collapse   |   [⧉ / ▣] Detach / Dock & Resize edges",
                 "Ctrl+M — Mirror Pose   |   Ctrl+C / Ctrl+V — Copy / Paste keys",
                 "Ctrl+Z / Ctrl+Y — Undo / Redo   |   Ctrl+S — Save to server"
         };
-        int mw = 344;
+        int mw = 356;
         int mh = lines.length * 13 + 18;
         int mx0 = rootX + (rootW - mw) / 2;
         int my0 = rootY + (rootH - mh) / 2;
 
         g.pose().pushPose();
-        g.pose().translate(0, 0, 420);
+        g.pose().translate(0, 0, 430);
         g.fill(rootX, rootY, rootX + rootW, rootY + rootH, 0x77000000);
         g.fill(mx0, my0, mx0 + mw, my0 + mh, 0xF8121926);
         border(g, mx0, my0, mw, mh, GOLD);
@@ -1611,7 +2079,7 @@ public final class StudioAnimEditor {
     }
 
     // =========================================================================
-    //  МЫШЬ И КЛАВИАТУРА
+    //  МЫШЬ И КЛАВИАТУРА (С УЧЁТОМ ПЛАВАЮЩИХ ПАНЕЛЕЙ И Z-ПОРЯДКА)
     // =========================================================================
 
     public static boolean mouseClicked(Font font, int mx, int my, int button) {
@@ -1619,48 +2087,104 @@ public final class StudioAnimEditor {
         commitActiveField();
         activeFieldIdx = -1;
 
-        for (FieldBox fb : fieldBoxes) {
-            if (hover(mx, my, fb.x, fb.y, fb.w, fb.h)) {
-                activeFieldIdx = fb.idx;
-                fb.field.mouseClicked(font, mx, my, button);
-                return true;
-            }
-        }
-
-        for (int i = btns.size() - 1; i >= 0; i--) {
-            BtnHit b = btns.get(i);
-            if (hover(mx, my, b.x, b.y, b.w, b.h)) {
-                if (b.id.startsWith("scrub:") && button == 0) {
-                    Channel ch = Channel.valueOf(b.id.substring("scrub:".length()));
-                    DOC.pushUndo();
-                    scrubChannel = ch;
-                    scrubInitVal = DOC.eval(selectedBone, ch, playhead);
-                    dragStartX = mx;
-                    dragKind = DragKind.VALUE_SCRUB;
+        boolean popupActive = openModal || newModal || easeDropdown || helpPopup;
+        if (popupActive) {
+            for (int i = fieldBoxes.size() - 1; i >= 0; i--) {
+                FieldBox fb = fieldBoxes.get(i);
+                if (hover(mx, my, fb.x, fb.y, fb.w, fb.h)) {
+                    activeFieldIdx = fb.idx;
+                    fb.field.mouseClicked(font, mx, my, button);
                     return true;
                 }
-                handleButton(b.id);
+            }
+            for (int i = btns.size() - 1; i >= 0; i--) {
+                BtnHit b = btns.get(i);
+                if (hover(mx, my, b.x, b.y, b.w, b.h)) {
+                    handleButton(b.id);
+                    return true;
+                }
+            }
+            openModal = newModal = easeDropdown = helpPopup = false;
+            return true;
+        }
+
+        // 1) Проверяем плавающие панели сверху вниз по Z-порядку (ресайз краёв, поля, кнопки, таймлайн, перетаскивание шапки)
+        for (int z = floatOrder.size() - 1; z >= 0; z--) {
+            PanelId pid = floatOrder.get(z);
+            AnimPanelState st = pid.state();
+            if (st.docked) continue;
+            int[] r = rectOf(pid);
+            int edgeMask = st.collapsed ? 0 : floatResizeMaskAt(mx, my, r[0], r[1], r[2], r[3]);
+            if (edgeMask != 0 && button == 0) {
+                bringFloatingToFront(pid);
+                startFloatResize(pid, mx, my, edgeMask);
+                return true;
+            }
+            if (hover(mx, my, r[0], r[1], r[2], r[3])) {
+                int layer = z + 1;
+                bringFloatingToFront(pid);
+                if (dispatchLayerControls(font, mx, my, button, layer)) {
+                    return true;
+                }
+                if (pid == PanelId.TIMELINE && !st.collapsed && dispatchTimelineArea(mx, my, button)) {
+                    return true;
+                }
+                if (button == 0 && my < r[1] + 18) {
+                    dragKind = DragKind.FLOAT_MOVE;
+                    dragPanel = pid;
+                    dragStartX = mx;
+                    dragStartY = my;
+                    dragPanelOrigFx = st.fx;
+                    dragPanelOrigFy = st.fy;
+                }
+                return true; // клик поглощён плавающей панелью!
+            }
+        }
+
+        // 2) Проверяем разделители привязанных панелей (ресайз ширины/высоты)
+        if (button == 0) {
+            PanelId splitPid = dockedSplitterAt(mx, my);
+            if (splitPid != null) {
+                dragKind = DragKind.DOCK_RESIZE;
+                dragPanel = splitPid;
+                dragStartX = mx;
+                dragStartY = my;
+                dragPanelOrigRatio = splitPid.state().dockedRatio;
                 return true;
             }
         }
 
-        if (openModal || newModal || helpPopup) {
-            openModal = newModal = helpPopup = false;
-            return true;
-        }
-        if (easeDropdown) {
-            easeDropdown = false;
+        // 3) Кнопки и поля топ-бара и привязанных панелей (layer == 0)
+        if (dispatchLayerControls(font, mx, my, button, 0)) {
             return true;
         }
 
-        if (Math.abs(my - tlY) <= 3 && mx >= rootX && mx < rootX + rootW) {
-            dragKind = DragKind.TIMELINE_RESIZE;
-            dragStartY = my;
-            dragStartTimelineH = timelineH;
+        // 4) Область дорожек привязанного Таймлайна
+        AnimPanelState tlSt = PanelId.TIMELINE.state();
+        if (tlSt.docked && !tlSt.collapsed && dispatchTimelineArea(mx, my, button)) {
             return true;
         }
 
-        if (hover(mx, my, vpX, mainY, vpW, mainH)) {
+        // 5) Поглощаем клики внутри привязанных панелей, чтобы они не проваливались в 3D-вьюпорт
+        for (PanelId pid : PanelId.values()) {
+            if (pid.state().docked) {
+                int[] r = rectOf(pid);
+                if (hover(mx, my, r[0], r[1], r[2], r[3])) {
+                    return true;
+                }
+            }
+        }
+
+        // 6) Клик в 3D-вьюпорте
+        if (hover(mx, my, vpX, vpY, vpW, vpH)) {
+            if (firstPersonPreview) {
+                dragKind = DragKind.ORBIT;
+                dragStartX = mx;
+                dragStartY = my;
+                dragStartYaw = fpYaw;
+                dragStartPitch = fpPitch;
+                return true;
+            }
             if (button == 2 || (button == 1 && Screen.hasShiftDown())) {
                 dragKind = DragKind.PAN;
                 dragStartX = mx;
@@ -1678,8 +2202,8 @@ public final class StudioAnimEditor {
                 return true;
             }
             if (button == 0) {
-                if (hoveredGizmoAxis >= 0 || axisLock >= 0) {
-                    startGizmoDrag(mx, my, hoveredGizmoAxis >= 0 ? hoveredGizmoAxis : axisLock);
+                if (hoveredGizmoHandle >= 0 || axisLock >= 0) {
+                    startGizmoDrag(mx, my, hoveredGizmoHandle >= 0 ? hoveredGizmoHandle : axisLock);
                     return true;
                 }
                 if (hoveredViewportBone != null) {
@@ -1700,15 +2224,46 @@ public final class StudioAnimEditor {
             }
         }
 
-        int rulerY = tlY + 21;
-        if (hover(mx, my, tlTrackX, rulerY, tlTrackW, 14)) {
+        return true;
+    }
+
+    private static boolean dispatchLayerControls(Font font, int mx, int my, int button, int layer) {
+        for (int i = fieldBoxes.size() - 1; i >= 0; i--) {
+            FieldBox fb = fieldBoxes.get(i);
+            if (fb.layer == layer && hover(mx, my, fb.x, fb.y, fb.w, fb.h)) {
+                activeFieldIdx = fb.idx;
+                fb.field.mouseClicked(font, mx, my, button);
+                return true;
+            }
+        }
+        for (int i = btns.size() - 1; i >= 0; i--) {
+            BtnHit b = btns.get(i);
+            if (b.layer == layer && hover(mx, my, b.x, b.y, b.w, b.h)) {
+                if (b.id.startsWith("scrub:") && button == 0) {
+                    Channel ch = Channel.valueOf(b.id.substring("scrub:".length()));
+                    DOC.pushUndo();
+                    scrubChannel = ch;
+                    scrubInitVal = DOC.eval(selectedBone, ch, playhead);
+                    dragStartX = mx;
+                    dragKind = DragKind.VALUE_SCRUB;
+                    return true;
+                }
+                handleButton(b.id);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean dispatchTimelineArea(int mx, int my, int button) {
+        if (tlTrackW <= 0 || tlTrackH <= 0) return false;
+        if (hover(mx, my, tlTrackX, tlRulerY, tlTrackW, 14)) {
             playing = false;
             playhead = Math.max(0f, (mx - tlTrackX + timelineScrollX) / pxPerTick);
             syncInspectorFromDoc(false);
             dragKind = DragKind.SCRUB_PLAYHEAD;
             return true;
         }
-
         if (hover(mx, my, tlTrackX, tlTrackY, tlTrackW, tlTrackH)) {
             if (button == 1) {
                 playing = false;
@@ -1768,8 +2323,54 @@ public final class StudioAnimEditor {
             dragStartY = dragCurY = my;
             return true;
         }
+        return false;
+    }
 
-        return true;
+    private static PanelId dockedSplitterAt(int mx, int my) {
+        for (PanelId pid : PanelId.values()) {
+            AnimPanelState st = pid.state();
+            if (!st.docked || st.collapsed) continue;
+            int[] r = rectOf(pid);
+            if (pid == PanelId.LEFT && Math.abs(mx - (r[0] + r[2] + 1)) <= 3 && my >= r[1] && my < r[1] + r[3]) {
+                return PanelId.LEFT;
+            }
+            if (pid == PanelId.RIGHT && Math.abs(mx - (r[0] - 2)) <= 3 && my >= r[1] && my < r[1] + r[3]) {
+                return PanelId.RIGHT;
+            }
+            if (pid == PanelId.TIMELINE && Math.abs(my - (r[1] - 2)) <= 3 && mx >= r[0] && mx < r[0] + r[2]) {
+                return PanelId.TIMELINE;
+            }
+        }
+        return null;
+    }
+
+    private static int floatResizeMaskAt(int mx, int my, int x, int y, int w, int h) {
+        if (mx < x - 3 || mx > x + w + 3 || my < y - 3 || my > y + h + 3) return 0;
+        if (mx >= x + w - 8 && mx <= x + w + 3 && my >= y + h - 8 && my <= y + h + 3) {
+            return 2 | 8; // правый нижний уголок SE
+        }
+        int mask = 0;
+        if (Math.abs(mx - x) <= 3) mask |= 1;
+        else if (Math.abs(mx - (x + w)) <= 3) mask |= 2;
+        if (Math.abs(my - y) <= 3) mask |= 4;
+        else if (Math.abs(my - (y + h)) <= 3) mask |= 8;
+        // Верхний край над заголовком отдаём ресайзу только на самых верхних 2px
+        if (mask == 4 && Math.abs(my - y) > 2) return 0;
+        return mask;
+    }
+
+    private static void startFloatResize(PanelId pid, int mx, int my, int mask) {
+        AnimPanelState st = pid.state();
+        int[] r = rectOf(pid);
+        dragKind = DragKind.FLOAT_RESIZE;
+        dragPanel = pid;
+        dragResizeMask = mask;
+        dragStartX = mx;
+        dragStartY = my;
+        dragPanelOrigFx = (r[0] - rootX) / (float) Math.max(1, rootW);
+        dragPanelOrigFy = (r[1] - rootY) / (float) Math.max(1, rootH);
+        dragPanelOrigFw = r[2] / (float) Math.max(1, rootW);
+        dragPanelOrigFh = r[3] / (float) Math.max(1, rootH);
     }
 
     public static boolean mouseDragged(Font font, int mx, int my, int button) {
@@ -1783,10 +2384,62 @@ public final class StudioAnimEditor {
         dragCurX = mx;
         dragCurY = my;
         switch (dragKind) {
+            case DOCK_RESIZE -> {
+                if (dragPanel != null) {
+                    AnimPanelState st = dragPanel.state();
+                    if (dragPanel == PanelId.LEFT) {
+                        st.dockedRatio = clampFloat(dragPanelOrigRatio + (mx - dragStartX) / (float) Math.max(1, rootW), 0.12f, 0.42f);
+                    } else if (dragPanel == PanelId.RIGHT) {
+                        st.dockedRatio = clampFloat(dragPanelOrigRatio - (mx - dragStartX) / (float) Math.max(1, rootW), 0.16f, 0.46f);
+                    } else if (dragPanel == PanelId.TIMELINE) {
+                        st.dockedRatio = clampFloat(dragPanelOrigRatio - (my - dragStartY) / (float) Math.max(1, rootH), 0.14f, 0.60f);
+                    }
+                }
+                return true;
+            }
+            case FLOAT_MOVE -> {
+                if (dragPanel != null) {
+                    AnimPanelState st = dragPanel.state();
+                    st.fx = clampFloat(dragPanelOrigFx + (mx - dragStartX) / (float) Math.max(1, rootW), 0.0f, 0.94f);
+                    st.fy = clampFloat(dragPanelOrigFy + (my - dragStartY) / (float) Math.max(1, rootH), 0.04f, 0.94f);
+                }
+                return true;
+            }
+            case FLOAT_RESIZE -> {
+                if (dragPanel != null) {
+                    AnimPanelState st = dragPanel.state();
+                    float dxf = (mx - dragStartX) / (float) Math.max(1, rootW);
+                    float dyf = (my - dragStartY) / (float) Math.max(1, rootH);
+                    float minWf = (dragPanel == PanelId.LEFT ? 112f : (dragPanel == PanelId.RIGHT ? 160f : 220f)) / Math.max(1f, rootW);
+                    float minHf = (dragPanel == PanelId.TIMELINE ? 78f : 96f) / Math.max(1f, rootH);
+                    float fx = dragPanelOrigFx, fy = dragPanelOrigFy, fw = dragPanelOrigFw, fh = dragPanelOrigFh;
+                    if ((dragResizeMask & 2) != 0) fw = Math.max(minWf, dragPanelOrigFw + dxf);
+                    if ((dragResizeMask & 8) != 0) fh = Math.max(minHf, dragPanelOrigFh + dyf);
+                    if ((dragResizeMask & 1) != 0) {
+                        float nw = Math.max(minWf, dragPanelOrigFw - dxf);
+                        fx = dragPanelOrigFx + (dragPanelOrigFw - nw);
+                        fw = nw;
+                    }
+                    if ((dragResizeMask & 4) != 0) {
+                        float nh = Math.max(minHf, dragPanelOrigFh - dyf);
+                        fy = dragPanelOrigFy + (dragPanelOrigFh - nh);
+                        fh = nh;
+                    }
+                    st.fx = clampFloat(fx, 0f, 0.95f);
+                    st.fy = clampFloat(fy, 0.04f, 0.95f);
+                    st.fw = clampFloat(fw, minWf, 0.98f);
+                    st.fh = clampFloat(fh, minHf, 0.95f);
+                }
+                return true;
+            }
             case ORBIT -> {
-                firstPersonPreview = false;
-                camYaw = dragStartYaw + (mx - dragStartX) * 0.7f;
-                camPitch = Math.max(-85f, Math.min(85f, dragStartPitch + (my - dragStartY) * 0.6f));
+                if (firstPersonPreview) {
+                    fpYaw = clampFloat(dragStartYaw + (mx - dragStartX) * 0.45f, -110f, 110f);
+                    fpPitch = clampFloat(dragStartPitch + (my - dragStartY) * 0.45f, -75f, 85f);
+                } else {
+                    camYaw = dragStartYaw + (mx - dragStartX) * 0.7f;
+                    camPitch = clampFloat(dragStartPitch + (my - dragStartY) * 0.6f, -85f, 85f);
+                }
                 return true;
             }
             case PAN -> {
@@ -1813,10 +2466,6 @@ public final class StudioAnimEditor {
                 syncInspectorFromDoc(false);
                 return true;
             }
-            case TIMELINE_RESIZE -> {
-                timelineH = Math.max(88, Math.min(rootH / 2, dragStartTimelineH - (my - dragStartY)));
-                return true;
-            }
             case MARQUEE_SELECT -> {
                 updateMarqueeSelection();
                 return true;
@@ -1833,6 +2482,9 @@ public final class StudioAnimEditor {
     public static void mouseReleased() {
         for (FieldBox fb : fieldBoxes) {
             fb.field.mouseReleased();
+        }
+        if (dragKind == DragKind.DOCK_RESIZE || dragKind == DragKind.FLOAT_MOVE || dragKind == DragKind.FLOAT_RESIZE) {
+            ClientUiSettings.saveAnimPanels();
         }
         if (dragKind == DragKind.MOVE_KEYS && !dragMovingSnapshot.isEmpty()) {
             int delta = xToTick(dragCurX) - dragKeyOriginTick;
@@ -1852,6 +2504,7 @@ public final class StudioAnimEditor {
             dragMovingSnapshot.clear();
         }
         dragKind = DragKind.NONE;
+        dragPanel = null;
         scrubChannel = null;
     }
 
@@ -1865,21 +2518,39 @@ public final class StudioAnimEditor {
             easeModalScroll = Math.max(0, easeModalScroll - step * 16);
             return true;
         }
-        if (hover(mx, my, rightX, mainY, rightW, mainH)) {
-            inspectorScroll = Math.max(0, Math.min(inspectorMaxScroll, inspectorScroll - step * 14));
+
+        // Сначала проверяем плавающую панель под курсором
+        PanelId fpid = topmostFloatingAt(mx, my);
+        if (fpid != null) {
+            return scrollPanel(fpid, step);
+        }
+        // Затем привязанные панели
+        for (PanelId pid : PanelId.values()) {
+            if (!pid.state().docked) continue;
+            int[] r = rectOf(pid);
+            if (hover(mx, my, r[0], r[1], r[2], r[3])) {
+                return scrollPanel(pid, step);
+            }
+        }
+        if (hover(mx, my, vpX, vpY, vpW, vpH) && !firstPersonPreview) {
+            camZoom = clampFloat(camZoom + step * 0.12f, 0.35f, 3.2f);
             return true;
         }
-        if (hover(mx, my, leftX, mainY, leftW, mainH)) {
-            leftBonesScroll = Math.max(0, Math.min(leftBonesMaxScroll, leftBonesScroll - step * 14));
+        return false;
+    }
+
+    private static boolean scrollPanel(PanelId pid, int step) {
+        if (pid == PanelId.RIGHT) {
+            inspectorScroll = clampInt(inspectorScroll - step * 14, 0, inspectorMaxScroll);
             return true;
         }
-        if (hover(mx, my, vpX, mainY, vpW, mainH)) {
-            camZoom = Math.max(0.35f, Math.min(3.2f, camZoom + step * 0.12f));
+        if (pid == PanelId.LEFT) {
+            leftBonesScroll = clampInt(leftBonesScroll - step * 14, 0, leftBonesMaxScroll);
             return true;
         }
-        if (hover(mx, my, tlX, tlY, tlW, tlH)) {
+        if (pid == PanelId.TIMELINE) {
             if (Screen.hasControlDown()) {
-                pxPerTick = Math.max(2.5f, Math.min(28f, pxPerTick + step * 1.2f));
+                pxPerTick = clampFloat(pxPerTick + step * 1.2f, 2.5f, 28f);
             } else if (Screen.hasShiftDown()) {
                 timelineScrollX = Math.max(0, timelineScrollX - step * 28);
             } else {
@@ -2006,10 +2677,6 @@ public final class StudioAnimEditor {
             toolMode = ToolMode.MOVE;
             return true;
         }
-        if (!ctrl && key == GLFW.GLFW_KEY_B) {
-            toolMode = ToolMode.BEND;
-            return true;
-        }
         if (!ctrl && key == GLFW.GLFW_KEY_X) {
             axisLock = (axisLock == 0) ? -1 : 0;
             return true;
@@ -2050,10 +2717,18 @@ public final class StudioAnimEditor {
     }
 
     // =========================================================================
-    //  ВНУТРЕННЯЯ ЛОГИКА ДЕЙСТВИЙ И ПРОЕКЦИОННОГО 3D-ГИЗМО
+    //  ДЕЙСТВИЯ КНОПОК И ПРОЕКЦИОННЫЙ 3D-ГИЗМО (XYZ + 2 СТРЕЛКИ ИЗГИБА)
     // =========================================================================
 
     private static void handleButton(String id) {
+        if (id.startsWith("panel:dock:")) {
+            togglePanelDock(PanelId.valueOf(id.substring("panel:dock:".length())));
+            return;
+        }
+        if (id.startsWith("panel:collapse:")) {
+            togglePanelCollapse(PanelId.valueOf(id.substring("panel:collapse:".length())));
+            return;
+        }
         if (id.startsWith("bone:")) {
             String sub = id.substring("bone:".length());
             if ("key_all".equals(sub)) {
@@ -2143,7 +2818,6 @@ public final class StudioAnimEditor {
             case "modal:create_confirm" -> confirmCreateNew();
             case "tool:rot" -> toolMode = ToolMode.ROTATE;
             case "tool:pos" -> toolMode = ToolMode.MOVE;
-            case "tool:bend" -> toolMode = ToolMode.BEND;
             case "pose:mirror" -> {
                 DOC.pushUndo();
                 DOC.mirrorPoseAt(Math.round(playhead), activeEase);
@@ -2274,24 +2948,40 @@ public final class StudioAnimEditor {
         }
     }
 
-    /**
-     * Запускает перетаскивание Гизмо и фиксирует точные 2D-производные (∂экран / ∂канал)
-     * в точке захвата, чтобы перетаскивание мышью ВСЕГДА двигало модель 1-в-1 за курсором!
-     */
-    private static void startGizmoDrag(int mx, int my, int axis) {
+    private static Channel[] activeJointChannels() {
+        return toolMode == ToolMode.ROTATE
+                ? new Channel[]{Channel.ROT_X, Channel.ROT_Y, Channel.ROT_Z}
+                : new Channel[]{Channel.POS_X, Channel.POS_Y, Channel.POS_Z};
+    }
+
+    private static void startGizmoDrag(int mx, int my, int handleIdx) {
         DOC.pushUndo();
         dragKind = DragKind.GIZMO_POSE;
         dragStartX = mx;
         dragStartY = my;
-        dragGizmoAxis = axis;
+        dragGizmoHandle = handleIdx;
 
-        Channel[] chs = activeToolChannels();
-        dragInitA = chs.length > 0 ? DOC.eval(selectedBone, chs[0], playhead) : 0f;
-        dragInitB = chs.length > 1 ? DOC.eval(selectedBone, chs[1], playhead) : 0f;
-        dragInitC = chs.length > 2 ? DOC.eval(selectedBone, chs[2], playhead) : 0f;
+        // Ручки 3 (B = BEND_ANG) и 4 (D = BEND_DIR) работают напрямую независимо от режима Rotate/Move!
+        if (handleIdx == 3 || handleIdx == 4) {
+            dragInitA = DOC.eval(selectedBone, Channel.BEND_ANG, playhead);
+            dragInitB = DOC.eval(selectedBone, Channel.BEND_DIR, playhead);
+            // Проецируем вдоль самой нарисованной стрелки B или D, чтобы мышь тянула строго вдоль стрелки!
+            int bi = handleIdx - 3;
+            float vx = bendTipX[bi] - bendOriginX;
+            float vy = bendTipY[bi] - bendOriginY;
+            float len = Math.max(1f, (float) Math.hypot(vx, vy));
+            dragJacX[handleIdx] = vx / len;
+            dragJacY[handleIdx] = vy / len;
+            return;
+        }
 
-        boolean useTip = toolMode != ToolMode.MOVE;
-        for (int i = 0; i < chs.length; i++) {
+        Channel[] chs = activeJointChannels();
+        dragInitA = DOC.eval(selectedBone, chs[0], playhead);
+        dragInitB = DOC.eval(selectedBone, chs[1], playhead);
+        dragInitC = DOC.eval(selectedBone, chs[2], playhead);
+
+        boolean useTip = toolMode == ToolMode.ROTATE;
+        for (int i = 0; i < 3; i++) {
             Channel ch = chs[i];
             float eps = ch.angle ? 2.0f : 1.0f;
             Vector4f p0 = evalBoneFeatureScreen(lastEntityToScreen, selectedBone, selectedBone, ch, 0f, useTip);
@@ -2307,16 +2997,24 @@ public final class StudioAnimEditor {
         float dx = (mx - dragStartX) * fine;
         float dy = (my - dragStartY) * fine;
 
-        Channel[] chs = activeToolChannels();
-        float[] inits = {dragInitA, dragInitB, dragInitC};
-
-        if (toolMode == ToolMode.BEND && !selectedBone.bendable) {
+        if (dragGizmoHandle == 3 && selectedBone.bendable) {
+            float along = dx * dragJacX[3] + dy * dragJacY[3];
+            DOC.putKey(selectedBone, Channel.BEND_ANG, tick, dragInitA + along * 1.15f, activeEase);
+            syncInspectorFromDoc(true);
+            return;
+        }
+        if (dragGizmoHandle == 4 && selectedBone.bendable) {
+            float along = dx * dragJacX[4] + dy * dragJacY[4];
+            DOC.putKey(selectedBone, Channel.BEND_DIR, tick, dragInitB + along * 1.4f, activeEase);
+            syncInspectorFromDoc(true);
             return;
         }
 
-        // Одиночная выбранная ось Гизмо (0=X, 1=Y, 2=Z)
-        if (dragGizmoAxis >= 0 && dragGizmoAxis < chs.length) {
-            int a = dragGizmoAxis;
+        Channel[] chs = activeJointChannels();
+        float[] inits = {dragInitA, dragInitB, dragInitC};
+
+        if (dragGizmoHandle >= 0 && dragGizmoHandle < 3) {
+            int a = dragGizmoHandle;
             float jx = dragJacX[a];
             float jy = dragJacY[a];
             float normSq = jx * jx + jy * jy;
@@ -2324,43 +3022,40 @@ public final class StudioAnimEditor {
             if (normSq > 0.04f) {
                 deltaParam = (dx * jx + dy * jy) / normSq;
             } else {
-                // Ось смотрит почти точно в камеру — используем горизонтальное движение мыши
-                deltaParam = dx * (chs[a].angle ? 0.6f : 0.08f);
+                // Если ось смотрит прямо в камеру — тянем вдоль визуальной стрелки Гизмо!
+                float gx = gizmoTipX[a] - gizmoOriginX;
+                float gy = gizmoTipY[a] - gizmoOriginY;
+                float gl = Math.max(1f, (float) Math.hypot(gx, gy));
+                float along = (dx * gx + dy * gy) / gl;
+                // В Move синяя стрелка Z направлена вперёд (-POS_Z), поэтому +along уменьшает POS_Z (приближает к зрителю)
+                float sign = (toolMode == ToolMode.MOVE && a == 2) ? -1f : 1f;
+                deltaParam = along * sign * (chs[a].angle ? 1.1f : 0.14f);
             }
             DOC.putKey(selectedBone, chs[a], tick, inits[a] + deltaParam, activeEase);
             syncInspectorFromDoc(true);
             return;
         }
 
-        // Свободное перетаскивание кости в 2D-плоскости экрана (без инверсии при любом угле камеры!)
         if (toolMode == ToolMode.MOVE) {
-            // Решаем проекцию на X и Y (или Z, если смотрим сбоку и X вырожден)
             int horzIdx = (dragJacX[0] * dragJacX[0] + dragJacY[0] * dragJacY[0])
                     >= (dragJacX[2] * dragJacX[2] + dragJacY[2] * dragJacY[2]) ? 0 : 2;
             float[] d = solve2x2(dragJacX[horzIdx], dragJacY[horzIdx], dragJacX[1], dragJacY[1], dx, dy, 0.08f);
             DOC.putKey(selectedBone, chs[horzIdx], tick, inits[horzIdx] + d[0], activeEase);
             DOC.putKey(selectedBone, Channel.POS_Y, tick, dragInitB + d[1], activeEase);
-        } else if (toolMode == ToolMode.ROTATE) {
+        } else {
             float[] d = solve2x2(dragJacX[0], dragJacY[0], dragJacX[2], dragJacY[2], dx, dy, 0.65f);
             DOC.putKey(selectedBone, Channel.ROT_X, tick, dragInitA + d[0], activeEase);
             DOC.putKey(selectedBone, Channel.ROT_Z, tick, dragInitC + d[1], activeEase);
-        } else if (toolMode == ToolMode.BEND) {
-            // В свободном Bend вертикаль/направление курсора вдоль сгиба меняет угол, поперёк — направление
-            float jx = dragJacX[1], jy = dragJacY[1];
-            float normSq = jx * jx + jy * jy;
-            float dAng = normSq > 0.04f ? (dx * jx + dy * jy) / normSq : -dy * 0.6f;
-            DOC.putKey(selectedBone, Channel.BEND_ANG, tick, dragInitB + dAng, activeEase);
         }
         syncInspectorFromDoc(true);
     }
 
-    /** Устойчивое решение 2×2 системы J * [da, db]^T = [dx, dy]^T с защитой от вырожденности. */
     private static float[] solve2x2(float ax, float ay, float bx, float by, float dx, float dy, float fallbackScale) {
         float det = ax * by - ay * bx;
         if (Math.abs(det) > 0.08f) {
             float da = (dx * by - dy * bx) / det;
             float db = (ax * dy - ay * dx) / det;
-            return new float[]{Math.max(-360f, Math.min(360f, da)), Math.max(-360f, Math.min(360f, db))};
+            return new float[]{clampFloat(da, -360f, 360f), clampFloat(db, -360f, 360f)};
         }
         float na = ax * ax + ay * ay;
         float nb = bx * bx + by * by;
@@ -2438,12 +3133,16 @@ public final class StudioAnimEditor {
     }
 
     private static void resetCamera() {
-        firstPersonPreview = false;
-        camYaw = 26f;
-        camPitch = 16f;
-        camZoom = 1.0f;
-        camPanX = 0f;
-        camPanY = 0f;
+        if (firstPersonPreview) {
+            fpYaw = 0f;
+            fpPitch = 20f;
+        } else {
+            camYaw = 26f;
+            camPitch = 16f;
+            camZoom = 1.0f;
+            camPanX = 0f;
+            camPanY = 0f;
+        }
     }
 
     private static void insertKeyframesForBone(BoneId bone) {
@@ -2452,8 +3151,7 @@ public final class StudioAnimEditor {
         DOC.putKey(bone, Channel.ROT_X, t, DOC.eval(bone, Channel.ROT_X, playhead), activeEase);
         DOC.putKey(bone, Channel.ROT_Y, t, DOC.eval(bone, Channel.ROT_Y, playhead), activeEase);
         DOC.putKey(bone, Channel.ROT_Z, t, DOC.eval(bone, Channel.ROT_Z, playhead), activeEase);
-        if (bone.bendable && (toolMode == ToolMode.BEND
-                || DOC.hasKeys(bone, Channel.BEND_ANG) || DOC.hasKeys(bone, Channel.BEND_DIR))) {
+        if (bone.bendable && (DOC.hasKeys(bone, Channel.BEND_ANG) || DOC.hasKeys(bone, Channel.BEND_DIR))) {
             DOC.putKey(bone, Channel.BEND_DIR, t, DOC.eval(bone, Channel.BEND_DIR, playhead), activeEase);
             DOC.putKey(bone, Channel.BEND_ANG, t, DOC.eval(bone, Channel.BEND_ANG, playhead), activeEase);
         }
@@ -2579,10 +3277,9 @@ public final class StudioAnimEditor {
     }
 
     // =========================================================================
-    //  ВЫСОКОСКОРОСТНЫЕ УТИЛИТЫ РЕНДЕРА (GPU 1-QUAD LINE БЕЗ ПРОСАДКИ FPS!)
+    //  УТИЛИТЫ РЕНДЕРА
     // =========================================================================
 
-    /** Рисует идеально ровную линию произвольного угла ОДНИМ 4-вершинным полигоном на GPU. */
     private static void drawSmoothLine(GuiGraphics g, float x0, float y0, float x1, float y1, float width, int argb) {
         float dx = x1 - x0;
         float dy = y1 - y0;
@@ -2599,8 +3296,6 @@ public final class StudioAnimEditor {
 
         Matrix4f pose = g.pose().last().pose();
         VertexConsumer vc = g.bufferSource().getBuffer(RenderType.gui());
-        // Строго против часовой стрелки (CCW) в экранных координатах (+X вправо, +Y вниз), как в GuiGraphics.fill,
-        // иначе GL_CULL_FACE в RenderType.gui() отбрасывает полигон!
         vc.vertex(pose, x0 - nx, y0 - ny, 0f).color(r, gr, b, a).endVertex();
         vc.vertex(pose, x0 + nx, y0 + ny, 0f).color(r, gr, b, a).endVertex();
         vc.vertex(pose, x1 + nx, y1 + ny, 0f).color(r, gr, b, a).endVertex();
@@ -2626,11 +3321,11 @@ public final class StudioAnimEditor {
         int brd = active ? accentCol : (hot ? EDGE_HOT : EDGE);
         g.fill(x, y, x + w, y + h, bg);
         border(g, x, y, w, h, brd);
-        String s = trim(font, label, Math.max(8, w - 4));
+        String s = trim(font, label, Math.max(6, w - 4));
         g.drawString(font, s, x + (w - font.width(s)) / 2, y + (h - 8) / 2,
                 active ? accentCol : (hot ? 0xFFFFFFFF : TEXT), false);
         if (visBot > visTop) {
-            btns.add(new BtnHit(x, visTop, w, visBot - visTop, id, tipText));
+            btns.add(new BtnHit(x, visTop, w, visBot - visTop, id, tipText, currentLayerTag));
             if (hot && tipText != null) {
                 hoverTip = tipText;
                 hoverTipX = mx + 6;
@@ -2655,10 +3350,10 @@ public final class StudioAnimEditor {
         int brd = active ? accentCol : (hot ? EDGE_HOT : EDGE);
         g.fill(x, y, x + w, y + h, bg);
         border(g, x, y, w, h, brd);
-        String s = trim(font, label, Math.max(8, w - 4));
+        String s = trim(font, label, Math.max(6, w - 4));
         g.drawString(font, s, x + (w - font.width(s)) / 2, y + (h - 8) / 2,
                 active ? accentCol : (hot ? 0xFFFFFFFF : TEXT), false);
-        btns.add(new BtnHit(x, y, w, h, id, tipText));
+        btns.add(new BtnHit(x, y, w, h, id, tipText, currentLayerTag));
         if (hot && tipText != null) {
             hoverTip = tipText;
             hoverTipX = mx + 6;
@@ -2676,6 +3371,14 @@ public final class StudioAnimEditor {
         if (c2 <= c1) return (float) Math.hypot(px - x1, py - y1);
         float b = c1 / c2;
         return (float) Math.hypot(px - (x0 + b * vx), py - (y0 + b * vy));
+    }
+
+    private static int clampInt(int val, int min, int max) {
+        return Math.max(min, Math.min(max, val));
+    }
+
+    private static float clampFloat(float val, float min, float max) {
+        return Math.max(min, Math.min(max, val));
     }
 
     private static String formatNum(float v) {

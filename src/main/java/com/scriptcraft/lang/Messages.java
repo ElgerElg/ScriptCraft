@@ -377,6 +377,11 @@ public final class Messages {
         add("studio.anim.mirrored", "&eMirrored pose at current tick", "&eПоза отзеркалена на текущем кадре");
         add("studio.anim.playing_world", "&aPlaying &f%s &aon your character", "&aПроигрываю &f%s &aна вашем персонаже");
         add("studio.anim.stopped_world", "&eStopped test animation on your character", "&eТестовая анимация на персонаже остановлена");
+        add("studio.anim.panel.detach", "Detach panel (free move & resize)", "Отсоединить панель (свободное перемещение и размер)");
+        add("studio.anim.panel.dock", "Dock panel back to screen edge", "Привязать панель обратно к краю экрана");
+        add("studio.anim.panel.collapse", "Collapse panel", "Свернуть панель");
+        add("studio.anim.panel.expand", "Expand panel", "Развернуть панель");
+        add("studio.anim.tl.title", "Timeline", "Таймлайн");
         add("studio.anim.need_pa", "&eInstall PlayerAnimator on client for in-world playback", "&eУстановите мод PlayerAnimator на клиент для проигрывания в мире");
         add("studio.anim.inserted_code", "&aInserted 'play animation' into &f%s", "&aСтрока 'play animation' вставлена в &f%s");
         add("studio.anim.copied_code", "&aCopied: &f%s", "&aСкопировано: &f%s");

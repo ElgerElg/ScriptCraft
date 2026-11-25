@@ -84,6 +84,53 @@ public final class ClientUiSettings {
     private static boolean showProfiler = true;
     /** Выбранный цвет курсора/рамки редактора для совместной работы (0 = авто по нику). */
     private static int editorColor = 0;
+
+    /** Настройки закрепления, сворачивания и пропорций панелей 3D-редактора анимаций на клиенте. */
+    public static final class AnimPanelState {
+        public boolean docked;
+        public boolean collapsed;
+        public float dockedRatio;
+        public float fx;
+        public float fy;
+        public float fw;
+        public float fh;
+
+        public AnimPanelState(boolean docked, boolean collapsed, float dockedRatio,
+                              float fx, float fy, float fw, float fh) {
+            this.docked = docked;
+            this.collapsed = collapsed;
+            this.dockedRatio = dockedRatio;
+            this.fx = fx;
+            this.fy = fy;
+            this.fw = fw;
+            this.fh = fh;
+        }
+
+        String encode() {
+            return String.format(Locale.ROOT, "%d:%d:%.4f:%.4f:%.4f:%.4f:%.4f",
+                    docked ? 1 : 0, collapsed ? 1 : 0, dockedRatio, fx, fy, fw, fh);
+        }
+
+        void decodeFrom(String raw) {
+            if (raw == null || raw.isBlank()) return;
+            String[] p = raw.trim().split(":");
+            if (p.length != 7) return;
+            try {
+                this.docked = "1".equals(p[0]);
+                this.collapsed = "1".equals(p[1]);
+                this.dockedRatio = clamp(Float.parseFloat(p[2]), 0.08f, 0.70f);
+                this.fx = clamp(Float.parseFloat(p[3]), 0.0f, 0.95f);
+                this.fy = clamp(Float.parseFloat(p[4]), 0.0f, 0.95f);
+                this.fw = clamp(Float.parseFloat(p[5]), 0.10f, 0.95f);
+                this.fh = clamp(Float.parseFloat(p[6]), 0.10f, 0.95f);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+    }
+
+    private static final AnimPanelState animLeftPanel = new AnimPanelState(true, false, 0.19f, 0.02f, 0.09f, 0.21f, 0.56f);
+    private static final AnimPanelState animRightPanel = new AnimPanelState(true, false, 0.25f, 0.73f, 0.09f, 0.25f, 0.58f);
+    private static final AnimPanelState animTimelinePanel = new AnimPanelState(true, false, 0.30f, 0.04f, 0.66f, 0.92f, 0.31f);
     public static final int[] EDITOR_COLORS = {
             0x00000000, // Авто
             0xFF58A6FF, // Небесный
@@ -204,6 +251,20 @@ public final class ClientUiSettings {
     public static void setEditorColor(int color) {
         load();
         editorColor = color;
+        save();
+    }
+
+    public static AnimPanelState animPanel(String id) {
+        load();
+        return switch (id) {
+            case "left" -> animLeftPanel;
+            case "right" -> animRightPanel;
+            default -> animTimelinePanel;
+        };
+    }
+
+    public static void saveAnimPanels() {
+        load();
         save();
     }
 
@@ -371,6 +432,9 @@ public final class ClientUiSettings {
         language = normalizeLang(p.getProperty("language", language));
         showProfiler = Boolean.parseBoolean(p.getProperty("showProfiler", "true"));
         editorColor = parseInt(p.getProperty("editorColor"), editorColor);
+        animLeftPanel.decodeFrom(p.getProperty("animPanel.left"));
+        animRightPanel.decodeFrom(p.getProperty("animPanel.right"));
+        animTimelinePanel.decodeFrom(p.getProperty("animPanel.tl"));
         com.scriptcraft.lang.Messages.setClientLanguage(language);
         for (var entry : DEFAULTS.entrySet()) {
             BINDS.put(entry.getKey(), KeyBind.decode(p.getProperty("bind." + entry.getKey()), entry.getValue()));
@@ -395,6 +459,9 @@ public final class ClientUiSettings {
             sb.append("language=").append(language).append('\n');
             sb.append("showProfiler=").append(showProfiler).append('\n');
             sb.append("editorColor=").append(editorColor).append('\n');
+            sb.append("animPanel.left=").append(animLeftPanel.encode()).append('\n');
+            sb.append("animPanel.right=").append(animRightPanel.encode()).append('\n');
+            sb.append("animPanel.tl=").append(animTimelinePanel.encode()).append('\n');
             for (var entry : BINDS.entrySet()) {
                 sb.append("bind.").append(entry.getKey()).append('=').append(entry.getValue().encode()).append('\n');
             }
