@@ -1113,6 +1113,43 @@ public final class ElementRenderer {
         return (int) Math.round(norm * maxScroll);
     }
 
+    public record HoverTarget(String key, String sound, float volume, float pitch, String hoverAction) {
+    }
+
+    @Nullable
+    public static HoverTarget resolveHoverTarget(Font font, ScreenElement e, int sw, int sh,
+                                                 double mouseX, double mouseY, int listScroll, int elementIndex) {
+        if (!isHovered(font, e, sw, sh, mouseX, mouseY) || ScreenMeta.isDisabled(e)) {
+            return null;
+        }
+        String elId = ScreenMeta.elementId(e);
+        String baseKey = elId.isEmpty() ? Integer.toString(elementIndex) : elId;
+        if (e instanceof ListElement list) {
+            RowHit hit = findListRowHit(font, list, sw, sh, mouseX, mouseY, listScroll);
+            if (hit != null && hit.row.isInteractive()) {
+                String rSnd = ScreenMeta.hoverSoundOfPacked(hit.row.action());
+                float rVol = ScreenMeta.hoverVolumeOfPacked(hit.row.action());
+                float rPit = ScreenMeta.hoverPitchOfPacked(hit.row.action());
+                if (rSnd.isEmpty()) {
+                    rSnd = ScreenMeta.hoverSound(list);
+                    rVol = ScreenMeta.hoverVolume(list);
+                    rPit = ScreenMeta.hoverPitch(list);
+                }
+                String rAct = ScreenMeta.hoverActionOfPacked(hit.row.action());
+                if (!rSnd.isEmpty() || !rAct.isEmpty()) {
+                    return new HoverTarget("list:" + baseKey + ":row:" + hit.index, rSnd, rVol, rPit, rAct);
+                }
+            }
+            return null;
+        }
+        String snd = ScreenMeta.hoverSound(e);
+        String hAct = ScreenMeta.hoverAction(e);
+        if (snd.isEmpty() && hAct.isEmpty()) {
+            return null;
+        }
+        return new HoverTarget("el:" + baseKey, snd, ScreenMeta.hoverVolume(e), ScreenMeta.hoverPitch(e), hAct);
+    }
+
     @Nullable
     private static ListElement.Row hoveredListRow(Font font, ListElement list, int sw, int sh,
                                                   double mouseX, double mouseY, int scroll) {
@@ -1120,7 +1157,7 @@ public final class ElementRenderer {
         return hit == null ? null : hit.row;
     }
 
-    private record RowHit(ListElement.Row row, int rx, int ry, int rw, int rh) {
+    private record RowHit(int index, ListElement.Row row, int rx, int ry, int rw, int rh) {
     }
 
     @Nullable
@@ -1150,7 +1187,7 @@ public final class ElementRenderer {
             int ry = list.horizontal() ? (viewY + (viewH - rh) / 2) : (viewY + cursor);
             cursor += (list.horizontal() ? rw : rh) + gap;
             if (mouseX >= rx && mouseX < rx + rw && mouseY >= ry && mouseY < ry + rh) {
-                return new RowHit(row, rx, ry, rw, rh);
+                return new RowHit(i, row, rx, ry, rw, rh);
             }
         }
         return null;

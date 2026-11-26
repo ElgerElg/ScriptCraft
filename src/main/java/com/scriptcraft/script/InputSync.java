@@ -181,10 +181,18 @@ public final class InputSync {
                 if (btnAct.startsWith("fn:")) {
                     out.add(btnAct.substring(3));
                 }
+                String rowHover = com.scriptcraft.screen.ScreenMeta.hoverActionOfPacked(row.action());
+                if (rowHover.startsWith("fn:")) {
+                    out.add(rowHover.substring(3));
+                }
             }
         }
         if (action != null && action.startsWith("fn:")) {
             out.add(action.substring(3));
+        }
+        String elHover = com.scriptcraft.screen.ScreenMeta.hoverAction(element);
+        if (elHover.startsWith("fn:")) {
+            out.add(elHover.substring(3));
         }
     }
 

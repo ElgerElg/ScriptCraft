@@ -106,6 +106,11 @@ public final class StudioGuiEditor {
         public String tooltip = "";
         public String runAction = "";
         public boolean isFunctionCall = false;
+        public String hoverSound = "";
+        public double hoverVolume = 0.45;
+        public double hoverPitch = 1.0;
+        public String hoverRun = "";
+        public boolean hoverIsFn = false;
         public boolean keepOpen = false;
 
         public ListRowNode copy() {
@@ -130,6 +135,11 @@ public final class StudioGuiEditor {
             c.tooltip = tooltip;
             c.runAction = runAction;
             c.isFunctionCall = isFunctionCall;
+            c.hoverSound = hoverSound;
+            c.hoverVolume = hoverVolume;
+            c.hoverPitch = hoverPitch;
+            c.hoverRun = hoverRun;
+            c.hoverIsFn = hoverIsFn;
             c.keepOpen = keepOpen;
             return c;
         }
@@ -275,6 +285,11 @@ public final class StudioGuiEditor {
         // Actions & meta
         public String runAction = ""; // "", "close", "/cmd", "Func(player)"
         public boolean isFunctionCall = false;
+        public String hoverSound = "";
+        public double hoverVolume = 0.45;
+        public double hoverPitch = 1.0;
+        public String hoverRun = "";
+        public boolean hoverIsFn = false;
         public boolean keepOpen = false;
         public String hotkey = "";
         public String tooltip = "";
@@ -377,6 +392,11 @@ public final class StudioGuiEditor {
             for (ListRowNode r : listRows) c.listRows.add(r.copy());
             c.runAction = runAction;
             c.isFunctionCall = isFunctionCall;
+            c.hoverSound = hoverSound;
+            c.hoverVolume = hoverVolume;
+            c.hoverPitch = hoverPitch;
+            c.hoverRun = hoverRun;
+            c.hoverIsFn = hoverIsFn;
             c.keepOpen = keepOpen;
             c.hotkey = hotkey;
             c.tooltip = tooltip;
@@ -1551,6 +1571,78 @@ public final class StudioGuiEditor {
                         if (idx + 1 < t.size()) n.tooltip = t.get(idx + 1).value();
                         idx += 2;
                     }
+                    case "hover_sound", "hover-sound", "hsound" -> {
+                        if (idx + 1 < t.size()) n.hoverSound = t.get(idx + 1).value().strip();
+                        int cur = idx + 2;
+                        if (cur < t.size() && word(t, cur).equals("with")) cur++;
+                        if (cur + 1 < t.size() && (word(t, cur).equals("volume") || word(t, cur).equals("vol"))) {
+                            n.hoverVolume = parseDoubleSafe(t.get(cur + 1).value(), 0.45);
+                            cur += 2;
+                            if (cur + 1 < t.size() && word(t, cur).equals("pitch")) {
+                                n.hoverPitch = parseDoubleSafe(t.get(cur + 1).value(), 1.0);
+                                cur += 2;
+                            }
+                        } else if (!"entity".equals(n.kind) && !"player".equals(n.kind) && cur + 1 < t.size() && word(t, cur).equals("pitch")) {
+                            n.hoverPitch = parseDoubleSafe(t.get(cur + 1).value(), 1.0);
+                            cur += 2;
+                        }
+                        idx = cur;
+                    }
+                    case "hover_volume", "hover-volume", "hvol" -> {
+                        if (idx + 1 < t.size()) n.hoverVolume = parseDoubleSafe(t.get(idx + 1).value(), 0.45);
+                        idx += 2;
+                    }
+                    case "hover_pitch", "hover-pitch", "hpitch" -> {
+                        if (idx + 1 < t.size()) n.hoverPitch = parseDoubleSafe(t.get(idx + 1).value(), 1.0);
+                        idx += 2;
+                    }
+                    case "on_hover", "on-hover", "hover_run", "hover-run" -> {
+                        boolean forceFn = false;
+                        int cur = idx + 1;
+                        if (cur < t.size() && word(t, cur).equals("function")) {
+                            forceFn = true;
+                            cur++;
+                        }
+                        if (cur < t.size()) {
+                            if (t.get(cur).quoted()) {
+                                n.hoverRun = t.get(cur).value();
+                                n.hoverIsFn = forceFn;
+                                idx = cur + 1;
+                            } else {
+                                String fnName = t.get(cur).value();
+                                int p = cur + 1;
+                                if (p < t.size() && word(t, p).equals("(")) {
+                                    int depth = 0;
+                                    int closeIdx = p;
+                                    StringBuilder args = new StringBuilder();
+                                    for (int k = p; k < t.size(); k++) {
+                                        String v = t.get(k).value();
+                                        if (!t.get(k).quoted() && v.equals("(")) {
+                                            depth++;
+                                            if (depth == 1) continue;
+                                        } else if (!t.get(k).quoted() && v.equals(")")) {
+                                            depth--;
+                                            if (depth == 0) {
+                                                closeIdx = k;
+                                                break;
+                                            }
+                                        }
+                                        if (!args.isEmpty()) args.append(", ");
+                                        args.append(t.get(k).quoted() ? "\"" + v + "\"" : v);
+                                    }
+                                    n.hoverRun = fnName + "(" + args + ")";
+                                    n.hoverIsFn = true;
+                                    idx = closeIdx + 1;
+                                } else {
+                                    n.hoverRun = fnName + "()";
+                                    n.hoverIsFn = true;
+                                    idx = p;
+                                }
+                            }
+                        } else {
+                            idx++;
+                        }
+                    }
                     case "key", "hotkey" -> {
                         if (idx + 1 < t.size()) n.hotkey = t.get(idx + 1).value();
                         idx += 2;
@@ -1630,6 +1722,8 @@ public final class StudioGuiEditor {
             case "at", "size", "anchor", "color", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey",
                     "hidden", "disabled", "inactive", "tooltip", "hover", "scale", "entity_size", "entity-size",
                     "hscale", "hover_scale", "hover-scale", "follow", "hover_circle", "hover-circle", "hover_color", "hover-color",
+                    "hover_sound", "hover-sound", "hsound", "hover_volume", "hover-volume", "hvol", "hover_pitch", "hover-pitch", "hpitch",
+                    "on_hover", "on-hover", "hover_run", "hover-run",
                     "skin", "model", "auto", "slim", "alex", "wide", "steve", "classic", "overlay", "no", "without",
                     "yaw", "rotate", "rotation", "pitch", "roll", "spin", "look", "clip",
                     "baby", "child", "sneak", "sneaking", "crouch", "crouching", "walk", "walking", "nametag", "nbt",
@@ -1798,6 +1892,78 @@ public final class StudioGuiEditor {
                         if (idx + 1 < t.size()) r.buttonRun = t.get(idx + 1).value();
                         idx += 2;
                     }
+                    case "hover_sound", "hover-sound", "hsound" -> {
+                        if (idx + 1 < t.size()) r.hoverSound = t.get(idx + 1).value().strip();
+                        int cur = idx + 2;
+                        if (cur < t.size() && word(t, cur).equals("with")) cur++;
+                        if (cur + 1 < t.size() && (word(t, cur).equals("volume") || word(t, cur).equals("vol"))) {
+                            r.hoverVolume = parseDoubleSafe(t.get(cur + 1).value(), 0.45);
+                            cur += 2;
+                            if (cur + 1 < t.size() && word(t, cur).equals("pitch")) {
+                                r.hoverPitch = parseDoubleSafe(t.get(cur + 1).value(), 1.0);
+                                cur += 2;
+                            }
+                        } else if (cur + 1 < t.size() && word(t, cur).equals("pitch")) {
+                            r.hoverPitch = parseDoubleSafe(t.get(cur + 1).value(), 1.0);
+                            cur += 2;
+                        }
+                        idx = cur;
+                    }
+                    case "hover_volume", "hover-volume", "hvol" -> {
+                        if (idx + 1 < t.size()) r.hoverVolume = parseDoubleSafe(t.get(idx + 1).value(), 0.45);
+                        idx += 2;
+                    }
+                    case "hover_pitch", "hover-pitch", "hpitch" -> {
+                        if (idx + 1 < t.size()) r.hoverPitch = parseDoubleSafe(t.get(idx + 1).value(), 1.0);
+                        idx += 2;
+                    }
+                    case "on_hover", "on-hover", "hover_run", "hover-run" -> {
+                        boolean forceFn = false;
+                        int cur = idx + 1;
+                        if (cur < t.size() && word(t, cur).equals("function")) {
+                            forceFn = true;
+                            cur++;
+                        }
+                        if (cur < t.size()) {
+                            if (t.get(cur).quoted()) {
+                                r.hoverRun = t.get(cur).value();
+                                r.hoverIsFn = forceFn;
+                                idx = cur + 1;
+                            } else {
+                                String fnName = t.get(cur).value();
+                                int p = cur + 1;
+                                if (p < t.size() && word(t, p).equals("(")) {
+                                    int depth = 0;
+                                    int closeIdx = p;
+                                    StringBuilder args = new StringBuilder();
+                                    for (int k = p; k < t.size(); k++) {
+                                        String v = t.get(k).value();
+                                        if (!t.get(k).quoted() && v.equals("(")) {
+                                            depth++;
+                                            if (depth == 1) continue;
+                                        } else if (!t.get(k).quoted() && v.equals(")")) {
+                                            depth--;
+                                            if (depth == 0) {
+                                                closeIdx = k;
+                                                break;
+                                            }
+                                        }
+                                        if (!args.isEmpty()) args.append(", ");
+                                        args.append(t.get(k).quoted() ? "\"" + v + "\"" : v);
+                                    }
+                                    r.hoverRun = fnName + "(" + args + ")";
+                                    r.hoverIsFn = true;
+                                    idx = closeIdx + 1;
+                                } else {
+                                    r.hoverRun = fnName + "()";
+                                    r.hoverIsFn = true;
+                                    idx = p;
+                                }
+                            }
+                        } else {
+                            idx++;
+                        }
+                    }
                     case "keep", "stay" -> {
                         r.keepOpen = true;
                         idx += 2;
@@ -1923,6 +2089,19 @@ public final class StudioGuiEditor {
             }
         }
         if (r.keepOpen) sb.append(" keep open");
+        if (!r.hoverSound.isEmpty()) {
+            sb.append(" hover_sound ").append(r.hoverSound);
+            if (Math.abs(r.hoverVolume - 0.45) > 0.01 || Math.abs(r.hoverPitch - 1.0) > 0.01) {
+                sb.append(" volume ").append(fmtNum(r.hoverVolume)).append(" pitch ").append(fmtNum(r.hoverPitch));
+            }
+        }
+        if (!r.hoverRun.isEmpty()) {
+            if (r.hoverIsFn || (!r.hoverRun.startsWith("/") && r.hoverRun.contains("(") && r.hoverRun.endsWith(")"))) {
+                sb.append(" on_hover ").append(r.hoverRun);
+            } else {
+                sb.append(" on_hover \"").append(escapeQuotes(r.hoverRun)).append("\"");
+            }
+        }
         if (!r.tooltip.isEmpty()) sb.append(" tooltip \"").append(escapeQuotes(r.tooltip)).append("\"");
         return sb.toString();
     }
@@ -2176,6 +2355,18 @@ public final class StudioGuiEditor {
         }
         if (n.keepOpen && !"list".equals(n.kind)) sb.append(" keep open");
         if (!n.hotkey.isEmpty() && !"list".equals(n.kind)) sb.append(" key ").append(n.hotkey);
+        if (!n.hoverSound.isEmpty()) {
+            sb.append(" hover_sound ").append(n.hoverSound);
+            if (Math.abs(n.hoverVolume - 0.45) > 0.01) sb.append(" hover_volume ").append(fmtNum(n.hoverVolume));
+            if (Math.abs(n.hoverPitch - 1.0) > 0.01) sb.append(" hover_pitch ").append(fmtNum(n.hoverPitch));
+        }
+        if (!n.hoverRun.isEmpty()) {
+            if (n.hoverIsFn || (!n.hoverRun.startsWith("/") && n.hoverRun.contains("(") && n.hoverRun.endsWith(")"))) {
+                sb.append(" on_hover ").append(n.hoverRun);
+            } else {
+                sb.append(" on_hover \"").append(escapeQuotes(n.hoverRun)).append("\"");
+            }
+        }
         if (!n.tooltip.isEmpty()) sb.append(" tooltip \"").append(escapeQuotes(n.tooltip)).append("\"");
         if (n.scriptDisabled) sb.append(" disabled");
         if (n.scriptHidden) sb.append(" hidden");
@@ -3428,6 +3619,12 @@ public final class StudioGuiEditor {
                         g.drawString(font, "Run:", ix, cy + 3, MUTED, false);
                         cy = drawField(g, font, mx, my, ix + 24, cy, iw - 24, "r_run", sr.runAction, inspectorHits) + 3;
 
+                        g.drawString(font, "HSnd:", ix, cy + 3, MUTED, false);
+                        cy = drawField(g, font, mx, my, ix + 28, cy, iw - 28, "r_hsnd", sr.hoverSound, inspectorHits) + 3;
+
+                        g.drawString(font, "OnHv:", ix, cy + 3, MUTED, false);
+                        cy = drawField(g, font, mx, my, ix + 28, cy, iw - 28, "r_hrun", sr.hoverRun, inspectorHits) + 3;
+
                         g.drawString(font, "Tip:", ix, cy + 3, MUTED, false);
                         cy = drawField(g, font, mx, my, ix + 24, cy, iw - 24, "r_tooltip", sr.tooltip, inspectorHits) + 3;
 
@@ -3443,9 +3640,15 @@ public final class StudioGuiEditor {
         g.fill(ix, cy, ix + iw, cy + 1, EDGE);
         cy += 4;
 
-        // 5. Действие клика (Run / Function / Close), Тултип, Клавиша, Keep Open, Hidden
+        // 5. Действие клика (Run / Function / Close), Звук/действие наведения, Тултип, Клавиша, Keep Open, Hidden
         g.drawString(font, "Run:", ix, cy + 3, MUTED, false);
         cy = drawField(g, font, mx, my, ix + 26, cy, iw - 26, "runAction", n.runAction, inspectorHits) + 3;
+
+        g.drawString(font, "HSnd:", ix, cy + 3, MUTED, false);
+        cy = drawField(g, font, mx, my, ix + 28, cy, iw - 28, "hoverSound", n.hoverSound, inspectorHits) + 3;
+
+        g.drawString(font, "OnHv:", ix, cy + 3, MUTED, false);
+        cy = drawField(g, font, mx, my, ix + 28, cy, iw - 28, "hoverRun", n.hoverRun, inspectorHits) + 3;
 
         g.drawString(font, "Tip:", ix, cy + 3, MUTED, false);
         cy = drawField(g, font, mx, my, ix + 26, cy, iw - 26, "tooltip", n.tooltip, inspectorHits) + 3;
@@ -3525,9 +3728,9 @@ public final class StudioGuiEditor {
 
     private static boolean isExpandableField(String fieldId) {
         return switch (fieldId) {
-            case "text", "tooltip", "runAction", "placeholder", "inputValue",
+            case "text", "tooltip", "runAction", "hoverSound", "hoverRun", "placeholder", "inputValue",
                     "listHeader", "listFrom", "listEmptyText", "scr_title", "scr_target",
-                    "entSkin", "entNbt", "r_text", "r_right", "r_tooltip", "r_run" -> true;
+                    "entSkin", "entNbt", "r_text", "r_right", "r_tooltip", "r_run", "r_hsnd", "r_hrun" -> true;
             default -> false;
         };
     }
@@ -4706,7 +4909,7 @@ public final class StudioGuiEditor {
             case "entLookY" -> Integer.toString(n.entLookY);
             case "entWeapon" -> n.entWeapon;
             case "entHelmet" -> n.entHelmet;
-            case "r_text", "r_right", "r_icon", "r_head", "r_badge", "r_bar", "r_btn", "r_run", "r_tooltip", "r_width", "r_height" -> {
+            case "r_text", "r_right", "r_icon", "r_head", "r_badge", "r_bar", "r_btn", "r_run", "r_hsnd", "r_hrun", "r_tooltip", "r_width", "r_height" -> {
                 if (n.listRows.isEmpty() || selectedListRowIdx < 0 || selectedListRowIdx >= n.listRows.size()) yield "";
                 ListRowNode sr = n.listRows.get(selectedListRowIdx);
                 yield switch (field) {
@@ -4718,6 +4921,8 @@ public final class StudioGuiEditor {
                     case "r_bar" -> sr.barSpec;
                     case "r_btn" -> sr.buttonLabel;
                     case "r_run" -> sr.runAction;
+                    case "r_hsnd" -> sr.hoverSound;
+                    case "r_hrun" -> sr.hoverRun;
                     case "r_tooltip" -> sr.tooltip;
                     case "r_width" -> Integer.toString(sr.customWidth);
                     case "r_height" -> Integer.toString(sr.customHeight);
@@ -4725,6 +4930,8 @@ public final class StudioGuiEditor {
                 };
             }
             case "runAction" -> n.runAction;
+            case "hoverSound" -> n.hoverSound;
+            case "hoverRun" -> n.hoverRun;
             case "tooltip" -> n.tooltip;
             case "hotkey" -> n.hotkey;
             default -> "";
@@ -4807,7 +5014,7 @@ public final class StudioGuiEditor {
             case "entLookY" -> n.entLookY = parseIntSafe(raw, n.entLookY);
             case "entWeapon" -> n.entWeapon = raw.strip();
             case "entHelmet" -> n.entHelmet = raw.strip();
-            case "r_text", "r_right", "r_icon", "r_head", "r_badge", "r_bar", "r_btn", "r_run", "r_tooltip", "r_width", "r_height" -> {
+            case "r_text", "r_right", "r_icon", "r_head", "r_badge", "r_bar", "r_btn", "r_run", "r_hsnd", "r_hrun", "r_tooltip", "r_width", "r_height" -> {
                 if (!n.listRows.isEmpty() && selectedListRowIdx >= 0 && selectedListRowIdx < n.listRows.size()) {
                     ListRowNode sr = n.listRows.get(selectedListRowIdx);
                     switch (field) {
@@ -4822,6 +5029,11 @@ public final class StudioGuiEditor {
                             sr.runAction = raw.strip();
                             sr.isFunctionCall = !sr.runAction.startsWith("/") && sr.runAction.contains("(") && sr.runAction.endsWith(")");
                         }
+                        case "r_hsnd" -> sr.hoverSound = raw.strip();
+                        case "r_hrun" -> {
+                            sr.hoverRun = raw.strip();
+                            sr.hoverIsFn = !sr.hoverRun.startsWith("/") && sr.hoverRun.contains("(") && sr.hoverRun.endsWith(")");
+                        }
                         case "r_tooltip" -> sr.tooltip = raw;
                         case "r_width" -> sr.customWidth = Math.max(0, Math.min(1000, parseIntSafe(raw, sr.customWidth)));
                         case "r_height" -> sr.customHeight = Math.max(0, Math.min(160, parseIntSafe(raw, sr.customHeight)));
@@ -4831,6 +5043,11 @@ public final class StudioGuiEditor {
             case "runAction" -> {
                 n.runAction = raw.strip();
                 n.isFunctionCall = !n.runAction.startsWith("/") && n.runAction.contains("(") && n.runAction.endsWith(")");
+            }
+            case "hoverSound" -> n.hoverSound = raw.strip();
+            case "hoverRun" -> {
+                n.hoverRun = raw.strip();
+                n.hoverIsFn = !n.hoverRun.startsWith("/") && n.hoverRun.contains("(") && n.hoverRun.endsWith(")");
             }
             case "tooltip" -> n.tooltip = raw;
             case "hotkey" -> n.hotkey = raw.strip().toLowerCase(Locale.ROOT);

@@ -1976,6 +1976,10 @@ public final class ScriptParser {
         String tooltip = "";
         String emptyText = "";
         String columnWidths = "";
+        String hoverSound = "";
+        float hoverVolume = 0.45f;
+        float hoverPitch = 1.0f;
+        String hoverAction = "";
         int rowHeight = ListElement.ROW;
         int spacing = 0;
         float rowScale = 1.0f;
@@ -2141,12 +2145,47 @@ public final class ScriptParser {
                     tooltip = quoted(t, idx + 1);
                     idx += 2;
                 }
-                default -> throw new ParseException("у list нет параметра '" + opt + "' (from, vertical, horizontal, select, header, row_height, spacing, scale, align, disabled, active, empty_text, columns, background, border, at, size, anchor, layer, color, id, hidden, tooltip, no scrollbar)");
+                case "hover_sound", "hover-sound", "hsound" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: hover_sound <звук>");
+                    hoverSound = t.get(idx + 1).value().strip();
+                    int cur = idx + 2;
+                    if (cur < t.size() && word(t, cur).equals("with")) cur++;
+                    if (cur + 1 < t.size() && (word(t, cur).equals("volume") || word(t, cur).equals("vol"))) {
+                        hoverVolume = (float) parseDouble(t.get(cur + 1).value());
+                        cur += 2;
+                        if (cur + 1 < t.size() && word(t, cur).equals("pitch")) {
+                            hoverPitch = (float) parseDouble(t.get(cur + 1).value());
+                            cur += 2;
+                        }
+                    } else if (cur + 1 < t.size() && word(t, cur).equals("pitch")) {
+                        hoverPitch = (float) parseDouble(t.get(cur + 1).value());
+                        cur += 2;
+                    }
+                    idx = cur;
+                }
+                case "hover_volume", "hover-volume", "hvol" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: hover_volume <число>");
+                    hoverVolume = (float) parseDouble(t.get(idx + 1).value());
+                    idx += 2;
+                }
+                case "hover_pitch", "hover-pitch", "hpitch" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: hover_pitch <число>");
+                    hoverPitch = (float) parseDouble(t.get(idx + 1).value());
+                    idx += 2;
+                }
+                case "on_hover", "on-hover", "hover_run", "hover-run" -> {
+                    ParsedScreenRun parsedHover = parseScreenRun(line, t, idx, false);
+                    hoverAction = parsedHover.action();
+                    idx = parsedHover.nextIdx();
+                }
+                default -> throw new ParseException("у list нет параметра '" + opt + "' (from, vertical, horizontal, select, header, row_height, spacing, scale, align, disabled, active, empty_text, columns, background, border, at, size, anchor, layer, color, id, hidden, tooltip, hover_sound, on_hover, no scrollbar)");
             }
         }
         Layout layout = new Layout(x, y, w, h, anchor, color, layer);
+        String listExtra = com.scriptcraft.screen.ScreenMeta.appendHoverTags(
+                disabled ? "dis1" : "", hoverSound, hoverVolume, hoverPitch, hoverAction);
         String packedHeader = com.scriptcraft.screen.ScreenMeta.pack(id, false, noScrollbar ? "noslider" : "", hidden, tooltip,
-                disabled ? "dis1" : "", header);
+                listExtra, header);
         if (!from.isEmpty()) {
             if (nested.size() > 1) {
                 throw new ParseException("у list from одна строка-шаблон: row \"%loop-index%\"");
@@ -2284,6 +2323,10 @@ public final class ScriptParser {
         int rowColor = 0;
         String tooltip = "";
         String action = "";
+        String rowHoverSound = "";
+        float rowHoverVol = 0.45f;
+        float rowHoverPitch = 1.0f;
+        String rowHoverAct = "";
         boolean keepOpen = false;
 
         while (idx < t.size()) {
@@ -2401,10 +2444,45 @@ public final class ScriptParser {
                     buttonRawAction = parsedRun.action();
                     idx = parsedRun.nextIdx();
                 }
-                default -> throw new ParseException("у row нет параметра '" + opt + "' (run, keep open, close, width, height, align, active, disabled, tooltip, icon, item, head, right, badge, bar, button, color)");
+                case "hover_sound", "hover-sound", "hsound" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: hover_sound <звук>");
+                    rowHoverSound = t.get(idx + 1).value().strip();
+                    int cur = idx + 2;
+                    if (cur < t.size() && word(t, cur).equals("with")) cur++;
+                    if (cur + 1 < t.size() && (word(t, cur).equals("volume") || word(t, cur).equals("vol"))) {
+                        rowHoverVol = (float) parseDouble(t.get(cur + 1).value());
+                        cur += 2;
+                        if (cur + 1 < t.size() && word(t, cur).equals("pitch")) {
+                            rowHoverPitch = (float) parseDouble(t.get(cur + 1).value());
+                            cur += 2;
+                        }
+                    } else if (cur + 1 < t.size() && word(t, cur).equals("pitch")) {
+                        rowHoverPitch = (float) parseDouble(t.get(cur + 1).value());
+                        cur += 2;
+                    }
+                    idx = cur;
+                }
+                case "hover_volume", "hover-volume", "hvol" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: hover_volume <число>");
+                    rowHoverVol = (float) parseDouble(t.get(idx + 1).value());
+                    idx += 2;
+                }
+                case "hover_pitch", "hover-pitch", "hpitch" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: hover_pitch <число>");
+                    rowHoverPitch = (float) parseDouble(t.get(idx + 1).value());
+                    idx += 2;
+                }
+                case "on_hover", "on-hover", "hover_run", "hover-run" -> {
+                    ParsedScreenRun parsedHover = parseScreenRun(line, t, idx, false);
+                    rowHoverAct = parsedHover.action();
+                    idx = parsedHover.nextIdx();
+                }
+                default -> throw new ParseException("у row нет параметра '" + opt + "' (run, on_hover, hover_sound, keep open, close, width, height, align, active, disabled, tooltip, icon, item, head, right, badge, bar, button, color)");
             }
         }
-        String packedAct = com.scriptcraft.screen.ScreenMeta.pack("", keepOpen, "", false, action);
+        String rowExtra = com.scriptcraft.screen.ScreenMeta.appendHoverTags("", rowHoverSound, rowHoverVol, rowHoverPitch, rowHoverAct);
+        rowExtra = com.scriptcraft.screen.ScreenMeta.appendDynamicBarTag(rowExtra, rawBarExpr);
+        String packedAct = com.scriptcraft.screen.ScreenMeta.pack("", keepOpen, "", false, "", rowExtra, action);
         String packedBtn = buttonRawAction.isEmpty() ? "" : com.scriptcraft.screen.ScreenMeta.pack("", keepOpen, "", false, buttonRawAction);
         ListElement.Row row = new ListElement.Row(
                 ListElement.RowKind.NORMAL, label, rightText, icon, iconCount, headSkin,
@@ -2536,6 +2614,8 @@ public final class ScriptParser {
             "at", "size", "anchor", "color", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey",
             "hidden", "disabled", "inactive", "tooltip", "hover", "scale", "entity_size", "entity-size",
             "hscale", "hover_scale", "hover-scale", "follow", "hover_circle", "hover-circle", "hover_color", "hover-color",
+            "hover_sound", "hover-sound", "hsound", "hover_volume", "hover-volume", "hvol", "hover_pitch", "hover-pitch", "hpitch",
+            "on_hover", "on-hover", "hover_run", "hover-run",
             "skin", "model", "auto", "slim", "alex", "wide", "steve", "classic", "overlay", "no", "without",
             "yaw", "rotate", "rotation", "pitch", "roll", "spin", "look", "clip",
             "baby", "child", "sneak", "sneaking", "crouch", "crouching", "walk", "walking", "nametag", "nbt",
@@ -2544,21 +2624,30 @@ public final class ScriptParser {
 
     private static final Map<String, Set<String>> ELEMENT_OPTIONS = Map.ofEntries(
             Map.entry("text", Set.of("at", "anchor", "color", "shadow", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "disabled", "inactive", "tooltip", "hover",
-                    "scale", "rotate", "rotation", "hscale", "hover_scale", "hover-scale", "follow", "hover_circle", "hover-circle", "hover_color", "hover-color")),
-            Map.entry("button", Set.of("at", "size", "anchor", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "disabled", "inactive", "layer", "id", "tooltip", "hover")),
+                    "scale", "rotate", "rotation", "hscale", "hover_scale", "hover-scale", "follow", "hover_circle", "hover-circle", "hover_color", "hover-color",
+                    "hover_sound", "hover-sound", "hsound", "hover_volume", "hover-volume", "hvol", "hover_pitch", "hover-pitch", "hpitch", "on_hover", "on-hover", "hover_run", "hover-run")),
+            Map.entry("button", Set.of("at", "size", "anchor", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "disabled", "inactive", "layer", "id", "tooltip", "hover",
+                    "hover_sound", "hover-sound", "hsound", "hover_volume", "hover-volume", "hvol", "hover_pitch", "hover-pitch", "hpitch", "on_hover", "on-hover", "hover_run", "hover-run")),
             Map.entry("image", Set.of("at", "size", "texture", "anchor", "color", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "disabled", "inactive", "tooltip", "hover",
-                    "scale", "rotate", "rotation", "hscale", "hover_scale", "hover-scale", "frames", "fps", "follow", "hover_circle", "hover-circle", "hover_color", "hover-color")),
+                    "scale", "rotate", "rotation", "hscale", "hover_scale", "hover-scale", "frames", "fps", "follow", "hover_circle", "hover-circle", "hover_color", "hover-color",
+                    "hover_sound", "hover-sound", "hsound", "hover_volume", "hover-volume", "hvol", "hover_pitch", "hover-pitch", "hpitch", "on_hover", "on-hover", "hover_run", "hover-run")),
             Map.entry("box", Set.of("at", "size", "anchor", "color", "gradient", "to", "horizontal", "vertical", "border", "border_width", "border-width",
                     "radius", "shadow", "blur", "scale", "rotate", "rotation", "hscale", "hover_scale", "hover-scale", "follow", "hover_circle", "hover-circle", "hover_color", "hover-color",
+                    "hover_sound", "hover-sound", "hsound", "hover_volume", "hover-volume", "hvol", "hover_pitch", "hover-pitch", "hpitch", "on_hover", "on-hover", "hover_run", "hover-run",
                     "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "disabled", "inactive", "tooltip", "hover")),
             Map.entry("slot", Set.of("at", "size", "anchor", "color", "no", "layer", "id", "run", "function", "close", "keep", "stay", "key", "hotkey", "hidden", "disabled", "inactive", "tooltip", "hover",
-                    "follow", "hover_circle", "hover-circle", "hover_color", "hover-color")),
+                    "follow", "hover_circle", "hover-circle", "hover_color", "hover-color",
+                    "hover_sound", "hover-sound", "hsound", "hover_volume", "hover-volume", "hvol", "hover_pitch", "hover-pitch", "hpitch", "on_hover", "on-hover", "hover_run", "hover-run")),
             Map.entry("bar", Set.of("at", "size", "texture", "anchor", "color", "layer", "id", "value", "max", "direction",
-                    "background", "fill", "text", "shadow", "hidden", "tooltip", "hover")),
+                    "background", "fill", "text", "shadow", "hidden", "tooltip", "hover",
+                    "hover_sound", "hover-sound", "hsound", "hover_volume", "hover-volume", "hvol", "hover_pitch", "hover-pitch", "hpitch", "on_hover", "on-hover", "hover_run", "hover-run")),
             Map.entry("hotbar", Set.of("at", "size", "anchor", "color", "no", "layer", "id", "spacing")),
-            Map.entry("input", Set.of("at", "size", "anchor", "color", "layer", "id", "value", "placeholder", "hint", "max", "length", "run", "function", "hidden", "disabled", "inactive", "tooltip", "hover")),
-            Map.entry("slider", Set.of("at", "size", "anchor", "color", "layer", "id", "from", "to", "min", "max", "value", "step", "run", "function", "hidden", "disabled", "inactive", "tooltip", "hover")),
-            Map.entry("toggle", Set.of("at", "size", "anchor", "color", "layer", "id", "value", "checked", "run", "function", "hidden", "disabled", "inactive", "tooltip", "hover")),
+            Map.entry("input", Set.of("at", "size", "anchor", "color", "layer", "id", "value", "placeholder", "hint", "max", "length", "run", "function", "hidden", "disabled", "inactive", "tooltip", "hover",
+                    "hover_sound", "hover-sound", "hsound", "hover_volume", "hover-volume", "hvol", "hover_pitch", "hover-pitch", "hpitch", "on_hover", "on-hover", "hover_run", "hover-run")),
+            Map.entry("slider", Set.of("at", "size", "anchor", "color", "layer", "id", "from", "to", "min", "max", "value", "step", "run", "function", "hidden", "disabled", "inactive", "tooltip", "hover",
+                    "hover_sound", "hover-sound", "hsound", "hover_volume", "hover-volume", "hvol", "hover_pitch", "hover-pitch", "hpitch", "on_hover", "on-hover", "hover_run", "hover-run")),
+            Map.entry("toggle", Set.of("at", "size", "anchor", "color", "layer", "id", "value", "checked", "run", "function", "hidden", "disabled", "inactive", "tooltip", "hover",
+                    "hover_sound", "hover-sound", "hsound", "hover_volume", "hover-volume", "hvol", "hover_pitch", "hover-pitch", "hpitch", "on_hover", "on-hover", "hover_run", "hover-run")),
             Map.entry("entity", ENTITY_OPT_SET));
 
     /**
@@ -2698,6 +2787,10 @@ public final class ScriptParser {
         boolean followCursor = false;
         int hoverCircle = 0;
         int hoverCircleColor = 0x38BDF8;
+        String elHoverSound = "";
+        float elHoverVol = 0.45f;
+        float elHoverPitch = 1.0f;
+        String elHoverAct = "";
 
         // Параметры 3D-рендера сущности / игрока / скина
         String entSkin = "";
@@ -3125,6 +3218,39 @@ public final class ScriptParser {
                     hoverCircleColor = parseColor(idx + 1 < t.size() ? t.get(idx + 1).value() : "") & 0x00FFFFFF;
                     idx += 2;
                 }
+                case "hover_sound", "hover-sound", "hsound" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: hover_sound <звук>");
+                    elHoverSound = t.get(idx + 1).value().strip();
+                    int cur = idx + 2;
+                    if (cur < t.size() && word(t, cur).equals("with")) cur++;
+                    if (cur + 1 < t.size() && (word(t, cur).equals("volume") || word(t, cur).equals("vol"))) {
+                        elHoverVol = (float) parseDouble(t.get(cur + 1).value());
+                        cur += 2;
+                        if (cur + 1 < t.size() && word(t, cur).equals("pitch")) {
+                            elHoverPitch = (float) parseDouble(t.get(cur + 1).value());
+                            cur += 2;
+                        }
+                    } else if (!kind.equals("entity") && cur + 1 < t.size() && word(t, cur).equals("pitch")) {
+                        elHoverPitch = (float) parseDouble(t.get(cur + 1).value());
+                        cur += 2;
+                    }
+                    idx = cur;
+                }
+                case "hover_volume", "hover-volume", "hvol" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: hover_volume <число>");
+                    elHoverVol = (float) parseDouble(t.get(idx + 1).value());
+                    idx += 2;
+                }
+                case "hover_pitch", "hover-pitch", "hpitch" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: hover_pitch <число>");
+                    elHoverPitch = (float) parseDouble(t.get(idx + 1).value());
+                    idx += 2;
+                }
+                case "on_hover", "on-hover", "hover_run", "hover-run" -> {
+                    ParsedScreenRun parsedHover = parseScreenRun(line, t, idx, false);
+                    elHoverAct = parsedHover.action();
+                    idx = parsedHover.nextIdx();
+                }
                 default -> throw new ParseException("неизвестный параметр элемента: " + opt);
             }
         }
@@ -3176,7 +3302,9 @@ public final class ScriptParser {
         }
         Layout layout = new Layout(x, y, w, h, anchor, color, layer);
         boolean effectiveKeep = keepOpen || kind.equals("input") || kind.equals("slider") || kind.equals("toggle");
-        String packedAction = com.scriptcraft.screen.ScreenMeta.pack(id, effectiveKeep, hotkey, hidden, tooltip, extraTags.toString(), action);
+        String finalExtra = com.scriptcraft.screen.ScreenMeta.appendHoverTags(
+                extraTags.toString(), elHoverSound, elHoverVol, elHoverPitch, elHoverAct);
+        String packedAction = com.scriptcraft.screen.ScreenMeta.pack(id, effectiveKeep, hotkey, hidden, tooltip, finalExtra, action);
         ScreenElement element = switch (kind) {
             case "text" -> new TextElement(layout, main, shadow, packedAction);
             case "button" -> new ButtonElement(layout, main, packedAction);
@@ -3188,7 +3316,7 @@ public final class ScriptParser {
                         + ":" + boxRadius + ":" + (shadow ? "1" : "0") + ":" + (boxBlur ? "1" : "0");
                 yield new ImageElement(layout, spec, 0, 0, packedAction);
             }
-            case "bar" -> new BarElement(layout, com.scriptcraft.screen.ScreenMeta.packBarId(id, hidden, tooltip),
+            case "bar" -> new BarElement(layout, com.scriptcraft.screen.ScreenMeta.packBarId(id, hidden, tooltip, finalExtra),
                     value, max != null ? max : defaultMax(value), direction,
                     backgroundColor, fillTexture, backgroundTexture, texW, texH, barText, shadow);
             case "input" -> new com.scriptcraft.screen.InputElement(layout, value, placeholder, inputMaxLen, packedAction);

@@ -3110,11 +3110,12 @@ text "&7v0.7.6" at -6, -6 anchor bottom_right color #808080`,
       "text \"<текст>\" run \"/<команда>\"",
       "text \"<текст>\" run <Функция>(<аргументы>)",
       "image \"<путь>\" size <W>x<H> run <Функция>(<аргументы>)",
-      "slot <предмет> close"
+      "text \"<текст>\" close",
+      "<элемент> ... hover_sound <звук> [volume <V>] [pitch <P>] [on_hover <Функция>(...) | \"/<команда>\"]"
     ],
     desc: {
-      ru: "ЛКМ по нарисованному элементу на `open screen`. Работает у `text`, `image` и `slot`: `run \"/команда\"` выполняет команду от игрока, `run MyFunc(player)` (или `function MyFunc(player)`) вызывает функцию скрипта на сервере, `close` только закрывает экран. Без `run`, `function` и `close` клика нет. Если у текста задан `size`, хитбокс — этот прямоугольник, иначе ширина надписи и высота строки. У картинки и слота — `size`, иначе 16x16 и 18x18. Попадает верхний `layer`. Кнопка по-прежнему виджет. На HUD клики не приходят.",
-      en: "Left click on a drawn element in `open screen`. Works on `text`, `image` and `slot`: `run \"/command\"` runs the command as the player, `run MyFunc(player)` (or `function MyFunc(player)`) calls a script function on the server, `close` only closes the screen. Without `run`, `function` and `close` there is no click. If a text has `size`, that rectangle is the hitbox, otherwise the label width and the line height. An image or a slot uses `size`, or 16x16 and 18x18. The higher `layer` wins. A button is still a widget. HUD elements do not receive clicks."
+      ru: "ЛКМ и наведение курсора на элементы в `open screen`:\n• **Клик (`run` / `close`)**: работает у `button`, `text`, `image`, `box`, `slot`, `entity`/`player` и строк `row` в `list`. `run \"/команда\"` выполняет команду от игрока, `run MyFunc(player)` вызывает функцию на сервере, `close` закрывает экран (или добавьте `keep open`, чтобы не закрывать).\n• **Звук при наведении (`hover_sound`)**: мгновенно проигрывает клиентский UI-звук (0 мс задержки) в момент входа курсора на элемент или на конкретную строку `row` в `list` (например: `hover_sound block.note_block.hat volume 0.4 pitch 1.35`).\n• **Действие при наведении (`on_hover` / `hover_run`)**: вызывает функцию скрипта или команду один раз при наведении мыши на элемент или строку `row` (например, для живого переключения 3D-превью роли без клика).",
+      en: "Left-click and mouse-hover actions in `open screen`:\n• **Click (`run` / `close`)**: supported on `button`, `text`, `image`, `box`, `slot`, `entity`/`player`, and `list` rows (`keep open` prevents closing).\n• **Hover sound (`hover_sound`)**: plays an instant zero-latency client UI sound when the cursor enters an element or an individual `row` in `list` (`hover_sound block.note_block.hat volume 0.4 pitch 1.35`).\n• **Hover action (`on_hover` / `hover_run`)**: runs a script function or command once on hover entry (ideal for live 3D previews without clicking)."
     },
     example: `# ЛКМ по картинке, тексту и слоту (с keep open или закрытием)
 image "minecraft:textures/item/diamond.png" at -40, -10 size 32x32 texture 16x16 run GiveReward(player, "diamond") keep open
@@ -3128,7 +3129,7 @@ text "&cВыход" at 0, 60 close`,
     name: { ru: "Продвинутый список (размер, разделители, иконки, тултипы, выравнивание)", en: "Advanced List (sizing, separators, inline elements, tooltips, alignment)" },
     syntax: [
       "list [from {<имя>::*}] [vertical|horizontal] [at <X> <Y>] [size <W>x<H>] [row_height <N>] [spacing <N>] [scale <S>] [align left|center|right] [header \"<текст>\"] [empty_text \"<текст>\"] [columns \"W1,W2,...\"] [select] [disabled|active] [background #hex|none] [border #hex|none] [tooltip \"<текст>\"] [no scrollbar|no slider]:",
-      "row \"<текст>\" [width <W>] [height <H>] [align left|center|right] [active|disabled] [item <id> [<N>] | icon \"<путь>\"] [head \"<ник|URL|ресурс>\"] [badge \"<тег>\" [badge_color #hex]] [right \"<текст>\"] [bar <0..100|V/M> [bar_color #hex]] [button \"<текст>\" [button_run ...]] [color #hex] [tooltip \"<текст>\"] [run ... | close] [keep open]",
+      "row \"<текст>\" [width <W>] [height <H>] [align left|center|right] [active|disabled] [item <id> [<N>] | icon \"<путь>\"] [head \"<ник|URL|ресурс>\"] [badge \"<тег>\" [badge_color #hex]] [right \"<текст>\"] [bar <0..100|V/M> [bar_color #hex]] [button \"<текст>\" [button_run ...]] [color #hex] [tooltip \"<текст>\"] [hover_sound <id> [volume <V>] [pitch <P>]] [on_hover <Функция>(...)] [run ... | close] [keep open]",
       "separator [\"<заголовок раздела>\"] [color #hex] [height <H>] [align left|center|right]",
       "empty [<высота>] [height <H>] [width <W>]"
     ],

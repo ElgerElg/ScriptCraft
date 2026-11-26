@@ -281,6 +281,135 @@ public record ScreenMeta(String id, boolean keepOpen, String hotkey, boolean hid
         }
     }
 
+    /** Дописывает теги звука при наведении (hsnd=) и действия при наведении (hact=) в строку extraTags. */
+    public static String appendHoverTags(@Nullable String baseExtra,
+                                         @Nullable String hoverSound, float hoverVol, float hoverPitch,
+                                         @Nullable String hoverAction) {
+        String res = baseExtra == null ? "" : baseExtra;
+        if (hoverSound != null && !hoverSound.isBlank()) {
+            String cleanSnd = hoverSound.strip().replace(';', '_').replace('@', '_');
+            String spec = cleanSnd + "@"
+                    + String.format(java.util.Locale.ROOT, "%.2f", Math.max(0.01f, Math.min(4f, hoverVol))) + "@"
+                    + String.format(java.util.Locale.ROOT, "%.2f", Math.max(0.1f, Math.min(3f, hoverPitch)));
+            res = upsertTag(res, "hsnd=", spec);
+        }
+        if (hoverAction != null && !hoverAction.isBlank()) {
+            String escaped = hoverAction.strip().replace(';', '\u0003');
+            res = upsertTag(res, "hact=", escaped);
+        }
+        return res;
+    }
+
+    private static String extraTagsOfPacked(@Nullable String packed) {
+        if (packed == null || packed.isEmpty() || packed.charAt(0) != MARK) {
+            return "";
+        }
+        int end = packed.indexOf(MARK, 1);
+        if (end < 0) {
+            return "";
+        }
+        String[] parts = packed.substring(1, end).split(String.valueOf(SEP), -1);
+        return parts.length > 5 ? parts[5] : "";
+    }
+
+    @Nullable
+    private static String tagValueInExtra(String extra, String prefix) {
+        if (extra == null || extra.isEmpty()) return null;
+        for (String tok : extra.split(";")) {
+            if (tok.startsWith(prefix)) {
+                return tok.substring(prefix.length());
+            }
+        }
+        return null;
+    }
+
+    public static String hoverSoundOfPacked(@Nullable String packed) {
+        String v = tagValueInExtra(extraTagsOfPacked(packed), "hsnd=");
+        if (v == null || v.isEmpty()) return "";
+        int at = v.indexOf('@');
+        return at >= 0 ? v.substring(0, at) : v;
+    }
+
+    public static float hoverVolumeOfPacked(@Nullable String packed) {
+        String v = tagValueInExtra(extraTagsOfPacked(packed), "hsnd=");
+        if (v == null || v.isEmpty()) return 0.45f;
+        String[] parts = v.split("@");
+        if (parts.length < 2) return 0.45f;
+        try {
+            return Math.max(0.01f, Math.min(4f, Float.parseFloat(parts[1])));
+        } catch (NumberFormatException ignored) {
+            return 0.45f;
+        }
+    }
+
+    public static float hoverPitchOfPacked(@Nullable String packed) {
+        String v = tagValueInExtra(extraTagsOfPacked(packed), "hsnd=");
+        if (v == null || v.isEmpty()) return 1.0f;
+        String[] parts = v.split("@");
+        if (parts.length < 3) return 1.0f;
+        try {
+            return Math.max(0.1f, Math.min(3f, Float.parseFloat(parts[2])));
+        } catch (NumberFormatException ignored) {
+            return 1.0f;
+        }
+    }
+
+    public static String hoverActionOfPacked(@Nullable String packed) {
+        String v = tagValueInExtra(extraTagsOfPacked(packed), "hact=");
+        if (v == null || v.isEmpty()) return "";
+        return v.replace('\u0003', ';');
+    }
+
+    public static String appendDynamicBarTag(@Nullable String baseExtra, @Nullable String rawBarExpr) {
+        String res = baseExtra == null ? "" : baseExtra;
+        if (rawBarExpr != null && !rawBarExpr.isBlank() && (rawBarExpr.contains("%") || rawBarExpr.contains("{"))) {
+            res = upsertTag(res, "dbar=", rawBarExpr.strip().replace(';', '_'));
+        }
+        return res;
+    }
+
+    public static String dynamicBarExprOfPacked(@Nullable String packed) {
+        String v = tagValueInExtra(extraTagsOfPacked(packed), "dbar=");
+        return v == null ? "" : v;
+    }
+
+    public static String hoverSound(ScreenElement e) {
+        String v = tagValue(e, "hsnd=");
+        if (v == null || v.isEmpty()) return "";
+        int at = v.indexOf('@');
+        return at >= 0 ? v.substring(0, at) : v;
+    }
+
+    public static float hoverVolume(ScreenElement e) {
+        String v = tagValue(e, "hsnd=");
+        if (v == null || v.isEmpty()) return 0.45f;
+        String[] parts = v.split("@");
+        if (parts.length < 2) return 0.45f;
+        try {
+            return Math.max(0.01f, Math.min(4f, Float.parseFloat(parts[1])));
+        } catch (NumberFormatException ignored) {
+            return 0.45f;
+        }
+    }
+
+    public static float hoverPitch(ScreenElement e) {
+        String v = tagValue(e, "hsnd=");
+        if (v == null || v.isEmpty()) return 1.0f;
+        String[] parts = v.split("@");
+        if (parts.length < 3) return 1.0f;
+        try {
+            return Math.max(0.1f, Math.min(3f, Float.parseFloat(parts[2])));
+        } catch (NumberFormatException ignored) {
+            return 1.0f;
+        }
+    }
+
+    public static String hoverAction(ScreenElement e) {
+        String v = tagValue(e, "hact=");
+        if (v == null || v.isEmpty()) return "";
+        return v.replace('\u0003', ';');
+    }
+
     public static ScreenElement withHoverCircle(ScreenElement e, int radius, int rgb) {
         if (radius <= 0) {
             return withExtraTag(e, "hc", "");

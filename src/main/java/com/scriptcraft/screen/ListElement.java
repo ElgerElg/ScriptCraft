@@ -166,6 +166,14 @@ public record ListElement(
         }
 
         public Row format(UnaryOperator<String> f) {
+            float nextBar = barProgress;
+            String dynBar = ScreenMeta.dynamicBarExprOfPacked(action);
+            if (!dynBar.isEmpty()) {
+                float parsed = parseDynamicBar(f.apply(dynBar));
+                if (parsed >= 0f) {
+                    nextBar = parsed;
+                }
+            }
             return new Row(
                     kind,
                     f.apply(text),
@@ -175,7 +183,7 @@ public record ListElement(
                     f.apply(head),
                     f.apply(badge),
                     badgeColor,
-                    barProgress,
+                    nextBar,
                     barColor,
                     f.apply(buttonLabel),
                     f.apply(buttonAction),
@@ -187,6 +195,24 @@ public record ListElement(
                     f.apply(tooltip),
                     f.apply(action)
             );
+        }
+
+        private static float parseDynamicBar(String raw) {
+            if (raw == null || raw.isBlank()) return -1f;
+            String s = raw.strip().replace("%", "");
+            int slash = s.indexOf('/');
+            try {
+                if (slash > 0) {
+                    double v = Double.parseDouble(s.substring(0, slash).strip());
+                    double m = Double.parseDouble(s.substring(slash + 1).strip());
+                    return m > 0 ? (float) Math.max(0.0, Math.min(1.0, v / m)) : 0f;
+                }
+                double v = Double.parseDouble(s);
+                if (v > 1.0001) v /= 100.0;
+                return (float) Math.max(0.0, Math.min(1.0, v));
+            } catch (NumberFormatException e) {
+                return -1f;
+            }
         }
     }
 

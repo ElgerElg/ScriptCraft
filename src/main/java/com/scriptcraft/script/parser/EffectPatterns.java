@@ -173,17 +173,17 @@ final class EffectPatterns {
 
         // Универсальный круг при наведении на любой элемент экрана
         rule("set hover_circle|hover-circle of screen element %text% for|of %target% to %num% color %id%",
-                c -> new Actions.ScreenSetHoverCircle(c.target(1), hudName(c.text(0)), c.num(2), c.text(3)));
+                c -> new Actions.ScreenSetHoverCircle(c.target(1), hudName(c.text(0)), c.num(2), c.raw(3).value()));
         rule("set hover_circle|hover-circle of screen %text% for|of %target% to %num% color %id%",
-                c -> new Actions.ScreenSetHoverCircle(c.target(1), hudName(c.text(0)), c.num(2), c.text(3)));
+                c -> new Actions.ScreenSetHoverCircle(c.target(1), hudName(c.text(0)), c.num(2), c.raw(3).value()));
         rule("set hover_circle|hover-circle of screen element %text% for|of %target% to %num%",
                 c -> new Actions.ScreenSetHoverCircle(c.target(1), hudName(c.text(0)), c.num(2), null));
         rule("set hover_circle|hover-circle of screen %text% for|of %target% to %num%",
                 c -> new Actions.ScreenSetHoverCircle(c.target(1), hudName(c.text(0)), c.num(2), null));
         rule("set hover_circle|hover-circle of screen element %text% to %num% color %id%",
-                c -> new Actions.ScreenSetHoverCircle(new Target.Self(), hudName(c.text(0)), c.num(1), c.text(2)));
+                c -> new Actions.ScreenSetHoverCircle(new Target.Self(), hudName(c.text(0)), c.num(1), c.raw(2).value()));
         rule("set hover_circle|hover-circle of screen %text% to %num% color %id%",
-                c -> new Actions.ScreenSetHoverCircle(new Target.Self(), hudName(c.text(0)), c.num(1), c.text(2)));
+                c -> new Actions.ScreenSetHoverCircle(new Target.Self(), hudName(c.text(0)), c.num(1), c.raw(2).value()));
         rule("set hover_circle|hover-circle of screen element %text% to %num%",
                 c -> new Actions.ScreenSetHoverCircle(new Target.Self(), hudName(c.text(0)), c.num(1), null));
         rule("set hover_circle|hover-circle of screen %text% to %num%",
@@ -191,41 +191,41 @@ final class EffectPatterns {
 
         // Клиентские всплывающие цифры / текст поверх GUI
         rule("gui float %piece% at %num% %num% color %id% for %num% ticks to|for %target%",
-                c -> new Actions.GuiFloatText(c.target(5), c.exprValue(0), c.num(1), c.num(2), c.text(3), c.num(4)));
+                c -> new Actions.GuiFloatText(c.target(5), c.exprValue(0), c.num(1), c.num(2), c.raw(3).value(), c.num(4)));
         rule("gui float %piece% at %num% %num% color %id% to|for %target%",
-                c -> new Actions.GuiFloatText(c.target(4), c.exprValue(0), c.num(1), c.num(2), c.text(3), null));
+                c -> new Actions.GuiFloatText(c.target(4), c.exprValue(0), c.num(1), c.num(2), c.raw(3).value(), null));
         rule("gui float %piece% at %num% %num% for %num% ticks to|for %target%",
                 c -> new Actions.GuiFloatText(c.target(4), c.exprValue(0), c.num(1), c.num(2), null, c.num(3)));
         rule("gui float %piece% at %num% %num% to|for %target%",
                 c -> new Actions.GuiFloatText(c.target(3), c.exprValue(0), c.num(1), c.num(2), null, null));
         rule("gui float %piece% at %num% %num% color %id% for %num% ticks",
-                c -> new Actions.GuiFloatText(new Target.Self(), c.exprValue(0), c.num(1), c.num(2), c.text(3), c.num(4)));
+                c -> new Actions.GuiFloatText(new Target.Self(), c.exprValue(0), c.num(1), c.num(2), c.raw(3).value(), c.num(4)));
         rule("gui float %piece% at %num% %num% color %id%",
-                c -> new Actions.GuiFloatText(new Target.Self(), c.exprValue(0), c.num(1), c.num(2), c.text(3), null));
+                c -> new Actions.GuiFloatText(new Target.Self(), c.exprValue(0), c.num(1), c.num(2), c.raw(3).value(), null));
         rule("gui float %piece% at %num% %num%",
                 c -> new Actions.GuiFloatText(new Target.Self(), c.exprValue(0), c.num(1), c.num(2), null, null));
 
         // Клиентские GUI-частицы поверх экрана (spark, fire, ice, poison, gold, magic, heart, explosion, smoke)
         rule("gui particle|particles %id% count %num% at %num% %num% color %id% spread %num% to|for %target%",
-                c -> new Actions.GuiParticles(c.target(6), c.text(0), c.num(1), c.num(2), c.num(3), c.text(4), c.num(5)));
+                c -> new Actions.GuiParticles(c.target(6), c.raw(0).value(), c.num(1), c.num(2), c.num(3), c.raw(4).value(), c.num(5)));
         rule("gui particle|particles %id% count %num% at %num% %num% color %id% to|for %target%",
-                c -> new Actions.GuiParticles(c.target(5), c.text(0), c.num(1), c.num(2), c.num(3), c.text(4), null));
+                c -> new Actions.GuiParticles(c.target(5), c.raw(0).value(), c.num(1), c.num(2), c.num(3), c.raw(4).value(), null));
         rule("gui particle|particles %id% count %num% at %num% %num% spread %num% to|for %target%",
-                c -> new Actions.GuiParticles(c.target(5), c.text(0), c.num(1), c.num(2), c.num(3), null, c.num(4)));
+                c -> new Actions.GuiParticles(c.target(5), c.raw(0).value(), c.num(1), c.num(2), c.num(3), null, c.num(4)));
         rule("gui particle|particles %id% count %num% at %num% %num% to|for %target%",
-                c -> new Actions.GuiParticles(c.target(4), c.text(0), c.num(1), c.num(2), c.num(3), null, null));
+                c -> new Actions.GuiParticles(c.target(4), c.raw(0).value(), c.num(1), c.num(2), c.num(3), null, null));
         rule("gui particle|particles %id% at %num% %num% color %id% to|for %target%",
-                c -> new Actions.GuiParticles(c.target(4), c.text(0), null, c.num(1), c.num(2), c.text(3), null));
+                c -> new Actions.GuiParticles(c.target(4), c.raw(0).value(), null, c.num(1), c.num(2), c.raw(3).value(), null));
         rule("gui particle|particles %id% at %num% %num% to|for %target%",
-                c -> new Actions.GuiParticles(c.target(3), c.text(0), null, c.num(1), c.num(2), null, null));
+                c -> new Actions.GuiParticles(c.target(3), c.raw(0).value(), null, c.num(1), c.num(2), null, null));
         rule("gui particle|particles %id% count %num% at %num% %num% color %id% spread %num%",
-                c -> new Actions.GuiParticles(new Target.Self(), c.text(0), c.num(1), c.num(2), c.num(3), c.text(4), c.num(5)));
+                c -> new Actions.GuiParticles(new Target.Self(), c.raw(0).value(), c.num(1), c.num(2), c.num(3), c.raw(4).value(), c.num(5)));
         rule("gui particle|particles %id% count %num% at %num% %num% color %id%",
-                c -> new Actions.GuiParticles(new Target.Self(), c.text(0), c.num(1), c.num(2), c.num(3), c.text(4), null));
+                c -> new Actions.GuiParticles(new Target.Self(), c.raw(0).value(), c.num(1), c.num(2), c.num(3), c.raw(4).value(), null));
         rule("gui particle|particles %id% count %num% at %num% %num%",
-                c -> new Actions.GuiParticles(new Target.Self(), c.text(0), c.num(1), c.num(2), c.num(3), null, null));
+                c -> new Actions.GuiParticles(new Target.Self(), c.raw(0).value(), c.num(1), c.num(2), c.num(3), null, null));
         rule("gui particle|particles %id% at %num% %num%",
-                c -> new Actions.GuiParticles(new Target.Self(), c.text(0), null, c.num(1), c.num(2), null, null));
+                c -> new Actions.GuiParticles(new Target.Self(), c.raw(0).value(), null, c.num(1), c.num(2), null, null));
 
         rule("set value|progress of screen bar %text% for|of %target% to %expr%",
                 c -> new Actions.ScreenSetBar(c.target(1), hudName(c.text(0)), barValue(c.expr(2)), null));

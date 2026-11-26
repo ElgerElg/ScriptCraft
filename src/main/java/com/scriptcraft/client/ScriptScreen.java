@@ -55,6 +55,7 @@ public class ScriptScreen extends Screen {
     private final Map<ListElement, Integer> scroll = new IdentityHashMap<>();
     private final Map<Integer, String> heldKeys = new LinkedHashMap<>();
     private final Map<String, ActiveTween> tweens = new LinkedHashMap<>();
+    private String lastHoverKey = "";
     private boolean serverClosed;
 
     private record ActiveTween(float fromX, float fromY, float toX, float toY, long startMs, int durationMs) {
@@ -143,6 +144,8 @@ public class ScriptScreen extends Screen {
                     float fromX = (active != null && !active.done(nowMs)) ? active.curX(nowMs) : oldEl.layout().x();
                     float fromY = (active != null && !active.done(nowMs)) ? active.curY(nowMs) : oldEl.layout().y();
                     tweens.put(eid, new ActiveTween(fromX, fromY, nextEl.layout().x(), nextEl.layout().y(), nowMs, durMs));
+                } else if (oldEl.layout().x() != nextEl.layout().x() || oldEl.layout().y() != nextEl.layout().y()) {
+                    tweens.remove(eid);
                 }
                 merged.set(idx, nextEl);
                 if (oldEl instanceof ButtonElement || nextEl instanceof ButtonElement
@@ -417,9 +420,12 @@ public class ScriptScreen extends Screen {
         ItemStack hoveredItem = ItemStack.EMPTY;
         String hoveredTooltip = "";
         ScreenElement hoveredCircleEl = null;
+        ElementRenderer.HoverTarget topHoverTarget = null;
         long nowMs = System.currentTimeMillis();
         float z = 0f;
+        int elIndex = 0;
         for (ScreenElement rawElement : ordered) {
+            int curIdx = elIndex++;
             if (ScreenMeta.isHidden(rawElement)) {
                 continue;
             }
@@ -485,6 +491,24 @@ public class ScriptScreen extends Screen {
                 }
                 if (ScreenMeta.hoverCircleRadius(element) > 0) {
                     hoveredCircleEl = element;
+                }
+                ElementRenderer.HoverTarget ht = ElementRenderer.resolveHoverTarget(
+                        this.font, element, this.width, this.height, mouseX, mouseY, elScroll, curIdx);
+                if (ht != null) {
+                    topHoverTarget = ht;
+                }
+            }
+        }
+
+        String curHoverKey = topHoverTarget == null ? "" : topHoverTarget.key();
+        if (!curHoverKey.equals(lastHoverKey)) {
+            lastHoverKey = curHoverKey;
+            if (topHoverTarget != null) {
+                if (!topHoverTarget.sound().isEmpty()) {
+                    playHoverUiSound(topHoverTarget.sound(), topHoverTarget.volume(), topHoverTarget.pitch());
+                }
+                if (!topHoverTarget.hoverAction().isEmpty()) {
+                    triggerHoverAction(topHoverTarget.hoverAction());
                 }
             }
         }
@@ -828,6 +852,35 @@ public class ScriptScreen extends Screen {
         if (element instanceof SlotElement s) return s.action();
         if (element instanceof com.scriptcraft.screen.EntityElement e) return e.action();
         return null;
+    }
+
+    private void playHoverUiSound(String soundId, float volume, float pitch) {
+        if (this.minecraft == null || soundId == null || soundId.isBlank()) {
+            return;
+        }
+        String norm = soundId.contains(":") ? soundId.strip() : "minecraft:" + soundId.strip();
+        net.minecraft.resources.ResourceLocation loc =
+                net.minecraft.resources.ResourceLocation.tryParse(norm.toLowerCase(Locale.ROOT));
+        if (loc == null) {
+            return;
+        }
+        net.minecraft.sounds.SoundEvent ev = net.minecraftforge.registries.ForgeRegistries.SOUND_EVENTS.getValue(loc);
+        if (ev == null) {
+            ev = net.minecraft.sounds.SoundEvent.createVariableRangeEvent(loc);
+        }
+        this.minecraft.getSoundManager().play(
+                net.minecraft.client.resources.sounds.SimpleSoundInstance.forUI(ev, pitch, volume));
+    }
+
+    private void triggerHoverAction(String raw) {
+        if (raw == null || raw.isEmpty()) {
+            return;
+        }
+        if (raw.startsWith("/") && this.minecraft != null && this.minecraft.player != null) {
+            this.minecraft.player.connection.sendCommand(raw.substring(1));
+        } else if (raw.startsWith("fn:")) {
+            ModNetwork.sendToServer(new InputPacket(InputPacket.FUNC, raw.substring(3)));
+        }
     }
 
     private void activate(String packedAction) {
