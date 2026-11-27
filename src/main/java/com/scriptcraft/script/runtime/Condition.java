@@ -114,6 +114,23 @@ public interface Condition {
         }
     }
 
+    /** <сущность/игрок> is [not] leashed — привязана ли сущность/игрок поводком. */
+    record Leashed(EntityTarget target, boolean negate) implements Condition {
+        @Override
+        public boolean test(ExecutionContext ctx) {
+            List<net.minecraft.world.entity.Entity> list = target.select(ctx);
+            if (list.isEmpty()) {
+                return false;
+            }
+            for (net.minecraft.world.entity.Entity e : list) {
+                if (LeashManager.isLeashed(e) == negate) {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+
     /** player is [not] in creative|survival|adventure|spectator [mode]. */
     record GameModeIs(Target target, GameType mode, boolean negate) implements Condition {
         @Override

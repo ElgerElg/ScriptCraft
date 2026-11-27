@@ -87,6 +87,12 @@ public enum ScriptEvent {
     COMMAND("command", true, "player command"),
     /** Сломался инструмент/броня. %item%. */
     ITEM_BREAK("item break", true, "tool break"),
+    /** Порвался поводок (по дистанции break_at или при поломке опорного блока). %victim%, %holder%. */
+    LEASH_BREAK("leash break", true, "leash snap", "unleash"),
+    /** ПКМ по фейковому NPC (on npc click ["id"]:). %npc%, %npc_name%, %x%, %y%, %z%. */
+    NPC_CLICK("npc click", true, "click npc", "right click npc", "npc interact"),
+    /** ЛКМ / удар по фейковому NPC (on npc attack ["id"]:). %npc%, %npc_name%, %x%, %y%, %z%. */
+    NPC_ATTACK("npc attack", true, "attack npc", "hit npc", "left click npc"),
     /**
      * Скрипт загружен: старт сервера, /sc reload, /sc reload &lt;скрипт&gt;, /sc enable &lt;скрипт&gt;.
      * Срабатывает только у ЭТОГО скрипта (перезагрузка другого файла его не вызывает). Игрока в контексте нет.

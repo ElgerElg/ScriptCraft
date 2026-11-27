@@ -1,9 +1,10 @@
 package com.scriptcraft.script.parser;
 
 import net.minecraft.tags.BlockTags;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.Rarity;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.item.Tiers;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import org.jetbrains.annotations.Nullable;
 
@@ -11,19 +12,41 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * Предмет из "define item &lt;id&gt;:".
- *
- * @param type        item, food, sword, pickaxe, axe, shovel, hoe, fishing_rod, shears
- * @param nutrition   сколько голода восстанавливает еда (полушашки: 2 = одна ножка)
- * @param saturation  множитель насыщения, как в ванили (хлеб 0.6)
- * @param alwaysEat   еда съедается и на полном голоде
- * @param tier        wood, stone, iron, gold, diamond, netherite
- * @param durability  прочность; 0 — не ломается
+ * Предмет или 3D-броня из "define item <id>:" / "define armor <id>:".
  */
 public record ItemDefinition(String id, @Nullable String displayName, int stackSize, boolean fireResistant, String rarity,
-                             String type, int nutrition, float saturation, boolean alwaysEat, String tier, int durability) {
+                             String type, int nutrition, float saturation, boolean alwaysEat, String tier, int durability,
+                             int defense, float toughness,
+                             String geoModel, String geoTexture, String geoAnimation,
+                             String idleAnimation, float geoScale) {
     public static final Set<String> TYPES = Set.of(
-            "item", "food", "sword", "pickaxe", "axe", "shovel", "hoe", "fishing_rod", "shears");
+            "item", "food", "sword", "pickaxe", "axe", "shovel", "hoe", "fishing_rod", "shears",
+            "helmet", "chestplate", "leggings", "boots");
+
+    public ItemDefinition(String id, @Nullable String displayName, int stackSize, boolean fireResistant, String rarity,
+                          String type, int nutrition, float saturation, boolean alwaysEat, String tier, int durability) {
+        this(id, displayName, stackSize, fireResistant, rarity, type, nutrition, saturation, alwaysEat, tier, durability,
+                0, 0f, "", "", "", "idle", 1.0f);
+    }
+
+    public boolean isGeo() {
+        return geoModel != null && !geoModel.isBlank();
+    }
+
+    public boolean isArmor() {
+        return armorSlot() != null;
+    }
+
+    @Nullable
+    public EquipmentSlot armorSlot() {
+        return switch (type) {
+            case "helmet" -> EquipmentSlot.HEAD;
+            case "chestplate" -> EquipmentSlot.CHEST;
+            case "leggings" -> EquipmentSlot.LEGS;
+            case "boots" -> EquipmentSlot.FEET;
+            default -> null;
+        };
+    }
 
     public String namespace() {
         return id.substring(0, id.indexOf(':'));
@@ -34,6 +57,9 @@ public record ItemDefinition(String id, @Nullable String displayName, int stackS
     }
 
     public int clampedStackSize() {
+        if (isArmor()) {
+            return 1;
+        }
         return Math.max(1, Math.min(64, stackSize));
     }
 
@@ -54,7 +80,6 @@ public record ItemDefinition(String id, @Nullable String displayName, int stackS
         return "fishing_rod".equals(type);
     }
 
-    /** Меч, кирка, топор, лопата, мотыга. */
     public boolean digger() {
         return switch (type) {
             case "sword", "pickaxe", "axe", "shovel", "hoe" -> true;
@@ -63,7 +88,7 @@ public record ItemDefinition(String id, @Nullable String displayName, int stackS
     }
 
     public boolean wearableTool() {
-        return digger() || fishingRod() || "shears".equals(type);
+        return digger() || fishingRod() || "shears".equals(type) || isArmor();
     }
 
     public Tiers tierValue() {
@@ -77,7 +102,6 @@ public record ItemDefinition(String id, @Nullable String displayName, int stackS
         };
     }
 
-    /** Урон в руке без базовой единицы игрока: как у ванильного инструмента этого уровня. */
     public double attackDamage() {
         double bonus = tierValue().getAttackDamageBonus();
         return switch (type) {
@@ -107,7 +131,6 @@ public record ItemDefinition(String id, @Nullable String displayName, int stackS
         };
     }
 
-    /** Урон прочности за сломанный блок. */
     public int blockWear() {
         return "sword".equals(type) ? 2 : 1;
     }
@@ -138,13 +161,62 @@ public record ItemDefinition(String id, @Nullable String displayName, int stackS
         return tierValue().getSpeed();
     }
 
-    /** Прочность по умолчанию, если в скрипте её не написали. */
+    public static int defaultDefense(String type, String tier) {
+        return switch (type) {
+            case "helmet" -> switch (tier) {
+                case "wood" -> 1;
+                case "gold", "stone" -> 2;
+                case "diamond", "netherite" -> 3;
+                default -> 2;
+            };
+            case "chestplate" -> switch (tier) {
+                case "wood" -> 3;
+                case "gold", "stone" -> 5;
+                case "diamond", "netherite" -> 8;
+                default -> 6;
+            };
+            case "leggings" -> switch (tier) {
+                case "wood" -> 2;
+                case "gold" -> 3;
+                case "stone" -> 4;
+                case "diamond", "netherite" -> 6;
+                default -> 5;
+            };
+            case "boots" -> switch (tier) {
+                case "wood", "gold", "stone" -> 1;
+                case "diamond", "netherite" -> 3;
+                default -> 2;
+            };
+            default -> 0;
+        };
+    }
+
     public static int defaultDurability(String type, String tier) {
         if ("fishing_rod".equals(type)) {
             return 64;
         }
         if ("shears".equals(type)) {
             return 238;
+        }
+        if (switch (type) {
+            case "helmet", "chestplate", "leggings", "boots" -> true;
+            default -> false;
+        }) {
+            int base = switch (type) {
+                case "helmet" -> 11;
+                case "chestplate" -> 16;
+                case "leggings" -> 15;
+                default -> 13;
+            };
+            int mul = switch (tier) {
+                case "wood", "wooden" -> 5;
+                case "gold", "golden" -> 7;
+                case "stone" -> 15;
+                case "diamond" -> 33;
+                case "netherite" -> 37;
+                default -> 15;
+            };
+            return base * mul;
         }
         if (switch (type) {
             case "sword", "pickaxe", "axe", "shovel", "hoe" -> true;
@@ -162,12 +234,11 @@ public record ItemDefinition(String id, @Nullable String displayName, int stackS
         return 0;
     }
 
-    /** Синонимы type из скрипта или null, если слово неизвестно. */
     @Nullable
     public static String normalizeType(String raw) {
         String v = raw.replace("\"", "").strip().toLowerCase(Locale.ROOT).replace(' ', '_').replace('-', '_');
         return switch (v) {
-            case "item", "normal", "basic" -> "item";
+            case "item", "normal", "basic", "weapon", "gun", "prop" -> "item";
             case "food", "eat", "edible" -> "food";
             case "sword" -> "sword";
             case "pickaxe", "pick" -> "pickaxe";
@@ -176,6 +247,10 @@ public record ItemDefinition(String id, @Nullable String displayName, int stackS
             case "hoe" -> "hoe";
             case "fishing_rod", "fishing", "rod" -> "fishing_rod";
             case "shears", "shear", "scissors" -> "shears";
+            case "helmet", "head", "hat", "mask", "visor" -> "helmet";
+            case "chestplate", "chest", "vest", "jacket", "body", "torso", "wings", "backpack" -> "chestplate";
+            case "leggings", "legs", "pants" -> "leggings";
+            case "boots", "feet", "shoes" -> "boots";
             default -> null;
         };
     }
@@ -184,8 +259,8 @@ public record ItemDefinition(String id, @Nullable String displayName, int stackS
     public static String normalizeTier(String raw) {
         String v = raw.replace("\"", "").strip().toLowerCase(Locale.ROOT);
         return switch (v) {
-            case "wood", "wooden" -> "wood";
-            case "stone" -> "stone";
+            case "wood", "wooden", "leather" -> "wood";
+            case "stone", "chain", "chainmail" -> "stone";
             case "iron" -> "iron";
             case "gold", "golden" -> "gold";
             case "diamond" -> "diamond";

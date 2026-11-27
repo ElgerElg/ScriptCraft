@@ -15,11 +15,14 @@ import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.entity.item.FallingBlockEntity;
 import net.minecraft.world.level.block.Mirror;
+import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.SoundType;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
@@ -52,7 +55,7 @@ import java.util.List;
  * Свет — свойство состояния: движок освещения кэширует свечение по состоянию, поэтому значение
  * записывается при установке (и в onPlace — для /setblock, /fill, структур).
  */
-public abstract class ScriptBlock extends Block {
+public abstract class ScriptBlock extends Block implements EntityBlock {
     public static final IntegerProperty LIGHT = IntegerProperty.create("light", 0, 15);
     public static final DirectionProperty FACING = BlockStateProperties.FACING;
 
@@ -61,6 +64,19 @@ public abstract class ScriptBlock extends Block {
         // dynamicShape: форма заслона не запекается. Иначе /sc reload не смог бы включить дырки и 3D-модель.
         super(Properties.of().strength(1.5f, 6f).lightLevel(state -> state.getValue(LIGHT)).dynamicShape());
         registerDefaultState(stateDefinition.any().setValue(LIGHT, 0).setValue(FACING, Direction.NORTH));
+    }
+
+    @Nullable
+    @Override
+    public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
+        return new ScriptBlockEntity(pos, state);
+    }
+
+    @Override
+    @SuppressWarnings("deprecation")
+    public RenderShape getRenderShape(BlockState state) {
+        BlockDefinition def = definition();
+        return def != null && def.isGeo() ? RenderShape.ENTITYBLOCK_ANIMATED : RenderShape.MODEL;
     }
 
     /** Текущее описание из скрипта или null (define удалён/выключен, слот свободен). */

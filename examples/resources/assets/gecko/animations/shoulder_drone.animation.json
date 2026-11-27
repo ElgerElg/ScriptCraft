@@ -1,0 +1,37 @@
+{
+  "format_version": "1.8.0",
+  "animations": {
+    "hover": {
+      "loop": true,
+      "animation_length": 2.0,
+      "bones": {
+        "hull": {
+          "position": [
+            0,
+            "math.sin(query.anim_time * 180) * 0.9",
+            0
+          ],
+          "rotation": [
+            "math.sin(query.anim_time * 180) * 4",
+            0,
+            "math.cos(query.anim_time * 180) * 3"
+          ]
+        },
+        "rotor_left": {
+          "rotation": [
+            0,
+            "query.anim_time * 1080",
+            0
+          ]
+        },
+        "rotor_right": {
+          "rotation": [
+            0,
+            "-query.anim_time * 1080",
+            0
+          ]
+        }
+      }
+    }
+  }
+}

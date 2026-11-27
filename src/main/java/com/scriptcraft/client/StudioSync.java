@@ -233,7 +233,8 @@ public final class StudioSync {
                 || doc.anchorLine != lastAnchorLine || doc.anchorCol != lastAnchorCol || doc.box != lastBox
                 || ClientUiSettings.editorColor() != lastColor;
         if (textChanged && inFlight == null) {
-            if (now - lastSend < 55) {
+            long minInterval = current.length() > 80_000 ? 180L : 55L;
+            if (now - lastSend < minInterval) {
                 return;
             }
             send(doc, true);
@@ -368,8 +369,8 @@ public final class StudioSync {
         if (text && body.getBytes(StandardCharsets.UTF_8).length > ScriptPayload.MAX_BYTES) {
             return;
         }
-        ModNetwork.sendToServer(new StudioLivePacket.Edit(doc.name, doc.revision, doc.line, doc.col,
-                doc.anchorLine, doc.anchorCol, doc.box, text, body, ClientUiSettings.editorColor()));
+        StudioLivePacket.Edit.sendToServerChunked(doc.name, doc.revision, doc.line, doc.col,
+                doc.anchorLine, doc.anchorCol, doc.box, text, body, ClientUiSettings.editorColor());
     }
 
     private static void remember(ScriptDocument doc) {

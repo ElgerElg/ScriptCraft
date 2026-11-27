@@ -62,8 +62,9 @@ public final class StudioAnimModel {
 
         public static BoneId byPartKey(String key) {
             if (key == null) return null;
+            String clean = key.trim().replace("_", "").replace("-", "");
             for (BoneId b : values()) {
-                if (b.partKey.equalsIgnoreCase(key)) {
+                if (b.partKey.equalsIgnoreCase(key) || b.partKey.equalsIgnoreCase(clean)) {
                     return b;
                 }
             }
@@ -97,6 +98,22 @@ public final class StudioAnimModel {
 
         public boolean isBend() {
             return this == BEND_DIR || this == BEND_ANG;
+        }
+
+        public static Channel byAnyKey(String raw) {
+            if (raw == null) return null;
+            String k = raw.trim().toLowerCase(Locale.ROOT);
+            return switch (k) {
+                case "pitch", "rot_x", "rotx", "rx" -> ROT_X;
+                case "yaw", "rot_y", "roty", "ry" -> ROT_Y;
+                case "roll", "rot_z", "rotz", "rz" -> ROT_Z;
+                case "x", "pos_x", "posx", "px" -> POS_X;
+                case "y", "pos_y", "posy", "py" -> POS_Y;
+                case "z", "pos_z", "posz", "pz" -> POS_Z;
+                case "axis", "bend_dir", "benddir", "bend_direction", "bend_axis" -> BEND_DIR;
+                case "bend", "bend_ang", "bendang", "bend_angle" -> BEND_ANG;
+                default -> null;
+            };
         }
     }
 
@@ -511,7 +528,58 @@ public final class StudioAnimModel {
         };
     }
 
-    // --- Сериализация / десериализация (PlayerAnimator + автономный резерв) ---
+    /**
+     * Гарантирует допустимый путь ResourceLocation ([a-z0-9/._-]), чтобы PlayerAnimationRegistry
+     * никогда не падал с ResourceLocationException при кириллице или пробелах в поле "name".
+     */
+    public static String safeResourceSlug(String raw, String fallback) {
+        String fb = sanitizeSlugOnly(fallback);
+        if (fb.isEmpty()) fb = "anim";
+        String res = sanitizeSlugOnly(raw);
+        return res.isEmpty() ? fb : res;
+    }
+
+    private static String sanitizeSlugOnly(String raw) {
+        if (raw == null || raw.isBlank()) return "";
+        String lower = raw.trim().toLowerCase(Locale.ROOT);
+        StringBuilder sb = new StringBuilder(lower.length());
+        boolean prevSep = false;
+        for (int i = 0; i < lower.length(); i++) {
+            char c = lower.charAt(i);
+            if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '/') {
+                sb.append(c);
+                prevSep = false;
+            } else if (c == '_' || c == ' ') {
+                if (!prevSep && !sb.isEmpty()) {
+                    sb.append('_');
+                    prevSep = true;
+                }
+            } else {
+                String tr = translitRu(c);
+                if (!tr.isEmpty()) {
+                    sb.append(tr);
+                    prevSep = false;
+                }
+            }
+        }
+        String out = sb.toString();
+        while (out.endsWith("_")) out = out.substring(0, out.length() - 1);
+        return out;
+    }
+
+    private static String translitRu(char c) {
+        return switch (c) {
+            case 'а' -> "a"; case 'б' -> "b"; case 'в' -> "v"; case 'г' -> "g"; case 'д' -> "d";
+            case 'е', 'ё', 'э' -> "e"; case 'ж' -> "zh"; case 'з' -> "z"; case 'и', 'й', 'ы' -> "i";
+            case 'к' -> "k"; case 'л' -> "l"; case 'м' -> "m"; case 'н' -> "n"; case 'о' -> "o";
+            case 'п' -> "p"; case 'р' -> "r"; case 'с' -> "s"; case 'т' -> "t"; case 'у' -> "u";
+            case 'ф' -> "f"; case 'х' -> "h"; case 'ц' -> "ts"; case 'ч' -> "ch"; case 'ш' -> "sh";
+            case 'щ' -> "sch"; case 'ю' -> "yu"; case 'я' -> "ya";
+            default -> "";
+        };
+    }
+
+    // --- Сериализация / десериализация (PlayerAnimator + формат channels/tablurseat + автономный резерв) ---
 
     public static String serialize(AnimDoc doc) {
         if (ModList.get().isLoaded("playeranimator")) {
@@ -525,6 +593,11 @@ public final class StudioAnimModel {
 
     public static boolean deserialize(String json, AnimDoc out) {
         if (json == null || json.isBlank()) return false;
+        // 1) Сначала проверяем канальный формат (типа tablurseat.json: formatVersion / bones.*.channels.*)
+        if (fromChannelsJsonString(json, out)) {
+            return true;
+        }
+        // 2) Штатный десериализатор PlayerAnimator (Emotecraft v1..v3 + Blockbench/GeckoLib animations)
         if (ModList.get().isLoaded("playeranimator")) {
             try {
                 if (PlayerAnimBridge.deserializeInto(json, out)) {
@@ -533,15 +606,20 @@ public final class StudioAnimModel {
             } catch (Throwable ignored) {
             }
         }
+        // 3) Автономный парсер Emotecraft JSON и Blockbench/GeckoLib JSON
         return fromStandaloneJson(json, out);
     }
 
     public static String toStandaloneJson(AnimDoc doc) {
         JsonObject root = new JsonObject();
-        root.addProperty("name", doc.displayName == null || doc.displayName.isBlank() ? doc.fileName : doc.displayName);
+        String safeName = safeResourceSlug(doc.fileName, safeResourceSlug(doc.displayName, "anim"));
+        root.addProperty("name", safeName);
+        if (doc.displayName != null && !doc.displayName.isBlank()) {
+            root.addProperty("title", doc.displayName);
+        }
         root.addProperty("author", doc.author == null || doc.author.isBlank() ? "ScriptCraft" : doc.author);
         root.addProperty("description", doc.description == null ? "" : doc.description);
-        root.addProperty("version", 2);
+        root.addProperty("version", 3);
         if (doc.uuid != null) {
             root.addProperty("uuid", doc.uuid.toString());
         }
@@ -578,14 +656,132 @@ public final class StudioAnimModel {
         return GSON.toJson(root);
     }
 
+    /**
+     * Читает формат канальных анимаций (например tablurseat.json):
+     * {@code { "formatVersion": 1, "id": "...", "lengthTicks": 40, "loop": "hold_last", "bones": { "right_leg": { "channels": { "rot_x": [{"t": 26, "v": -1.64}] } } } }}
+     */
+    public static boolean fromChannelsJsonString(String json, AnimDoc out) {
+        try {
+            JsonElement parsed = JsonParser.parseString(json);
+            if (!parsed.isJsonObject()) return false;
+            JsonObject root = parsed.getAsJsonObject();
+            if (!root.has("bones") || !root.get("bones").isJsonObject() || root.has("emote") || root.has("animations")) {
+                return false;
+            }
+            return fromChannelsJson(root, out);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public static boolean fromChannelsJson(JsonObject root, AnimDoc out) {
+        out.clearTracks();
+        if (root.has("id") && root.get("id").isJsonPrimitive()) {
+            String rawId = root.get("id").getAsString();
+            if (rawId != null && !rawId.isBlank()) {
+                int colon = rawId.indexOf(':');
+                if (colon >= 0) {
+                    out.namespace = safeResourceSlug(rawId.substring(0, colon), out.namespace);
+                    out.fileName = safeResourceSlug(rawId.substring(colon + 1), out.fileName);
+                } else if ("new_anim".equals(out.fileName) || out.fileName == null || out.fileName.isBlank()) {
+                    out.fileName = safeResourceSlug(rawId, "anim");
+                }
+                out.displayName = rawId;
+            }
+        }
+        if (root.has("displayName") && root.get("displayName").isJsonPrimitive()) {
+            out.displayName = root.get("displayName").getAsString();
+        } else if (root.has("title") && root.get("title").isJsonPrimitive()) {
+            out.displayName = root.get("title").getAsString();
+        } else if (root.has("name") && root.get("name").isJsonPrimitive()) {
+            out.displayName = root.get("name").getAsString();
+        }
+        if (root.has("author") && root.get("author").isJsonPrimitive()) {
+            out.author = root.get("author").getAsString();
+        }
+        if (root.has("description") && root.get("description").isJsonPrimitive()) {
+            out.description = root.get("description").getAsString();
+        }
+
+        boolean degrees = root.has("degrees") && root.get("degrees").isJsonPrimitive() && root.get("degrees").getAsBoolean();
+        int len = root.has("lengthTicks") && root.get("lengthTicks").isJsonPrimitive()
+                ? Math.max(1, root.get("lengthTicks").getAsInt())
+                : (root.has("endTick") && root.get("endTick").isJsonPrimitive() ? Math.max(1, root.get("endTick").getAsInt()) : 40);
+        out.beginTick = root.has("beginTick") && root.get("beginTick").isJsonPrimitive()
+                ? Math.max(0, root.get("beginTick").getAsInt()) : 0;
+        out.endTick = len;
+        out.stopTick = root.has("stopTick") && root.get("stopTick").isJsonPrimitive()
+                ? Math.max(len + 1, root.get("stopTick").getAsInt()) : len + 5;
+        out.looped = false;
+        out.returnTick = root.has("returnTick") && root.get("returnTick").isJsonPrimitive()
+                ? Math.max(0, root.get("returnTick").getAsInt()) : 0;
+        out.easingBefore = false;
+
+        if (root.has("loop") && root.get("loop").isJsonPrimitive()) {
+            var lp = root.get("loop").getAsJsonPrimitive();
+            if (lp.isBoolean()) {
+                out.looped = lp.getAsBoolean();
+            } else if (lp.isString()) {
+                String mode = lp.getAsString().trim().toLowerCase(Locale.ROOT);
+                if (mode.equals("hold_last") || mode.equals("hold_on_last_frame") || mode.equals("hold")) {
+                    out.looped = true;
+                    out.returnTick = out.endTick;
+                } else if (mode.equals("true") || mode.equals("loop") || mode.equals("repeat")) {
+                    out.looped = true;
+                }
+            }
+        }
+
+        boolean holdLast = out.looped && out.returnTick == out.endTick;
+        JsonObject bonesObj = root.getAsJsonObject("bones");
+        for (Map.Entry<String, JsonElement> boneEntry : bonesObj.entrySet()) {
+            BoneId bone = BoneId.byPartKey(boneEntry.getKey());
+            if (bone == null || !boneEntry.getValue().isJsonObject()) continue;
+            JsonObject boneObj = boneEntry.getValue().getAsJsonObject();
+            JsonObject chContainer = boneObj.has("channels") && boneObj.get("channels").isJsonObject()
+                    ? boneObj.getAsJsonObject("channels") : boneObj;
+            for (Map.Entry<String, JsonElement> chEntry : chContainer.entrySet()) {
+                Channel ch = Channel.byAnyKey(chEntry.getKey());
+                if (ch == null || !chEntry.getValue().isJsonArray()) continue;
+                for (JsonElement kfEl : chEntry.getValue().getAsJsonArray()) {
+                    if (!kfEl.isJsonObject()) continue;
+                    JsonObject kf = kfEl.getAsJsonObject();
+                    int tick = kf.has("t") ? Math.round(kf.get("t").getAsFloat())
+                            : (kf.has("tick") ? Math.round(kf.get("tick").getAsFloat()) : 0);
+                    float rawVal = kf.has("v") ? kf.get("v").getAsFloat()
+                            : (kf.has("value") ? kf.get("value").getAsFloat() : 0f);
+                    EaseCurve ease = kf.has("ease") ? EaseCurve.parse(kf.get("ease").getAsString())
+                            : (kf.has("easing") ? EaseCurve.parse(kf.get("easing").getAsString()) : EaseCurve.INOUTSINE);
+                    float uiVal;
+                    if (ch.angle) {
+                        uiVal = degrees ? rawVal : (float) Math.toDegrees(rawVal);
+                    } else {
+                        float def = ch == Channel.POS_X ? bone.defX : (ch == Channel.POS_Y ? bone.defY : bone.defZ);
+                        uiVal = enginePosToUi(bone, ch, rawVal, def);
+                    }
+                    out.putKey(bone, ch, tick, uiVal, ease);
+                }
+            }
+        }
+        if (holdLast) {
+            out.returnTick = out.endTick;
+        }
+        return true;
+    }
+
     public static boolean fromStandaloneJson(String json, AnimDoc out) {
         try {
             JsonObject root = JsonParser.parseString(json).getAsJsonObject();
+            if (root.has("bones") && root.get("bones").isJsonObject() && !root.has("emote") && !root.has("animations")) {
+                return fromChannelsJson(root, out);
+            }
             if (!root.has("emote")) {
                 return false;
             }
             out.clearTracks();
-            if (root.has("name") && root.get("name").isJsonPrimitive()) {
+            if (root.has("title") && root.get("title").isJsonPrimitive()) {
+                out.displayName = root.get("title").getAsString();
+            } else if (root.has("name") && root.get("name").isJsonPrimitive()) {
                 out.displayName = root.get("name").getAsString();
             }
             if (root.has("author") && root.get("author").isJsonPrimitive()) {

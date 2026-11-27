@@ -66,7 +66,7 @@ public class StudioScreen extends Screen {
     private static final int TOOL_H = 22;
 
     private enum Drag { NONE, MOVE, N, S, E, W, NE, NW, SE, SW, TEXT, JOURNAL, VSCROLL, HSCROLL,
-        SIDEBAR_RESIZE,
+        SIDEBAR_RESIZE, EXPLORER_MOVE,
         PANEL_MOVE, PANEL_N, PANEL_S, PANEL_E, PANEL_W, PANEL_NE, PANEL_NW, PANEL_SE, PANEL_SW }
 
     private String menu;
@@ -93,13 +93,28 @@ public class StudioScreen extends Screen {
     private int sidebarScroll;
     private int sidebarMaxScroll;
     private int sbX, sbY, sbW, sbH;
-    private int sbToggleX, sbToggleY, sbBackX, sbFwdX, sbNewX, sbMkdirX, sbRenX, sbDelX, sbBarY;
+    private int sbToggleX, sbToggleY, sbBackX, sbFwdX, sbNewX, sbMkdirX, sbCutX, sbPasteX, sbRenX, sbDelX, sbBarY;
     /** Режим диалога ввода имени: "file", "mkdir", "rename". */
     private String namingMode = "file";
     private String renameTarget = "";
     private boolean explorerFocused;
+    private boolean expDragPending;
+    private int expPressX, expPressY;
+    private String expPressPath;
+    private boolean expPressDir;
+    private long lastExpClickMs;
+    private String lastExpClickPath = "";
+    private boolean expCtxOpen;
+    private int expCtxX, expCtxY;
+    private long expCtxOpenedAt;
+    private String expCtxTarget;
+    private boolean expCtxTargetDir;
+    private int animBtnX = -1000, animBtnY, animBtnW;
+    private int geoBtnX = -1000, geoBtnY, geoBtnW;
     private StudioAutocomplete.Match acMatch;
     private int acSel;
+    private int acScroll;
+    private boolean acTouched;
     private int acX, acY, acW, acH;
     private final List<SidebarHit> sidebarHits = new ArrayList<>();
     private final List<PeerHeadHit> peerHeadHits = new ArrayList<>();
@@ -107,7 +122,7 @@ public class StudioScreen extends Screen {
     private int hkResetX, hkResetY, hkResetW;
     private int setAcX, setAcY, setAutoX, setAutoY, setSbLeftX, setSbRightX, setSbY, setLangRuX, setLangEnX, setLangY;
 
-    private record SidebarHit(int y, int h, String fullPath, boolean dir, boolean parent, int toggleX) {
+    private record SidebarHit(int y, int h, String fullPath, boolean dir, boolean parent, int toggleX, int animX) {
     }
 
     private record PeerHeadHit(int x, int y, int w, int h, int line, int col) {
@@ -160,6 +175,7 @@ public class StudioScreen extends Screen {
     @Override
     public void onClose() {
         StudioAnimEditor.onLeaveTab();
+        StudioAudioPlayer.stopAndRelease();
         StudioSync.leave();
         super.onClose();
     }
@@ -176,12 +192,13 @@ public class StudioScreen extends Screen {
                 if (!Files.isRegularFile(p)) continue;
                 byte[] bytes = Files.readAllBytes(p);
                 if (bytes.length > com.scriptcraft.studio.StudioExplorer.MAX_FILE_BYTES) {
-                    ClientToasts.push(p.getFileName() + " > 900KB");
+                    ClientToasts.push(Messages.toast("studio.too_large", p.getFileName().toString(),
+                            com.scriptcraft.studio.StudioExplorer.MAX_FILE_BYTES / (1024 * 1024)));
                     continue;
                 }
                 String fileName = p.getFileName().toString();
                 String rel = dir.isEmpty() ? fileName : dir + "/" + fileName;
-                ModNetwork.sendToServer(new StudioExplorerPacket.Action(StudioExplorerPacket.Kind.WRITE_FILE, rel, "", bytes));
+                StudioExplorerPacket.sendWriteFileToServer(rel, "", bytes);
                 ClientToasts.push(Messages.toast("studio.exp.uploaded", fileName));
             } catch (Exception e) {
                 ClientToasts.push("Upload error: " + e.getMessage());
@@ -283,6 +300,12 @@ public class StudioScreen extends Screen {
                     renderCtxMenu(g, mouseX, mouseY - slideY);
                 }
             }
+        }
+        if (expCtxOpen) {
+            renderExpCtxMenu(g, mouseX, mouseY - slideY);
+        }
+        if (drag == Drag.EXPLORER_MOVE && !StudioSession.selectedExplorerPaths.isEmpty()) {
+            renderExplorerDragBadge(g, mouseX, mouseY - slideY);
         }
         if (menu != null) {
             renderMenu(g, mouseX, mouseY - slideY);
@@ -488,7 +511,48 @@ public class StudioScreen extends Screen {
         x = tool(g, mx, my, x, y, "find", Messages.get("studio.find_replace"));
         histBtnX = -1000;
         guiBtnX = -1000;
+        animBtnX = -1000;
+        geoBtnX = -1000;
         ScriptDocument curDoc = script();
+        if (curDoc != null && curDoc.genericFile && !curDoc.isImage && !curDoc.isAudio
+                && curDoc.name.toLowerCase(Locale.ROOT).endsWith(".json")) {
+            g.fill(x + 2, y + 4, x + 3, y + TOOL_H - 4, EDGE);
+            x += 8;
+            if (StudioGeoViewer.isGeoOrAnimFile(curDoc.name)) {
+                String geoLbl = curDoc.geoPreviewMode
+                        ? Messages.get("studio.geo.code_btn")
+                        : Messages.get("studio.geo.open_btn");
+                geoBtnW = this.font.width(geoLbl) + 12;
+                geoBtnX = x;
+                geoBtnY = y + 3;
+                boolean gHot = hover(mx, my, geoBtnX, geoBtnY, geoBtnW, 16);
+                g.fill(geoBtnX, geoBtnY, geoBtnX + geoBtnW, geoBtnY + 16,
+                        curDoc.geoPreviewMode ? 0xFF1F382E : (gHot ? ROW_HOT : ROW));
+                border(g, geoBtnX, geoBtnY, geoBtnW, 16, curDoc.geoPreviewMode ? GREEN : (gHot ? GOLD : GREEN));
+                g.drawString(this.font, geoLbl, geoBtnX + 6, geoBtnY + 4,
+                        curDoc.geoPreviewMode ? GOLD : GREEN, false);
+                if (gHot) {
+                    tip = Messages.get("studio.geo.open_tip");
+                    tipX = mx + 6;
+                    tipY = my + 14;
+                }
+                x += geoBtnW + 4;
+            }
+            String animLbl = Messages.get("studio.anim.open_btn");
+            animBtnW = this.font.width(animLbl) + 12;
+            animBtnX = x;
+            animBtnY = y + 3;
+            boolean aHot = hover(mx, my, animBtnX, animBtnY, animBtnW, 16);
+            g.fill(animBtnX, animBtnY, animBtnX + animBtnW, animBtnY + 16, aHot ? ROW_HOT : ROW);
+            border(g, animBtnX, animBtnY, animBtnW, 16, aHot ? GOLD : ACCENT);
+            g.drawString(this.font, animLbl, animBtnX + 6, animBtnY + 4, aHot ? GOLD : ACCENT, false);
+            if (aHot) {
+                tip = Messages.get("studio.anim.open_btn_tip");
+                tipX = mx + 6;
+                tipY = my + 14;
+            }
+            x += animBtnW + 4;
+        }
         if (curDoc != null && !curDoc.genericFile && !curDoc.isImage) {
             g.fill(x + 2, y + 4, x + 3, y + TOOL_H - 4, EDGE);
             x += 8;
@@ -499,7 +563,7 @@ public class StudioScreen extends Screen {
             paintMiniBtn(g, mx, my, histBtnX, histBtnY, histBtnW, 16, histLbl, "tool:history");
             x += histBtnW + 4;
 
-            int scrCnt = StudioGuiEditor.countScreensIn(curDoc);
+            int scrCnt = cachedScreenCount(curDoc);
             String guiLbl = StudioSession.guiEditorMode
                     ? Messages.get("studio.gui.code_btn")
                     : (Messages.get("studio.gui.btn") + (scrCnt > 0 ? " (" + scrCnt + ")" : ""));
@@ -1238,9 +1302,23 @@ public class StudioScreen extends Screen {
         g.fill(editorX, editorY, editorX + editorW, editorY + editorH, 0xF50C1018);
         border(g, editorX, editorY, editorW, editorH, 0xFF212B3C);
         if (!doc.loaded) {
+            long waitMs = System.currentTimeMillis() - doc.openedAtMs;
+            if (waitMs > 3000L && !doc.retriedRead && this.minecraft != null && this.minecraft.getConnection() != null) {
+                doc.retriedRead = true;
+                if (doc.genericFile) {
+                    String rel = doc.name.startsWith("@") ? doc.name.substring(1) : doc.name;
+                    ModNetwork.sendToServer(new StudioExplorerPacket.Action(StudioExplorerPacket.Kind.READ_FILE, rel, ""));
+                } else {
+                    ModNetwork.sendToServer(new ScriptDataPacket.Read(doc.name));
+                }
+            }
             g.drawString(this.font, Messages.get("studio.loading"), editorX + 10, editorY + 10, MUTED, false);
-        } else if (StudioSession.guiEditorMode && !doc.genericFile && !doc.isImage) {
+        } else if (StudioSession.guiEditorMode && !doc.genericFile && !doc.isImage && !doc.isAudio) {
             StudioGuiEditor.render(g, this.font, doc, editorX, editorY, editorW, editorH, this.width, this.height, mx, my);
+        } else if (doc.isAudio) {
+            StudioAudioPlayer.render(g, this.font, doc, editorX, editorY, editorW, editorH, mx, my);
+        } else if (doc.geoPreviewMode && !doc.isImage) {
+            StudioGeoViewer.render(g, this.font, doc, editorX, editorY, editorW, editorH, mx, my);
         } else if (doc.isImage && doc.imageId != null) {
             int maxW = Math.max(32, editorW - 32);
             int maxH = Math.max(32, editorH - 40);
@@ -1256,11 +1334,7 @@ public class StudioScreen extends Screen {
             g.drawString(this.font, dim, editorX + (editorW - this.font.width(dim)) / 2, iy + dh + 8, MUTED, false);
         } else {
             int textW = Math.max(40, editorW - gw - 8 - BAR_W);
-            horizMax = 0;
-            for (String row : doc.lines) {
-                horizMax = Math.max(horizMax, spanWidth(row, row.length()) - textW + 8);
-            }
-            horizMax = Math.max(0, horizMax);
+            horizMax = Math.max(0, cachedMaxLinePx(doc) - textW + 8);
             boolean wide = horizMax > 0;
             int view = Math.max(1, (editorH - (wide ? BAR_W : 0)) / LINE_H);
             if (doc.followCaret) {
@@ -1618,7 +1692,7 @@ public class StudioScreen extends Screen {
             boolean hot = hover(mx, my, sbToggleX, sbToggleY, 14, 14);
             if (hot) g.fill(sbToggleX, sbToggleY, sbToggleX + 14, sbToggleY + 14, ROW_HOT);
             g.drawString(this.font, right ? "«" : "»", sbToggleX + 4, sbToggleY + 3, hot ? GOLD : MUTED, false);
-            sbBackX = sbFwdX = sbNewX = sbMkdirX = sbRenX = sbDelX = -1000;
+            sbBackX = sbFwdX = sbNewX = sbMkdirX = sbCutX = sbPasteX = sbRenX = sbDelX = -1000;
             return;
         }
 
@@ -1630,30 +1704,44 @@ public class StudioScreen extends Screen {
         if (tHot) g.fill(sbToggleX, sbToggleY, sbToggleX + 14, sbToggleY + 14, ROW_HOT);
         g.drawString(this.font, right ? "»" : "«", sbToggleX + 4, sbToggleY + 3, tHot ? GOLD : MUTED, false);
 
-        // Панель действий проводника: ← → + папка ✎ − (без кнопки обновить — авто-синхрон!)
+        // Панель действий проводника: ← → + D ✂ ⎘ ✎ −
         sbBarY = sbY + 20;
         g.fill(sbX + 1, sbBarY, sbX + sbW - 1, sbBarY + 17, 0xFF131924);
         g.fill(sbX + 1, sbBarY + 17, sbX + sbW - 1, sbBarY + 18, EDGE);
-        int bx = sbX + 4;
-        sbBackX = bx; bx += 16;
-        sbFwdX = bx; bx += 18;
-        sbNewX = bx; bx += 16;
-        sbMkdirX = bx; bx += 16;
-        sbRenX = bx; bx += 16;
+        boolean hasSel = !StudioSession.selectedExplorerPaths.isEmpty();
+        boolean singleSel = StudioSession.selectedExplorerPaths.size() == 1;
+        boolean hasClip = !StudioSession.explorerClipPaths.isEmpty();
+        int stepX = sbW >= 140 ? 16 : 14;
+        int bx = sbX + 3;
+        sbBackX = bx; bx += stepX;
+        sbFwdX = bx; bx += stepX + 1;
+        sbNewX = bx; bx += stepX;
+        sbMkdirX = bx; bx += stepX;
+        sbCutX = bx; bx += stepX;
+        sbPasteX = bx; bx += stepX;
+        sbRenX = bx; bx += stepX;
         sbDelX = bx;
         paintExpBtn(g, mx, my, sbBackX, sbBarY + 2, "←", !StudioSession.dirBack.isEmpty(), null);
         paintExpBtn(g, mx, my, sbFwdX, sbBarY + 2, "→", !StudioSession.dirForward.isEmpty(), null);
         paintExpBtn(g, mx, my, sbNewX, sbBarY + 2, "+", true, Messages.get("studio.m.new"));
         paintExpBtn(g, mx, my, sbMkdirX, sbBarY + 2, "D", true, Messages.get("studio.exp.mkdir"));
-        paintExpBtn(g, mx, my, sbRenX, sbBarY + 2, "✎", StudioSession.selectedExplorerPath != null, Messages.get("studio.exp.rename"));
-        paintExpBtn(g, mx, my, sbDelX, sbBarY + 2, "-", StudioSession.selectedExplorerPath != null, Messages.get("studio.exp.delete"));
+        paintExpBtn(g, mx, my, sbCutX, sbBarY + 2, "✂", hasSel, Messages.get("studio.exp.cut"));
+        paintExpBtn(g, mx, my, sbPasteX, sbBarY + 2, "⎘", hasClip, Messages.get("studio.exp.paste"));
+        paintExpBtn(g, mx, my, sbRenX, sbBarY + 2, "✎", singleSel, Messages.get("studio.exp.rename"));
+        paintExpBtn(g, mx, my, sbDelX, sbBarY + 2, "-", hasSel, Messages.get("studio.exp.delete"));
 
-        // Текущий путь
+        // Текущий путь + индикатор мультивыделения
         int pathY = sbBarY + 19;
         String curDir = StudioSession.explorerDir == null ? "" : StudioSession.explorerDir;
         String shownPath = curDir.isEmpty() ? "scriptcraft/" : "scriptcraft/" + curDir + "/";
         g.fill(sbX + 1, pathY, sbX + sbW - 1, pathY + 14, 0xFF0F141D);
-        g.drawString(this.font, trim(shownPath, sbW - 10), sbX + 5, pathY + 3, MUTED, false);
+        int selCount = StudioSession.selectedExplorerPaths.size();
+        String selBadge = selCount > 1 ? "[" + selCount + "]" : null;
+        int badgeW = selBadge == null ? 0 : this.font.width(selBadge) + 6;
+        g.drawString(this.font, trim(shownPath, sbW - 10 - badgeW), sbX + 5, pathY + 3, MUTED, false);
+        if (selBadge != null) {
+            g.drawString(this.font, selBadge, sbX + sbW - badgeW - 2, pathY + 3, ACCENT, false);
+        }
 
         int listTop = pathY + 15;
         int listH = Math.max(10, sbY + sbH - listTop - 2);
@@ -1669,9 +1757,15 @@ public class StudioScreen extends Screen {
         if (hasParent) {
             if (ry + 16 >= listTop && ry <= sbY + sbH) {
                 boolean hot = hover(mx, my, sbX + 2, ry, sbW - 4, 15);
-                if (hot) g.fill(sbX + 2, ry, sbX + sbW - 2, ry + 15, ROW);
-                g.drawString(this.font, "..", sbX + 8, ry + 4, GOLD, false);
-                sidebarHits.add(new SidebarHit(ry, 15, parentOf(curDir), true, true, -1));
+                boolean dropTarget = hot && drag == Drag.EXPLORER_MOVE;
+                if (dropTarget) {
+                    g.fill(sbX + 2, ry, sbX + sbW - 2, ry + 15, 0xFF1D352B);
+                    border(g, sbX + 2, ry, sbW - 4, 15, GREEN);
+                } else if (hot) {
+                    g.fill(sbX + 2, ry, sbX + sbW - 2, ry + 15, ROW);
+                }
+                g.drawString(this.font, "↰ ..", sbX + 7, ry + 4, dropTarget ? GREEN : GOLD, false);
+                sidebarHits.add(new SidebarHit(ry, 15, parentOf(curDir), true, true, -1, -1));
             }
             ry += 16;
         }
@@ -1681,19 +1775,29 @@ public class StudioScreen extends Screen {
                 String tabKey = full.startsWith("scripts/") && full.endsWith(".sc")
                         ? full.substring("scripts/".length()) : "@" + full;
                 boolean active = tabKey.equals(StudioSession.active);
-                boolean selected = full.equals(StudioSession.selectedExplorerPath);
+                boolean selected = StudioSession.isExplorerSelected(full);
+                boolean isCut = StudioSession.explorerClipCut && StudioSession.explorerClipPaths.contains(full);
                 boolean hot = hover(mx, my, sbX + 2, ry, sbW - 4, 15);
-                if (active || selected) {
-                    g.fill(sbX + 2, ry, sbX + sbW - 2, ry + 15, active ? ROW_HOT : 0xFF202B3D);
+                boolean dropTarget = entry.dir() && hot && drag == Drag.EXPLORER_MOVE && !selected;
+                if (dropTarget) {
+                    g.fill(sbX + 2, ry, sbX + sbW - 2, ry + 15, 0xFF1D352B);
+                    border(g, sbX + 2, ry, sbW - 4, 15, GREEN);
+                } else if (active || selected) {
+                    g.fill(sbX + 2, ry, sbX + sbW - 2, ry + 15, selected ? 0xFF22334D : ROW_HOT);
                     g.fill(sbX + 2, ry, sbX + 4, ry + 15, active ? GOLD : ACCENT);
                 } else if (hot) {
                     g.fill(sbX + 2, ry, sbX + sbW - 2, ry + 15, ROW);
                 }
 
-                // Справа: переключатель вкл/выкл для .sc скриптов + головы редакторов в этом файле
+                // Справа: переключатель вкл/выкл для .sc, кнопка ✦ 3D-аниматора для .json + головы редакторов
                 int rightLim = sbX + sbW - 5;
                 int toggleX = -1;
+                int animX = -1;
                 boolean isScript = !entry.dir() && full.startsWith("scripts/") && entry.name().endsWith(".sc");
+                boolean isJson = !entry.dir() && entry.name().toLowerCase(Locale.ROOT).endsWith(".json");
+                boolean isGeoJson = isJson && StudioGeoViewer.isGeoOrAnimFile(full);
+                boolean isOgg = !entry.dir() && com.scriptcraft.studio.StudioExplorer.isAudioName(entry.name());
+                boolean isAnimFolderJson = isJson && (full.contains("/player_animation/") || full.contains("/player_animations/"));
                 if (isScript) {
                     boolean disabled = entry.name().startsWith("-");
                     toggleX = rightLim - 11;
@@ -1706,6 +1810,42 @@ public class StudioScreen extends Screen {
                         tipY = my + 12;
                     }
                     rightLim = toggleX - 3;
+                } else if (isOgg) {
+                    animX = rightLim - 12;
+                    boolean oHot = hover(mx, my, animX, ry + 1, 12, 13);
+                    if (oHot) {
+                        g.fill(animX, ry + 1, animX + 12, ry + 14, ROW_HOT);
+                        border(g, animX, ry + 1, 12, 13, GOLD);
+                        tip = Messages.get("studio.exp.play_ogg");
+                        tipX = mx + 8;
+                        tipY = my + 12;
+                    }
+                    g.drawString(this.font, "▶", animX + 3, ry + 4, oHot ? GOLD : GREEN, false);
+                    rightLim = animX - 3;
+                } else if (isGeoJson) {
+                    animX = rightLim - 12;
+                    boolean gHot = hover(mx, my, animX, ry + 1, 12, 13);
+                    if (gHot) {
+                        g.fill(animX, ry + 1, animX + 12, ry + 14, ROW_HOT);
+                        border(g, animX, ry + 1, 12, 13, GOLD);
+                        tip = Messages.get("studio.geo.open_tip");
+                        tipX = mx + 8;
+                        tipY = my + 12;
+                    }
+                    g.drawString(this.font, "◈", animX + 2, ry + 4, gHot ? GOLD : GREEN, false);
+                    rightLim = animX - 3;
+                } else if (isJson && (isAnimFolderJson || hot || selected)) {
+                    animX = rightLim - 12;
+                    boolean aHot = hover(mx, my, animX, ry + 1, 12, 13);
+                    if (aHot) {
+                        g.fill(animX, ry + 1, animX + 12, ry + 14, ROW_HOT);
+                        border(g, animX, ry + 1, 12, 13, GOLD);
+                        tip = Messages.get("studio.exp.open_anim");
+                        tipX = mx + 8;
+                        tipY = my + 12;
+                    }
+                    g.drawString(this.font, "✦", animX + 2, ry + 4, aHot ? GOLD : (isAnimFolderJson ? ACCENT : MUTED), false);
+                    rightLim = animX - 3;
                 }
                 // Головы редакторов, сидящих в этом файле
                 for (StudioExplorerPacket.ActiveEditor ed : StudioSession.activeEditors) {
@@ -1724,11 +1864,15 @@ public class StudioScreen extends Screen {
                     rightLim -= 2;
                 }
 
-                int tx = sbX + 7;
-                if (entry.dir()) {
-                    // Маленькая иконка папки
-                    g.fill(tx, ry + 5, tx + 8, ry + 11, GOLD);
-                    g.fill(tx, ry + 4, tx + 4, ry + 5, GOLD);
+                int tx = sbX + 6;
+                if (isCut) {
+                    g.drawString(this.font, "✂", tx, ry + 4, GOLD, false);
+                    tx += 9;
+                } else if (entry.dir()) {
+                    // Иконка папки (клик по иконке сразу открывает папку, клик по тексту выделяет)
+                    int fCol = dropTarget ? GREEN : GOLD;
+                    g.fill(tx, ry + 5, tx + 8, ry + 11, fCol);
+                    g.fill(tx, ry + 4, tx + 4, ry + 5, fCol);
                     tx += 11;
                 } else {
                     boolean hasErr = false;
@@ -1752,10 +1896,12 @@ public class StudioScreen extends Screen {
                     }
                 }
                 boolean disabled = isScript && entry.name().startsWith("-");
-                int color = entry.dir() ? GOLD : (active ? TEXT : (disabled ? 0xFF636E80 : (hot ? TEXT : MUTED)));
+                int color = isCut ? 0x998A96AA
+                        : (entry.dir() ? (dropTarget ? GREEN : GOLD)
+                        : (active || selected ? TEXT : (disabled ? 0xFF636E80 : (hot ? TEXT : MUTED))));
                 int maxW = Math.max(12, rightLim - tx);
                 g.drawString(this.font, trim(entry.name(), maxW), tx, ry + 4, color, false);
-                sidebarHits.add(new SidebarHit(ry, 15, full, entry.dir(), false, toggleX));
+                sidebarHits.add(new SidebarHit(ry, 15, full, entry.dir(), false, toggleX, animX));
             }
             ry += 16;
         }
@@ -1790,60 +1936,128 @@ public class StudioScreen extends Screen {
             StudioSession.dirForward.clear();
         }
         StudioSession.explorerDir = norm;
-        StudioSession.selectedExplorerPath = null;
+        StudioSession.clearExplorerSelection();
         sidebarScroll = 0;
         ModNetwork.sendToServer(new StudioExplorerPacket.Action(StudioExplorerPacket.Kind.LIST, norm, ""));
     }
 
+    private static final int AC_MAX_VIS = 8;
+
     private void renderAutocomplete(GuiGraphics g, int mx, int my, ScriptDocument doc) {
-        List<String> items = acMatch.items();
-        int maxW = 120;
-        for (String item : items) {
-            maxW = Math.max(maxW, this.font.width(item) + 16);
+        List<StudioAutocomplete.Item> items = acMatch.items();
+        int vis = Math.min(AC_MAX_VIS, items.size());
+        int maxW = 160;
+        for (StudioAutocomplete.Item item : items) {
+            int badgeW = this.font.width(item.tag()) + 10;
+            int lblW = this.font.width(item.label());
+            int hintW = (item.hint() != null && !item.hint().isEmpty()) ? this.font.width(item.hint()) + 14 : 0;
+            maxW = Math.max(maxW, badgeW + lblW + hintW + 18);
         }
-        acW = Math.min(260, maxW);
-        acH = items.size() * 14 + 6;
+        acW = Math.min(Math.min(370, Math.max(180, editorW - 14)), maxW);
+        int footerH = 11;
+        acH = vis * 14 + 6 + footerH;
+
         String row = doc.lines.get(Math.max(0, Math.min(doc.lines.size() - 1, doc.line)));
         int cx = textX(row, Math.min(doc.col, row.length()));
         int cy = editorY + (doc.line - doc.scroll) * LINE_H + LINE_H + 3;
         if (cy + acH > editorY + editorH) {
             cy = Math.max(editorY + 2, cy - acH - LINE_H - 4);
         }
-        acX = Math.max(editorX + 4, Math.min(cx, editorX + editorW - acW - 10));
+        acX = Math.max(editorX + 4, Math.min(cx, editorX + editorW - acW - 8));
         acY = cy;
         acSel = Math.max(0, Math.min(acSel, items.size() - 1));
+        if (acSel < acScroll) {
+            acScroll = acSel;
+        } else if (acSel >= acScroll + vis) {
+            acScroll = acSel - vis + 1;
+        }
+        acScroll = Math.max(0, Math.min(acScroll, Math.max(0, items.size() - vis)));
 
-        g.fill(acX + 2, acY + 2, acX + acW + 2, acY + acH + 2, 0x66000000);
-        g.fill(acX, acY, acX + acW, acY + acH, 0xF8121824);
-        border(g, acX, acY, acW, acH, ACCENT);
-        for (int i = 0; i < items.size(); i++) {
-            int iy = acY + 3 + i * 14;
-            boolean sel = i == acSel;
+        g.fill(acX + 2, acY + 2, acX + acW + 2, acY + acH + 2, 0x77000000);
+        g.fill(acX, acY, acX + acW, acY + acH, 0xF80F1623);
+        border(g, acX, acY, acW, acH, acTouched ? GOLD : ACCENT);
+
+        int innerRight = acX + acW - (items.size() > vis ? 6 : 3);
+        for (int v = 0; v < vis; v++) {
+            int idx = acScroll + v;
+            StudioAutocomplete.Item it = items.get(idx);
+            int iy = acY + 3 + v * 14;
+            boolean sel = idx == acSel;
             boolean hot = hover(mx, my, acX + 1, iy, acW - 2, 14);
             if (sel || hot) {
-                g.fill(acX + 2, iy, acX + acW - 2, iy + 14, sel ? ROW_HOT : ROW);
-                if (sel) g.fill(acX + 2, iy + 1, acX + 4, iy + 13, GOLD);
+                g.fill(acX + 2, iy, innerRight, iy + 14, sel ? ROW_HOT : ROW);
+                if (sel) {
+                    g.fill(acX + 2, iy + 1, acX + 4, iy + 13, it.tagColor());
+                }
             }
-            g.drawString(this.font, trim(items.get(i), acW - 12), acX + 7, iy + 3, sel ? GOLD : TEXT, false);
+            // Цветной бейдж категории (EVT / EFF / EXP / CND / GUI / VAR / FUN)
+            int bx = acX + 6;
+            int bw = 22;
+            g.fill(bx, iy + 2, bx + bw, iy + 12, (it.tagColor() & 0x00FFFFFF) | 0x2A000000);
+            int tw = this.font.width(it.tag());
+            g.pose().pushPose();
+            float bScale = tw > 18 ? 18.0f / tw : 0.78f;
+            g.pose().translate(bx + bw / 2.0f, iy + 4.0f, 0);
+            g.pose().scale(bScale, bScale, 1.0f);
+            g.drawString(this.font, it.tag(), (int) (-tw / 2.0f), 0, it.tagColor(), false);
+            g.pose().popPose();
+
+            int textStart = bx + bw + 5;
+            String hint = it.hint();
+            int availLblW = innerRight - textStart - 4;
+            if (hint != null && !hint.isEmpty() && availLblW > 130) {
+                String trimmedHint = trim(hint, Math.min(115, availLblW / 3));
+                int hw = this.font.width(trimmedHint);
+                g.drawString(this.font, trimmedHint, innerRight - hw - 3, iy + 3, MUTED, false);
+                availLblW -= (hw + 8);
+            }
+            g.drawString(this.font, trim(it.label(), Math.max(40, availLblW)), textStart, iy + 3, sel ? GOLD : TEXT, false);
         }
+
+        // Тонкий скроллбар при большом списке совпадений
+        if (items.size() > vis) {
+            int trackTop = acY + 3;
+            int trackH = vis * 14;
+            int thumbH = Math.max(10, trackH * vis / items.size());
+            int thumbY = trackTop + (trackH - thumbH) * acScroll / Math.max(1, items.size() - vis);
+            g.fill(acX + acW - 4, trackTop, acX + acW - 2, trackTop + trackH, 0x441E293B);
+            g.fill(acX + acW - 4, thumbY, acX + acW - 2, thumbY + thumbH, ACCENT);
+        }
+
+        // Ненавязчивая нижняя строка-подсказка управления
+        int fy = acY + 3 + vis * 14;
+        g.fill(acX + 1, fy, acX + acW - 1, acY + acH - 1, 0xEE0B101A);
+        g.fill(acX + 1, fy, acX + acW - 1, fy + 1, 0x3338BDF8);
+        String foot = acTouched
+                ? "Tab / Enter — вставить   ↑↓ — выбор   Esc — скрыть   (" + (acSel + 1) + "/" + items.size() + ")"
+                : "Tab — вставить   ↑↓ — выбрать   Enter — новая строка";
+        g.pose().pushPose();
+        g.pose().translate(acX + 6, fy + 3, 0);
+        g.pose().scale(0.75f, 0.75f, 1.0f);
+        g.drawString(this.font, trim(foot, (int) ((acW - 12) / 0.75f)), 0, 0, MUTED, false);
+        g.pose().popPose();
     }
 
     private void refreshAutocomplete(ScriptDocument doc, boolean manual) {
-        if (doc == null || !doc.loaded || (!manual && !ClientUiSettings.autocomplete())) {
+        if (doc == null || !doc.loaded || doc.genericFile || (!manual && !ClientUiSettings.autocomplete())) {
             acMatch = null;
+            acTouched = false;
             return;
         }
-        String row = doc.lines.get(Math.max(0, Math.min(doc.lines.size() - 1, doc.line)));
-        acMatch = StudioAutocomplete.suggest(row, doc.col, manual);
+        int lineIdx = Math.max(0, Math.min(doc.lines.size() - 1, doc.line));
+        acMatch = StudioAutocomplete.suggest(doc.lines, lineIdx, doc.col, manual);
         acSel = 0;
+        acScroll = 0;
+        acTouched = manual;
     }
 
     private void applyAutocomplete(ScriptDocument doc) {
         if (doc == null || acMatch == null || acMatch.items().isEmpty()) {
             acMatch = null;
+            acTouched = false;
             return;
         }
-        String pick = acMatch.items().get(Math.max(0, Math.min(acSel, acMatch.items().size() - 1)));
+        StudioAutocomplete.Item pick = acMatch.items().get(Math.max(0, Math.min(acSel, acMatch.items().size() - 1)));
         String row = doc.lines.get(doc.line);
         int curCol = Math.max(0, Math.min(row.length(), doc.col));
         int from = Math.max(0, Math.min(acMatch.replaceFrom(), curCol));
@@ -1851,8 +2065,12 @@ public class StudioScreen extends Screen {
         doc.anchorLine = doc.line;
         doc.anchorCol = from;
         doc.col = curCol;
-        doc.insert(pick);
+        doc.insert(pick.insertText());
+        int targetCol = Math.max(0, Math.min(doc.lines.get(doc.line).length(), from + pick.caretOffset()));
+        doc.col = targetCol;
+        doc.anchorCol = targetCol;
         acMatch = null;
+        acTouched = false;
     }
 
     private void renderGotoBox(GuiGraphics g) {
@@ -1958,7 +2176,7 @@ public class StudioScreen extends Screen {
         // --- Правая колонка: Горячие клавиши + Статус библиотек ---
         int rx = midX + 6;
         int rw = Math.max(160, px + pw - rx - 14);
-        int libsH = 74;
+        int libsH = 90;
         int rh = Math.max(96, availH - libsH - 8);
         g.fill(rx, y0 - 2, rx + rw, y0 + rh, SURFACE);
         border(g, rx, y0 - 2, rw, rh + 2, EDGE);
@@ -2009,6 +2227,9 @@ public class StudioScreen extends Screen {
                 net.minecraftforge.fml.ModList.get().isLoaded("playeranimator"));
         drawLibStatusRow(g, rx, ly + 38, rw, "Bendy-lib", modStatusText("bendylib"),
                 net.minecraftforge.fml.ModList.get().isLoaded("bendylib"));
+        boolean geckoMod = com.scriptcraft.client.geo.GeckoLibBridge.isLoaded();
+        String geckoTxt = geckoMod ? modStatusText("geckolib") : "Built-in 3D Engine (Active)";
+        drawLibStatusRow(g, rx, ly + 54, rw, "GeckoLib 3D", geckoTxt, true);
         String lpCode = StudioSession.serverLuckPerms;
         boolean lpOk = lpCode != null && !lpCode.equals("NONE");
         String lpKey = switch (lpCode == null ? "NONE" : lpCode) {
@@ -2018,7 +2239,7 @@ public class StudioScreen extends Screen {
             case "API" -> "lp.api";
             default -> "lp.none";
         };
-        drawLibStatusRow(g, rx, ly + 54, rw, "LuckPerms", Messages.get(lpKey).replaceFirst("^LuckPerms:\\s*", ""), lpOk);
+        drawLibStatusRow(g, rx, ly + 70, rw, "LuckPerms", Messages.get(lpKey).replaceFirst("^LuckPerms:\\s*", ""), lpOk);
     }
 
     private static String modStatusText(String modId) {
@@ -2468,14 +2689,30 @@ public class StudioScreen extends Screen {
             return true;
         }
         if (acMatch != null && !acMatch.items().isEmpty() && hover(mx, my, acX, acY, acW, acH)) {
-            int idx = (my - (acY + 3)) / 14;
-            if (idx >= 0 && idx < acMatch.items().size()) {
-                acSel = idx;
+            int vis = Math.min(AC_MAX_VIS, acMatch.items().size());
+            int localRow = (my - (acY + 3)) / 14;
+            if (localRow >= 0 && localRow < vis) {
+                acSel = acScroll + localRow;
                 applyAutocomplete(script());
             }
             return true;
         }
         acMatch = null;
+        acTouched = false;
+        if (expCtxOpen) {
+            List<ExpCtxAction> items = expCtxActions();
+            int cw = 178;
+            int ch = items.size() * 15 + 6;
+            if (mx >= expCtxX && mx < expCtxX + cw && my >= expCtxY && my < expCtxY + ch) {
+                int idx = (my - (expCtxY + 3)) / 15;
+                expCtxOpen = false;
+                if (idx >= 0 && idx < items.size()) {
+                    runExpCtx(items.get(idx).id());
+                }
+                return true;
+            }
+            expCtxOpen = false;
+        }
         if (ctxOpen) {
             List<String> items = ctxItems();
             int cw = 152;
@@ -2676,6 +2913,21 @@ public class StudioScreen extends Screen {
                 }
                 return true;
             }
+            if (geoBtnX >= 0 && hover(mx, my, geoBtnX, geoBtnY, geoBtnW, 16)) {
+                ScriptDocument d = script();
+                if (d != null && d.genericFile && !d.isImage && !d.isAudio) {
+                    d.geoPreviewMode = !d.geoPreviewMode;
+                }
+                return true;
+            }
+            if (animBtnX >= 0 && hover(mx, my, animBtnX, animBtnY, animBtnW, 16)) {
+                ScriptDocument d = script();
+                if (d != null && d.genericFile && !d.isImage) {
+                    String rel = d.name.startsWith("@") ? d.name.substring(1) : d.name;
+                    openInAnimEditor(rel);
+                }
+                return true;
+            }
             toolClick(mx);
             return true;
         }
@@ -2724,17 +2976,36 @@ public class StudioScreen extends Screen {
                     nameField.setValue("");
                     return true;
                 }
-                if (sbRenX >= 0 && hover(mx, my, sbRenX, sbBarY + 2, 14, 13) && StudioSession.selectedExplorerPath != null) {
+                if (sbCutX >= 0 && hover(mx, my, sbCutX, sbBarY + 2, 14, 13) && !StudioSession.selectedExplorerPaths.isEmpty()) {
+                    cutOrCopyExplorer(true);
+                    return true;
+                }
+                if (sbPasteX >= 0 && hover(mx, my, sbPasteX, sbBarY + 2, 14, 13) && !StudioSession.explorerClipPaths.isEmpty()) {
+                    pasteExplorerInto(StudioSession.explorerDir);
+                    return true;
+                }
+                if (sbRenX >= 0 && hover(mx, my, sbRenX, sbBarY + 2, 14, 13) && StudioSession.selectedExplorerPaths.size() == 1) {
                     startRenameSelected();
                     return true;
                 }
-                if (sbDelX >= 0 && hover(mx, my, sbDelX, sbBarY + 2, 14, 13) && StudioSession.selectedExplorerPath != null) {
-                    ask = "delete_exp";
-                    askName = StudioSession.selectedExplorerPath;
+                if (sbDelX >= 0 && hover(mx, my, sbDelX, sbBarY + 2, 14, 13) && !StudioSession.selectedExplorerPaths.isEmpty()) {
+                    promptDeleteSelectedExplorer();
                     return true;
                 }
                 for (SidebarHit hit : sidebarHits) {
                     if (my >= hit.y && my < hit.y + hit.h) {
+                        if (button == 1) {
+                            if (!hit.parent && !StudioSession.isExplorerSelected(hit.fullPath)) {
+                                StudioSession.selectSingleExplorer(hit.fullPath);
+                            }
+                            expCtxTarget = hit.parent ? null : hit.fullPath;
+                            expCtxTargetDir = !hit.parent && hit.dir;
+                            expCtxX = mx;
+                            expCtxY = my;
+                            expCtxOpenedAt = System.currentTimeMillis();
+                            expCtxOpen = true;
+                            return true;
+                        }
                         if (hit.parent) {
                             navigateDir(hit.fullPath, true);
                             return true;
@@ -2743,14 +3014,63 @@ public class StudioScreen extends Screen {
                             ModNetwork.sendToServer(new StudioExplorerPacket.Action(StudioExplorerPacket.Kind.TOGGLE_SCRIPT, hit.fullPath, ""));
                             return true;
                         }
-                        StudioSession.selectedExplorerPath = hit.fullPath;
-                        if (hit.dir) {
-                            navigateDir(hit.fullPath, true);
-                        } else {
-                            openExplorerFile(hit.fullPath);
+                        if (hit.animX >= 0 && mx >= hit.animX && mx < hit.animX + 13) {
+                            StudioSession.selectSingleExplorer(hit.fullPath);
+                            if (com.scriptcraft.studio.StudioExplorer.isAudioName(hit.fullPath)) {
+                                openExplorerFile(hit.fullPath);
+                            } else if (StudioGeoViewer.isGeoOrAnimFile(hit.fullPath)) {
+                                openExplorerFile(hit.fullPath);
+                                ScriptDocument gd = StudioSession.docs.get("@" + hit.fullPath);
+                                if (gd != null) gd.geoPreviewMode = true;
+                            } else {
+                                openInAnimEditor(hit.fullPath);
+                            }
+                            return true;
                         }
+                        boolean ctrl = hasControlDown();
+                        boolean shift = hasShiftDown();
+                        if (shift) {
+                            StudioSession.selectExplorerRange(hit.fullPath, ctrl);
+                            return true;
+                        }
+                        if (ctrl) {
+                            StudioSession.toggleExplorerSelection(hit.fullPath);
+                            return true;
+                        }
+                        long now = System.currentTimeMillis();
+                        boolean dblClick = (now - lastExpClickMs) < 380L && hit.fullPath.equals(lastExpClickPath);
+                        lastExpClickMs = now;
+                        lastExpClickPath = hit.fullPath;
+                        if (hit.dir && (dblClick || mx < sbX + 18)) {
+                            navigateDir(hit.fullPath, true);
+                            return true;
+                        }
+                        if (!StudioSession.isExplorerSelected(hit.fullPath)) {
+                            StudioSession.selectSingleExplorer(hit.fullPath);
+                        }
+                        if (dblClick && !hit.dir) {
+                            openExplorerFile(hit.fullPath);
+                            return true;
+                        }
+                        expDragPending = true;
+                        expPressX = mx;
+                        expPressY = my;
+                        expPressPath = hit.fullPath;
+                        expPressDir = hit.dir;
                         return true;
                     }
+                }
+                if (button == 1) {
+                    expCtxTarget = null;
+                    expCtxTargetDir = false;
+                    expCtxX = mx;
+                    expCtxY = my;
+                    expCtxOpenedAt = System.currentTimeMillis();
+                    expCtxOpen = true;
+                    return true;
+                }
+                if (my > sbBarY + 34 && !hasControlDown() && !hasShiftDown()) {
+                    StudioSession.clearExplorerSelection();
                 }
                 return true;
             }
@@ -2761,6 +3081,14 @@ public class StudioScreen extends Screen {
             return true;
         }
         if (doc != null && doc.loaded && hover(mx, my, editorX, editorY, editorW, editorH)) {
+            if (doc.isAudio) {
+                StudioAudioPlayer.mouseClicked(mx, my, button);
+                return true;
+            }
+            if (doc.geoPreviewMode && !doc.isImage) {
+                StudioGeoViewer.mouseClicked(mx, my, button);
+                return true;
+            }
             if (StudioSession.guiEditorMode && !doc.genericFile && !doc.isImage) {
                 StudioGuiEditor.mouseClicked(this.font, doc, mx, my, button);
                 return true;
@@ -2808,6 +3136,12 @@ public class StudioScreen extends Screen {
                 return true;
             }
         }
+        if (script() != null && script().isAudio && !settings) {
+            if (StudioAudioPlayer.mouseDragged(mx, my)) return true;
+        }
+        if (script() != null && script().geoPreviewMode && !script().isImage && !settings) {
+            if (StudioGeoViewer.mouseDragged(mx, my, button)) return true;
+        }
         if (StudioSession.guiEditorMode && script() != null && !script().genericFile && !script().isImage && !settings) {
             if (StudioGuiEditor.mouseDragged(this.font, mx, my, button)) {
                 return true;
@@ -2840,6 +3174,16 @@ public class StudioScreen extends Screen {
                 textDrag = true;
                 placeCursor(doc, mx, my, true);
             }
+            return true;
+        }
+        if (expDragPending && drag == Drag.NONE) {
+            if (Math.abs(mx - expPressX) + Math.abs(my - expPressY) >= 5) {
+                expDragPending = false;
+                drag = Drag.EXPLORER_MOVE;
+            }
+            return true;
+        }
+        if (drag == Drag.EXPLORER_MOVE) {
             return true;
         }
         if (drag == Drag.SIDEBAR_RESIZE) {
@@ -2925,11 +3269,37 @@ public class StudioScreen extends Screen {
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        int mx = (int) mouseX;
+        int my = (int) mouseY;
+        if (drag == Drag.EXPLORER_MOVE) {
+            if (hover(mx, my, sbX, sbY, sbW, sbH) && !StudioSession.selectedExplorerPaths.isEmpty()) {
+                for (SidebarHit hit : sidebarHits) {
+                    if (my >= hit.y && my < hit.y + hit.h && (hit.parent || (hit.dir && !StudioSession.isExplorerSelected(hit.fullPath)))) {
+                        moveSelectedExplorerTo(hit.fullPath);
+                        break;
+                    }
+                }
+            }
+            expDragPending = false;
+            drag = Drag.NONE;
+            return true;
+        }
+        if (expDragPending) {
+            expDragPending = false;
+            if (expPressPath != null) {
+                StudioSession.selectSingleExplorer(expPressPath);
+                if (!expPressDir) {
+                    openExplorerFile(expPressPath);
+                }
+            }
+        }
         nameField.mouseReleased();
         gotoField.mouseReleased();
         findField.mouseReleased();
         replaceField.mouseReleased();
         StudioAnimEditor.mouseReleased();
+        StudioAudioPlayer.mouseReleased();
+        StudioGeoViewer.mouseReleased();
         StudioGuiEditor.mouseReleased(script());
         drag = Drag.NONE;
         slider = 0;
@@ -2940,6 +3310,12 @@ public class StudioScreen extends Screen {
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
         if (StudioSession.ANIMATOR.equals(StudioSession.active) && !settings) {
             if (StudioAnimEditor.mouseScrolled((int) mouseX, (int) mouseY, delta)) {
+                return true;
+            }
+        }
+        if (script() != null && script().geoPreviewMode && !script().isImage && !settings
+                && hover((int) mouseX, (int) mouseY, editorX, editorY, editorW, editorH)) {
+            if (StudioGeoViewer.mouseScrolled((int) mouseX, (int) mouseY, delta)) {
                 return true;
             }
         }
@@ -2963,6 +3339,11 @@ public class StudioScreen extends Screen {
         }
         if (StudioSession.PROFILER.equals(StudioSession.active) && ClientUiSettings.showProfiler()) {
             profScroll = Math.max(0, Math.min(profMaxScroll, profScroll + step * 14));
+            return true;
+        }
+        if (acMatch != null && !acMatch.items().isEmpty() && hover((int) mouseX, (int) mouseY, acX, acY, acW, acH)) {
+            int vis = Math.min(AC_MAX_VIS, acMatch.items().size());
+            acScroll = Math.max(0, Math.min(Math.max(0, acMatch.items().size() - vis), acScroll + (delta < 0 ? 1 : -1)));
             return true;
         }
         ScriptDocument doc = script();
@@ -3065,12 +3446,21 @@ public class StudioScreen extends Screen {
                 acMatch = null;
                 return true;
             }
-            if (menu != null || catalog || ctxOpen || StudioSession.toolPanelOpen) {
+            if (menu != null || catalog || ctxOpen || expCtxOpen || StudioSession.toolPanelOpen) {
                 menu = null;
                 catalog = false;
                 ctxOpen = false;
+                expCtxOpen = false;
                 StudioSession.toolPanelOpen = false;
                 panelFocus = 0;
+                return true;
+            }
+            if (explorerFocused && (!StudioSession.explorerClipPaths.isEmpty() || StudioSession.selectedExplorerPaths.size() > 1)) {
+                StudioSession.explorerClipPaths.clear();
+                StudioSession.explorerClipCut = false;
+                if (StudioSession.selectedExplorerPath != null) {
+                    StudioSession.selectSingleExplorer(StudioSession.selectedExplorerPath);
+                }
                 return true;
             }
             onClose();
@@ -3137,18 +3527,12 @@ public class StudioScreen extends Screen {
                 return true;
             }
         }
-        if (explorerFocused && StudioSession.selectedExplorerPath != null && !settings) {
-            if (key == GLFW.GLFW_KEY_DELETE) {
-                ask = "delete_exp";
-                askName = StudioSession.selectedExplorerPath;
-                return true;
-            }
-            if (key == GLFW.GLFW_KEY_F2) {
-                startRenameSelected();
+        if (explorerFocused && !settings) {
+            if (handleExplorerHotkeys(key, ctrl, shift, alt)) {
                 return true;
             }
         }
-        if (doc == null || !doc.loaded || doc.isImage || settings) {
+        if (doc == null || !doc.loaded || doc.isImage || doc.isAudio || doc.geoPreviewMode || settings) {
             return true;
         }
         if (StudioSession.guiEditorMode && !doc.genericFile) {
@@ -3159,13 +3543,19 @@ public class StudioScreen extends Screen {
         if (acMatch != null && !acMatch.items().isEmpty()) {
             if (key == GLFW.GLFW_KEY_DOWN) {
                 acSel = (acSel + 1) % acMatch.items().size();
+                acTouched = true;
                 return true;
             }
             if (key == GLFW.GLFW_KEY_UP) {
                 acSel = (acSel - 1 + acMatch.items().size()) % acMatch.items().size();
+                acTouched = true;
                 return true;
             }
-            if (key == GLFW.GLFW_KEY_TAB || key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
+            if (key == GLFW.GLFW_KEY_TAB && !shift) {
+                applyAutocomplete(doc);
+                return true;
+            }
+            if ((key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) && acTouched) {
                 applyAutocomplete(doc);
                 return true;
             }
@@ -3261,6 +3651,8 @@ public class StudioScreen extends Screen {
             return true;
         }
         if (key == GLFW.GLFW_KEY_LEFT) {
+            acMatch = null;
+            acTouched = false;
             if (ctrl) {
                 doc.moveWord(false, shift);
                 return true;
@@ -3275,6 +3667,8 @@ public class StudioScreen extends Screen {
             return true;
         }
         if (key == GLFW.GLFW_KEY_RIGHT) {
+            acMatch = null;
+            acTouched = false;
             if (ctrl) {
                 doc.moveWord(true, shift);
                 return true;
@@ -3305,10 +3699,14 @@ public class StudioScreen extends Screen {
             return true;
         }
         if (key == GLFW.GLFW_KEY_HOME) {
+            acMatch = null;
+            acTouched = false;
             doc.move(doc.line, 0, shift);
             return true;
         }
         if (key == GLFW.GLFW_KEY_END) {
+            acMatch = null;
+            acTouched = false;
             doc.move(doc.line, doc.lines.get(doc.line).length(), shift);
             return true;
         }
@@ -3346,7 +3744,7 @@ public class StudioScreen extends Screen {
                 return true;
             }
         }
-        if (doc != null && doc.loaded && !settings && !hasControlDown() && ch >= 32) {
+        if (doc != null && doc.loaded && !doc.isImage && !doc.isAudio && !doc.geoPreviewMode && !settings && !hasControlDown() && ch >= 32) {
             if (!ClientUiSettings.autoClose() || !doc.typeWithAutoClose(ch)) {
                 doc.insert(String.valueOf(ch));
             }
@@ -3412,14 +3810,81 @@ public class StudioScreen extends Screen {
         return StudioSession.docs.get(StudioSession.active);
     }
 
+    private String cachedWidthDocName = "";
+    private int cachedWidthStamp = -1;
+    private boolean cachedWidthQuotes;
+    private int cachedMaxLinePxVal;
+
+    private String cachedScrDocName = "";
+    private int cachedScrStamp = -1;
+    private int cachedScrCountVal;
+
+    private int cachedScreenCount(ScriptDocument doc) {
+        if (doc == null || !doc.loaded || doc.isImage || doc.genericFile) {
+            return 0;
+        }
+        if (doc.name.equals(cachedScrDocName) && doc.editStamp == cachedScrStamp) {
+            return cachedScrCountVal;
+        }
+        cachedScrDocName = doc.name;
+        cachedScrStamp = doc.editStamp;
+        cachedScrCountVal = StudioGuiEditor.countScreensIn(doc);
+        return cachedScrCountVal;
+    }
+
+    private int cachedMaxLinePx(ScriptDocument doc) {
+        boolean q = StudioSession.optQuoteColors;
+        if (doc.name.equals(cachedWidthDocName) && doc.editStamp == cachedWidthStamp && cachedWidthQuotes == q) {
+            return cachedMaxLinePxVal;
+        }
+        int maxPx = 0;
+        if (doc.lines.size() <= 400) {
+            for (String row : doc.lines) {
+                maxPx = Math.max(maxPx, spanWidth(row, row.length()));
+            }
+        } else {
+            // На больших скриптах (тысячи строк) измеряем шрифтом только самые длинные по числу символов строки
+            int maxChars = 0;
+            for (String row : doc.lines) {
+                int eff = row.length() + countTabs(row) * 3;
+                if (eff > maxChars) {
+                    maxChars = eff;
+                }
+            }
+            int threshold = Math.max(1, maxChars - 24);
+            for (String row : doc.lines) {
+                int eff = row.length() + countTabs(row) * 3;
+                if (eff >= threshold) {
+                    maxPx = Math.max(maxPx, spanWidth(row, row.length()));
+                }
+            }
+        }
+        cachedWidthDocName = doc.name;
+        cachedWidthStamp = doc.editStamp;
+        cachedWidthQuotes = q;
+        cachedMaxLinePxVal = maxPx;
+        return maxPx;
+    }
+
+    private static int countTabs(String s) {
+        int c = 0;
+        for (int i = 0; i < s.length(); i++) {
+            if (s.charAt(i) == '\t') c++;
+        }
+        return c;
+    }
+
     private void openScript(String name) {
         if (StudioSession.ANIMATOR.equals(StudioSession.active)) {
             StudioAnimEditor.onLeaveTab();
         }
+        explorerFocused = false;
         ScriptDocument doc = StudioSession.openScript(name);
         catalog = false;
         settings = false;
         if (!doc.loaded) {
+            doc.openedAtMs = System.currentTimeMillis();
+            doc.retriedRead = false;
             ModNetwork.sendToServer(new ScriptDataPacket.Read(name));
         }
     }
@@ -3429,20 +3894,288 @@ public class StudioScreen extends Screen {
             openScript(relPath.substring("scripts/".length()));
             return;
         }
-        if (relPath.startsWith("resources/assets/") && relPath.toLowerCase(Locale.ROOT).endsWith(".json")
-                && (relPath.contains("/player_animation/") || relPath.contains("/player_animations/"))) {
-            catalog = false;
-            settings = false;
-            StudioSession.active = StudioSession.ANIMATOR;
-            ModNetwork.sendToServer(new StudioExplorerPacket.Action(StudioExplorerPacket.Kind.READ_FILE, relPath, "$anim_open"));
-            return;
+        if (StudioSession.ANIMATOR.equals(StudioSession.active)) {
+            StudioAnimEditor.onLeaveTab();
         }
+        explorerFocused = false;
         ScriptDocument doc = StudioSession.openGenericFile(relPath);
         catalog = false;
         settings = false;
         if (!doc.loaded) {
+            doc.openedAtMs = System.currentTimeMillis();
+            doc.retriedRead = false;
             ModNetwork.sendToServer(new StudioExplorerPacket.Action(StudioExplorerPacket.Kind.READ_FILE, relPath, ""));
         }
+    }
+
+    private void openInAnimEditor(String relPath) {
+        if (relPath == null || relPath.isEmpty()) return;
+        catalog = false;
+        settings = false;
+        StudioSession.active = StudioSession.ANIMATOR;
+        ScriptDocument existing = StudioSession.docs.get("@" + relPath);
+        if (existing != null && existing.loaded && !existing.isImage) {
+            StudioAnimEditor.acceptLoadedJson(relPath, existing.text());
+            return;
+        }
+        ModNetwork.sendToServer(new StudioExplorerPacket.Action(StudioExplorerPacket.Kind.READ_FILE, relPath, "$anim_open"));
+    }
+
+    private record ExpCtxAction(String id, String label) {
+    }
+
+    private List<ExpCtxAction> expCtxActions() {
+        List<ExpCtxAction> list = new ArrayList<>();
+        boolean hasSel = !StudioSession.selectedExplorerPaths.isEmpty();
+        boolean singleSel = StudioSession.selectedExplorerPaths.size() == 1;
+        String only = singleSel ? StudioSession.selectedExplorerPath : null;
+        if (only != null) {
+            list.add(new ExpCtxAction("open", Messages.get("studio.m.open") + " (Enter)"));
+            if (!expCtxTargetDir && only.toLowerCase(Locale.ROOT).endsWith(".json")) {
+                list.add(new ExpCtxAction("open_anim", "✦ " + Messages.get("studio.exp.open_anim")));
+            }
+        }
+        if (hasSel) {
+            list.add(new ExpCtxAction("cut", Messages.get("studio.exp.cut")));
+            list.add(new ExpCtxAction("copy", Messages.get("studio.exp.copy")));
+        }
+        if (!StudioSession.explorerClipPaths.isEmpty()) {
+            list.add(new ExpCtxAction("paste", Messages.get("studio.exp.paste")));
+        }
+        String curDir = StudioSession.explorerDir == null ? "" : StudioSession.explorerDir;
+        if (hasSel && !curDir.isEmpty()) {
+            list.add(new ExpCtxAction("move_up", Messages.get("studio.exp.move_up")));
+        }
+        if (singleSel) {
+            list.add(new ExpCtxAction("rename", Messages.get("studio.exp.rename")));
+        }
+        if (hasSel) {
+            list.add(new ExpCtxAction("delete", Messages.get("studio.exp.delete")));
+        }
+        list.add(new ExpCtxAction("select_all", Messages.get("studio.m.all") + " (Ctrl+A)"));
+        list.add(new ExpCtxAction("mkdir", Messages.get("studio.exp.mkdir")));
+        return list;
+    }
+
+    private void runExpCtx(String id) {
+        switch (id) {
+            case "open" -> {
+                if (StudioSession.selectedExplorerPath != null) {
+                    if (isExplorerPathDir(StudioSession.selectedExplorerPath)) {
+                        navigateDir(StudioSession.selectedExplorerPath, true);
+                    } else {
+                        openExplorerFile(StudioSession.selectedExplorerPath);
+                    }
+                }
+            }
+            case "open_anim" -> {
+                if (StudioSession.selectedExplorerPath != null) {
+                    openInAnimEditor(StudioSession.selectedExplorerPath);
+                }
+            }
+            case "cut" -> cutOrCopyExplorer(true);
+            case "copy" -> cutOrCopyExplorer(false);
+            case "paste" -> {
+                String dst = (expCtxTarget != null && expCtxTargetDir)
+                        ? expCtxTarget
+                        : (StudioSession.explorerDir == null ? "" : StudioSession.explorerDir);
+                pasteExplorerInto(dst);
+            }
+            case "move_up" -> {
+                String cur = StudioSession.explorerDir == null ? "" : StudioSession.explorerDir;
+                if (!cur.isEmpty()) {
+                    moveSelectedExplorerTo(parentOf(cur));
+                }
+            }
+            case "rename" -> startRenameSelected();
+            case "delete" -> promptDeleteSelectedExplorer();
+            case "select_all" -> StudioSession.selectAllExplorer();
+            case "mkdir" -> {
+                naming = true;
+                namingMode = "mkdir";
+                nameField.setValue("");
+            }
+            default -> {
+            }
+        }
+    }
+
+    private void renderExpCtxMenu(GuiGraphics g, int mx, int my) {
+        List<ExpCtxAction> items = expCtxActions();
+        int w = 178;
+        int fullH = items.size() * 15 + 6;
+        int x = Math.max(px + 4, Math.min(expCtxX, px + pw - w - 4));
+        int y = Math.max(py + TITLE, Math.min(expCtxY, py + ph - fullH - 4));
+        expCtxX = x;
+        expCtxY = y;
+        float t = easeOutCubic((System.currentTimeMillis() - expCtxOpenedAt) / 110f);
+        int h = Math.max(8, Math.round(fullH * t));
+        g.fill(x + 2, y + 2, x + w + 2, y + h + 2, 0x66000000);
+        g.fill(x, y, x + w, y + h, 0xF7121824);
+        border(g, x, y, w, h, EDGE_HOT);
+        g.enableScissor(x, y, x + w, y + h);
+        for (int i = 0; i < items.size(); i++) {
+            int iy = y + 3 + i * 15;
+            boolean hot = hover(mx, my, x + 1, iy, w - 2, 15);
+            if (hot) {
+                g.fill(x + 2, iy, x + w - 2, iy + 15, ROW_HOT);
+                g.fill(x + 2, iy + 2, x + 4, iy + 13, GOLD);
+            }
+            String lbl = items.get(i).label();
+            int col = "delete".equals(items.get(i).id()) ? (hot ? 0xFFFF9A9E : RED)
+                    : ("open_anim".equals(items.get(i).id()) ? (hot ? GOLD : ACCENT) : (hot ? 0xFFFFFFFF : TEXT));
+            g.drawString(this.font, trim(lbl, w - 14), x + 8, iy + 4, col, false);
+        }
+        g.disableScissor();
+    }
+
+    private void renderExplorerDragBadge(GuiGraphics g, int mx, int my) {
+        int count = StudioSession.selectedExplorerPaths.size();
+        String label;
+        if (count == 1) {
+            String p = StudioSession.selectedExplorerPaths.iterator().next();
+            int sl = p.lastIndexOf('/');
+            label = "↪ " + (sl < 0 ? p : p.substring(sl + 1));
+        } else {
+            label = "↪ " + count + " items";
+        }
+        int bw = this.font.width(label) + 12;
+        int bx = Math.min(mx + 10, px + pw - bw - 4);
+        int by = Math.max(py + TITLE, my - 8);
+        g.fill(bx, by, bx + bw, by + 15, 0xF0152033);
+        border(g, bx, by, bw, 15, GOLD);
+        g.drawString(this.font, label, bx + 6, by + 4, GOLD, false);
+    }
+
+    private void cutOrCopyExplorer(boolean cut) {
+        if (StudioSession.selectedExplorerPaths.isEmpty()) return;
+        StudioSession.explorerClipPaths.clear();
+        StudioSession.explorerClipPaths.addAll(StudioSession.selectedExplorerPaths);
+        StudioSession.explorerClipCut = cut;
+        ClientToasts.push(Messages.toast(cut ? "studio.exp.cut_toast" : "studio.exp.copy_toast",
+                StudioSession.explorerClipPaths.size()));
+    }
+
+    private void pasteExplorerInto(String dstDir) {
+        if (StudioSession.explorerClipPaths.isEmpty()) return;
+        String targetDir = dstDir == null ? "" : dstDir;
+        String payload = String.join("\n", StudioSession.explorerClipPaths);
+        int count = StudioSession.explorerClipPaths.size();
+        if (StudioSession.explorerClipCut) {
+            ModNetwork.sendToServer(new StudioExplorerPacket.Action(StudioExplorerPacket.Kind.MOVE_BATCH, payload, targetDir));
+            StudioSession.explorerClipPaths.clear();
+            StudioSession.explorerClipCut = false;
+            StudioSession.clearExplorerSelection();
+            ClientToasts.push(Messages.toast("studio.exp.moved_toast", count));
+        } else {
+            ModNetwork.sendToServer(new StudioExplorerPacket.Action(StudioExplorerPacket.Kind.COPY_BATCH, payload, targetDir));
+            ClientToasts.push(Messages.toast("studio.exp.copied_toast", count));
+        }
+    }
+
+    private void moveSelectedExplorerTo(String dstDir) {
+        if (StudioSession.selectedExplorerPaths.isEmpty()) return;
+        String targetDir = dstDir == null ? "" : dstDir;
+        String payload = String.join("\n", StudioSession.selectedExplorerPaths);
+        int count = StudioSession.selectedExplorerPaths.size();
+        ModNetwork.sendToServer(new StudioExplorerPacket.Action(StudioExplorerPacket.Kind.MOVE_BATCH, payload, targetDir));
+        StudioSession.clearExplorerSelection();
+        ClientToasts.push(Messages.toast("studio.exp.moved_toast", count));
+    }
+
+    private void promptDeleteSelectedExplorer() {
+        if (StudioSession.selectedExplorerPaths.isEmpty()) return;
+        if (StudioSession.selectedExplorerPaths.size() == 1) {
+            ask = "delete_exp";
+            askName = StudioSession.selectedExplorerPaths.iterator().next();
+        } else {
+            ask = "delete_exp_many";
+            askName = String.join("\n", StudioSession.selectedExplorerPaths);
+        }
+    }
+
+    private boolean isExplorerPathDir(String fullPath) {
+        String curDir = StudioSession.explorerDir == null ? "" : StudioSession.explorerDir;
+        for (StudioExplorerPacket.Entry e : StudioSession.explorerEntries) {
+            String full = curDir.isEmpty() ? e.name() : curDir + "/" + e.name();
+            if (full.equals(fullPath)) {
+                return e.dir();
+            }
+        }
+        return false;
+    }
+
+    private boolean handleExplorerHotkeys(int key, boolean ctrl, boolean shift, boolean alt) {
+        if (alt && key == GLFW.GLFW_KEY_LEFT) {
+            if (!StudioSession.dirBack.isEmpty()) {
+                StudioSession.dirForward.push(StudioSession.explorerDir == null ? "" : StudioSession.explorerDir);
+                navigateDir(StudioSession.dirBack.pop(), false);
+            }
+            return true;
+        }
+        if (alt && key == GLFW.GLFW_KEY_RIGHT) {
+            if (!StudioSession.dirForward.isEmpty()) {
+                StudioSession.dirBack.push(StudioSession.explorerDir == null ? "" : StudioSession.explorerDir);
+                navigateDir(StudioSession.dirForward.pop(), false);
+            }
+            return true;
+        }
+        if ((alt && key == GLFW.GLFW_KEY_UP) || (!ctrl && !shift && key == GLFW.GLFW_KEY_BACKSPACE)) {
+            String cur = StudioSession.explorerDir == null ? "" : StudioSession.explorerDir;
+            if (!cur.isEmpty()) {
+                navigateDir(parentOf(cur), true);
+            }
+            return true;
+        }
+        if (ctrl && key == GLFW.GLFW_KEY_A) {
+            StudioSession.selectAllExplorer();
+            return true;
+        }
+        if (ctrl && key == GLFW.GLFW_KEY_X) {
+            cutOrCopyExplorer(true);
+            return true;
+        }
+        if (ctrl && key == GLFW.GLFW_KEY_C) {
+            cutOrCopyExplorer(false);
+            return true;
+        }
+        if (ctrl && key == GLFW.GLFW_KEY_V) {
+            pasteExplorerInto(StudioSession.explorerDir);
+            return true;
+        }
+        if (key == GLFW.GLFW_KEY_DELETE && !StudioSession.selectedExplorerPaths.isEmpty()) {
+            promptDeleteSelectedExplorer();
+            return true;
+        }
+        if (key == GLFW.GLFW_KEY_F2 && StudioSession.selectedExplorerPaths.size() == 1) {
+            startRenameSelected();
+            return true;
+        }
+        if ((key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) && StudioSession.selectedExplorerPath != null) {
+            if (isExplorerPathDir(StudioSession.selectedExplorerPath)) {
+                navigateDir(StudioSession.selectedExplorerPath, true);
+            } else {
+                openExplorerFile(StudioSession.selectedExplorerPath);
+            }
+            return true;
+        }
+        if (key == GLFW.GLFW_KEY_UP || key == GLFW.GLFW_KEY_DOWN) {
+            List<String> all = StudioSession.currentExplorerFullPaths();
+            if (!all.isEmpty()) {
+                int curIdx = StudioSession.selectedExplorerPath == null ? -1 : all.indexOf(StudioSession.selectedExplorerPath);
+                int nextIdx = key == GLFW.GLFW_KEY_DOWN
+                        ? Math.min(all.size() - 1, curIdx + 1)
+                        : Math.max(0, curIdx <= 0 ? 0 : curIdx - 1);
+                String target = all.get(nextIdx);
+                if (shift) {
+                    StudioSession.selectExplorerRange(target, false);
+                } else {
+                    StudioSession.selectSingleExplorer(target);
+                }
+            }
+            return true;
+        }
+        return false;
     }
 
     private void startRenameSelected() {
@@ -3457,21 +4190,37 @@ public class StudioScreen extends Screen {
     }
 
     private void save(ScriptDocument doc) {
-        if (doc == null || !doc.loaded || doc.isImage) {
+        if (doc == null || !doc.loaded || doc.isImage || doc.isAudio) {
             return;
         }
-        if (StudioSession.guiEditorMode && !doc.genericFile && StudioGuiEditor.isDirty()) {
-            StudioGuiEditor.applyToDocument(doc);
+        try {
+            if (StudioSession.guiEditorMode && !doc.genericFile && StudioGuiEditor.isDirty()) {
+                StudioGuiEditor.applyToDocument(doc);
+            }
+            String fullText = doc.text();
+            byte[] bytes = fullText.getBytes(StandardCharsets.UTF_8);
+            if (doc.genericFile) {
+                String rel = doc.name.startsWith("@") ? doc.name.substring(1) : doc.name;
+                if (bytes.length > com.scriptcraft.studio.StudioExplorer.MAX_FILE_BYTES) {
+                    ClientToasts.push(Messages.toast("studio.too_large", rel,
+                            com.scriptcraft.studio.StudioExplorer.MAX_FILE_BYTES / (1024 * 1024)));
+                    return;
+                }
+                StudioExplorerPacket.sendWriteFileToServer(rel, "", bytes);
+                doc.saved = fullText;
+                return;
+            }
+            if (bytes.length > com.scriptcraft.network.ScriptPayload.MAX_BYTES) {
+                ClientToasts.push(Messages.toast("studio.too_large", doc.name,
+                        com.scriptcraft.network.ScriptPayload.MAX_BYTES / (1024 * 1024)));
+                return;
+            }
+            StudioSync.flushText(doc);
+            ScriptDataPacket.Save.sendToServerChunked(doc.name, fullText, doc.revision);
+        } catch (Exception e) {
+            ClientToasts.push(Messages.toast("studio.save_failed",
+                    e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
         }
-        if (doc.genericFile) {
-            String rel = doc.name.startsWith("@") ? doc.name.substring(1) : doc.name;
-            byte[] bytes = doc.text().getBytes(StandardCharsets.UTF_8);
-            ModNetwork.sendToServer(new StudioExplorerPacket.Action(StudioExplorerPacket.Kind.WRITE_FILE, rel, "", bytes));
-            doc.saved = doc.text();
-            return;
-        }
-        StudioSync.flushText(doc);
-        ModNetwork.sendToServer(new ScriptDataPacket.Save(doc.name, doc.text(), doc.revision));
     }
 
     private void saveAll() {
@@ -3512,7 +4261,7 @@ public class StudioScreen extends Screen {
             String parent = parentOf(renameTarget);
             String dst = parent.isEmpty() ? raw : parent + "/" + raw;
             ModNetwork.sendToServer(new StudioExplorerPacket.Action(StudioExplorerPacket.Kind.RENAME, renameTarget, dst));
-            StudioSession.selectedExplorerPath = dst;
+            StudioSession.selectSingleExplorer(dst);
             return;
         }
         if (dir.equals("scripts") || dir.startsWith("scripts/")) {
@@ -3522,11 +4271,11 @@ public class StudioScreen extends Screen {
             String body = "# \n\non load:\n\t\n";
             ScriptDocument doc = StudioSession.openScript(name);
             doc.load(body);
-            ModNetwork.sendToServer(new ScriptDataPacket.Save(name, body, doc.revision));
+            ScriptDataPacket.Save.sendToServerChunked(name, body, doc.revision);
             return;
         }
         String rel = dir.isEmpty() ? raw : dir + "/" + raw;
-        ModNetwork.sendToServer(new StudioExplorerPacket.Action(StudioExplorerPacket.Kind.WRITE_FILE, rel, "", new byte[0]));
+        StudioExplorerPacket.sendWriteFileToServer(rel, "", new byte[0]);
         openExplorerFile(rel);
     }
 
@@ -4452,7 +5201,10 @@ public class StudioScreen extends Screen {
             dropTab(askName);
         } else if ("delete_exp".equals(ask)) {
             ModNetwork.sendToServer(new StudioExplorerPacket.Action(StudioExplorerPacket.Kind.DELETE, askName, ""));
-            StudioSession.selectedExplorerPath = null;
+            StudioSession.clearExplorerSelection();
+        } else if ("delete_exp_many".equals(ask)) {
+            ModNetwork.sendToServer(new StudioExplorerPacket.Action(StudioExplorerPacket.Kind.DELETE_BATCH, askName, ""));
+            StudioSession.clearExplorerSelection();
         } else if ("close".equals(ask)) {
             dropTab(askName);
         }
@@ -4471,9 +5223,15 @@ public class StudioScreen extends Screen {
     }
 
     private void renderAsk(GuiGraphics g, int mx, int my) {
-        String key = "delete".equals(ask) ? "studio.ask.delete"
-                : ("delete_exp".equals(ask) ? "studio.exp.ask_delete" : "studio.ask.close");
-        String text = Messages.get(key, askName);
+        String text;
+        if ("delete_exp_many".equals(ask)) {
+            int cnt = askName == null || askName.isEmpty() ? 0 : askName.split("\n").length;
+            text = Messages.get("studio.exp.ask_delete_many", cnt);
+        } else {
+            String key = "delete".equals(ask) ? "studio.ask.delete"
+                    : ("delete_exp".equals(ask) ? "studio.exp.ask_delete" : "studio.ask.close");
+            text = Messages.get(key, askName);
+        }
         int w = Math.max(200, this.font.width(text) + 24);
         int x = px + (pw - w) / 2;
         int y = py + ph / 2 - 28;

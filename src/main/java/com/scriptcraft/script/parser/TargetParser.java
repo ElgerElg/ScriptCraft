@@ -158,6 +158,12 @@ final class TargetParser {
         if (!tok.quoted()) {
             String v = tok.value();
             String w = v.toLowerCase(Locale.ROOT);
+            if (w.equals("last") && word(t, i + 1).equals("spawned") && word(t, i + 2).equals("entity")) {
+                return new ParsedEntity(new EntityTarget.LastSpawned(), i + 3);
+            }
+            if (w.equals("spawned") && word(t, i + 1).equals("entity")) {
+                return new ParsedEntity(new EntityTarget.LastSpawned(), i + 2);
+            }
             if (w.equals("targeted") && word(t, i + 1).equals("entity")) {
                 if (word(t, i + 2).equals("of")) {
                     Parsed base = required(t, i + 3, "targeted entity of <цель>");

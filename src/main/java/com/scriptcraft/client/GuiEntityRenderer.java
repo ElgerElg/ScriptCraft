@@ -511,9 +511,20 @@ public final class GuiEntityRenderer {
         }
         ResourceLocation rl = ResourceLocation.tryParse(rawId);
         if (rl == null) return null;
-        EntityType<?> type = ForgeRegistries.ENTITY_TYPES.getValue(rl);
-        if (type == null || type == EntityType.PLAYER) return null;
-        Entity created = type.create(level);
+        Entity created = null;
+        var scriptEntDef = com.scriptcraft.script.ScriptLoader.getProgram().entity(rawId);
+        if (scriptEntDef != null) {
+            var geoEnt = com.scriptcraft.registry.ScriptRegistries.GEO_ENTITY.get().create(level);
+            if (geoEnt != null) {
+                geoEnt.applyDefinition(scriptEntDef);
+                created = geoEnt;
+            }
+        }
+        if (created == null) {
+            EntityType<?> type = ForgeRegistries.ENTITY_TYPES.getValue(rl);
+            if (type == null || type == EntityType.PLAYER) return null;
+            created = type.create(level);
+        }
         if (created == null) return null;
 
         if (!ent.nbt().isBlank()) {

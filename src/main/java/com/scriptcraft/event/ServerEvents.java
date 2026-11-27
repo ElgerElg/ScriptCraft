@@ -99,6 +99,8 @@ public final class ServerEvents {
             InventoryWatch.baseline(player);
             if (player.getServer() != null) {
                 InputSync.sync(player.getServer());
+                com.scriptcraft.script.runtime.LeashManager.syncToPlayer(player.getServer(), player);
+                com.scriptcraft.script.runtime.PropManager.syncToPlayer(player);
             }
             if (player.getStats().getValue(Stats.CUSTOM.get(Stats.LEAVE_GAME)) == 0) {
                 ScriptLoader.fireEvent(ScriptEvent.FIRST_JOIN, player);
@@ -192,6 +194,9 @@ public final class ServerEvents {
         com.scriptcraft.studio.StudioRooms.clear();
         com.scriptcraft.script.ScriptProfiler.onServerStopped();
         ScoreboardManager.onServerStopped();
+        com.scriptcraft.script.runtime.LeashManager.onServerStopped();
+        com.scriptcraft.script.runtime.NpcManager.onServerStopped();
+        com.scriptcraft.script.runtime.PropManager.onServerStopped();
         SNEAK_STATE.clear();
         SPRINT_STATE.clear();
         MOVE_STATE.clear();
@@ -211,6 +216,7 @@ public final class ServerEvents {
             InventoryWatch.tick(event.getServer());
             com.scriptcraft.script.ScriptProfiler.tick(event.getServer());
             com.scriptcraft.studio.ScriptHistory.tick();
+            com.scriptcraft.script.runtime.LeashManager.tick(event.getServer());
         }
     }
 
@@ -531,6 +537,12 @@ public final class ServerEvents {
     }
 
     private static String entityId(Entity entity) {
+        if (entity instanceof com.scriptcraft.entity.ScriptGeoEntity geo && !geo.getDefId().isEmpty()) {
+            return geo.getDefId();
+        }
+        if (entity instanceof com.scriptcraft.entity.ScriptFakeNpcEntity npc && !npc.getNpcId().isEmpty()) {
+            return npc.getNpcId();
+        }
         ResourceLocation id = ForgeRegistries.ENTITY_TYPES.getKey(entity.getType());
         return id == null ? entity.getName().getString() : id.toString();
     }
@@ -595,9 +607,8 @@ public final class ServerEvents {
     }
 
     private static Map<String, String> blockPlaceholders(BlockState state, BlockPos pos) {
-        ResourceLocation id = ForgeRegistries.BLOCKS.getKey(state.getBlock());
         return Map.of(
-                "block", id == null ? "minecraft:air" : id.toString(),
+                "block", com.scriptcraft.registry.Bindings.Snapshot.logicalBlockId(state.getBlock()),
                 "x", Integer.toString(pos.getX()),
                 "y", Integer.toString(pos.getY()),
                 "z", Integer.toString(pos.getZ()));
@@ -607,8 +618,7 @@ public final class ServerEvents {
         if (stack.isEmpty()) {
             return "minecraft:air";
         }
-        ResourceLocation id = ForgeRegistries.ITEMS.getKey(stack.getItem());
-        return id == null ? "minecraft:air" : id.toString();
+        return com.scriptcraft.registry.Bindings.Snapshot.logicalItemId(stack.getItem());
     }
 
     private static String attackerName(Entity entity) {

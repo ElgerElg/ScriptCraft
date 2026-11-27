@@ -21,7 +21,7 @@ import java.util.Set;
  * Используется в эффектах, которые умеют работать не только с игроками (например, push).
  */
 public sealed interface EntityTarget permits EntityTarget.Players, EntityTarget.TargetedEntity,
-        EntityTarget.InRadius, EntityTarget.Selector {
+        EntityTarget.InRadius, EntityTarget.Selector, EntityTarget.LastSpawned {
 
     List<Entity> select(ExecutionContext ctx);
 
@@ -37,11 +37,37 @@ public sealed interface EntityTarget permits EntityTarget.Players, EntityTarget.
         return list.isEmpty() ? null : list.get(0);
     }
 
-    /** Любая цель-игрок (player, targeted player, all players, {var}, ...). */
+    /** Любая цель-игрок (player, targeted player, all players, {var}, ...), либо UUID сущности в {var}. */
     record Players(Target target) implements EntityTarget {
         @Override
         public List<Entity> select(ExecutionContext ctx) {
-            return new ArrayList<>(target.select(ctx));
+            List<ServerPlayer> players = target.select(ctx);
+            if (!players.isEmpty()) {
+                return new ArrayList<>(players);
+            }
+            if (target instanceof Target.Named named) {
+                String raw = Expression.toText(named.name().evaluate(ctx)).strip();
+                if (raw.length() == 36 && raw.indexOf('-') == 8) {
+                    try {
+                        java.util.UUID uuid = java.util.UUID.fromString(raw);
+                        Entity found = LeashManager.findEntity(ctx.server(), uuid, null);
+                        if (found != null) {
+                            return List.of(found);
+                        }
+                    } catch (IllegalArgumentException ignored) {
+                    }
+                }
+            }
+            return List.of();
+        }
+    }
+
+    /** last spawned entity — последняя созданная через spawn entity сущность. */
+    record LastSpawned() implements EntityTarget {
+        @Override
+        public List<Entity> select(ExecutionContext ctx) {
+            Entity e = Effects.resolveLastSpawned(ctx);
+            return e != null && e.isAlive() ? List.of(e) : List.of();
         }
     }
 

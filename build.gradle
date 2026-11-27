@@ -131,9 +131,10 @@ dependencies {
     // then special handling is done to allow a setup of a vanilla dependency without the use of an external repository.
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
 
-    // Optional animation libraries (playerAnimator + bendy-lib)
+    // Optional animation & 3D model libraries (playerAnimator + bendy-lib + GeckoLib 4)
     implementation fg.deobf("maven.modrinth:gedNE4y2:1.0.2-rc1+1.20-forge")
     implementation fg.deobf("maven.modrinth:aRnIEV0F:4.0.0-forge")
+    compileOnly fg.deobf("maven.modrinth:8BmcQJ2H:4.8.6")
 
     // Example mod dependency with JEI - using fg.deobf() ensures the dependency is remapped to your development mappings
     // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime

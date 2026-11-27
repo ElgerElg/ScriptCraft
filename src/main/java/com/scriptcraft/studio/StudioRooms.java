@@ -120,6 +120,8 @@ public final class StudioRooms {
             StudioExplorer.broadcastDirs(server);
         }
         StudioExplorer.onQuit(player);
+        ScriptDataPacket.clearPlayerBuffers(id);
+        StudioLivePacket.clearPlayerBuffers(id);
         sweep();
     }
 
@@ -138,17 +140,26 @@ public final class StudioRooms {
                 continue;
             }
             Feedback.toPlayer(other, "studio.deleted", name);
-            ModNetwork.sendTo(other, new ScriptDataPacket(name, "", 0, ScriptDataPacket.FORCE | ScriptDataPacket.DISK));
+            ScriptDataPacket.sendToClient(other, name, "", 0, ScriptDataPacket.FORCE | ScriptDataPacket.DISK);
         }
     }
 
     public static void read(ServerPlayer player, String name) {
         if (!ScriptPaths.contained(name)) {
+            Feedback.toPlayer(player, "studio.read_failed", String.valueOf(name));
+            ScriptDataPacket.sendToClient(player, name == null ? "" : name, "", 0L, ScriptDataPacket.READ_ERROR);
             return;
         }
         try {
             if (!Files.exists(ScriptPaths.resolve(name))) {
                 Feedback.toPlayer(player, "studio.read_failed", name);
+                ScriptDataPacket.sendToClient(player, name, "", 0L, ScriptDataPacket.READ_ERROR);
+                return;
+            }
+            long fileBytes = Files.size(ScriptPaths.resolve(name));
+            if (fileBytes > ScriptPayload.MAX_BYTES) {
+                Feedback.toPlayer(player, "studio.too_large", name, ScriptPayload.MAX_BYTES / (1024 * 1024));
+                ScriptDataPacket.sendToClient(player, name, "", 0L, ScriptDataPacket.READ_ERROR);
                 return;
             }
             String disk = diskText(name);
@@ -156,25 +167,33 @@ public final class StudioRooms {
             boolean live = ScriptCraftConfig.studioLiveEdit();
             if (!live) {
                 ROOMS.remove(name);
-                ModNetwork.sendTo(player, new ScriptDataPacket(name, disk, stamp, ScriptDataPacket.DISK));
+                ScriptDataPacket.sendToClient(player, name, disk, stamp, ScriptDataPacket.DISK);
                 return;
             }
             Room room = ROOMS.get(name);
             if (room == null) {
                 room = room(name, disk, stamp);
+            } else if (room.peers.isEmpty() && room.text.equals(room.saved) && (!room.saved.equals(disk) || room.revision != stamp)) {
+                // Файл на диске обновили вручную, пока никто в комнате не сидел — подхватываем свежую копию
+                room.text = disk;
+                room.saved = disk;
+                room.revision = stamp;
+                room.rememberRevision();
             }
             int flags = ScriptDataPacket.LIVE;
             if (room.text.equals(room.saved)) {
                 flags |= ScriptDataPacket.DISK;
             }
-            ModNetwork.sendTo(player, new ScriptDataPacket(name, room.text, room.revision, flags));
+            ScriptDataPacket.sendToClient(player, name, room.text, room.revision, flags);
             sendView(player, name, room, false, false, false);
             MinecraftServer server = player.getServer();
             if (server != null) {
                 broadcastPeers(server, name, room);
             }
-        } catch (IOException e) {
+        } catch (Throwable e) {
+            com.scriptcraft.ScriptCraft.LOGGER.warn("[ScriptCraft] Не удалось отдать скрипт '{}' клиенту: {}", name, e.toString());
             Feedback.toPlayer(player, "studio.read_failed", name);
+            ScriptDataPacket.sendToClient(player, name, "", 0L, ScriptDataPacket.READ_ERROR);
         }
     }
 
@@ -185,8 +204,12 @@ public final class StudioRooms {
      */
     public static boolean save(ServerPlayer player, String name, String text, long revision) {
         text = norm(text);
-        if (!ScriptPaths.contained(name) || text.getBytes(StandardCharsets.UTF_8).length > ScriptPayload.MAX_BYTES) {
+        if (!ScriptPaths.contained(name)) {
             Feedback.toPlayer(player, "studio.bad_name", name);
+            return false;
+        }
+        if (text.getBytes(StandardCharsets.UTF_8).length > ScriptPayload.MAX_BYTES) {
+            Feedback.toPlayer(player, "studio.too_large", name, ScriptPayload.MAX_BYTES / (1024 * 1024));
             return false;
         }
         boolean live = ScriptCraftConfig.studioLiveEdit();
@@ -210,7 +233,7 @@ public final class StudioRooms {
                 if (room == null || room.text.equals(room.saved)) {
                     flags |= ScriptDataPacket.DISK;
                 }
-                ModNetwork.sendTo(player, new ScriptDataPacket(name, current, rev, flags));
+                ScriptDataPacket.sendToClient(player, name, current, rev, flags);
                 return false;
             }
             if (!disk.equals(text) && !disk.isEmpty()) {
@@ -227,7 +250,7 @@ public final class StudioRooms {
                 now = room.revision;
                 tell(player.getServer(), name, room, player.getUUID(), text, now, true);
             } else {
-                ModNetwork.sendTo(player, new ScriptDataPacket(name, text, now, ScriptDataPacket.FORCE | ScriptDataPacket.DISK));
+                ScriptDataPacket.sendToClient(player, name, text, now, ScriptDataPacket.FORCE | ScriptDataPacket.DISK);
             }
             return true;
         } catch (IOException e) {
@@ -259,7 +282,7 @@ public final class StudioRooms {
                 room.rememberRevision();
                 tell(player.getServer(), name, room, player.getUUID(), text, room.revision, true);
             } else {
-                ModNetwork.sendTo(player, new ScriptDataPacket(name, text, now, ScriptDataPacket.FORCE | ScriptDataPacket.DISK));
+                ScriptDataPacket.sendToClient(player, name, text, now, ScriptDataPacket.FORCE | ScriptDataPacket.DISK);
             }
             return true;
         } catch (IOException e) {
@@ -312,7 +335,7 @@ public final class StudioRooms {
                     if (room.text.equals(room.saved)) {
                         flags |= ScriptDataPacket.DISK;
                     }
-                    ModNetwork.sendTo(player, new ScriptDataPacket(edit.file(), room.text, room.revision, flags));
+                    ScriptDataPacket.sendToClient(player, edit.file(), room.text, room.revision, flags);
                 }
                 for (UUID id : studioListeners(server, room, player.getUUID())) {
                     ServerPlayer other = server.getPlayerList().getPlayer(id);
@@ -386,7 +409,7 @@ public final class StudioRooms {
             if (!other.getUUID().equals(saver) && !StudioAccess.may(other)) {
                 continue;
             }
-            ModNetwork.sendTo(other, new ScriptDataPacket(name, text, revision, base));
+            ScriptDataPacket.sendToClient(other, name, text, revision, base);
         }
         broadcastPeers(server, name, room);
     }
@@ -409,7 +432,7 @@ public final class StudioRooms {
             peers.add(new StudioLivePacket.Peer(seat.id, seat.name, seat.line, seat.col, seat.anchorLine, seat.anchorCol, seat.box, seat.color));
         }
         String text = replace ? room.text : "";
-        ModNetwork.sendTo(player, new StudioLivePacket.View(file, room.revision, replace, stale, ack, text, peers));
+        StudioLivePacket.View.sendToClientChunked(player, file, room.revision, replace, stale, ack, text, peers);
     }
 
     private static List<UUID> studioListeners(MinecraftServer server, Room room, UUID extra) {
@@ -587,10 +610,11 @@ public final class StudioRooms {
     }
 
     private static String norm(String text) {
-        if (text == null) {
+        if (text == null || text.isEmpty()) {
             return "";
         }
-        return text.replace("\r\n", "\n").replace('\r', '\n');
+        String s = text.charAt(0) == '\uFEFF' ? text.substring(1) : text;
+        return s.replace("\r\n", "\n").replace('\r', '\n');
     }
 
     private static String name(ServerPlayer player) {

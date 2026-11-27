@@ -29,8 +29,7 @@ public final class Places {
         if (stack.isEmpty()) {
             return "minecraft:air";
         }
-        ResourceLocation id = ForgeRegistries.ITEMS.getKey(stack.getItem());
-        return id == null ? "minecraft:air" : id.toString();
+        return com.scriptcraft.registry.Bindings.Snapshot.logicalItemId(stack.getItem());
     }
 
     public static String ofPlayer(ServerPlayer player) {
@@ -46,8 +45,7 @@ public final class Places {
             return null;
         }
         BlockState state = viewer.level().getBlockState(hit.getBlockPos());
-        ResourceLocation key = ForgeRegistries.BLOCKS.getKey(state.getBlock());
-        return key == null ? null : key.toString();
+        return com.scriptcraft.registry.Bindings.Snapshot.logicalBlockId(state.getBlock());
     }
 
     /** Id типа сущности в прицеле. */

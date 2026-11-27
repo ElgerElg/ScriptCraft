@@ -1,14 +1,20 @@
 package com.scriptcraft.registry;
 
 import com.scriptcraft.ScriptCraft;
+import com.scriptcraft.entity.ScriptFakeNpcEntity;
+import com.scriptcraft.entity.ScriptGeoEntity;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.entity.BlockEntityType;
+import net.minecraftforge.event.entity.EntityAttributeCreationEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.registries.DeferredRegister;
 import net.minecraftforge.registries.ForgeRegistries;
@@ -57,11 +63,46 @@ public final class ScriptRegistries {
 
     public static final DeferredRegister<Block> BLOCKS = DeferredRegister.create(ForgeRegistries.BLOCKS, ScriptCraft.MODID);
     public static final DeferredRegister<Item> ITEMS = DeferredRegister.create(ForgeRegistries.ITEMS, ScriptCraft.MODID);
+    public static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITIES =
+            DeferredRegister.create(ForgeRegistries.BLOCK_ENTITY_TYPES, ScriptCraft.MODID);
+    public static final DeferredRegister<EntityType<?>> ENTITIES =
+            DeferredRegister.create(ForgeRegistries.ENTITY_TYPES, ScriptCraft.MODID);
     public static final DeferredRegister<CreativeModeTab> TABS = DeferredRegister.create(Registries.CREATIVE_MODE_TAB, ScriptCraft.MODID);
 
     private static final List<RegistryObject<Block>> POOL_BLOCKS = new ArrayList<>();
     private static final List<RegistryObject<Item>> POOL_BLOCK_ITEMS = new ArrayList<>();
     private static final List<RegistryObject<Item>> POOL_ITEMS = new ArrayList<>();
+    private static final Map<String, DeferredRegister<Block>> REAL_BLOCK_REGISTERS = new LinkedHashMap<>();
+    private static final Map<String, DeferredRegister<Item>> REAL_ITEM_REGISTERS = new LinkedHashMap<>();
+    private static final Map<String, RegistryObject<Block>> REAL_BLOCKS = new LinkedHashMap<>();
+    private static final Map<String, RegistryObject<Item>> REAL_BLOCK_ITEMS = new LinkedHashMap<>();
+    private static final Map<String, RegistryObject<Item>> REAL_ITEMS = new LinkedHashMap<>();
+
+    public static final RegistryObject<BlockEntityType<ScriptBlockEntity>> SCRIPT_BLOCK_ENTITY =
+            BLOCK_ENTITIES.register("script_block_entity", () -> {
+                List<Block> valid = new ArrayList<>(BLOCK_SLOTS + REAL_BLOCKS.size());
+                for (RegistryObject<Block> rb : POOL_BLOCKS) {
+                    valid.add(rb.get());
+                }
+                for (RegistryObject<Block> rb : REAL_BLOCKS.values()) {
+                    valid.add(rb.get());
+                }
+                return BlockEntityType.Builder.of(ScriptBlockEntity::new, valid.toArray(Block[]::new)).build(null);
+            });
+
+    public static final RegistryObject<EntityType<ScriptGeoEntity>> GEO_ENTITY =
+            ENTITIES.register("geo_entity", () -> EntityType.Builder.<ScriptGeoEntity>of(ScriptGeoEntity::new, MobCategory.MISC)
+                    .sized(0.8f, 1.9f)
+                    .clientTrackingRange(10)
+                    .updateInterval(1)
+                    .build("geo_entity"));
+
+    public static final RegistryObject<EntityType<ScriptFakeNpcEntity>> FAKE_NPC =
+            ENTITIES.register("fake_npc", () -> EntityType.Builder.<ScriptFakeNpcEntity>of(ScriptFakeNpcEntity::new, MobCategory.MISC)
+                    .sized(0.6f, 1.8f)
+                    .clientTrackingRange(10)
+                    .updateInterval(1)
+                    .build("fake_npc"));
 
     static {
         for (int i = 0; i < BLOCK_SLOTS; i++) {
@@ -144,12 +185,6 @@ public final class ScriptRegistries {
     // ------------------------------------------------------------------ настоящие id
 
     private static final Pattern ID = Pattern.compile("[a-z0-9_.-]+:[a-z0-9_./-]+");
-    /** namespace -> DeferredRegister (Forge 47 разрешает регистрировать чужие namespace своим DeferredRegister). */
-    private static final Map<String, DeferredRegister<Block>> REAL_BLOCK_REGISTERS = new LinkedHashMap<>();
-    private static final Map<String, DeferredRegister<Item>> REAL_ITEM_REGISTERS = new LinkedHashMap<>();
-    private static final Map<String, RegistryObject<Block>> REAL_BLOCKS = new LinkedHashMap<>();
-    private static final Map<String, RegistryObject<Item>> REAL_BLOCK_ITEMS = new LinkedHashMap<>();
-    private static final Map<String, RegistryObject<Item>> REAL_ITEMS = new LinkedHashMap<>();
     private static boolean realRegistered = false;
 
     /**
@@ -247,7 +282,15 @@ public final class ScriptRegistries {
         ITEMS.register(modBus);
         REAL_BLOCK_REGISTERS.values().forEach(dr -> dr.register(modBus));
         REAL_ITEM_REGISTERS.values().forEach(dr -> dr.register(modBus));
+        BLOCK_ENTITIES.register(modBus);
+        ENTITIES.register(modBus);
         TABS.register(modBus);
+        modBus.addListener(ScriptRegistries::onEntityAttributes);
+    }
+
+    private static void onEntityAttributes(EntityAttributeCreationEvent event) {
+        event.put(GEO_ENTITY.get(), ScriptGeoEntity.createAttributes().build());
+        event.put(FAKE_NPC.get(), ScriptFakeNpcEntity.createAttributes().build());
     }
 
 }

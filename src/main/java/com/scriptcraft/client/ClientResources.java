@@ -234,6 +234,8 @@ public final class ClientResources {
         if (hasAnim && net.minecraftforge.fml.ModList.get().isLoaded("playeranimator")) {
             PlayerAnimBridge.invalidateCache();
         }
+        com.scriptcraft.client.geo.GeoRenderer.invalidateCaches();
+        com.scriptcraft.client.geo.ScriptFakeNpcRenderer.invalidateCache();
         GuiEntityRenderer.invalidateCache();
         ScriptCraft.LOGGER.info("[ScriptCraft] Ресурсы обновлены: {} файлов, GUI-картинок без перезагрузки: {}", CHANGED.size(), gui);
         CHANGED.clear();

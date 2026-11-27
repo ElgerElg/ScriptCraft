@@ -227,8 +227,20 @@ public final class Messages {
         add("studio.sidebar.left", "Left", "Слева");
         add("studio.sidebar.right", "Right", "Справа");
         add("studio.exp.mkdir", "New folder", "Новая папка");
-        add("studio.exp.rename", "Rename", "Переименовать");
-        add("studio.exp.delete", "Delete selected", "Удалить выбранное");
+        add("studio.exp.rename", "Rename (F2)", "Переименовать (F2)");
+        add("studio.exp.delete", "Delete selected (Del)", "Удалить выбранное (Del)");
+        add("studio.exp.cut", "Cut (Ctrl+X)", "Вырезать (Ctrl+X)");
+        add("studio.exp.copy", "Copy (Ctrl+C)", "Копировать (Ctrl+C)");
+        add("studio.exp.paste", "Paste here (Ctrl+V)", "Вставить сюда (Ctrl+V)");
+        add("studio.exp.move_up", "Move to parent folder (..)", "Переместить на уровень выше (..)");
+        add("studio.exp.open_anim", "Open in 3D Animator", "Открыть в 3D-аниматоре");
+        add("studio.exp.cut_toast", "&eCut %d item(s) — open target folder and press Ctrl+V", "&eВырезано элементов: %d — откройте папку и нажмите Ctrl+V");
+        add("studio.exp.copy_toast", "&aCopied %d item(s) — press Ctrl+V to paste", "&aСкопировано элементов: %d — нажмите Ctrl+V для вставки");
+        add("studio.exp.moved_toast", "&aMoved %d item(s)", "&aПеремещено элементов: %d");
+        add("studio.exp.copied_toast", "&aPasted %d item(s)", "&aВставлено копий: %d");
+        add("studio.exp.ask_delete_many", "Delete %d selected items?", "Удалить выбранные элементы (%d шт.)?");
+        add("studio.anim.open_btn", "✦ 3D Anim", "✦ В 3D-аниматор");
+        add("studio.anim.open_btn_tip", "Open this JSON file in the 3D Player Animation Editor", "Открыть этот JSON-файл в 3D-редакторе анимаций игрока");
         add("studio.exp.toggle", "Enable / disable script", "Вкл / выкл скрипт");
         add("studio.exp.upload_hint", "Drag & drop files onto the window to upload", "Перетащите файлы в окно для загрузки на сервер");
         add("studio.exp.uploaded", "Uploaded: %s", "Загружено: %s");
@@ -263,6 +275,7 @@ public final class Messages {
         add("studio.unsaved", "&eUnsaved edits stayed in the editor", "&eНесохранённые правки остались в редакторе");
         add("studio.read_failed", "&cCould not read %s", "&cНе удалось прочитать %s");
         add("studio.bad_name", "&cBad script name: %s", "&cНеподходящее имя скрипта: %s");
+        add("studio.too_large", "&cFile %s is too large (max %d MB)", "&cФайл %s слишком большой (макс. %d МБ)");
         add("studio.save_failed", "&cSave failed: %s", "&cНе удалось сохранить: %s");
         add("studio.saved_disabled", "&eSaved %s (the script is disabled, so it was not reloaded)", "&eСохранено %s (скрипт выключен, поэтому не перезагружался)");
         add("studio.reload_disabled", "&eScript %s is disabled", "&eСкрипт %s выключен");
@@ -385,6 +398,14 @@ public final class Messages {
         add("studio.anim.need_pa", "&eInstall PlayerAnimator on client for in-world playback", "&eУстановите мод PlayerAnimator на клиент для проигрывания в мире");
         add("studio.anim.inserted_code", "&aInserted 'play animation' into &f%s", "&aСтрока 'play animation' вставлена в &f%s");
         add("studio.anim.copied_code", "&aCopied: &f%s", "&aСкопировано: &f%s");
+        add("studio.audio.title", "Studio OGG Audio Player", "Аудиоплеер OGG в Студии");
+        add("studio.audio.vol", "Volume", "Громкость");
+        add("studio.audio.insert", "To script", "В скрипт");
+        add("studio.geo.open_btn", "◈ 3D Geo", "◈ 3D Geo");
+        add("studio.geo.code_btn", "✎ JSON", "✎ JSON");
+        add("studio.geo.open_tip", "Interactive 3D Blockbench / GeckoLib preview", "Интерактивный 3D-просмотр модели Blockbench / GeckoLib");
+        add("studio.geo.no_model", "No valid Bedrock .geo.json geometry found in this file", "В файле не найдена 3D-геометрия .geo.json");
+        add("studio.exp.play_ogg", "Open in OGG Audio Player", "Открыть в OGG-аудиоплеере");
     }
 
     private static volatile String clientLanguage;

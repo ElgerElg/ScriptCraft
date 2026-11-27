@@ -15,7 +15,7 @@
  */
 window.SC_DOCS = window.SC_DOCS || {};
 window.SC_DOCS.syntax = {
-  version: "0.8.8",
+  version: "0.9.7",
   categories: [
     { id: "events", ru: "События", en: "Events" },
     { id: "structures", ru: "Структуры", en: "Structures" },
@@ -4866,6 +4866,280 @@ command /vipwave:
 \telse:
 \t\tsend "&cНужна привилегия VIP!" to player`,
     since: "0.8.8", related: ["eff-player-animation", "screen-gui-builder", "cfg-studioLiveEdit", "cmd-journal"]
+  },
+  {
+    id: "eff-leash", category: "effects",
+    name: { ru: "Настраиваемый поводок (сущность/игрок ↔ сущность/игрок или блок)", en: "Configurable Leash (Entity/Player ↔ Entity/Player or Block)" },
+    syntax: [
+      "leash <сущность/игрок> to <сущность/игрок> [length <N>] [min_length <N>] [strength <N>] [break <N> | unbreakable] [color <#HEX>] [width <N>] [sag <N>] [two_way] [drop_lead]",
+      "leash <сущность/игрок> to targeted block [length <N>] [color <#HEX>] [knot true|false] ...",
+      "leash <сущность/игрок> to block at <X> <Y> <Z> [length <N>] ...",
+      "leash <сущность/игрок> to location <локация> [length <N>] ...",
+      "set leash <length|min_length|strength|break|color|width|sag|two_way|knot> of <сущность/игрок> to <значение>",
+      "unleash <сущность/игрок>",
+      "clear all leashes"
+    ],
+    desc: {
+      ru: "Универсальная механика 3D-поводка, работающая с **любыми сущностями и игроками** (игрок ↔ игрок, моб ↔ игрок, игрок ↔ блок/забор, лодка/стойка ↔ сущность):\n• **Настоящий 3D-рендер верёвки и узла** в мире (от 1-го и от 3-го лица) с учётом освещения и провисания + плавная клиент-серверная физика натяжения для игроков без рывков.\n• **Гибкие настройки поводка**:\n  – `length <N>` — макс. длина до натяжения (по умолчанию `6.0`); `min_length <N>` — мин. дистанция (режим жёсткой штанги).\n  – `strength <N>` (`pull` / `stiffness`) — упругость натяжения (`0` — только визуальная верёвка без тяги, `1.0` — обычная, `2.5` — жёсткая цепь).\n  – `break <N>` / `breakable` / `unbreakable` — дистанция обрыва со звуком и событием `on leash break:` (по умолчанию не рвётся).\n  – `two_way` (`bidirectional`) — обоюдная тяга 50/50 (например, два игрока скованы одной цепью).\n  – `color <#RRGGBB>` (или `chain`, `gold`, `blue`, `red`), `width <N>` (толщина `0.2..6`), `sag <N>` (провисание `0..4`), `knot` (3D-узел на блоке), `drop_lead` (выпадение предмета поводка при обрыве).\n• Все свойства можно менять на лету через `set leash <свойство> of <цель> to ...`.",
+      en: "Universal 3D leash tether working on **any entities and players** (player ↔ player, mob ↔ player, player ↔ block/fence, boat/stand ↔ entity):\n• **Authentic 3D sagging rope & block-knot rendering** (1st-person and 3rd-person with world lighting) paired with smooth client-predicted spring physics for players.\n• **Configurable parameters**:\n  – `length <N>` — max slack length (default `6.0`); `min_length <N>` — min strut distance.\n  – `strength <N>` (`pull` / `stiffness`) — pull tension (`0` = visual-only rope, `1.0` = normal, `2.5` = heavy chain).\n  – `break <N>` / `breakable` / `unbreakable` — snap distance triggering `on leash break:` (unbreakable by default).\n  – `two_way` (`bidirectional`) — mutual 50/50 tension between two entities/players.\n  – `color <#RRGGBB>` (or `chain`, `gold`, `blue`, `red`), `width <N>` (`0.2..6`), `sag <N>` (`0..4`), `knot`, `drop_lead`.\n• Live-adjustable via `set leash <prop> of <target> to ...`."
+    },
+    example: `# Конвой / наручники между игроками + привязка к столбу по команде:
+command /cuff <player>:
+\tif arg-1 is leashed:
+\t\tunleash arg-1
+\t\tsend "&aВы сняли конвой с %arg-1%" to player
+\telse:
+\t\tleash arg-1 to player length 4.5 strength 1.6 color #94A3B8 width 1.3 sag 0.4
+\t\tsend "&eВы взяли %arg-1% на стальной трос!" to player
+
+command /tiepost:
+\tleash targeted entity to targeted block length 5 break 14 drop_lead`,
+    since: "0.8.8", related: ["event-leash-break", "cond-leashed", "expr-leash"]
+  },
+  {
+    id: "event-leash-break", category: "events",
+    name: { ru: "Обрыв поводка (on leash break)", en: "Leash Break Event (on leash break)" },
+    syntax: [
+      "on leash break:"
+    ],
+    desc: {
+      ru: "Срабатывает, когда настраиваемый поводок рвётся из-за превышения дистанции `break <N>` или разрушения опорного блока. Плейсхолдеры: `%victim%` (кто отвязался), `%holder%` (ник держателя, тип сущности или `block`), `%player%` (участник-игрок).",
+      en: "Fires when a custom leash snaps due to exceeding `break <N>` distance or breaking its anchor block. Placeholders: `%victim%` (unleashed entity/player), `%holder%` (holder name, entity id, or `block`), `%player%`."
+    },
+    example: `on leash break:
+\tsend "&cПоводок с %victim% оборвался! (держатель: %holder%)" to player`,
+    since: "0.8.8", related: ["eff-leash", "cond-leashed", "expr-leash"]
+  },
+  {
+    id: "cond-leashed", category: "conditions",
+    name: { ru: "Проверка поводка (is leashed)", en: "Leashed Check (is leashed)" },
+    syntax: [
+      "<сущность/игрок> is leashed",
+      "<сущность/игрок> is not leashed"
+    ],
+    desc: {
+      ru: "Проверяет, привязана ли сущность или игрок поводком (поддерживает как кастомные поводки `leash`, так и ванильные поводки мобов).",
+      en: "Checks whether a player or entity is currently tethered by a custom or vanilla leash."
+    },
+    example: `if player is leashed:
+\tsend "&eДержатель поводка: &f%leash holder of player%" to player`,
+    since: "0.8.8", related: ["eff-leash", "expr-leash", "event-leash-break"]
+  },
+  {
+    id: "expr-leash", category: "expressions",
+    name: { ru: "Свойства поводка и созданной сущности", en: "Leash Properties & Last Spawned Entity" },
+    syntax: [
+      "leash length of <сущность/игрок>",
+      "leash distance of <сущность/игрок>",
+      "leash holder of <сущность/игрок>",
+      "leash anchor of <сущность/игрок>",
+      "last spawned entity",
+      "uuid of last spawned entity",
+      "uuid of targeted entity"
+    ],
+    desc: {
+      ru: "Выражения для работы с поводками и сущностями:\n• `leash length of ...` — максимальная длина поводка (число).\n• `leash distance of ...` — текущая дистанция натяжения в блоках.\n• `leash holder of ...` — имя игрока-держателя, ID типа сущности или `\"block\"`.\n• `leash anchor of ...` — локация точки крепления поводка.\n• `last spawned entity` и `uuid of last spawned entity` — ссылка на только что созданную через `spawn entity` сущность (UUID можно сохранить в `{переменную}` и передавать в `leash {pet} to player`!).",
+      en: "Expressions for inspecting leashes and spawned entities:\n• `leash length of ...` — configured max rope length.\n• `leash distance of ...` — live distance to anchor in blocks.\n• `leash holder of ...` — holder player name, entity type ID, or `\"block\"`.\n• `leash anchor of ...` — anchor `location`.\n• `last spawned entity` & `uuid of last spawned entity` — references the entity created by `spawn entity` (storing its UUID in `{var}` lets you pass `{var}` directly to `leash`, `unleash`, or `push`!)."
+    },
+    example: `command /petwolf:
+\tspawn entity "minecraft:wolf" at player named "&bВерный Пёс" with health 40
+\tset {pet::%player%} to uuid of last spawned entity
+\tleash last spawned entity to player length 5 color #38BDF8`,
+    since: "0.8.8", related: ["eff-leash", "cond-leashed", "event-leash-break"]
+  }
+,
+  {
+    id: "define-entity", category: "structures",
+    name: { ru: "Кастомные 3D-мобы, боссы, турели и декор (define entity)", en: "Custom 3D Mobs, Bosses, Turrets & Decor (define entity)" },
+    syntax: [
+      "define entity <id>:\n\tname: \"<имя>\"\n\tai: hostile|passive|turret|none\n\tmodel: \"<ns:модель>\"\n\ttexture: \"<ns:textures/entity/текстура.png>\"\n\tanimation: \"<ns:анимации>\"\n\tidle_animation: \"idle\"\n\twalk_animation: \"walk\"\n\tattack_animation: \"attack\"\n\tdeath_animation: \"death\"\n\tspawn_animation: \"roar\"\n\thealth: <N>\n\tspeed: <N>\n\tdamage: <N>\n\tattack_range: <N>\n\tfollow_range: <N>\n\thitbox: <Ш>x<В>\n\tscale: <N>\n\tglow: true|false\n\tparticle_bone: \"<локатор=частица>\""
+    ],
+    desc: {
+      ru: "Объявляет полноценную 3D-сущность в формате Blockbench / GeckoLib (`.geo.json` + `.animation.json`) **вообще без лимита слотов** и без перезапуска игры при добавлении новых видов!\n• **Режимы ИИ (`ai:`)**: `hostile` (агрессивный моб/босс), `passive` (мирный), `turret` (неподвижная 3D-турель с авто-наведением и стрельбой по враждебным мобам), `none` (статичный 3D-декор/статуя).\n• **Светящиеся текстуры (`_glowmask.png`)**: если рядом с `cyber_guardian.png` положить `cyber_guardian_glowmask.png`, светящиеся части рендерятся в полной яркости в темноте и с шейдерами.\n• **Партиклы из костей/локаторов**: `particle_bone: \"core_locator=end_rod\"` (а также `particle_effects` и `sound_effects` прямо внутри `.animation.json`!) спавнят частицы в точных мировых 3D-координатах кости с учётом её поворотов.",
+      en: "Declares a custom Blockbench / GeckoLib 3D entity (`.geo.json` + `.animation.json`) with **zero slot limits** and live `/sc reload` support!\n• **AI Modes (`ai:`)**: `hostile` (melee boss/monster), `passive` (wandering mob), `turret` (stationary sentry auto-targeting monsters), `none` (3D prop/statue).\n• **Emissive Glowmasks (`_glowmask.png`)**: placing `<name>_glowmask.png` next to the texture automatically renders full-bright emissive layers.\n• **Bone & Locator Particles**: `particle_bone: \"core_locator=end_rod\"` (plus `.animation.json` `particle_effects` & `sound_effects` keyframes) emits particles from exact animated 3D bone/locator world positions."
+    },
+    example: `namespace gecko
+
+define entity cyber_guardian:
+	name: "&b&lКибер-Страж"
+	ai: hostile
+	model: "gecko:cyber_guardian"
+	texture: "gecko:textures/entity/cyber_guardian.png"
+	animation: "gecko:cyber_guardian"
+	idle_animation: "idle"
+	walk_animation: "walk"
+	attack_animation: "attack"
+	health: 120
+	damage: 8
+	hitbox: 1.3x2.6
+	scale: 1.15
+	particle_bone: "core_locator=end_rod"`,
+    since: "0.9.7", related: ["eff-geo-entity", "define-armor", "eff-geo-item-block", "res-auto-ogg-studio"]
+  },
+  {
+    id: "define-armor", category: "structures",
+    name: { ru: "3D-броня, 3D-оружие и 3D-блоки (define armor / item / block)", en: "3D Armor, 3D Weapons & 3D Animated Blocks (define armor / item / block)" },
+    syntax: [
+      "define armor <id>:\n\tslot: helmet|chestplate|leggings|boots\n\tdefense: <N>\n\ttoughness: <N>\n\tmodel: \"<ns:модель>\"\n\ttexture: \"<ns:textures/armor/текстура.png>\"\n\tanimation: \"<ns:анимации>\"\n\tidle_animation: \"idle\"",
+      "define item <id>:\n\tmodel: \"<ns:модель>\"\n\ttexture: \"<ns:textures/item/текстура.png>\"\n\tanimation: \"<ns:анимации>\"\n\tidle_animation: \"idle\"\n\tscale: <N>",
+      "define block <id>:\n\tfull: false\n\tfacing: horizontal\n\tmodel: \"<ns:модель>\"\n\ttexture: \"<ns:textures/block/текстура.png>\"\n\tanimation: \"<ns:анимации>\"\n\tidle_animation: \"idle\""
+    ],
+    desc: {
+      ru: "Полная поддержка 3D-моделей Blockbench (`.geo.json` + `.animation.json` + `*_glowmask.png`) для брони, предметов и блоков:\n• **`define armor`**: привязывает кости `armorHead`, `armorBody`, `armorRightArm`, `armorLeftArm`, `armorPelvis`, `armorRightLeg`, `armorLeftLeg`, `armorRightBoot`, `armorLeftBoot` напрямую к скелету игрока и фейковых NPC — **100% синхронизация с анимациями `PlayerAnimator`!**\n• **3D `define item`**: рендерит 3D-модель с анимациями от 1-го лица, от 3-го лица, в хотбаре/инвентаре, в рамке и на земле (автоматический `builtin/entity`, ручной JSON в `models/item` не нужен!).\n• **3D `define block`**: создаёт анимированный `BlockEntity` с поддержкой `facing: horizontal`, `light:` и переключением клипов через `play block animation`.",
+      en: "Full Blockbench 3D `.geo.json` + `.animation.json` + `*_glowmask.png` support for armor, items, and blocks:\n• **`define armor`**: binds `armorHead`, `armorBody`, `armorRightArm`, `armorLeftArm`, `armorPelvis`, `armorRightLeg`, `armorLeftLeg`, `armorRightBoot`, `armorLeftBoot` directly to player/NPC humanoid bones — **100% synced with `PlayerAnimator` emotes!**\n• **3D `define item`**: renders animated 3D weapons/items in 1st-person, 3rd-person, GUI slots, item frames, and ground drops automatically.\n• **3D `define block`**: creates an animated 3D `BlockEntity` supporting `facing: horizontal`, `light:`, and `play block animation`."
+    },
+    example: `namespace gecko
+
+define armor exo_helmet:
+	name: "&bЭкзо-шлем"
+	slot: helmet
+	defense: 4
+	toughness: 2.0
+	model: "gecko:exo_armor"
+	texture: "gecko:textures/armor/exo_armor.png"
+
+define item plasma_rifle:
+	name: "&bПлазменная винтовка"
+	stack: 1
+	model: "gecko:plasma_rifle"
+	texture: "gecko:textures/item/plasma_rifle.png"
+	animation: "gecko:plasma_rifle"
+	idle_animation: "idle"`,
+    since: "0.9.7", related: ["define-entity", "eff-geo-item-block", "eff-prop-attach"]
+  },
+  {
+    id: "eff-geo-entity", category: "effects",
+    name: { ru: "Призыв и анимации 3D-мобов (spawn geo entity / play geo animation)", en: "Spawn & Animate 3D Geo Entities" },
+    syntax: [
+      "spawn geo entity|boss|turret|prop \"<ns:id>\" at <локация/игрок/X Y Z> [named \"<имя>\"] [health <N>] [damage <N>] [scale <N>] [hitbox <Ш>x<В>] [ai <режим>]",
+      "play geo animation \"<клип>\" on <сущность> [once|loop|hold] [speed <N>]",
+      "stop geo animation on <сущность>",
+      "set geo texture of <сущность> to \"<ns:путь.png>\"",
+      "set geo scale of <сущность> to <N>",
+      "clear all geo entities"
+    ],
+    desc: {
+      ru: "Призывает 3D-мобов из `define entity` (или напрямую по модели `model \"...\" texture \"...\"`) и управляет их анимациями, текстурой фаз босса и масштабом в реальном времени. Сразу после спавна сущность доступна через `last spawned entity` (а также её можно выводить в 3D прямо внутри GUI через `entity \"gecko:cyber_guardian\"`!).",
+      en: "Spawns 3D entities defined via `define entity` (or inline `model`/`texture` overrides) and controls their animations, boss-phase textures, and scale on the fly. Accessible immediately via `last spawned entity` and renderable live inside GUI screens via `entity \"gecko:cyber_guardian\"`."
+    },
+    example: `command /boss:
+	spawn geo entity "gecko:cyber_guardian" at player
+	play geo animation "roar" on last spawned entity once speed 1.0`,
+    since: "0.9.7", related: ["define-entity", "expr-leash", "eff-geo-item-block"]
+  },
+  {
+    id: "eff-geo-item-block", category: "effects",
+    name: { ru: "Анимации 3D-предметов и 3D-блоков (play item / block animation)", en: "Trigger 3D Item & 3D Block Animations" },
+    syntax: [
+      "play item animation \"<клип>\" [for <игрок>] [mainhand|offhand] [once|loop] [speed <N>]",
+      "stop item animation [for <игрок>] [mainhand|offhand]",
+      "play block animation \"<клип>\" at <targeted block | X Y Z | локация> [once|loop|hold] [speed <N>]",
+      "stop block animation at <targeted block | X Y Z | локация>"
+    ],
+    desc: {
+      ru: "Запускает 3D-анимацию (`.animation.json` с поддержкой математических выражений Molang `math.sin(query.anim_time * ...)`) на кастомном 3D-предмете в руке игрока (отдача выстрела, перезарядка, осмотр оружия) или на установленном в мире 3D-блоке (открытие сейфа, активация голограммы).",
+      en: "Triggers a `.animation.json` clip (including live Molang math expressions) on a held 3D item (recoil, reload, inspect) or a placed 3D block in the world."
+    },
+    example: `on right click:
+	if player is holding gecko:plasma_rifle:
+		play item animation "shoot" for player once speed 1.25
+	if "%block%" is "gecko:holo_terminal":
+		play block animation "activate" at targeted block once`,
+    since: "0.9.7", related: ["define-armor", "eff-geo-entity", "res-auto-ogg-studio"]
+  },
+  {
+    id: "eff-npc", category: "effects",
+    name: { ru: "Фейковые игроки-NPC со скинами и эмоциями (spawn npc)", en: "Fake Player NPCs with Skins & Emotes (spawn npc)" },
+    syntax: [
+      "spawn npc \"<id>\" at <игрок/локация/X Y Z> [named \"<имя>\"] [skin \"<ник | URL | ns:путь.png>\"] [wide|slim] [look true|false] [vulnerable] [sneaking]",
+      "equip npc \"<id>\" with <mainhand|offhand|helmet|chestplate|leggings|boots> <предмет>",
+      "play npc animation \"<ns:эмоция>\" on npc \"<id>\" [speed <N>]",
+      "stop npc animation on npc \"<id>\"",
+      "make npc \"<id>\" look at <игрок/локация/X Y Z>",
+      "make npc \"<id>\" walk to <игрок/локация/X Y Z> [speed <N>]",
+      "set skin|name of npc \"<id>\" to <значение>",
+      "remove npc \"<id>\"",
+      "clear all npcs"
+    ],
+    desc: {
+      ru: "Создаёт полноценного NPC-человека без засорения таб-листа:\n• **Любые скины**: локальный PNG из `resources/` (`\"gecko:textures/skins/commander.png\"`), прямая ссылка `https://...` или ник лицензионного игрока + модели рук Steve (`wide`) и Alex (`slim`).\n• **Эмоции `PlayerAnimator`**: проигрывает любые анимации из внутриигровой Студии (`play npc animation \"gecko:npc_salute\" on npc \"commander\"`)!\n• **3D-экипировка и аттачи**: NPC носит кастомную 3D-броню (`define armor`), держит 3D-оружие (`define item`) и поддерживает 3D-аттачи к костям (`attach prop ... to body of npc \"id\"`).",
+      en: "Spawns a full humanoid player NPC without polluting the server tab list:\n• **Flexible Skins**: local resource PNG (`\"gecko:textures/skins/commander.png\"`), HTTP PNG URL, or player nickname, in `wide` (Steve) or `slim` (Alex) model styles.\n• **`PlayerAnimator` Emotes**: plays any Studio/Emotecraft animation via `play npc animation`.\n• **3D Gear & Props**: wears bone-synced 3D armor, holds 3D weapons, and accepts bone prop attachments."
+    },
+    example: `command /commander:
+	spawn npc "commander" at player named "&b★ Командор Векс" skin "gecko:textures/skins/commander.png" wide look true
+	equip npc "commander" with chestplate gecko:exo_chestplate
+	equip npc "commander" with mainhand gecko:plasma_rifle
+	play npc animation "gecko:npc_salute" on npc "commander"`,
+    since: "0.9.7", related: ["event-npc", "eff-prop-attach", "define-armor"]
+  },
+  {
+    id: "event-npc", category: "events",
+    name: { ru: "Взаимодействие с фейковым NPC (on npc click / attack)", en: "Fake NPC Interaction Events (on npc click / attack)" },
+    syntax: [
+      "on npc click [\"<id>\"]:",
+      "on npc attack [\"<id>\"]:"
+    ],
+    desc: {
+      ru: "Срабатывает при нажатии ПКМ (`on npc click`) или ударе ЛКМ (`on npc attack`) по фейковому игроку-NPC. Если указать строковый ID (например `on npc click \"commander\":`), обработчик сработает только для этого NPC. Внутри доступны `player` и `%npc%` (ID нажатого NPC).",
+      en: "Fires when a player right-clicks (`on npc click`) or hits (`on npc attack`) a fake NPC. Optional string ID filters a specific NPC; `%npc%` holds the NPC's ID."
+    },
+    example: `on npc click "commander":
+	make npc "commander" look at player
+	play npc animation "gecko:npc_salute" on npc "commander"
+	send "&b[Командор] &fЧесть имею, %player%!" to player`,
+    since: "0.9.7", related: ["eff-npc", "eff-open-screen"]
+  },
+  {
+    id: "eff-prop-attach", category: "effects",
+    name: { ru: "3D-аттачи (Props) к костям игрока и NPC (attach prop)", en: "3D Bone Attachments / Props (attach prop)" },
+    syntax: [
+      "attach prop \"<слот>\" model \"<ns:модель>\" [texture \"<ns:путь.png>\"] [animation \"<клип>\"] to <head|body|right_arm|left_arm|right_leg|left_leg> of <игрок | npc \"id\"> [offset <X> <Y> <Z>] [rotation <RX> <RY> <RZ>] [scale <N>]",
+      "attach prop \"<слот>\" item \"<id_предмета>\" to <кость> of <игрок | npc \"id\"> [offset <X> <Y> <Z>] [rotation <RX> <RY> <RZ>] [scale <N>]",
+      "detach prop \"<слот>\" from <игрок | npc \"id\">",
+      "clear props of <игрок | npc \"id\">"
+    ],
+    desc: {
+      ru: "Прикрепляет 3D-модель `.geo.json` (с собственной цикличной анимацией и `_glowmask.png`!) или любой предмет прямо к выбранной кости тела игрока или фейкового NPC (`head`, `body`, `right_arm`, `left_arm`, `right_leg`, `left_leg`). Идеально для рюкзаков, крыльев, дронов на плечо, кобуры, наручников или меча за спиной — аттачи плавно двигаются вместе с ходьбой, приседанием и эмоциями `PlayerAnimator`!",
+      en: "Attaches an animated `.geo.json` 3D model (with `_glowmask.png` support) or any Minecraft/custom item directly to a bone (`head`, `body`, `right_arm`, `left_arm`, `right_leg`, `left_leg`) of a player or fake NPC, moving seamlessly with walking, sneaking, and `PlayerAnimator` animations."
+    },
+    example: `command /drone:
+	attach prop "drone" model "gecko:shoulder_drone" animation "hover" to body of player offset -6 5 2 scale 0.85`,
+    since: "0.9.7", related: ["eff-npc", "define-armor", "eff-geo-entity"]
+  },
+  {
+    id: "eff-camera-cutscene", category: "effects",
+    name: { ru: "Катсцены и плавный пролёт камеры по точкам (play cutscene)", en: "Smooth Spline Camera Cutscenes (play cutscene)" },
+    syntax: [
+      "play cutscene for <игрок> points \"<X1 Y1 Z1; X2 Y2 Z2; X3 Y3 Z3...>\" for <N> seconds|ticks [looking at <цель | npc \"id\" | X Y Z>] [unlock]",
+      "move camera of <игрок> from \"<X1 Y1 Z1 [yaw pitch]>\" to \"<X2 Y2 Z2 [yaw pitch]>\" in <N> seconds|ticks [looking at <цель>]",
+      "stop cutscene [for <игрок>]"
+    ],
+    desc: {
+      ru: "Кинематографичный пролёт камеры с по-кадровой интерполяцией по гладкому сплайну **Catmull-Rom** (240+ FPS без ступенек тиков!):\n• Поддерживаются как абсолютные координаты, так и относительные от игрока через `~` (`\"~0 ~2.2 ~5.5; ~5 ~3.5 ~1; ~0 ~2 ~-5\"`), а также явные углы `X Y Z yaw pitch` в каждой точке.\n• Опция `looking at <игрок | npc \"id\" | X Y Z>` плавно удерживает фокус камеры на персонаже, боссе или точке интереса. Во время пролёта модель самого игрока остаётся видимой со стороны (с 3D-бронёй и эмоциями)!",
+      en: "Cinematic per-frame **Catmull-Rom spline** camera flight (butter-smooth at 240+ FPS):\n• Supports absolute coordinates, player-relative `~` offsets (`\"~0 ~2.2 ~5.5; ~5 ~3.5 ~1\"`), or explicit `X Y Z yaw pitch` per waypoint.\n• `looking at <entity | npc \"id\" | X Y Z>` smoothly tracks a target throughout the flight while keeping the local player's 3D body, armor, and emotes visible."
+    },
+    example: `command /intro:
+	fade screen of player to #000000 in 5 stay 4 out 10 ticks
+	play cutscene for player points "~0 ~2.2 ~5.5; ~5.2 ~3.6 ~1.5; ~1.5 ~4.0 ~-5.2; ~-5.0 ~2.8 ~-1.0" for 6 seconds looking at player`,
+    since: "0.9.7", related: ["eff-camera", "eff-npc", "eff-geo-entity"]
+  },
+  {
+    id: "res-auto-ogg-studio", category: "config",
+    name: { ru: "Авто-регистрация звуков .ogg + 3D-вьюер и аудиоплеер в Студии", en: "Auto .ogg Sound Registration + Studio 3D Geo Viewer & Audio Player" },
+    syntax: [
+      "scriptcraft/resources/assets/<ns>/sounds/<имя>.ogg  →  play sound <ns>:<имя> to player",
+      "scriptcraft/resources/assets/<ns>/geo/<модель>.geo.json  →  кнопка [◈ 3D Geo] в Студии"
+    ],
+    desc: {
+      ru: "Удобная работа со звуками и 3D-моделями прямо внутри игры:\n• **Авто-звуки `.ogg` без ручного `sounds.json`**: достаточно положить любой `.ogg` файл в `scriptcraft/resources/assets/<ns>/sounds/` (например `assets/gecko/sounds/plasma_shot.ogg`) и выполнить `/sc reload resources` — ScriptCraft автоматически сгенерирует и объединит `sounds.json`, синхронизирует звук клиентам и позволит сразу вызывать `play sound gecko:plasma_shot`! Подпапки переводятся в точки или слэши (`sounds/ui/click.ogg` → `ns:ui.click` или `ns:ui/click`).\n• **Встроенный OGG-аудиоплеер в Студии**: при открытии `.ogg` в Проводнике Студии отображается реальная звуковая волна (Waveform), кнопки Play/Pause/Stop/Loop, перемотка, ползунки Volume/Pitch и кнопка `→ В скрипт`, вставляющая готовую команду `play sound ...`!\n• **Интерактивный 3D-превьюер `.geo.json` в Студии**: открывает любую модель Blockbench прямо в редакторе с вращением ЛКМ, панорамированием ПКМ, зумом колёсиком, проверкой всех клипов `.animation.json`, подсветкой `_glowmask.png`, списком костей/локаторов и генератором заготовок `+ Entity / + Item / + Armor / + Block`!",
+      en: "Zero-boilerplate `.ogg` audio and interactive 3D model tooling inside Studio:\n• **Automatic `.ogg` Sound Registration**: drop any `.ogg` file into `scriptcraft/resources/assets/<ns>/sounds/` and run `/sc reload resources` — ScriptCraft auto-generates/merges `sounds.json` and syncs it to clients with no manual JSON needed.\n• **Studio OGG Audio Player**: inspect real PCM waveforms, scrub, loop, test volume/pitch, and click `→ Insert` to paste a ready `play sound` line.\n• **Studio 3D `.geo.json` Viewer**: orbit, pan, and zoom Blockbench models live inside Studio, preview `.animation.json` clips & `_glowmask.png` layers, inspect bones/locators, and generate `define` snippets in one click."
+    },
+    example: `# Положите файл scriptcraft/resources/assets/gecko/sounds/plasma_shot.ogg
+# Никакой sounds.json создавать НЕ нужно! Сразу пишите в скрипте:
+on right click:
+	if player is holding gecko:plasma_rifle:
+		play sound gecko:plasma_shot at player with volume 0.9 pitch 1.05`,
+    since: "0.9.7", related: ["define-entity", "define-armor", "eff-geo-item-block"]
   }
   ]
 };

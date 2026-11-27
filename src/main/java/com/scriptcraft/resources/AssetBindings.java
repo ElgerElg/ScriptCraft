@@ -55,6 +55,9 @@ public final class AssetBindings {
     private static volatile Map<String, String> facings = Map.of();
     /** id блока -> слой текстуры (solid | cutout | translucent). */
     private static volatile Map<String, String> renders = Map.of();
+    /** id 3D Geo-блоков и 3D Geo-предметов: получают parent builtin/entity для кастомного 3D-рендера. */
+    private static volatile Set<String> geoBlocks = Set.of();
+    private static volatile Set<String> geoItems = Set.of();
     private static boolean loaded = false;
 
     private AssetBindings() {
@@ -85,6 +88,8 @@ public final class AssetBindings {
                 facings = Map.copyOf(map);
             }
             renders = readRenders(root.getAsJsonObject("render"));
+            geoBlocks = readIdSet(root.getAsJsonArray("geo_blocks"));
+            geoItems = readIdSet(root.getAsJsonArray("geo_items"));
         } catch (IOException | RuntimeException e) {
             ScriptCraft.LOGGER.warn("[ScriptCraft] Не удалось прочитать {}: {}", file, e.getMessage());
         }
@@ -105,6 +110,17 @@ public final class AssetBindings {
             }
         }
         return Map.copyOf(map);
+    }
+
+    private static Set<String> readIdSet(@Nullable com.google.gson.JsonArray arr) {
+        if (arr == null) return Set.of();
+        Set<String> set = new HashSet<>();
+        for (JsonElement el : arr) {
+            if (el.isJsonPrimitive() && isId(el.getAsString())) {
+                set.add(el.getAsString());
+            }
+        }
+        return Set.copyOf(set);
     }
 
     private static Map<String, String> readRenders(@Nullable JsonObject obj) {
@@ -159,13 +175,30 @@ public final class AssetBindings {
         mergedFacings.putAll(f);
         Map<String, String> mergedRenders = new HashMap<>(renders);
         mergedRenders.putAll(r);
-        if (b.equals(blocks) && i.equals(items) && mergedFacings.equals(facings) && mergedRenders.equals(renders)) {
+
+        Set<String> gb = new HashSet<>();
+        snapshot.realBlocks().forEach((id, def) -> { if (def.isGeo()) gb.add(id); });
+        snapshot.blockSlots().keySet().forEach(id -> {
+            BlockDefinition def = snapshot.blockById(id);
+            if (def != null && def.isGeo()) gb.add(id);
+        });
+        Set<String> gi = new HashSet<>();
+        snapshot.realItems().forEach((id, def) -> { if (def.isGeo()) gi.add(id); });
+        snapshot.itemSlots().keySet().forEach(id -> {
+            var def = snapshot.itemById(id);
+            if (def != null && def.isGeo()) gi.add(id);
+        });
+
+        if (b.equals(blocks) && i.equals(items) && mergedFacings.equals(facings) && mergedRenders.equals(renders)
+                && gb.equals(geoBlocks) && gi.equals(geoItems)) {
             return false;
         }
         blocks = Map.copyOf(b);
         items = Map.copyOf(i);
         facings = Map.copyOf(mergedFacings);
         renders = Map.copyOf(mergedRenders);
+        geoBlocks = Set.copyOf(gb);
+        geoItems = Set.copyOf(gi);
         JsonObject root = new JsonObject();
         JsonObject jb = new JsonObject();
         b.forEach((slot, id) -> jb.addProperty(Integer.toString(slot), id));
@@ -179,6 +212,12 @@ public final class AssetBindings {
         JsonObject jr = new JsonObject();
         mergedRenders.forEach(jr::addProperty);
         root.add("render", jr);
+        com.google.gson.JsonArray jgb = new com.google.gson.JsonArray();
+        gb.forEach(jgb::add);
+        root.add("geo_blocks", jgb);
+        com.google.gson.JsonArray jgi = new com.google.gson.JsonArray();
+        gi.forEach(jgi::add);
+        root.add("geo_items", jgi);
         try {
             Files.createDirectories(file().getParent());
             Files.writeString(file(), root.toString(), StandardCharsets.UTF_8);
@@ -235,9 +274,13 @@ public final class AssetBindings {
                 return null;
             }
             String id = blocks.get(slot);
-            String parent = id == null ? UNBOUND_BLOCK_MODEL
-                    : hasAsset(id, "models/item/") ? ns(id) + ":item/" + path(id) : blockModel(slot, id);
-            json = "{\"parent\":\"" + parent + "\"}";
+            if (id != null && geoBlocks.contains(id) && !hasAsset(id, "models/item/")) {
+                json = "{\"parent\":\"builtin/entity\"}";
+            } else {
+                String parent = id == null ? UNBOUND_BLOCK_MODEL
+                        : hasAsset(id, "models/item/") ? ns(id) + ":item/" + path(id) : blockModel(slot, id);
+                json = "{\"parent\":\"" + parent + "\"}";
+            }
         } else if (path.startsWith("models/item/" + ScriptRegistries.ITEM_PREFIX)) {
             int slot = slot(path, "models/item/", ScriptRegistries.ITEM_PREFIX, ScriptRegistries.ITEM_SLOTS);
             if (slot < 0) {
@@ -248,6 +291,8 @@ public final class AssetBindings {
                 json = "{\"parent\":\"minecraft:item/barrier\"}";
             } else if (hasAsset(id, "models/item/")) {
                 json = "{\"parent\":\"" + ns(id) + ":item/" + path(id) + "\"}";
+            } else if (geoItems.contains(id)) {
+                json = "{\"parent\":\"builtin/entity\"}";
             } else {
                 json = "{\"parent\":\"minecraft:item/generated\",\"textures\":{\"layer0\":\"" + ns(id) + ":item/" + path(id) + "\"}}";
             }
@@ -344,6 +389,78 @@ public final class AssetBindings {
         return out;
     }
 
+    /** Все namespace, у которых в кэше ресурсов есть папка sounds/ с кастомными .ogg звуками. */
+    static Set<String> soundNamespaces() {
+        Set<String> out = new HashSet<>();
+        for (Path base : new Path[]{ModPaths.cacheAssets(), ModPaths.resources().resolve("assets")}) {
+            if (!Files.isDirectory(base)) continue;
+            try (var stream = Files.list(base)) {
+                stream.filter(Files::isDirectory).forEach(nsDir -> {
+                    if (Files.isDirectory(nsDir.resolve("sounds"))) {
+                        out.add(nsDir.getFileName().toString());
+                    }
+                });
+            } catch (IOException ignored) {
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Авто-регистрация кастомных звуков .ogg без ручного sounds.json:
+     * сканирует assets/<namespace>/sounds/**.ogg и дополняет (или создаёт с нуля) sounds.json!
+     */
+    @Nullable
+    static byte[] generateOrMergeSoundsJson(String namespace, @Nullable byte[] existingAuthorBytes) {
+        List<String> oggRelPaths = new ArrayList<>();
+        for (Path base : new Path[]{ModPaths.cacheAssets(), ModPaths.resources().resolve("assets")}) {
+            Path soundsDir = base.resolve(namespace).resolve("sounds");
+            if (!Files.isDirectory(soundsDir)) continue;
+            try (var walk = Files.walk(soundsDir, 6)) {
+                walk.filter(Files::isRegularFile).forEach(f -> {
+                    String rel = soundsDir.relativize(f).toString().replace('\\', '/');
+                    if (rel.toLowerCase(java.util.Locale.ROOT).endsWith(".ogg")) {
+                        String clean = rel.substring(0, rel.length() - 4).toLowerCase(java.util.Locale.ROOT);
+                        if (!oggRelPaths.contains(clean)) {
+                            oggRelPaths.add(clean);
+                        }
+                    }
+                });
+            } catch (IOException ignored) {
+            }
+        }
+        if (oggRelPaths.isEmpty()) {
+            return existingAuthorBytes;
+        }
+        JsonObject root = new JsonObject();
+        if (existingAuthorBytes != null && existingAuthorBytes.length > 0) {
+            try {
+                JsonElement parsed = JsonParser.parseString(new String(existingAuthorBytes, StandardCharsets.UTF_8));
+                if (parsed.isJsonObject()) {
+                    root = parsed.getAsJsonObject();
+                }
+            } catch (RuntimeException ignored) {
+            }
+        }
+        for (String rel : oggRelPaths) {
+            String streamRef = namespace + ":" + rel;
+            addSoundEntryIfAbsent(root, rel, streamRef);
+            if (rel.contains("/")) {
+                addSoundEntryIfAbsent(root, rel.replace('/', '.'), streamRef);
+            }
+        }
+        return root.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static void addSoundEntryIfAbsent(JsonObject root, String eventKey, String streamRef) {
+        if (root.has(eventKey)) return;
+        JsonObject entry = new JsonObject();
+        com.google.gson.JsonArray arr = new com.google.gson.JsonArray();
+        arr.add(streamRef);
+        entry.add("sounds", arr);
+        root.add(eventKey, entry);
+    }
+
     /** Пути (внутри assets/<namespace>/), которые генерируются для настоящих id: только отсутствующие в кэше. */
     static List<String> generatedRealPaths(String namespace) {
         List<String> paths = new ArrayList<>();
@@ -390,8 +507,12 @@ public final class AssetBindings {
             } else if (folder.equals("models/block/") && block) {
                 json = cube(texture, renderOf(id));
             } else if (folder.equals("models/item/")) {
-                json = block ? "{\"parent\":\"" + namespace + ":block/" + path(id) + "\"}"
-                        : "{\"parent\":\"minecraft:item/generated\",\"textures\":{\"layer0\":\"" + texture + "\"}}";
+                if ((block && geoBlocks.contains(id)) || (item && geoItems.contains(id))) {
+                    json = "{\"parent\":\"builtin/entity\"}";
+                } else {
+                    json = block ? "{\"parent\":\"" + namespace + ":block/" + path(id) + "\"}"
+                            : "{\"parent\":\"minecraft:item/generated\",\"textures\":{\"layer0\":\"" + texture + "\"}}";
+                }
             }
         }
         return json == null ? null : json.getBytes(StandardCharsets.UTF_8);
@@ -551,5 +672,208 @@ public final class AssetBindings {
             ns = namespace;
         }
         return ns + ":" + body;
+    }
+
+    /**
+     * Защищает клиент от падения PlayerAnimationRegistry.resourceLoaderCallback:
+     * 1) если в Emotecraft JSON поле "name" содержит кириллицу/пробелы/верхний регистр — заменяет "name" на
+     *    безопасный slug файла ([a-z0-9/._-]), сохраняя оригинал в "title";
+     * 2) если файл в канальном формате (типа tablurseat.json: formatVersion / bones.*.channels.*) — на лету
+     *    преобразует его в валидный Emotecraft v3 JSON для PlayerAnimator;
+     * 3) если файл пустой или битый JSON во время редактирования — отдаёт безопасную заглушку вместо краша игры.
+     */
+    static byte[] sanitizePlayerAnimation(String namespace, String path, byte[] data) {
+        String fileSlug = animSlugFromPath(path);
+        if (data == null || data.length == 0) {
+            return fallbackEmoteJson(fileSlug);
+        }
+        try {
+            String text = new String(data, StandardCharsets.UTF_8);
+            JsonElement parsed = JsonParser.parseString(text);
+            if (!parsed.isJsonObject()) {
+                return fallbackEmoteJson(fileSlug);
+            }
+            JsonObject root = parsed.getAsJsonObject();
+            if (root.has("emote") && root.get("emote").isJsonObject()) {
+                String curName = root.has("name") && root.get("name").isJsonPrimitive()
+                        ? root.get("name").getAsString() : "";
+                if (curName.isEmpty() || !isSafeRlPath(curName)) {
+                    if (!curName.isEmpty() && !root.has("title")) {
+                        root.addProperty("title", curName);
+                    }
+                    root.addProperty("name", fileSlug);
+                    return root.toString().getBytes(StandardCharsets.UTF_8);
+                }
+                return data;
+            }
+            if (root.has("bones") && root.get("bones").isJsonObject() && !root.has("animations")) {
+                return convertChannelsToEmoteBytes(root, fileSlug);
+            }
+            if (root.has("animations") && root.get("animations").isJsonObject()) {
+                JsonObject anims = root.getAsJsonObject("animations");
+                boolean changed = false;
+                JsonObject fixed = new JsonObject();
+                int idx = 0;
+                for (Map.Entry<String, JsonElement> e : anims.entrySet()) {
+                    String k = e.getKey();
+                    if (!isSafeRlPath(k)) {
+                        k = idx == 0 ? fileSlug : fileSlug + "_" + idx;
+                        changed = true;
+                    }
+                    fixed.add(k, e.getValue());
+                    idx++;
+                }
+                if (changed) {
+                    root.add("animations", fixed);
+                    return root.toString().getBytes(StandardCharsets.UTF_8);
+                }
+                return data;
+            }
+            return fallbackEmoteJson(fileSlug);
+        } catch (RuntimeException e) {
+            return fallbackEmoteJson(fileSlug);
+        }
+    }
+
+    private static String animSlugFromPath(String path) {
+        String p = path;
+        if (p.startsWith("player_animation/")) p = p.substring("player_animation/".length());
+        else if (p.startsWith("player_animations/")) p = p.substring("player_animations/".length());
+        if (p.endsWith(".json")) p = p.substring(0, p.length() - 5);
+        p = p.toLowerCase( java.util.Locale.ROOT ).replaceAll("[^a-z0-9/._-]", "_");
+        return p.isEmpty() ? "anim" : p;
+    }
+
+    private static boolean isSafeRlPath(String s) {
+        if (s == null || s.isEmpty()) return false;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '/' || c == '.' || c == '_' || c == '-')) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static byte[] fallbackEmoteJson(String slug) {
+        String s = "{\"name\":\"" + slug + "\",\"author\":\"ScriptCraft\",\"version\":3,"
+                + "\"emote\":{\"beginTick\":0,\"endTick\":1,\"stopTick\":2,\"isLoop\":false,\"returnTick\":0,"
+                + "\"nsfw\":false,\"degrees\":true,\"moves\":[]}}";
+        return s.getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static byte[] convertChannelsToEmoteBytes(JsonObject src, String fileSlug) {
+        JsonObject out = new JsonObject();
+        out.addProperty("name", fileSlug);
+        if (src.has("displayName") && src.get("displayName").isJsonPrimitive()) {
+            out.addProperty("title", src.get("displayName").getAsString());
+        }
+        out.addProperty("author", src.has("author") && src.get("author").isJsonPrimitive()
+                ? src.get("author").getAsString() : "ScriptCraft");
+        out.addProperty("version", 3);
+
+        boolean degrees = src.has("degrees") && src.get("degrees").isJsonPrimitive() && src.get("degrees").getAsBoolean();
+        int endTick = src.has("lengthTicks") && src.get("lengthTicks").isJsonPrimitive()
+                ? Math.max(1, src.get("lengthTicks").getAsInt()) : 40;
+        int beginTick = src.has("beginTick") && src.get("beginTick").isJsonPrimitive()
+                ? Math.max(0, src.get("beginTick").getAsInt()) : 0;
+        boolean isLoop = false;
+        int returnTick = 0;
+        if (src.has("loop") && src.get("loop").isJsonPrimitive()) {
+            var lp = src.get("loop").getAsJsonPrimitive();
+            if (lp.isBoolean()) {
+                isLoop = lp.getAsBoolean();
+            } else if (lp.isString()) {
+                String m = lp.getAsString().trim().toLowerCase(java.util.Locale.ROOT);
+                if (m.equals("hold_last") || m.equals("hold_on_last_frame") || m.equals("hold")) {
+                    isLoop = true;
+                    returnTick = endTick;
+                } else if (m.equals("true") || m.equals("loop") || m.equals("repeat")) {
+                    isLoop = true;
+                }
+            }
+        }
+
+        com.google.gson.JsonArray moves = new com.google.gson.JsonArray();
+        int maxTickSeen = endTick;
+        JsonObject bones = src.getAsJsonObject("bones");
+        for (Map.Entry<String, JsonElement> be : bones.entrySet()) {
+            String partKey = mapBonePartKey(be.getKey());
+            if (partKey == null || !be.getValue().isJsonObject()) continue;
+            JsonObject bo = be.getValue().getAsJsonObject();
+            JsonObject chs = bo.has("channels") && bo.get("channels").isJsonObject() ? bo.getAsJsonObject("channels") : bo;
+            for (Map.Entry<String, JsonElement> ce : chs.entrySet()) {
+                String jsonCh = mapChannelJsonKey(ce.getKey());
+                if (jsonCh == null || !ce.getValue().isJsonArray()) continue;
+                for (JsonElement kfe : ce.getValue().getAsJsonArray()) {
+                    if (!kfe.isJsonObject()) continue;
+                    JsonObject kf = kfe.getAsJsonObject();
+                    int t = kf.has("t") ? Math.max(0, Math.round(kf.get("t").getAsFloat()))
+                            : (kf.has("tick") ? Math.max(0, Math.round(kf.get("tick").getAsFloat())) : 0);
+                    float v = kf.has("v") ? kf.get("v").getAsFloat()
+                            : (kf.has("value") ? kf.get("value").getAsFloat() : 0f);
+                    String ease = kf.has("ease") && kf.get("ease").isJsonPrimitive() ? kf.get("ease").getAsString()
+                            : (kf.has("easing") && kf.get("easing").isJsonPrimitive() ? kf.get("easing").getAsString() : "INOUTSINE");
+                    if (t > maxTickSeen) maxTickSeen = t;
+                    JsonObject move = new JsonObject();
+                    move.addProperty("tick", t);
+                    move.addProperty("easing", ease);
+                    move.addProperty("turn", 0);
+                    JsonObject po = new JsonObject();
+                    po.addProperty(jsonCh, v);
+                    move.add(partKey, po);
+                    moves.add(move);
+                }
+            }
+        }
+        if (returnTick == endTick && maxTickSeen > endTick) {
+            returnTick = maxTickSeen;
+        }
+        endTick = maxTickSeen;
+
+        JsonObject emote = new JsonObject();
+        emote.addProperty("beginTick", beginTick);
+        emote.addProperty("endTick", endTick);
+        emote.addProperty("stopTick", endTick + 5);
+        emote.addProperty("isLoop", isLoop);
+        emote.addProperty("returnTick", Math.max(0, Math.min(endTick, returnTick)));
+        emote.addProperty("nsfw", false);
+        emote.addProperty("degrees", degrees);
+        emote.add("moves", moves);
+        out.add("emote", emote);
+        return out.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    @Nullable
+    private static String mapBonePartKey(String raw) {
+        if (raw == null) return null;
+        return switch (raw.trim().toLowerCase(java.util.Locale.ROOT).replace("_", "").replace("-", "")) {
+            case "body" -> "body";
+            case "torso" -> "torso";
+            case "head" -> "head";
+            case "rightarm" -> "rightArm";
+            case "leftarm" -> "leftArm";
+            case "rightleg" -> "rightLeg";
+            case "leftleg" -> "leftLeg";
+            case "rightitem" -> "rightItem";
+            case "leftitem" -> "leftItem";
+            default -> null;
+        };
+    }
+
+    @Nullable
+    private static String mapChannelJsonKey(String raw) {
+        if (raw == null) return null;
+        return switch (raw.trim().toLowerCase(java.util.Locale.ROOT)) {
+            case "pitch", "rot_x", "rotx", "rx" -> "pitch";
+            case "yaw", "rot_y", "roty", "ry" -> "yaw";
+            case "roll", "rot_z", "rotz", "rz" -> "roll";
+            case "x", "pos_x", "posx", "px" -> "x";
+            case "y", "pos_y", "posy", "py" -> "y";
+            case "z", "pos_z", "posz", "pz" -> "z";
+            case "axis", "bend_dir", "benddir", "bend_direction", "bend_axis" -> "axis";
+            case "bend", "bend_ang", "bendang", "bend_angle" -> "bend";
+            default -> null;
+        };
     }
 }

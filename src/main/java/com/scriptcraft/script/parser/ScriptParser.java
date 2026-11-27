@@ -7,6 +7,8 @@ import com.scriptcraft.script.parser.Tokenizer.Token;
 import com.scriptcraft.script.runtime.Action;
 import com.scriptcraft.script.runtime.Actions;
 import com.scriptcraft.script.runtime.Condition;
+import com.scriptcraft.script.runtime.Effects;
+import com.scriptcraft.script.runtime.EntityTarget;
 import com.scriptcraft.script.runtime.Expression;
 import com.scriptcraft.script.runtime.KeyNames;
 import com.scriptcraft.script.runtime.MenuNames;
@@ -87,6 +89,7 @@ public final class ScriptParser {
     private final Map<String, CommandDefinition> commands = new LinkedHashMap<>();
     private final Map<String, BlockDefinition> blocks = new LinkedHashMap<>();
     private final Map<String, ItemDefinition> items = new LinkedHashMap<>();
+    private final Map<String, EntityDefinition> entities = new LinkedHashMap<>();
     private final List<PeriodHandler> periods = new ArrayList<>();
     private final Map<String, FunctionDefinition> functions = new LinkedHashMap<>();
     private final List<String> errors = new ArrayList<>();
@@ -110,7 +113,7 @@ public final class ScriptParser {
             }
         }
         return new ParseResult(events, commands, List.copyOf(blocks.values()), List.copyOf(items.values()),
-                List.copyOf(periods), Map.copyOf(functions), List.copyOf(errors));
+                Map.copyOf(entities), List.copyOf(periods), Map.copyOf(functions), List.copyOf(errors));
     }
 
     /**
@@ -281,6 +284,18 @@ public final class ScriptParser {
                 parseKeyed(headerLine, ScriptEvent.OPEN, menuFilter(headerLine, rest.substring(5).strip()), body);
                 return;
             }
+            if (rest.equals("npc click") || rest.startsWith("npc click ")
+                    || rest.equals("click npc") || rest.startsWith("click npc ")
+                    || rest.equals("right click npc") || rest.startsWith("right click npc ")) {
+                parseKeyed(headerLine, ScriptEvent.NPC_CLICK, npcEventFilter(headerLine, rawRest), body);
+                return;
+            }
+            if (rest.equals("npc attack") || rest.startsWith("npc attack ")
+                    || rest.equals("attack npc") || rest.startsWith("attack npc ")
+                    || rest.equals("hit npc") || rest.startsWith("hit npc ")) {
+                parseKeyed(headerLine, ScriptEvent.NPC_ATTACK, npcEventFilter(headerLine, rawRest), body);
+                return;
+            }
             // "on join:", "on load:", несколько событий — "on join or load:" (одно тело на все).
             // Сначала проверяем целое имя события (например, "move or turning around"), чтобы не разбить его по "or".
             List<ScriptEvent> list = new ArrayList<>();
@@ -319,10 +334,88 @@ public final class ScriptParser {
             return;
         }
 
-        if (lower.startsWith("define block ") || lower.startsWith("define item ")) {
+        if (lower.startsWith("define entity ") || lower.startsWith("define mob ") || lower.startsWith("define boss ")) {
+            int pfx = lower.startsWith("define entity ") ? 14 : 12;
+            String raw = lower.substring(pfx).strip();
+            String ns = currentNamespace;
+            String path = raw;
+            int colon = raw.indexOf(':');
+            if (colon >= 0) {
+                ns = raw.substring(0, colon).strip();
+                path = raw.substring(colon + 1).strip();
+                String problem = namespaceProblem(ns);
+                if (problem != null) {
+                    error(headerLine, problem);
+                    return;
+                }
+            }
+            if (!ID.matcher(path).matches()) {
+                error(headerLine, "некорректный id сущности '" + path + "' (только строчные a-z, 0-9, _ . -)");
+                return;
+            }
+            String id = ns + ":" + path;
+            if (entities.containsKey(id)) {
+                error(headerLine, "сущность '" + id + "' уже объявлена");
+                return;
+            }
+            Map<String, String> props = parseProperties(body);
+            try {
+                String ai = EntityDefinition.parseAi(props.get("ai"));
+                if (ai == null) {
+                    error(headerLine, "ai: ожидается hostile, passive, turret или none");
+                    return;
+                }
+                float w = floatProp(props, "width", 0.8f);
+                float h = floatProp(props, "height", 1.9f);
+                String hb = props.get("hitbox");
+                if (hb != null && hb.contains("x")) {
+                    String[] wh = hb.toLowerCase(Locale.ROOT).split("x", 2);
+                    w = Float.parseFloat(wh[0].strip());
+                    h = Float.parseFloat(wh[1].strip());
+                }
+                float defRange = EntityDefinition.AI_TURRET.equals(ai) ? 12.0f : 2.5f;
+                Map<String, String> pBones = new LinkedHashMap<>();
+                String pbRaw = props.getOrDefault("particle_bone", props.get("particles"));
+                if (pbRaw != null && !pbRaw.isBlank()) {
+                    for (String pair : pbRaw.split("[;,]")) {
+                        int eq = pair.indexOf('=');
+                        if (eq > 0) {
+                            pBones.put(pair.substring(0, eq).strip(), pair.substring(eq + 1).strip());
+                        }
+                    }
+                }
+                boolean glow = !props.containsKey("glow") || boolProp(props, "glow");
+                boolean nametag = props.containsKey("nametag") ? boolProp(props, "nametag") : props.containsKey("name");
+                boolean pushable = props.containsKey("pushable") ? boolProp(props, "pushable")
+                        : (!EntityDefinition.AI_TURRET.equals(ai) && !EntityDefinition.AI_NONE.equals(ai));
+                boolean gravity = !props.containsKey("gravity") || boolProp(props, "gravity");
+                entities.put(id, new EntityDefinition(
+                        id, props.get("name"), ai,
+                        props.get("model"), props.get("texture"),
+                        props.getOrDefault("animation", props.get("animations")),
+                        props.getOrDefault("idle_animation", props.getOrDefault("idle", "idle")),
+                        props.getOrDefault("walk_animation", props.getOrDefault("walk", "walk")),
+                        props.getOrDefault("attack_animation", props.getOrDefault("attack", "attack")),
+                        props.getOrDefault("death_animation", props.getOrDefault("death", "death")),
+                        props.getOrDefault("spawn_animation", props.get("spawn")),
+                        floatProp(props, "health", floatProp(props, "hp", 20f)),
+                        floatProp(props, "speed", 0.25f),
+                        floatProp(props, "damage", 4.0f),
+                        floatProp(props, "attack_range", floatProp(props, "range", defRange)),
+                        floatProp(props, "follow_range", 24.0f),
+                        w, h, floatProp(props, "scale", 1.0f),
+                        glow, nametag, pushable, boolProp(props, "invulnerable"), gravity, pBones));
+            } catch (NumberFormatException e) {
+                error(headerLine, "неверное число в свойствах define entity: " + e.getMessage());
+            }
+            return;
+        }
+
+        if (lower.startsWith("define block ") || lower.startsWith("define item ") || lower.startsWith("define armor ")) {
             boolean isBlock = lower.startsWith("define block ");
+            boolean isArmorKw = lower.startsWith("define armor ");
             // id приводится к нижнему регистру, как и раньше (Ruby_Block -> ruby_block).
-            String raw = lower.substring(isBlock ? 13 : 12).strip();
+            String raw = lower.substring(isBlock ? 13 : (isArmorKw ? 13 : 12)).strip();
             String ns = currentNamespace;
             String path = raw;
             int colon = raw.indexOf(':');
@@ -380,12 +473,19 @@ public final class ScriptParser {
                             floatProp(props, "hardness", 1.5f), floatProp(props, "resistance", 6f),
                             props.getOrDefault("sound", "stone").toLowerCase(Locale.ROOT),
                             (int) floatProp(props, "light", 0), boolProp(props, "requires_tool"), facing, render, full,
-                            friction, speed, jump, boolProp(props, "gravity"), collision, Math.max(0, burn), Math.max(0, spread)));
+                            friction, speed, jump, boolProp(props, "gravity"), collision, Math.max(0, burn), Math.max(0, spread),
+                            props.get("model"), props.get("texture"),
+                            props.getOrDefault("animation", props.get("animations")),
+                            props.getOrDefault("idle_animation", props.get("idle")),
+                            floatProp(props, "scale", 1.0f)));
                 } else {
-                    String type = ItemDefinition.normalizeType(props.getOrDefault("type", "item"));
+                    String rawType = isArmorKw
+                            ? props.getOrDefault("slot", props.getOrDefault("type", "helmet"))
+                            : props.getOrDefault("type", props.getOrDefault("slot", "item"));
+                    String type = ItemDefinition.normalizeType(rawType);
                     if (type == null) {
-                        error(headerLine, "type: item, food, sword, pickaxe, axe, shovel, hoe, fishing_rod or shears",
-                                "type: item, food, sword, pickaxe, axe, shovel, hoe, fishing_rod или shears");
+                        error(headerLine, "type: item, food, sword, pickaxe, axe, shovel, hoe, fishing_rod, shears, helmet, chestplate, leggings or boots",
+                                "type: item, food, sword, pickaxe, axe, shovel, hoe, fishing_rod, shears, helmet, chestplate, leggings или boots");
                         return;
                     }
                     String tier = ItemDefinition.normalizeTier(props.getOrDefault("tier", "iron"));
@@ -394,19 +494,34 @@ public final class ScriptParser {
                                 "tier: wood, stone, iron, gold, diamond или netherite");
                         return;
                     }
-                    boolean tool = switch (type) {
-                        case "sword", "pickaxe", "axe", "shovel", "hoe", "fishing_rod", "shears" -> true;
-                        default -> false;
+                    boolean singleStack = switch (type) {
+                        case "sword", "pickaxe", "axe", "shovel", "hoe", "fishing_rod", "shears",
+                             "helmet", "chestplate", "leggings", "boots" -> true;
+                        default -> props.containsKey("model");
                     };
-                    int stack = (int) floatProp(props, "stack_size", tool ? 1 : 64);
+                    int stack = (int) floatProp(props, "stack_size", singleStack ? 1 : 64);
                     int durability = props.containsKey("durability")
                             ? Math.max(0, (int) floatProp(props, "durability", 0))
                             : ItemDefinition.defaultDurability(type, tier);
+                    int defArmor = switch (type) {
+                        case "helmet" -> 3;
+                        case "chestplate" -> 8;
+                        case "leggings" -> 6;
+                        case "boots" -> 3;
+                        default -> 0;
+                    };
+                    int defense = (int) floatProp(props, "defense", floatProp(props, "armor", defArmor));
+                    float toughness = floatProp(props, "toughness", 0f);
                     items.put(id, new ItemDefinition(id, props.get("name"), stack, boolProp(props, "fire_resistant"),
                             props.getOrDefault("rarity", "common").toLowerCase(Locale.ROOT),
                             type, Math.max(0, Math.min(20, (int) floatProp(props, "nutrition", 4))),
                             Math.max(0f, Math.min(2f, floatProp(props, "saturation", 0.6f))),
-                            boolProp(props, "always_eat"), tier, durability));
+                            boolProp(props, "always_eat"), tier, durability,
+                            defense, toughness,
+                            props.get("model"), props.get("texture"),
+                            props.getOrDefault("animation", props.get("animations")),
+                            props.getOrDefault("idle_animation", props.get("idle")),
+                            floatProp(props, "scale", 1.0f)));
                 }
             } catch (NumberFormatException e) {
                 error(headerLine, "неверное число в свойствах: " + e.getMessage());
@@ -1141,6 +1256,16 @@ public final class ScriptParser {
             }
         }
         if (i < t.size() && !t.get(i).quoted()) {
+            TargetParser.ParsedEntity entCond = TargetParser.parseEntity(t, i);
+            if (entCond != null && word(t, entCond.end()).equals("is")) {
+                int k = entCond.end();
+                boolean neg = word(t, k + 1).equals("not");
+                int n = neg ? k + 2 : k + 1;
+                String st = word(t, n);
+                if (st.equals("leashed") || st.equals("tethered")) {
+                    return new ParsedCond(new Condition.Leashed(entCond.target(), neg), finish(t, n + 1));
+                }
+            }
             TargetParser.Parsed target = TargetParser.parse(t, i);
             if (target != null) {
                 ParsedCond state = tryTargetCondition(t, target);
@@ -1610,8 +1735,97 @@ public final class ScriptParser {
             throw new ParseException("у этого действия не может быть вложенных строк");
         }
 
+        if (head.equals("leash") || head.equals("tether") || head.equals("tie")) {
+            return parseLeashAction(t);
+        }
+        if (head.equals("unleash") || head.equals("untie")) {
+            TargetParser.ParsedEntity ent = TargetParser.parseEntity(t, 1);
+            if (ent == null || ent.end() != t.size()) {
+                throw new ParseException("нужно: unleash <сущность/игрок>");
+            }
+            return new Effects.UnleashEntity(ent.target());
+        }
+        if ((head.equals("release") || head.equals("remove") || head.equals("break")) && word(t, 1).equals("leash")) {
+            int at = 2;
+            if (word(t, at).equals("of") || word(t, at).equals("from")) {
+                at++;
+            }
+            TargetParser.ParsedEntity ent = TargetParser.parseEntity(t, at);
+            if (ent == null || ent.end() != t.size()) {
+                throw new ParseException("нужно: release leash of <сущность/игрок>");
+            }
+            return new Effects.UnleashEntity(ent.target());
+        }
+        if (head.equals("clear") && (word(t, 1).equals("leashes") || (word(t, 1).equals("all") && word(t, 2).equals("leashes")))) {
+            return new Effects.ClearLeashes();
+        }
+        if (head.equals("set") && word(t, 1).equals("leash") && t.size() >= 6) {
+            return parseSetLeashProp(t);
+        }
         if (head.equals("spawn") && word(t, 1).equals("entity")) {
             return parseSpawnEntity(t);
+        }
+        if (head.equals("spawn") && word(t, 1).equals("geo")) {
+            return parseSpawnGeoEntity(t);
+        }
+        if (head.equals("spawn") && word(t, 1).equals("npc")) {
+            return parseSpawnNpc(t);
+        }
+        if ((head.equals("remove") || head.equals("delete")) && word(t, 1).equals("npc") && t.size() >= 3) {
+            ExprParser.Parsed id = ExprParser.parse(t, 2);
+            return new Effects.NpcAction("remove", id.expression(), null, null, null, null, null, null, null, null, null, null, null, null);
+        }
+        if ((head.equals("clear") || head.equals("remove"))
+                && ((word(t, 1).equals("all") && word(t, 2).equals("npcs")) || word(t, 1).equals("npcs"))) {
+            return new Effects.NpcAction("clear", null, null, null, null, null, null, null, null, null, null, null, null, null);
+        }
+        if ((head.equals("clear") || head.equals("remove"))
+                && ((word(t, 1).equals("all") && word(t, 2).equals("geo") && word(t, 3).equals("entities"))
+                || (word(t, 1).equals("geo") && word(t, 2).equals("entities")))) {
+            return new Effects.GeoEntityControl("clear_all", null, null, 0, null);
+        }
+        if (head.equals("equip") && word(t, 1).equals("npc")) {
+            return parseEquipNpc(t);
+        }
+        if (head.equals("set") && (word(t, 1).equals("skin") || word(t, 1).equals("name"))
+                && word(t, 2).equals("of") && word(t, 3).equals("npc")) {
+            return parseSetNpcProp(t);
+        }
+        if (head.equals("make") && word(t, 1).equals("npc")) {
+            return parseMakeNpc(t);
+        }
+        if ((head.equals("play") || head.equals("stop")) && word(t, 1).equals("npc") && word(t, 2).equals("animation")) {
+            return parseNpcAnimation(t, head.equals("stop"));
+        }
+        if ((head.equals("play") || head.equals("stop")) && word(t, 1).equals("geo") && word(t, 2).equals("animation")) {
+            return parseGeoEntityAnimation(t, head.equals("stop"));
+        }
+        if (head.equals("set") && word(t, 1).equals("geo") && (word(t, 2).equals("texture") || word(t, 2).equals("scale"))) {
+            return parseSetGeoProp(t);
+        }
+        if ((head.equals("play") || head.equals("stop")) && word(t, 1).equals("item") && word(t, 2).equals("animation")) {
+            return parseGeoItemAnimation(t, head.equals("stop"));
+        }
+        if ((head.equals("play") || head.equals("stop")) && word(t, 1).equals("block") && word(t, 2).equals("animation")) {
+            return parseGeoBlockAnimation(t, head.equals("stop"));
+        }
+        if (head.equals("attach") && word(t, 1).equals("prop")) {
+            return parseAttachProp(t);
+        }
+        if ((head.equals("detach") || head.equals("remove")) && word(t, 1).equals("prop")) {
+            return parseDetachProp(t);
+        }
+        if (head.equals("clear") && (word(t, 1).equals("props") || (word(t, 1).equals("all") && word(t, 2).equals("props")))) {
+            return parseClearProps(t);
+        }
+        if ((head.equals("play") || head.equals("start")) && (word(t, 1).equals("cutscene") || word(t, 1).equals("camera"))) {
+            return parsePlayCutscene(t);
+        }
+        if (head.equals("move") && word(t, 1).equals("camera")) {
+            return parseMoveCamera(t);
+        }
+        if (head.equals("stop") && word(t, 1).equals("cutscene")) {
+            return parseStopCutscene(t);
         }
         if ((head.equals("play") || head.equals("stop"))
                 && (word(t, 1).equals("animation") || (word(t, 1).equals("player") && word(t, 2).equals("animation")))) {
@@ -1919,6 +2133,25 @@ public final class ScriptParser {
             return null;
         }
         return name;
+    }
+
+    @Nullable
+    private String npcEventFilter(Line header, String rawRest) {
+        try {
+            List<Token> t = Tokenizer.tokenize(rawRest);
+            int start = word(t, 0).equals("right") || word(t, 0).equals("left") ? 3 : 2;
+            if (t.size() <= start) {
+                return "*";
+            }
+            if (t.size() == start + 1) {
+                return t.get(start).value().strip();
+            }
+            error(header, "нужно: on npc click [\"id\"]:  или  on npc attack [\"id\"]:");
+            return null;
+        } catch (ParseException e) {
+            error(header, e.getMessage());
+            return null;
+        }
     }
 
     /** Строки элементов open screen / create hud. Вложенные строки есть только у list. */
@@ -3636,6 +3869,223 @@ public final class ScriptParser {
      * spawn entity "<id>" at <x y z | target | expr> [named "..."] [with health N] [with nbt "..."]
      * [with weapon/helmet/chestplate/leggings/boots <item>]
      */
+    /**
+     * leash <entity> to <entity | targeted block | block [at] x y z | location <expr>> [length N] [min_length N]
+     * [strength|pull|stiffness N] [break|break_at N | breakable | unbreakable] [color #HEX] [width|thickness N]
+     * [sag N] [two_way|bidirectional [true|false]] [knot [true|false]] [drop_lead [true|false]]
+     */
+    private Action parseLeashAction(List<Token> t) throws ParseException {
+        if (t.size() < 4) {
+            throw new ParseException("нужно: leash <сущность/игрок> to <сущность/игрок | targeted block | block at x y z> [length N] [color #HEX] ...");
+        }
+        TargetParser.ParsedEntity subject = TargetParser.parseEntity(t, 1);
+        if (subject == null) {
+            throw new ParseException("не указана сущность/игрок для привязки: leash <сущность> to ...");
+        }
+        int idx = subject.end();
+        if (!word(t, idx).equals("to")) {
+            throw new ParseException("ожидается 'to' после цели: leash <сущность> to <держатель или блок>");
+        }
+        idx++;
+        if (idx >= t.size()) {
+            throw new ParseException("укажите к кому или к какому блоку привязать поводок");
+        }
+
+        EntityTarget holderEntity = null;
+        boolean toTargetedBlock = false;
+        Expression bx = null, by = null, bz = null;
+        Expression locExpr = null;
+
+        String w = word(t, idx);
+        if (w.equals("targeted") && word(t, idx + 1).equals("block")) {
+            toTargetedBlock = true;
+            idx += 2;
+        } else if (w.equals("block")) {
+            int c = idx + 1;
+            if (word(t, c).equals("at")) {
+                c++;
+            }
+            if (c + 2 < t.size() && !isLeashOption(word(t, c)) && looksNumericOrVar(t.get(c))
+                    && looksNumericOrVar(t.get(c + 1)) && looksNumericOrVar(t.get(c + 2))) {
+                bx = expression(t.get(c));
+                by = expression(t.get(c + 1));
+                bz = expression(t.get(c + 2));
+                idx = c + 3;
+            } else {
+                ExprParser.Parsed ep = ExprParser.parse(t, c);
+                locExpr = ep.expression();
+                idx = ep.end();
+            }
+        } else if (w.equals("location") || w.equals("pos") || w.equals("position")) {
+            if (word(t, idx + 1).equals("(") || word(t, idx + 1).equals("at") || word(t, idx + 1).equals("of")) {
+                ExprParser.Parsed ep = ExprParser.parse(t, idx);
+                locExpr = ep.expression();
+                idx = ep.end();
+            } else {
+                ExprParser.Parsed ep = ExprParser.parse(t, idx + 1);
+                locExpr = ep.expression();
+                idx = ep.end();
+            }
+        } else if (idx + 2 < t.size() && looksNumericOrVar(t.get(idx)) && looksNumericOrVar(t.get(idx + 1)) && looksNumericOrVar(t.get(idx + 2))) {
+            bx = expression(t.get(idx));
+            by = expression(t.get(idx + 1));
+            bz = expression(t.get(idx + 2));
+            idx += 3;
+        } else {
+            TargetParser.ParsedEntity he = TargetParser.parseEntity(t, idx);
+            if (he == null) {
+                throw new ParseException("не удалось разобрать точку крепления поводка");
+            }
+            holderEntity = he.target();
+            idx = he.end();
+        }
+
+        Expression maxLen = null;
+        Expression minLen = null;
+        Expression stiffness = null;
+        Expression breakDist = null;
+        Boolean breakableFlag = null;
+        Expression colorExpr = null;
+        Expression widthExpr = null;
+        Expression sagExpr = null;
+        Expression twoWayExpr = null;
+        Expression knotExpr = null;
+        Expression dropLeadExpr = null;
+
+        while (idx < t.size()) {
+            String opt = word(t, idx);
+            if (opt.equals("with") || opt.equals("and")) {
+                idx++;
+                continue;
+            }
+            switch (opt) {
+                case "length", "max_length", "max-length", "distance" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: length <число>");
+                    maxLen = expression(t.get(idx + 1));
+                    idx += 2;
+                }
+                case "min_length", "min-length" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: min_length <число>");
+                    minLen = expression(t.get(idx + 1));
+                    idx += 2;
+                }
+                case "strength", "pull", "stiffness", "force", "tension" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: strength <число>");
+                    stiffness = expression(t.get(idx + 1));
+                    idx += 2;
+                }
+                case "break", "break_at", "break-at", "break_distance", "break-distance" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: break <дистанция>");
+                    breakDist = expression(t.get(idx + 1));
+                    idx += 2;
+                }
+                case "breakable" -> {
+                    breakableFlag = true;
+                    idx++;
+                    if (idx < t.size() && (word(t, idx).equals("true") || word(t, idx).equals("false"))) {
+                        breakableFlag = word(t, idx).equals("true");
+                        idx++;
+                    }
+                }
+                case "unbreakable" -> {
+                    breakableFlag = false;
+                    breakDist = new Expression.Literal(0.0);
+                    idx++;
+                }
+                case "color", "colour" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: color <#RRGGBB>");
+                    Token ct = t.get(idx + 1);
+                    colorExpr = ct.quoted() || ct.value().startsWith("{") ? expression(ct) : new Expression.Text(ct.value());
+                    idx += 2;
+                }
+                case "width", "thickness" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: width <число>");
+                    widthExpr = expression(t.get(idx + 1));
+                    idx += 2;
+                }
+                case "sag", "droop", "slack" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: sag <число>");
+                    sagExpr = expression(t.get(idx + 1));
+                    idx += 2;
+                }
+                case "two_way", "two-way", "bidirectional", "both" -> {
+                    idx++;
+                    if (idx < t.size() && (word(t, idx).equals("true") || word(t, idx).equals("false"))) {
+                        twoWayExpr = new Expression.Literal(Boolean.parseBoolean(word(t, idx)));
+                        idx++;
+                    } else {
+                        twoWayExpr = new Expression.Literal(true);
+                    }
+                }
+                case "knot" -> {
+                    idx++;
+                    if (idx < t.size() && (word(t, idx).equals("true") || word(t, idx).equals("false"))) {
+                        knotExpr = new Expression.Literal(Boolean.parseBoolean(word(t, idx)));
+                        idx++;
+                    } else {
+                        knotExpr = new Expression.Literal(true);
+                    }
+                }
+                case "no_knot", "no-knot" -> {
+                    knotExpr = new Expression.Literal(false);
+                    idx++;
+                }
+                case "drop_lead", "drop-lead", "drop" -> {
+                    idx++;
+                    if (idx < t.size() && (word(t, idx).equals("true") || word(t, idx).equals("false"))) {
+                        dropLeadExpr = new Expression.Literal(Boolean.parseBoolean(word(t, idx)));
+                        idx++;
+                    } else {
+                        dropLeadExpr = new Expression.Literal(true);
+                    }
+                }
+                default -> throw new ParseException("неизвестный параметр поводка '" + t.get(idx).value()
+                        + "' (доступны: length, min_length, strength, break, unbreakable, color, width, sag, two_way, knot, drop_lead)");
+            }
+        }
+
+        return new Effects.AttachLeash(
+                subject.target(), holderEntity, toTargetedBlock, bx, by, bz, locExpr,
+                maxLen, minLen, stiffness, breakDist, breakableFlag,
+                colorExpr, widthExpr, sagExpr, twoWayExpr, knotExpr, dropLeadExpr);
+    }
+
+    private static boolean isLeashOption(String w) {
+        return switch (w) {
+            case "with", "length", "max_length", "max-length", "min_length", "min-length",
+                 "strength", "pull", "stiffness", "force", "tension",
+                 "break", "break_at", "break-at", "break_distance", "break-distance",
+                 "breakable", "unbreakable", "color", "colour", "width", "thickness",
+                 "sag", "droop", "slack", "two_way", "two-way", "bidirectional",
+                 "knot", "no_knot", "no-knot", "drop_lead", "drop-lead", "drop" -> true;
+            default -> false;
+        };
+    }
+
+    private Action parseSetLeashProp(List<Token> t) throws ParseException {
+        String prop = word(t, 2);
+        if (!word(t, 3).equals("of")) {
+            throw new ParseException("нужно: set leash <length|strength|break|color|width|sag|two_way> of <сущность> to <значение>");
+        }
+        TargetParser.ParsedEntity ent = TargetParser.parseEntity(t, 4);
+        if (ent == null || !word(t, ent.end()).equals("to") || ent.end() + 1 >= t.size()) {
+            throw new ParseException("нужно: set leash " + prop + " of <сущность> to <значение>");
+        }
+        int valIdx = ent.end() + 1;
+        Expression valExpr;
+        if ((prop.equals("color") || prop.equals("colour")) && valIdx + 1 == t.size() && !t.get(valIdx).quoted()
+                && !t.get(valIdx).value().startsWith("{")) {
+            valExpr = new Expression.Text(t.get(valIdx).value());
+        } else {
+            ExprParser.Parsed parsed = ExprParser.parse(t, valIdx);
+            if (parsed.end() != t.size()) {
+                throw new ParseException("лишние слова после значения в set leash " + prop);
+            }
+            valExpr = parsed.expression();
+        }
+        return new Effects.SetLeashProperty(prop, ent.target(), valExpr);
+    }
+
     private Action parseSpawnEntity(List<Token> t) throws ParseException {
         if (t.size() < 5) {
             throw new ParseException("нужно: spawn entity \"minecraft:zombie\" at <локация> [named \"...\"] [with health N] [with nbt \"{...}\"]");
@@ -3793,6 +4243,642 @@ public final class ScriptParser {
             throw new ParseException("extra text after the nbt value", "лишний текст после значения nbt");
         }
         return new Actions.SetNbt(path, kind, value.expression());
+    }
+
+    // ------------------------------------------------------------------ разбор 3D Geo, NPC, Props и Cutscenes
+
+    private int parsePositionClause(List<Token> t, int idx, Target[] outTarget, Expression[] outPlace,
+                                    Expression[] outXyz, java.util.Set<String> optionKeywords) throws ParseException {
+        if (idx + 2 < t.size() && looksNumericOrVar(t.get(idx)) && looksNumericOrVar(t.get(idx + 1)) && looksNumericOrVar(t.get(idx + 2))) {
+            outXyz[0] = expression(t.get(idx));
+            outXyz[1] = expression(t.get(idx + 1));
+            outXyz[2] = expression(t.get(idx + 2));
+            return idx + 3;
+        }
+        TargetParser.Parsed tp = TargetParser.parse(t, idx);
+        String nextW = tp == null ? "" : word(t, tp.end());
+        if (tp != null && (tp.end() == t.size() || optionKeywords.contains(nextW))) {
+            outTarget[0] = tp.target();
+            return tp.end();
+        }
+        ExprParser.Parsed ep = ExprParser.parseAtom(t, idx);
+        outPlace[0] = ep.expression();
+        return ep.end();
+    }
+
+    private Action parseSpawnGeoEntity(List<Token> t) throws ParseException {
+        int idx = 2;
+        String sub = word(t, idx);
+        if (sub.equals("entity") || sub.equals("mob") || sub.equals("boss") || sub.equals("turret") || sub.equals("prop")) {
+            idx++;
+        } else {
+            sub = "entity";
+        }
+        if (idx >= t.size()) {
+            throw new ParseException("нужно: spawn geo entity \"gecko:cyber_guardian\" at player");
+        }
+        ExprParser.Parsed idExpr = ExprParser.parseAtom(t, idx);
+        idx = idExpr.end();
+        expectWord(t, idx, "at");
+        idx++;
+
+        Set<String> opts = Set.of("model", "texture", "animation", "named", "name", "with", "health", "hp", "damage", "scale", "hitbox", "ai");
+        Target[] atTarget = new Target[1];
+        Expression[] atPlace = new Expression[1];
+        Expression[] xyz = new Expression[3];
+        idx = parsePositionClause(t, idx, atTarget, atPlace, xyz, opts);
+
+        Expression modelOv = null, texOv = null, animOv = null, hp = null, dmg = null, scl = null;
+        String name = null;
+        String ai = sub.equals("turret") ? "turret" : (sub.equals("prop") ? "none" : null);
+        float hbw = 0f, hbh = 0f;
+
+        while (idx < t.size()) {
+            String w = word(t, idx);
+            if (w.equals("with")) { idx++; w = word(t, idx); }
+            switch (w) {
+                case "model" -> { ExprParser.Parsed p = ExprParser.parseAtom(t, idx + 1); modelOv = p.expression(); idx = p.end(); }
+                case "texture" -> { ExprParser.Parsed p = ExprParser.parseAtom(t, idx + 1); texOv = p.expression(); idx = p.end(); }
+                case "animation" -> { ExprParser.Parsed p = ExprParser.parseAtom(t, idx + 1); animOv = p.expression(); idx = p.end(); }
+                case "named", "name" -> { name = quoted(t, idx + 1); idx += 2; }
+                case "health", "hp" -> { ExprParser.Parsed p = ExprParser.parseAtom(t, idx + 1); hp = p.expression(); idx = p.end(); }
+                case "damage" -> { ExprParser.Parsed p = ExprParser.parseAtom(t, idx + 1); dmg = p.expression(); idx = p.end(); }
+                case "scale" -> { ExprParser.Parsed p = ExprParser.parseAtom(t, idx + 1); scl = p.expression(); idx = p.end(); }
+                case "ai" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("нужно: ai hostile|passive|turret|none");
+                    ai = word(t, idx + 1);
+                    idx += 2;
+                }
+                case "hitbox" -> {
+                    if (idx + 1 >= t.size() || !t.get(idx + 1).value().contains("x")) {
+                        throw new ParseException("нужно: hitbox ШИРИНАxВЫСОТА, например hitbox 1.4x2.8");
+                    }
+                    String[] parts = t.get(idx + 1).value().toLowerCase(Locale.ROOT).split("x", 2);
+                    hbw = (float) parseDouble(parts[0]);
+                    hbh = (float) parseDouble(parts[1]);
+                    idx += 2;
+                }
+                default -> throw new ParseException("неизвестный параметр spawn geo: '" + t.get(idx).value() + "'");
+            }
+        }
+        return new Effects.SpawnGeoEntity(idExpr.expression(), atTarget[0], atPlace[0], xyz[0], xyz[1], xyz[2],
+                modelOv, texOv, animOv, name, hp, dmg, scl, hbw, hbh, ai);
+    }
+
+    private Action parseGeoEntityAnimation(List<Token> t, boolean stop) throws ParseException {
+        int idx = 3;
+        Expression anim = null;
+        if (!stop) {
+            ExprParser.Parsed ap = ExprParser.parseAtom(t, idx);
+            anim = ap.expression();
+            idx = ap.end();
+        }
+        if (!word(t, idx).equals("on") && !word(t, idx).equals("of")) {
+            throw new ParseException("нужно: " + (stop ? "stop geo animation on <сущность>" : "play geo animation \"attack\" on <сущность>"));
+        }
+        TargetParser.ParsedEntity ent = TargetParser.parseEntity(t, idx + 1);
+        if (ent == null) throw new ParseException("ожидается сущность (например last spawned entity или targeted entity)");
+        idx = ent.end();
+        int loop = 0;
+        Expression speed = null;
+        while (idx < t.size()) {
+            String w = word(t, idx);
+            switch (w) {
+                case "loop", "looped" -> { loop = 1; idx++; }
+                case "once" -> { loop = 0; idx++; }
+                case "hold" -> { loop = 2; idx++; }
+                case "speed" -> { ExprParser.Parsed p = ExprParser.parseAtom(t, idx + 1); speed = p.expression(); idx = p.end(); }
+                default -> throw new ParseException("неизвестный параметр geo animation: '" + t.get(idx).value() + "'");
+            }
+        }
+        return new Effects.GeoEntityControl(stop ? "stop" : "play", ent.target(), anim, loop, speed);
+    }
+
+    private Action parseSetGeoProp(List<Token> t) throws ParseException {
+        String prop = word(t, 2); // texture | scale
+        expectWord(t, 3, "of");
+        TargetParser.ParsedEntity ent = TargetParser.parseEntity(t, 4);
+        if (ent == null || !word(t, ent.end()).equals("to") || ent.end() + 1 >= t.size()) {
+            throw new ParseException("нужно: set geo " + prop + " of <сущность> to <значение>");
+        }
+        ExprParser.Parsed val = ExprParser.parse(t, ent.end() + 1);
+        return new Effects.GeoEntityControl(prop, ent.target(), val.expression(), 0, null);
+    }
+
+    private Action parseGeoItemAnimation(List<Token> t, boolean stop) throws ParseException {
+        int idx = 3;
+        Expression anim = null;
+        if (!stop) {
+            ExprParser.Parsed ap = ExprParser.parseAtom(t, idx);
+            anim = ap.expression();
+            idx = ap.end();
+        }
+        Target target = null;
+        boolean offhand = false;
+        int loop = 0;
+        Expression speed = null;
+        while (idx < t.size()) {
+            String w = word(t, idx);
+            switch (w) {
+                case "on", "for", "of", "to" -> {
+                    TargetParser.Parsed tp = TargetParser.parse(t, idx + 1);
+                    if (tp == null) throw new ParseException("ожидается игрок после '" + w + "'");
+                    target = tp.target();
+                    idx = tp.end();
+                }
+                case "offhand" -> { offhand = true; idx++; }
+                case "mainhand", "hand" -> { offhand = false; idx++; }
+                case "loop", "looped" -> { loop = 1; idx++; }
+                case "once" -> { loop = 0; idx++; }
+                case "speed" -> { ExprParser.Parsed p = ExprParser.parseAtom(t, idx + 1); speed = p.expression(); idx = p.end(); }
+                default -> throw new ParseException("неизвестный параметр item animation: '" + t.get(idx).value() + "'");
+            }
+        }
+        return new Effects.GeoItemAnim(anim, target, offhand, loop, speed);
+    }
+
+    private Action parseGeoBlockAnimation(List<Token> t, boolean stop) throws ParseException {
+        int idx = 3;
+        Expression anim = null;
+        if (!stop) {
+            ExprParser.Parsed ap = ExprParser.parseAtom(t, idx);
+            anim = ap.expression();
+            idx = ap.end();
+        }
+        expectWord(t, idx, "at");
+        idx++;
+        boolean targetedBlock = false;
+        Expression place = null, x = null, y = null, z = null;
+        if (word(t, idx).equals("targeted") && word(t, idx + 1).equals("block")) {
+            targetedBlock = true;
+            idx += 2;
+        } else if (idx + 2 < t.size() && looksNumericOrVar(t.get(idx)) && looksNumericOrVar(t.get(idx + 1)) && looksNumericOrVar(t.get(idx + 2))) {
+            x = expression(t.get(idx));
+            y = expression(t.get(idx + 1));
+            z = expression(t.get(idx + 2));
+            idx += 3;
+        } else {
+            ExprParser.Parsed ep = ExprParser.parseAtom(t, idx);
+            place = ep.expression();
+            idx = ep.end();
+        }
+        int loop = 0;
+        Expression speed = null;
+        while (idx < t.size()) {
+            String w = word(t, idx);
+            switch (w) {
+                case "loop", "looped" -> { loop = 1; idx++; }
+                case "once" -> { loop = 0; idx++; }
+                case "hold" -> { loop = 2; idx++; }
+                case "speed" -> { ExprParser.Parsed p = ExprParser.parseAtom(t, idx + 1); speed = p.expression(); idx = p.end(); }
+                default -> throw new ParseException("неизвестный параметр block animation: '" + t.get(idx).value() + "'");
+            }
+        }
+        return new Effects.GeoBlockAnim(anim, targetedBlock, place, x, y, z, loop, speed);
+    }
+
+    private Action parseSpawnNpc(List<Token> t) throws ParseException {
+        if (t.size() < 5) {
+            throw new ParseException("нужно: spawn npc \"commander\" at player [named \"...\"] [skin \"...\"] [slim|wide]");
+        }
+        ExprParser.Parsed idExpr = ExprParser.parseAtom(t, 2);
+        int idx = idExpr.end();
+        expectWord(t, idx, "at");
+        idx++;
+
+        Set<String> opts = Set.of("named", "name", "skin", "slim", "alex", "wide", "steve", "auto", "look", "vulnerable", "sneak", "sneaking", "with");
+        Target[] atTarget = new Target[1];
+        Expression[] atPlace = new Expression[1];
+        Expression[] xyz = new Expression[3];
+        idx = parsePositionClause(t, idx, atTarget, atPlace, xyz, opts);
+
+        Expression skinExpr = null;
+        Expression nameExpr = null;
+        String style = "auto";
+        Boolean look = true;
+        Boolean vuln = false;
+        Boolean sneak = false;
+
+        while (idx < t.size()) {
+            String w = word(t, idx);
+            if (w.equals("with")) { idx++; w = word(t, idx); }
+            switch (w) {
+                case "named", "name" -> { ExprParser.Parsed p = ExprParser.parseAtom(t, idx + 1); nameExpr = p.expression(); idx = p.end(); }
+                case "skin" -> { ExprParser.Parsed p = ExprParser.parseAtom(t, idx + 1); skinExpr = p.expression(); idx = p.end(); }
+                case "slim", "alex" -> { style = "slim"; idx++; }
+                case "wide", "steve" -> { style = "wide"; idx++; }
+                case "auto" -> { style = "auto"; idx++; }
+                case "look" -> {
+                    idx++;
+                    if (idx < t.size() && (word(t, idx).equals("true") || word(t, idx).equals("false"))) {
+                        look = Boolean.parseBoolean(word(t, idx));
+                        idx++;
+                    } else {
+                        look = true;
+                    }
+                }
+                case "vulnerable" -> {
+                    idx++;
+                    if (idx < t.size() && (word(t, idx).equals("true") || word(t, idx).equals("false"))) {
+                        vuln = Boolean.parseBoolean(word(t, idx));
+                        idx++;
+                    } else {
+                        vuln = true;
+                    }
+                }
+                case "sneak", "sneaking" -> {
+                    idx++;
+                    if (idx < t.size() && (word(t, idx).equals("true") || word(t, idx).equals("false"))) {
+                        sneak = Boolean.parseBoolean(word(t, idx));
+                        idx++;
+                    } else {
+                        sneak = true;
+                    }
+                }
+                default -> throw new ParseException("неизвестный параметр spawn npc: '" + t.get(idx).value() + "'");
+            }
+        }
+        return new Effects.NpcAction("spawn", idExpr.expression(), atTarget[0], atPlace[0], xyz[0], xyz[1], xyz[2],
+                skinExpr, style, look, vuln, sneak, null, nameExpr);
+    }
+
+    private Action parseEquipNpc(List<Token> t) throws ParseException {
+        ExprParser.Parsed idExpr = ExprParser.parseAtom(t, 2);
+        int idx = idExpr.end();
+        if (word(t, idx).equals("with")) idx++;
+        if (idx + 1 >= t.size()) {
+            throw new ParseException("нужно: equip npc \"commander\" with <mainhand|offhand|helmet|chestplate|leggings|boots> <предмет>");
+        }
+        net.minecraft.world.entity.EquipmentSlot slot = switch (word(t, idx)) {
+            case "mainhand", "weapon", "hand", "tool" -> net.minecraft.world.entity.EquipmentSlot.MAINHAND;
+            case "offhand", "shield" -> net.minecraft.world.entity.EquipmentSlot.OFFHAND;
+            case "helmet", "head" -> net.minecraft.world.entity.EquipmentSlot.HEAD;
+            case "chestplate", "chest" -> net.minecraft.world.entity.EquipmentSlot.CHEST;
+            case "leggings", "legs" -> net.minecraft.world.entity.EquipmentSlot.LEGS;
+            case "boots", "feet" -> net.minecraft.world.entity.EquipmentSlot.FEET;
+            default -> throw new ParseException("неизвестный слот экипировки NPC: '" + t.get(idx).value() + "'");
+        };
+        ExprParser.Parsed itemExpr = ExprParser.parse(t, idx + 1);
+        return new Effects.NpcAction("equip", idExpr.expression(), null, null, null, null, null,
+                itemExpr.expression(), null, null, null, null, slot, null);
+    }
+
+    private Action parseSetNpcProp(List<Token> t) throws ParseException {
+        String prop = word(t, 1); // skin | name
+        ExprParser.Parsed idExpr = ExprParser.parseAtom(t, 4);
+        int idx = idExpr.end();
+        expectWord(t, idx, "to");
+        ExprParser.Parsed val = ExprParser.parse(t, idx + 1);
+        return new Effects.NpcAction(prop, idExpr.expression(), null, null, null, null, null,
+                val.expression(), null, null, null, null, null, null);
+    }
+
+    private Action parseNpcAnimation(List<Token> t, boolean stop) throws ParseException {
+        int idx = 3;
+        Expression anim = null;
+        if (!stop) {
+            ExprParser.Parsed ap = ExprParser.parseAtom(t, idx);
+            anim = ap.expression();
+            idx = ap.end();
+        }
+        if (word(t, idx).equals("on") || word(t, idx).equals("of")) idx++;
+        if (word(t, idx).equals("npc")) idx++;
+        ExprParser.Parsed idExpr = ExprParser.parseAtom(t, idx);
+        idx = idExpr.end();
+        Expression speed = null;
+        while (idx < t.size()) {
+            if (word(t, idx).equals("speed")) {
+                ExprParser.Parsed sp = ExprParser.parseAtom(t, idx + 1);
+                speed = sp.expression();
+                idx = sp.end();
+            } else {
+                throw new ParseException("неизвестный параметр npc animation: '" + t.get(idx).value() + "'");
+            }
+        }
+        return new Effects.NpcAction(stop ? "stop_anim" : "anim", idExpr.expression(), null, null, null, null, null,
+                anim, null, null, null, null, null, speed);
+    }
+
+    private Action parseMakeNpc(List<Token> t) throws ParseException {
+        ExprParser.Parsed idExpr = ExprParser.parseAtom(t, 2);
+        int idx = idExpr.end();
+        String verb = word(t, idx);
+        if (verb.equals("look") && word(t, idx + 1).equals("at")) {
+            idx += 2;
+            Target[] atTarget = new Target[1];
+            Expression[] atPlace = new Expression[1];
+            Expression[] xyz = new Expression[3];
+            parsePositionClause(t, idx, atTarget, atPlace, xyz, Set.of());
+            return new Effects.NpcAction("look", idExpr.expression(), atTarget[0], atPlace[0], xyz[0], xyz[1], xyz[2],
+                    null, null, null, null, null, null, null);
+        }
+        if ((verb.equals("walk") || verb.equals("move")) && word(t, idx + 1).equals("to")) {
+            idx += 2;
+            Target[] atTarget = new Target[1];
+            Expression[] atPlace = new Expression[1];
+            Expression[] xyz = new Expression[3];
+            idx = parsePositionClause(t, idx, atTarget, atPlace, xyz, Set.of("speed", "with"));
+            Expression spd = null;
+            if (idx < t.size()) {
+                if (word(t, idx).equals("with")) idx++;
+                if (word(t, idx).equals("speed")) {
+                    ExprParser.Parsed sp = ExprParser.parseAtom(t, idx + 1);
+                    spd = sp.expression();
+                }
+            }
+            return new Effects.NpcAction("walk", idExpr.expression(), atTarget[0], atPlace[0], xyz[0], xyz[1], xyz[2],
+                    null, null, null, null, null, null, spd);
+        }
+        throw new ParseException("нужно: make npc \"id\" look at <цель>  или  make npc \"id\" walk to <x y z> [speed N]");
+    }
+
+    private Action parseAttachProp(List<Token> t) throws ParseException {
+        if (t.size() < 6) {
+            throw new ParseException("нужно: attach prop \"drone\" model \"gecko:shoulder_drone\" to body of player");
+        }
+        ExprParser.Parsed slotExpr = ExprParser.parseAtom(t, 2);
+        int idx = slotExpr.end();
+        boolean itemMode = false;
+        if (word(t, idx).equals("item")) {
+            itemMode = true;
+            idx++;
+        } else if (word(t, idx).equals("model")) {
+            idx++;
+        }
+        ExprParser.Parsed mainExpr = ExprParser.parseAtom(t, idx);
+        idx = mainExpr.end();
+
+        Expression texExpr = null;
+        Expression animExpr = null;
+        String bone = "body";
+        EntityTarget entTarget = null;
+        Expression npcTarget = null;
+        Expression ox = null, oy = null, oz = null;
+        Expression rx = null, ry = null, rz = null;
+        Expression scale = null;
+
+        while (idx < t.size()) {
+            String w = word(t, idx);
+            switch (w) {
+                case "texture" -> { ExprParser.Parsed p = ExprParser.parseAtom(t, idx + 1); texExpr = p.expression(); idx = p.end(); }
+                case "animation" -> { ExprParser.Parsed p = ExprParser.parseAtom(t, idx + 1); animExpr = p.expression(); idx = p.end(); }
+                case "to" -> {
+                    if (idx + 1 >= t.size()) throw new ParseException("укажите кость (head, body, right_arm, left_arm, right_leg, left_leg)");
+                    bone = com.scriptcraft.script.runtime.PropManager.normalizeBone(word(t, idx + 1));
+                    idx += 2;
+                    if (idx < t.size() && word(t, idx).equals("of")) {
+                        idx++;
+                        if (word(t, idx).equals("npc")) {
+                            ExprParser.Parsed np = ExprParser.parseAtom(t, idx + 1);
+                            npcTarget = np.expression();
+                            idx = np.end();
+                        } else {
+                            TargetParser.ParsedEntity ep = TargetParser.parseEntity(t, idx);
+                            if (ep == null) throw new ParseException("ожидается player или сущность после 'of'");
+                            entTarget = ep.target();
+                            idx = ep.end();
+                        }
+                    }
+                }
+                case "offset" -> {
+                    if (idx + 3 >= t.size()) throw new ParseException("нужно: offset X Y Z");
+                    ox = expression(t.get(idx + 1));
+                    oy = expression(t.get(idx + 2));
+                    oz = expression(t.get(idx + 3));
+                    idx += 4;
+                }
+                case "rotation", "rot" -> {
+                    if (idx + 3 >= t.size()) throw new ParseException("нужно: rotation RX RY RZ");
+                    rx = expression(t.get(idx + 1));
+                    ry = expression(t.get(idx + 2));
+                    rz = expression(t.get(idx + 3));
+                    idx += 4;
+                }
+                case "scale" -> { ExprParser.Parsed p = ExprParser.parseAtom(t, idx + 1); scale = p.expression(); idx = p.end(); }
+                default -> throw new ParseException("неизвестный параметр attach prop: '" + t.get(idx).value() + "'");
+            }
+        }
+        return new Effects.PropAction("attach", slotExpr.expression(), bone, itemMode, mainExpr.expression(),
+                texExpr, animExpr, entTarget, npcTarget, ox, oy, oz, rx, ry, rz, scale);
+    }
+
+    private Action parseDetachProp(List<Token> t) throws ParseException {
+        ExprParser.Parsed slotExpr = ExprParser.parseAtom(t, 2);
+        int idx = slotExpr.end();
+        EntityTarget entTarget = null;
+        Expression npcTarget = null;
+        if (idx < t.size() && (word(t, idx).equals("from") || word(t, idx).equals("of"))) {
+            idx++;
+            if (word(t, idx).equals("npc")) {
+                ExprParser.Parsed np = ExprParser.parseAtom(t, idx + 1);
+                npcTarget = np.expression();
+            } else {
+                TargetParser.ParsedEntity ep = TargetParser.parseEntity(t, idx);
+                if (ep != null) entTarget = ep.target();
+            }
+        }
+        return new Effects.PropAction("detach", slotExpr.expression(), null, false, null, null, null,
+                entTarget, npcTarget, null, null, null, null, null, null, null);
+    }
+
+    private Action parseClearProps(List<Token> t) throws ParseException {
+        int idx = word(t, 1).equals("all") ? 3 : 2;
+        EntityTarget entTarget = null;
+        Expression npcTarget = null;
+        if (idx < t.size() && (word(t, idx).equals("of") || word(t, idx).equals("from"))) {
+            idx++;
+            if (word(t, idx).equals("npc")) {
+                ExprParser.Parsed np = ExprParser.parseAtom(t, idx + 1);
+                npcTarget = np.expression();
+            } else {
+                TargetParser.ParsedEntity ep = TargetParser.parseEntity(t, idx);
+                if (ep != null) entTarget = ep.target();
+            }
+        }
+        return new Effects.PropAction("clear", null, null, false, null, null, null,
+                entTarget, npcTarget, null, null, null, null, null, null, null);
+    }
+
+    private Action parsePlayCutscene(List<Token> t) throws ParseException {
+        int idx = 2;
+        if (word(t, 1).equals("camera") && word(t, 2).equals("path")) idx = 3;
+        Target target = null;
+        Expression points = null;
+        Expression duration = null;
+        int ticksPerUnit = 1;
+        EntityTarget lookEnt = null;
+        Expression lookNpc = null;
+        Expression lookPlace = null;
+        Expression lx = null, ly = null, lz = null;
+        boolean lock = true;
+
+        while (idx < t.size()) {
+            String w = word(t, idx);
+            switch (w) {
+                case "for", "of", "to" -> {
+                    // Проверяем, не длительность ли это ("for 5 seconds")
+                    if (idx + 2 < t.size() && looksNumericOrVar(t.get(idx + 1)) && isTimeUnitWord(word(t, idx + 2))) {
+                        duration = expression(t.get(idx + 1));
+                        ticksPerUnit = timeUnitMultiplier(word(t, idx + 2));
+                        idx += 3;
+                    } else {
+                        TargetParser.Parsed tp = TargetParser.parse(t, idx + 1);
+                        if (tp == null) throw new ParseException("ожидается цель после '" + w + "'");
+                        target = tp.target();
+                        idx = tp.end();
+                    }
+                }
+                case "points", "waypoints", "path" -> {
+                    ExprParser.Parsed p = ExprParser.parseAtom(t, idx + 1);
+                    points = p.expression();
+                    idx = p.end();
+                }
+                case "in", "duration" -> {
+                    ExprParser.Parsed p = ExprParser.parseAtom(t, idx + 1);
+                    duration = p.expression();
+                    idx = p.end();
+                    if (idx < t.size() && isTimeUnitWord(word(t, idx))) {
+                        ticksPerUnit = timeUnitMultiplier(word(t, idx));
+                        idx++;
+                    }
+                }
+                case "looking" -> {
+                    expectWord(t, idx + 1, "at");
+                    idx += 2;
+                    if (word(t, idx).equals("npc")) {
+                        ExprParser.Parsed np = ExprParser.parseAtom(t, idx + 1);
+                        lookNpc = np.expression();
+                        idx = np.end();
+                    } else if (idx + 2 < t.size() && looksCoordOrRel(t.get(idx))
+                            && looksCoordOrRel(t.get(idx + 1)) && looksCoordOrRel(t.get(idx + 2))) {
+                        lx = t.get(idx).value().startsWith("~") ? new Expression.Text(t.get(idx).value()) : expression(t.get(idx));
+                        ly = t.get(idx + 1).value().startsWith("~") ? new Expression.Text(t.get(idx + 1).value()) : expression(t.get(idx + 1));
+                        lz = t.get(idx + 2).value().startsWith("~") ? new Expression.Text(t.get(idx + 2).value()) : expression(t.get(idx + 2));
+                        idx += 3;
+                    } else {
+                        TargetParser.ParsedEntity ep = TargetParser.parseEntity(t, idx);
+                        if (ep != null) {
+                            lookEnt = ep.target();
+                            idx = ep.end();
+                        } else {
+                            ExprParser.Parsed lp = ExprParser.parseAtom(t, idx);
+                            lookPlace = lp.expression();
+                            idx = lp.end();
+                        }
+                    }
+                }
+                case "lock" -> {
+                    idx++;
+                    if (idx < t.size() && (word(t, idx).equals("true") || word(t, idx).equals("false"))) {
+                        lock = Boolean.parseBoolean(word(t, idx));
+                        idx++;
+                    } else {
+                        lock = true;
+                    }
+                }
+                case "unlock", "free" -> { lock = false; idx++; }
+                default -> {
+                    if (points == null && t.get(idx).quoted()) {
+                        points = new Expression.Text(t.get(idx).value());
+                        idx++;
+                    } else {
+                        throw new ParseException("неизвестный параметр cutscene: '" + t.get(idx).value() + "'");
+                    }
+                }
+            }
+        }
+        if (points == null) {
+            throw new ParseException("укажите точки маршрута: play cutscene for player points \"~0 ~3 ~6; ~5 ~4 ~0; ~0 ~2 ~-4\" for 6 seconds");
+        }
+        return new Effects.CameraCutscene(false, target, points, null, null, duration, ticksPerUnit,
+                lookEnt, lookNpc, lookPlace, lx, ly, lz, lock);
+    }
+
+    private Action parseMoveCamera(List<Token> t) throws ParseException {
+        int idx = 2;
+        Target target = null;
+        if (word(t, idx).equals("of") || word(t, idx).equals("for")) {
+            TargetParser.Parsed tp = TargetParser.parse(t, idx + 1);
+            if (tp == null) throw new ParseException("ожидается цель после '" + word(t, idx) + "'");
+            target = tp.target();
+            idx = tp.end();
+        }
+        expectWord(t, idx, "from");
+        ExprParser.Parsed fromP = ExprParser.parseAtom(t, idx + 1);
+        idx = fromP.end();
+        expectWord(t, idx, "to");
+        ExprParser.Parsed toP = ExprParser.parseAtom(t, idx + 1);
+        idx = toP.end();
+
+        Expression duration = null;
+        int ticksPerUnit = 1;
+        EntityTarget lookEnt = null;
+        Expression lookNpc = null;
+        Expression lookPlace = null;
+        Expression lx = null, ly = null, lz = null;
+
+        while (idx < t.size()) {
+            String w = word(t, idx);
+            if (w.equals("in") || w.equals("for") || w.equals("duration")) {
+                ExprParser.Parsed dp = ExprParser.parseAtom(t, idx + 1);
+                duration = dp.expression();
+                idx = dp.end();
+                if (idx < t.size() && isTimeUnitWord(word(t, idx))) {
+                    ticksPerUnit = timeUnitMultiplier(word(t, idx));
+                    idx++;
+                }
+            } else if (w.equals("looking") && word(t, idx + 1).equals("at")) {
+                idx += 2;
+                if (word(t, idx).equals("npc")) {
+                    ExprParser.Parsed np = ExprParser.parseAtom(t, idx + 1);
+                    lookNpc = np.expression();
+                    idx = np.end();
+                } else if (idx + 2 < t.size() && looksCoordOrRel(t.get(idx))
+                        && looksCoordOrRel(t.get(idx + 1)) && looksCoordOrRel(t.get(idx + 2))) {
+                    lx = t.get(idx).value().startsWith("~") ? new Expression.Text(t.get(idx).value()) : expression(t.get(idx));
+                    ly = t.get(idx + 1).value().startsWith("~") ? new Expression.Text(t.get(idx + 1).value()) : expression(t.get(idx + 1));
+                    lz = t.get(idx + 2).value().startsWith("~") ? new Expression.Text(t.get(idx + 2).value()) : expression(t.get(idx + 2));
+                    idx += 3;
+                } else {
+                    TargetParser.ParsedEntity ep = TargetParser.parseEntity(t, idx);
+                    if (ep != null) { lookEnt = ep.target(); idx = ep.end(); }
+                    else { ExprParser.Parsed lp = ExprParser.parseAtom(t, idx); lookPlace = lp.expression(); idx = lp.end(); }
+                }
+            } else {
+                throw new ParseException("неизвестный параметр move camera: '" + t.get(idx).value() + "'");
+            }
+        }
+        return new Effects.CameraCutscene(false, target, null, fromP.expression(), toP.expression(), duration, ticksPerUnit,
+                lookEnt, lookNpc, lookPlace, lx, ly, lz, true);
+    }
+
+    private Action parseStopCutscene(List<Token> t) throws ParseException {
+        Target target = null;
+        if (t.size() > 2 && (word(t, 2).equals("of") || word(t, 2).equals("for"))) {
+            TargetParser.Parsed tp = TargetParser.parse(t, 3);
+            if (tp != null) target = tp.target();
+        }
+        return new Effects.CameraCutscene(true, target, null, null, null, null, 1, null, null, null, null, null, null, false);
+    }
+
+    private static boolean looksCoordOrRel(Token tok) {
+        if (tok.quoted()) return false;
+        if (tok.value().startsWith("~")) return true;
+        return looksNumericOrVar(tok);
+    }
+
+    private static boolean isTimeUnitWord(String w) {
+        return switch (w) {
+            case "t", "tick", "ticks", "s", "sec", "secs", "second", "seconds" -> true;
+            default -> false;
+        };
+    }
+
+    private static int timeUnitMultiplier(String w) {
+        return switch (w) {
+            case "s", "sec", "secs", "second", "seconds" -> 20;
+            default -> 1;
+        };
     }
 
     private void error(Line line, String en, String ru) {

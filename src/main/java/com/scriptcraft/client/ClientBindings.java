@@ -54,6 +54,9 @@ public final class ClientBindings {
             DefineCache.add(blocks, items);
         }
 
+        if (!com.scriptcraft.config.ScriptCraftConfig.registerRealIds()) {
+            return; // В режиме пула слоты постоянные и работают без перезапуска игры
+        }
         List<String> temporary = new ArrayList<>();
         for (String id : snapshot.blockSlots().keySet()) {
             if (TOLD.add(id)) {

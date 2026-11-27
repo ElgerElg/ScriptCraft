@@ -447,6 +447,38 @@ final class ExprParser {
                 return new Parsed(new Expression.EventValue("block"), i + 2);
             }
         }
+        if (w.equals("leash") && i + 2 < t.size()) {
+            String sub = word(t, i + 1);
+            String kind = switch (sub) {
+                case "length", "max_length" -> "length";
+                case "distance", "stretch" -> "distance";
+                case "holder", "owner" -> "holder";
+                case "anchor", "location", "target" -> "anchor";
+                default -> null;
+            };
+            if (kind != null && word(t, i + 2).equals("of")) {
+                TargetParser.ParsedEntity ent = TargetParser.parseEntity(t, i + 3);
+                if (ent == null) {
+                    throw new ParseException("нужно: leash " + sub + " of <сущность/игрок>");
+                }
+                return new Parsed(new Expression.LeashInfo(kind, ent.target()), ent.end());
+            }
+        }
+        if (w.equals("uuid") && word(t, i + 1).equals("of")) {
+            if (word(t, i + 2).equals("targeted") && word(t, i + 3).equals("entity")) {
+                TargetParser.ParsedEntity ent = TargetParser.parseEntity(t, i + 2);
+                if (ent != null) {
+                    return new Parsed(new Expression.EntityUuid(ent.target()), ent.end());
+                }
+            }
+            if ((word(t, i + 2).equals("last") && word(t, i + 3).equals("spawned") && word(t, i + 4).equals("entity"))
+                    || (word(t, i + 2).equals("spawned") && word(t, i + 3).equals("entity"))) {
+                TargetParser.ParsedEntity ent = TargetParser.parseEntity(t, i + 2);
+                if (ent != null) {
+                    return new Parsed(new Expression.EntityUuid(ent.target()), ent.end());
+                }
+            }
+        }
         if (w.equals("targeted")) {
             String kind = word(t, i + 1);
             if (kind.equals("player") && word(t, i + 2).equals("of")) {

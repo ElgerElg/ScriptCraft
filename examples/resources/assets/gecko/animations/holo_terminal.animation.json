@@ -1,0 +1,103 @@
+{
+  "format_version": "1.8.0",
+  "animations": {
+    "idle": {
+      "loop": true,
+      "animation_length": 4.0,
+      "bones": {
+        "holo_cube": {
+          "position": [
+            0,
+            "math.sin(query.anim_time * 90) * 1.4",
+            0
+          ],
+          "rotation": [
+            25,
+            "query.anim_time * 90",
+            20
+          ]
+        },
+        "screen_ring": {
+          "rotation": [
+            0,
+            "-query.anim_time * 45",
+            0
+          ]
+        }
+      }
+    },
+    "activate": {
+      "loop": false,
+      "animation_length": 1.0,
+      "bones": {
+        "holo_cube": {
+          "position": {
+            "0.0": [
+              0,
+              0,
+              0
+            ],
+            "0.35": [
+              0,
+              3.8,
+              0
+            ],
+            "1.0": [
+              0,
+              0,
+              0
+            ]
+          },
+          "rotation": {
+            "0.0": [
+              25,
+              0,
+              20
+            ],
+            "0.5": [
+              45,
+              180,
+              45
+            ],
+            "1.0": [
+              25,
+              360,
+              20
+            ]
+          },
+          "scale": {
+            "0.0": [
+              1,
+              1,
+              1
+            ],
+            "0.35": [
+              1.45,
+              1.45,
+              1.45
+            ],
+            "1.0": [
+              1,
+              1,
+              1
+            ]
+          }
+        },
+        "screen_ring": {
+          "rotation": {
+            "0.0": [
+              0,
+              0,
+              0
+            ],
+            "1.0": [
+              0,
+              -360,
+              0
+            ]
+          }
+        }
+      }
+    }
+  }
+}

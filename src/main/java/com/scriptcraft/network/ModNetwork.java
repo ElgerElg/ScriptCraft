@@ -26,7 +26,9 @@ public final class ModNetwork {
     // 15: клиентские GUI-частицы и всплывающие цифры (GuiFxPacket).
     // 16: цвет редактора в StudioLivePacket (совместное редактирование и GUI-редактор).
     // 17: анимации игрока (PlayerAnimPacket) и статус LuckPerms в ScriptListPacket.
-    private static final String PROTOCOL_VERSION = "17";
+    // 18: универсальные настраиваемые поводки (LeashPacket).
+    // 19: 3D Geo-анимации предметов/блоков (GeoSyncPacket), аттачи на костях (PropAttachPacket) и катсцены (CameraPathPacket).
+    private static final String PROTOCOL_VERSION = "19";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(ScriptCraft.MODID, "main"),
@@ -205,6 +207,26 @@ public final class ModNetwork {
                 .encoder(PlayerAnimPacket::encode)
                 .decoder(PlayerAnimPacket::decode)
                 .consumerMainThread(PlayerAnimPacket::handle)
+                .add();
+        CHANNEL.messageBuilder(LeashPacket.class, id++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(LeashPacket::encode)
+                .decoder(LeashPacket::decode)
+                .consumerMainThread(LeashPacket::handle)
+                .add();
+        CHANNEL.messageBuilder(GeoSyncPacket.class, id++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(GeoSyncPacket::encode)
+                .decoder(GeoSyncPacket::decode)
+                .consumerMainThread(GeoSyncPacket::handle)
+                .add();
+        CHANNEL.messageBuilder(PropAttachPacket.class, id++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(PropAttachPacket::encode)
+                .decoder(PropAttachPacket::decode)
+                .consumerMainThread(PropAttachPacket::handle)
+                .add();
+        CHANNEL.messageBuilder(CameraPathPacket.class, id++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(CameraPathPacket::encode)
+                .decoder(CameraPathPacket::decode)
+                .consumerMainThread(CameraPathPacket::handle)
                 .add();
     }
 

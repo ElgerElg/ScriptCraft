@@ -295,7 +295,7 @@ public final class StudioAnimEditor {
     }
 
     private static void parseRelPathInto(String relPath, AnimDoc doc) {
-        if (relPath == null) return;
+        if (relPath == null || relPath.isBlank()) return;
         String norm = relPath.replace('\\', '/');
         String[] parts = norm.split("/");
         if (parts.length >= 5 && "resources".equals(parts[0]) && "assets".equals(parts[1])) {
@@ -311,7 +311,15 @@ public final class StudioAnimEditor {
             }
             doc.fileName = fn.isEmpty() ? "anim" : fn;
             doc.displayName = doc.fileName;
+            return;
         }
+        String last = parts[parts.length - 1];
+        if (last.toLowerCase(Locale.ROOT).endsWith(".json")) {
+            last = last.substring(0, last.length() - 5);
+        }
+        String clean = StudioAnimModel.safeResourceSlug(last, "anim");
+        doc.fileName = clean;
+        doc.displayName = last.isEmpty() ? clean : last;
     }
 
     public static void saveCurrentToServer() {

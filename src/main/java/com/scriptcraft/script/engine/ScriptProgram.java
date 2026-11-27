@@ -18,8 +18,30 @@ public interface ScriptProgram {
     /** Блоки, объявленные через "define block". Используются ТОЛЬКО при запуске (реестры потом заморожены). */
     List<BlockDefinition> blocks();
 
-    /** Предметы, объявленные через "define item". Используются ТОЛЬКО при запуске. */
+    /** Предметы, объявленные через "define item" / "define armor". */
     List<ItemDefinition> items();
+
+    /** Кастомные 3D-сущности из "define entity" (доступны сразу при /sc reload без лимита слотов!). */
+    java.util.Map<String, com.scriptcraft.script.parser.EntityDefinition> entities();
+
+    @Nullable
+    default com.scriptcraft.script.parser.EntityDefinition entity(String id) {
+        if (id == null || id.isBlank()) return null;
+        String clean = id.strip().toLowerCase(java.util.Locale.ROOT);
+        var direct = entities().get(clean);
+        if (direct != null) return direct;
+        if (!clean.contains(":")) {
+            var sc = entities().get("scriptcraft:" + clean);
+            if (sc != null) return sc;
+            String suffix = ":" + clean;
+            for (var entry : entities().entrySet()) {
+                if (entry.getKey().endsWith(suffix)) {
+                    return entry.getValue();
+                }
+            }
+        }
+        return null;
+    }
 
     /** Имена команд из скриптов (без косой черты). */
     Set<String> commandNames();

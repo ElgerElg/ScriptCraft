@@ -92,8 +92,7 @@ public interface Expression {
             if (stack.isEmpty()) {
                 return "minecraft:air";
             }
-            ResourceLocation id = ForgeRegistries.ITEMS.getKey(stack.getItem());
-            return id == null ? "minecraft:air" : id.toString();
+            return com.scriptcraft.registry.Bindings.Snapshot.logicalItemId(stack.getItem());
         }
     }
 
@@ -119,6 +118,33 @@ public interface Expression {
         @Override
         public Object evaluate(ExecutionContext ctx) {
             return ctx.scriptName();
+        }
+    }
+
+    /** Свойства поводка: leash length/distance/holder/anchor of <entity>. */
+    record LeashInfo(String kind, EntityTarget target) implements Expression {
+        @Override
+        public Object evaluate(ExecutionContext ctx) {
+            net.minecraft.world.entity.Entity e = target.first(ctx);
+            if (e == null) {
+                return null;
+            }
+            return switch (kind) {
+                case "length" -> LeashManager.maxLength(e);
+                case "distance" -> LeashManager.currentDistance(ctx.server(), e);
+                case "holder" -> LeashManager.holderDescription(ctx.server(), e);
+                case "anchor" -> LeashManager.anchorLocation(ctx.server(), e);
+                default -> null;
+            };
+        }
+    }
+
+    /** uuid of targeted entity / uuid of last spawned entity. */
+    record EntityUuid(EntityTarget target) implements Expression {
+        @Override
+        public Object evaluate(ExecutionContext ctx) {
+            net.minecraft.world.entity.Entity e = target.first(ctx);
+            return e != null ? e.getStringUUID() : null;
         }
     }
 

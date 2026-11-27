@@ -8,7 +8,9 @@
   "use strict";
   var SC = window.SC;
   var DATA = window.SC_DOCS.syntax;
-  var EXAMPLES = (window.SC_DOCS.examples && window.SC_DOCS.examples.items) || [];
+  var EXAMPLES = Array.isArray(window.SC_DOCS.examples)
+    ? window.SC_DOCS.examples
+    : ((window.SC_DOCS.examples && window.SC_DOCS.examples.items) || []);
   var byId = {};
   var catById = {};
   DATA.categories.forEach(function (c, i) { c.order = i; catById[c.id] = c; });
@@ -242,7 +244,7 @@
     if (!ts.length) groups.sort(function (a, b) { return catById[a].order - catById[b].order; });
     var exBox = EXAMPLES.length
       ? '<div class="side-ex"><div class="side-ex-h">' + SC.esc(SC.t("side.examples")) + '</div>' +
-        EXAMPLES.slice(0, 4).map(function (ex) {
+        EXAMPLES.slice().reverse().slice(0, 5).map(function (ex) {
           return '<a class="side-ex-link" href="examples.html#' + SC.esc(ex.id) + '">' + SC.esc(SC.tr(ex.title)) + "</a>";
         }).join("") +
         '<a class="side-ex-all" href="examples.html">' + SC.esc(SC.t("side.all_examples")) + "</a></div>"

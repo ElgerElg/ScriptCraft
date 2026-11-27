@@ -21,6 +21,11 @@ public class ScriptBlockItem extends BlockItem {
         this.block = block;
     }
 
+    @Override
+    public void initializeClient(java.util.function.Consumer<net.minecraftforge.client.extensions.common.IClientItemExtensions> consumer) {
+        consumer.accept(com.scriptcraft.client.geo.ScriptGeoItemRenderer.EXTENSIONS);
+    }
+
     public ScriptBlock scriptBlock() {
         return block;
     }

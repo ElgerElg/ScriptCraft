@@ -34,6 +34,7 @@ public final class ScriptCraftConfig {
     private static final ForgeConfigSpec.BooleanValue LOG_SCRIPT_LOAD_TIMES;
     private static final ForgeConfigSpec.BooleanValue ALLOW_COMMAND_EFFECTS;
     private static final ForgeConfigSpec.IntValue TARGETED_PLAYER_RANGE;
+    private static final ForgeConfigSpec.BooleanValue REGISTER_REAL_IDS;
     private static final ForgeConfigSpec.IntValue VARIABLE_BACKUPS;
     private static final ForgeConfigSpec.BooleanValue SYNC_RESOURCES;
     private static final ForgeConfigSpec.IntValue RESOURCE_MAX_MB;
@@ -85,6 +86,14 @@ public final class ScriptCraftConfig {
                         "How far 'targeted player' / %targeted% looks (blocks; the ray stops at blocks).",
                         "Как далеко ищется 'targeted player' / %targeted% (блоков; сквозь блоки луч не проходит).")
                 .defineInRange("targetedPlayerRange", 50, 1, 256);
+
+        REGISTER_REAL_IDS = b.comment(
+                        "false (default): all 'define block / define item' use ScriptCraft's pre-registered pool slots (dyn_block_N / dyn_item_N).",
+                        "Players join on the VERY FIRST attempt with zero disconnect/restart, while custom names, models, textures, tools, food, loot, recipes and commands all work.",
+                        "true: register real Forge registry IDs at startup (new players without cached IDs will be disconnected once by Forge handshake and asked to restart).",
+                        "false (по умолчанию): все блоки и предметы из скриптов работают через готовый пул слотов — вход с первого раза БЕЗ вылета и перезапуска клиента.",
+                        "true: регистрировать отдельные Forge ID при запуске (при первом входе на новый сервер Forge потребует один перезапуск игры).")
+                .define("registerRealIds", false);
 
         b.pop();
 
@@ -203,6 +212,38 @@ public final class ScriptCraftConfig {
 
     public static int targetedPlayerRange() {
         return safe(TARGETED_PLAYER_RANGE::get, 50);
+    }
+
+    public static boolean registerRealIds() {
+        return safe(REGISTER_REAL_IDS::get, false);
+    }
+
+    /** Чтение registerRealIds в конструкторе мода (до того как Forge загрузил SPEC). */
+    public static boolean registerRealIdsAtBoot() {
+        if (SPEC.isLoaded()) {
+            return registerRealIds();
+        }
+        Path path = ModPaths.root().resolve("config.toml");
+        if (!Files.isRegularFile(path)) {
+            return false;
+        }
+        try {
+            for (String line : Files.readAllLines(path, java.nio.charset.StandardCharsets.UTF_8)) {
+                String trimmed = line.strip();
+                if (trimmed.startsWith("#")) continue;
+                if (trimmed.startsWith("registerRealIds")) {
+                    int eq = trimmed.indexOf('=');
+                    if (eq >= 0) {
+                        String val = trimmed.substring(eq + 1).strip();
+                        int hash = val.indexOf('#');
+                        if (hash >= 0) val = val.substring(0, hash).strip();
+                        return "true".equalsIgnoreCase(val);
+                    }
+                }
+            }
+        } catch (IOException ignored) {
+        }
+        return false;
     }
 
     public static boolean allowCommandEffects() {

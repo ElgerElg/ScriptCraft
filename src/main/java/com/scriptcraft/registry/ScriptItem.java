@@ -38,8 +38,30 @@ import java.util.List;
  * TODO: событие "on use" из скрипта, анимации (аддон PlayerAnimator / GeckoLib).
  */
 public abstract class ScriptItem extends Item {
+    private static final java.util.UUID[] ARMOR_UUIDS = {
+            java.util.UUID.fromString("845DB27C-C624-495F-8C9F-6020A9A58B6B"),
+            java.util.UUID.fromString("D8499B04-0E66-4726-AB29-64469D734E0D"),
+            java.util.UUID.fromString("9F3D476D-C118-4544-8365-64846904B48E"),
+            java.util.UUID.fromString("2AD3F246-FEE1-4E67-B886-69FD380BB150")
+    };
+
     protected ScriptItem() {
         super(new Properties().stacksTo(64));
+    }
+
+    @Override
+    public void initializeClient(java.util.function.Consumer<net.minecraftforge.client.extensions.common.IClientItemExtensions> consumer) {
+        consumer.accept(com.scriptcraft.client.geo.ScriptGeoItemRenderer.EXTENSIONS);
+    }
+
+    @Nullable
+    @Override
+    public EquipmentSlot getEquipmentSlot(ItemStack stack) {
+        ItemDefinition def = definition();
+        if (def != null && def.armorSlot() != null) {
+            return def.armorSlot();
+        }
+        return super.getEquipmentSlot(stack);
     }
 
     @Nullable
@@ -159,6 +181,28 @@ public abstract class ScriptItem extends Item {
         if (def != null && def.fishingRod()) {
             return castRod(level, player, hand);
         }
+        if (def != null && def.armorSlot() != null) {
+            ItemStack held = player.getItemInHand(hand);
+            EquipmentSlot slot = def.armorSlot();
+            ItemStack worn = player.getItemBySlot(slot);
+            if (worn.isEmpty()) {
+                player.setItemSlot(slot, held.copyWithCount(1));
+                if (!player.getAbilities().instabuild) {
+                    held.shrink(1);
+                }
+                level.playSound(null, player.getX(), player.getY(), player.getZ(),
+                        SoundEvents.ARMOR_EQUIP_NETHERITE, SoundSource.PLAYERS, 1.0f, 1.0f);
+                player.awardStat(Stats.ITEM_USED.get(this));
+                return InteractionResultHolder.sidedSuccess(held, level.isClientSide());
+            } else if (!EnchantmentHelper.hasBindingCurse(worn) && held.getCount() == 1) {
+                player.setItemSlot(slot, held.copy());
+                player.setItemInHand(hand, worn.copy());
+                level.playSound(null, player.getX(), player.getY(), player.getZ(),
+                        SoundEvents.ARMOR_EQUIP_NETHERITE, SoundSource.PLAYERS, 1.0f, 1.0f);
+                player.awardStat(Stats.ITEM_USED.get(this));
+                return InteractionResultHolder.sidedSuccess(player.getItemInHand(hand), level.isClientSide());
+            }
+        }
         return super.use(level, player, hand);
     }
 
@@ -217,6 +261,19 @@ public abstract class ScriptItem extends Item {
     @Override
     public Multimap<Attribute, AttributeModifier> getDefaultAttributeModifiers(EquipmentSlot slot) {
         ItemDefinition def = definition();
+        if (def != null && def.armorSlot() == slot) {
+            java.util.UUID u = ARMOR_UUIDS[Math.max(0, Math.min(3, slot.getIndex()))];
+            ImmutableMultimap.Builder<Attribute, AttributeModifier> mods = ImmutableMultimap.builder();
+            if (def.defense() > 0) {
+                mods.put(Attributes.ARMOR, new AttributeModifier(u, "Armor modifier",
+                        def.defense(), AttributeModifier.Operation.ADDITION));
+            }
+            if (def.toughness() > 0f) {
+                mods.put(Attributes.ARMOR_TOUGHNESS, new AttributeModifier(u, "Armor toughness",
+                        def.toughness(), AttributeModifier.Operation.ADDITION));
+            }
+            return mods.build();
+        }
         if (def == null || slot != EquipmentSlot.MAINHAND || !def.digger()) {
             return super.getDefaultAttributeModifiers(slot);
         }

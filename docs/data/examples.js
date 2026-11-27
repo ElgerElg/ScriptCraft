@@ -7108,5 +7108,336 @@ function SbLeave(p: player):
       ]
     },
     related: ["eff-open-screen", "screen-dynamic", "screen-input", "screen-toggle", "screen-tooltip", "eff-camera", "loop-sorted"]
+  },
+  {
+    id: "gecko",
+    title: {
+      ru: "GeckoLib 3D: Боссы, Турели, 3D-Оружие, Экзо-Броня, NPC, Пропы и Катсцены",
+      en: "GeckoLib 3D Showcase: Bosses, Turrets, 3D Weapons, Exo-Armor, NPCs, Props & Cutscenes"
+    },
+    intro: {
+      ru: "Единый демонстрационный стенд всех 3D-возможностей Blockbench / GeckoLib и РП-механик в одном скрипте: кастомный 3D-босс с локатором частиц и `_glowmask.png`, авто-турель (`ai: turret`), 3D-винтовка с отдачей и кастомным `.ogg` выстрелом без `sounds.json`, 3D-броня с привязкой к костям `PlayerAnimator`, анимированный 3D-терминал, фейковый NPC со скином и воинским приветствием, 3D-дрон на плечо (`attach prop`) и плавный пролёт камеры по сплайну Catmull-Rom!",
+      en: "All-in-one showcase combining every Blockbench / GeckoLib 3D and RP feature in a single script: custom slotless 3D boss with locator particles & `_glowmask.png`, auto-aiming 3D turret (`ai: turret`), animated 3D plasma rifle with auto-registered `.ogg` sound, bone-synced 3D exo-armor, animated 3D hologram block, fake player NPC with custom skin & `PlayerAnimator` salute, shoulder drone bone prop, and smooth Catmull-Rom spline camera cutscene!"
+    },
+    downloads: [
+      {
+        href: "assets/gecko-resources.zip",
+        label: { ru: "Скачать 3D-ресурсы (gecko-resources.zip)", en: "Download 3D Resources (gecko-resources.zip)" },
+        desc: {
+          ru: "6 моделей .geo.json, 6 файлов .animation.json, 12 текстур + _glowmask.png, скин NPC, РП-эмоции и .ogg звуки",
+          en: "6 .geo.json models, 6 .animation.json files, 12 textures + _glowmask.png, NPC skin, RP emotes & .ogg sounds"
+        }
+      }
+    ],
+    blocks: [
+      {
+        lang: "sc",
+        title: { ru: "scriptcraft/scripts/-gecko.sc", en: "scriptcraft/scripts/-gecko.sc" },
+        code: `# ==============================================================================
+#  gecko.sc — Полная витрина 3D-движка GeckoLib / Blockbench и РП-механик
+#  Включить: /sc enable gecko   |   Перезагрузить ресурсы: /sc reload resources
+#  Команда-стенд в игре: /gecko (открывает интерактивный 3D-терминал со всеми демо)
+# ==============================================================================
+
+namespace gecko
+
+# 1. КАСТОМНЫЕ 3D-МОБЫ, БОССЫ И ТУРЕЛИ (БЕЗ ЛИМИТА СЛОТОВ!) + ПАРТИКЛЫ ИЗ КОСТЕЙ
+define entity cyber_guardian:
+	name: "&b&lКибер-Страж"
+	ai: hostile
+	model: "gecko:cyber_guardian"
+	texture: "gecko:textures/entity/cyber_guardian.png"
+	animation: "gecko:cyber_guardian"
+	idle_animation: "idle"
+	walk_animation: "walk"
+	attack_animation: "attack"
+	spawn_animation: "roar"
+	health: 120
+	speed: 0.27
+	damage: 8
+	attack_range: 3.0
+	follow_range: 28
+	hitbox: 1.3x2.6
+	scale: 1.15
+	glow: true
+	particle_bone: "core_locator=end_rod"
+
+define entity plasma_turret:
+	name: "&eАвто-Турель «Страж-4»"
+	ai: turret
+	model: "gecko:plasma_turret"
+	texture: "gecko:textures/entity/plasma_turret.png"
+	animation: "gecko:plasma_turret"
+	idle_animation: "idle"
+	attack_animation: "attack"
+	health: 60
+	damage: 6
+	attack_range: 14
+	hitbox: 1.0x1.5
+	scale: 1.0
+	glow: true
+	particle_bone: "muzzle_locator=electric_spark"
+
+# 2. АНИМИРОВАННОЕ 3D-ОРУЖИЕ (DEFINE ITEM + .GEO.JSON + _GLOWMASK.PNG)
+define item plasma_rifle:
+	name: "&bПлазменная винтовка МК-II"
+	lore: "&7ПКМ — выстрел с 3D-анимацией отдачи\\n&7Шейдерное свечение ячейки (_glowmask.png)"
+	stack: 1
+	damage: 7
+	model: "gecko:plasma_rifle"
+	texture: "gecko:textures/item/plasma_rifle.png"
+	animation: "gecko:plasma_rifle"
+	idle_animation: "idle"
+	scale: 1.0
+
+# 3. 3D-БРОНЯ И КОСМЕТИКА (СИНХРОНИЗАЦИЯ С КОСТЯМИ ИГРОКА И PLAYERANIMATOR)
+define armor exo_helmet:
+	name: "&bЭкзо-шлем «Авангард»"
+	slot: helmet
+	defense: 4
+	toughness: 2.0
+	lore: "&7Светящийся визор (_glowmask.png)\\n&7Повторяет повороты головы в РП-эмоциях"
+	model: "gecko:exo_armor"
+	texture: "gecko:textures/armor/exo_armor.png"
+	animation: "gecko:exo_armor"
+	idle_animation: "idle"
+
+define armor exo_chestplate:
+	name: "&bЭкзо-кираса с реактором"
+	slot: chestplate
+	defense: 8
+	toughness: 3.0
+	lore: "&7Пульсирующий спинной реактор\\n&7Синхронизация рук с PlayerAnimator"
+	model: "gecko:exo_armor"
+	texture: "gecko:textures/armor/exo_armor.png"
+	animation: "gecko:exo_armor"
+	idle_animation: "idle"
+
+# 4. АНИМИРОВАННЫЙ 3D-БЛОК / МЕБЕЛЬ (DEFINE BLOCK + .GEO.JSON)
+define block holo_terminal:
+	name: "&3Голографический терминал"
+	hardness: 3.0
+	resistance: 8.0
+	light: 12
+	full: false
+	facing: horizontal
+	tool: pickaxe
+	model: "gecko:holo_terminal"
+	texture: "gecko:textures/block/holo_terminal.png"
+	animation: "gecko:holo_terminal"
+	idle_animation: "idle"
+	scale: 1.0
+
+# ИНТЕРАКТИВ: СТРЕЛЬБА ИЗ 3D-ВИНТОВКИ И ОТКРЫТИЕ 3D-ТЕРМИНАЛА
+on right click:
+	if "%block%" is "gecko:holo_terminal":
+		cancel event
+		play block animation "activate" at targeted block once speed 1.2
+		play sound gecko:terminal_boot at targeted block with volume 0.9 pitch 1.0
+		spawn particle end_rod at player count 14 speed 0.04
+		GeckoOpenHub(player)
+		stop
+
+	if player is holding gecko:plasma_rifle:
+		if {-gecko_cd::%player%} is set:
+			stop
+		set {-gecko_cd::%player%} to 1
+		play item animation "shoot" for player once speed 1.25
+		play sound gecko:plasma_shot at player with volume 0.9 pitch 1.05
+		shake camera of player with intensity 0.8 for 4 ticks
+		spawn particle electric_spark at player count 18 speed 0.15
+		if "%targeted entity%" is not "":
+			push targeted entity away from player with force 0.7
+			spawn particle end_rod at player count 12 speed 0.08
+		wait 8 ticks
+		delete {-gecko_cd::%player%}
+
+# 6. ДИАЛОГИ И ЭМОЦИИ ФЕЙКОВОГО ИГРОКА-NPC (2.1)
+on npc click "commander":
+	make npc "commander" look at player
+	play npc animation "gecko:npc_salute" on npc "commander" speed 1.0
+	play sound gecko:terminal_boot to player with volume 0.7 pitch 1.2
+	send "&b[Командор Векс] &fЗдравия желаю, &e%player%&f! Держи 3D-снаряжение или жми &b/gecko&f!" to player
+
+on npc attack "commander":
+	play npc animation "gecko:npc_wave" on npc "commander" speed 1.2
+	send action bar "&eКомандор Векс: &fЭй, полегче с плазмой, боец!" to player
+
+# ГЛАВНАЯ КОМАНДА СТЕНДА: /gecko [menu|kit|boss|turret|npc|drone|cutscene|clear]
+command /gecko [text]:
+	permission: 2
+	aliases: gecko3d, g3d
+	if arg-1 is not set or arg-1 is "menu" or arg-1 is "hub":
+		GeckoOpenHub(player)
+		stop
+	if arg-1 is "kit" or arg-1 is "items":
+		GeckoGiveKit(player)
+		stop
+	if arg-1 is "boss":
+		GeckoSpawnBoss(player)
+		stop
+	if arg-1 is "turret":
+		GeckoSpawnTurret(player)
+		stop
+	if arg-1 is "npc":
+		GeckoSpawnCommander(player)
+		stop
+	if arg-1 is "drone" or arg-1 is "prop":
+		GeckoToggleDrone(player)
+		stop
+	if arg-1 is "cutscene" or arg-1 is "cam":
+		GeckoPlayCutscene(player)
+		stop
+	if arg-1 is "clear":
+		GeckoClearAll(player)
+		stop
+	send "&bИспользование: &f/gecko [menu | kit | boss | turret | npc | drone | cutscene | clear]" to player
+
+function GeckoOpenHub(p: player):
+	open screen "Терминал GeckoLib 3D" to p:
+		box at 0 0 size 336x204 anchor center color #E80B1220 border #FF38BDF8 radius 8 layer 0
+		box at 0 -84 size 336x26 anchor center color #660EA5E9 radius 8 layer 1
+		text "&b&l◈ SCRIPTCRAFT × GECKOLIB 3D СТЕНД" at 0 -88 anchor center shadow layer 2
+
+		box at -98 8 size 118x136 anchor center color #88090D16 border #FF1E293B radius 6 layer 1
+		text "&73D-превью босса" at -98 -52 anchor center layer 2
+		entity "gecko:cyber_guardian" at -98 56 scale 34 anchor center spin right speed 28 layer 3
+
+		button "&b⚔ Выдать 3D-набор (оружие + броня + блок)" at 64 -46 size 192x20 anchor center run GeckoGiveKit(player)
+		button "&c☠ Призвать 3D-Босса «Кибер-Страж»" at 64 -22 size 192x20 anchor center run GeckoSpawnBoss(player)
+		button "&e⚙ Поставить 3D-Турель (AI: turret)" at 64 2 size 192x20 anchor center run GeckoSpawnTurret(player)
+		button "&a👤 Создать РП-NPC «Командор Векс»" at 64 26 size 192x20 anchor center run GeckoSpawnCommander(player)
+		button "&d🛸 Дрон на плечо (3D-Prop)" at 14 50 size 92x20 anchor center run GeckoToggleDrone(player) keep open
+		button "&3🎬 Катсцена (пролёт)" at 114 50 size 92x20 anchor center run GeckoPlayCutscene(player)
+		button "&7✖ Очистить мобов / NPC / пропы" at 64 76 size 192x18 anchor center run GeckoClearAll(player) keep open
+
+function GeckoGiveKit(p: player):
+	give p gecko:plasma_rifle 1
+	give p gecko:holo_terminal 2
+	set slot helmet of p to 1 gecko:exo_helmet
+	set slot chestplate of p to 1 gecko:exo_chestplate
+	play sound gecko:terminal_boot to p with volume 0.9 pitch 1.15
+	send "&b[Gecko 3D] &fВыданы &eПлазменная винтовка&f, надета &e3D Экзо-броня &fи выдан &eГолографический терминал&f!" to p
+
+function GeckoSpawnBoss(p: player):
+	spawn geo entity "gecko:cyber_guardian" at p
+	play geo animation "roar" on last spawned entity once speed 1.0
+	play sound entity.warden.roar at p with volume 0.9 pitch 1.25
+	shake camera of p with intensity 2.2 for 16 ticks
+	send "&c&l[БОСС] &bКибер-Страж &7призван! Обратите внимание на светящееся ядро и частицы end_rod." to p
+
+function GeckoSpawnTurret(p: player):
+	spawn geo turret "gecko:plasma_turret" at p
+	play sound gecko:terminal_boot at p with volume 0.9 pitch 1.3
+	send "&e[Турель] &fАвто-турель установлена! Она сама атакует враждебных мобов в радиусе 14 блоков." to p
+
+function GeckoSpawnCommander(p: player):
+	spawn npc "commander" at p named "&b★ Командор Векс" skin "gecko:textures/skins/commander.png" wide look true
+	equip npc "commander" with chestplate gecko:exo_chestplate
+	equip npc "commander" with mainhand gecko:plasma_rifle
+	attach prop "npc_drone" model "gecko:shoulder_drone" animation "hover" to body of npc "commander" offset 6 5 2 scale 0.75
+	play npc animation "gecko:npc_salute" on npc "commander" speed 1.0
+	play sound gecko:terminal_boot at p with volume 0.8 pitch 1.1
+	send "&a[NPC] &fКомандор Векс на посту! Нажмите по нему &eПКМ &fдля диалога и РП-воинского приветствия." to p
+
+function GeckoToggleDrone(p: player):
+	if {-gecko_drone::%p%} is set:
+		detach prop "drone" from p
+		delete {-gecko_drone::%p%}
+		send action bar "&7🛸 Плечевой 3D-дрон отключён" to p
+	else:
+		set {-gecko_drone::%p%} to 1
+		attach prop "drone" model "gecko:shoulder_drone" texture "gecko:textures/entity/shoulder_drone.png" animation "hover" to body of p offset -6 5 2 scale 0.85
+		play sound gecko:terminal_boot to p with volume 0.8 pitch 1.4
+		send action bar "&d🛸 3D-дрон прикреплён к плечу! Нажмите F5, чтобы увидеть его в движении" to p
+
+function GeckoPlayCutscene(p: player):
+	close screen of p
+	fade screen of p to #000000 in 5 stay 4 out 10 ticks
+	play sound gecko:terminal_boot to p with volume 0.9 pitch 0.9
+	send title "&3&lКАТСЦЕНА" with subtitle "&7Плавный пролёт по сплайну Catmull-Rom" to p
+	play cutscene for p points "~0 ~2.2 ~5.5; ~5.2 ~3.6 ~1.5; ~1.5 ~4.0 ~-5.2; ~-5.0 ~2.8 ~-1.0; ~0 ~1.9 ~4.2" for 6 seconds looking at p
+
+function GeckoClearAll(p: player):
+	clear all geo entities
+	clear all npcs
+	clear props of p
+	delete {-gecko_drone::%p%}
+	stop cutscene for p
+	send "&7[Gecko 3D] Все 3D-сущности, фейковые NPC и аттачи очищены." to p`
+      },
+      {
+        lang: "json",
+        title: { ru: "assets/gecko/geo/shoulder_drone.geo.json (пример 3D-модели Blockbench)", en: "assets/gecko/geo/shoulder_drone.geo.json (Blockbench 3D Model Sample)" },
+        code: `{
+  "format_version": "1.12.0",
+  "minecraft:geometry": [{
+    "description": {
+      "identifier": "geometry.shoulder_drone",
+      "texture_width": 64,
+      "texture_height": 64
+    },
+    "bones": [
+      {
+        "name": "hull",
+        "pivot": [0, 2, 0],
+        "cubes": [
+          { "origin": [-2.5, 0.5, -3], "size": [5, 3, 6], "uv": [0, 0] },
+          { "origin": [-1.2, 1.2, -3.6], "size": [2.4, 1.6, 1], "uv": [48, 0] }
+        ]
+      },
+      {
+        "name": "rotor_left", "parent": "hull", "pivot": [-4.0, 2.5, 0],
+        "cubes": [
+          { "origin": [-6.0, 2.2, -0.6], "size": [4.0, 0.5, 1.2], "uv": [48, 0] },
+          { "origin": [-4.6, 2.2, -2.0], "size": [1.2, 0.5, 4.0], "uv": [48, 0] }
+        ]
+      },
+      {
+        "name": "rotor_right", "parent": "hull", "pivot": [4.0, 2.5, 0],
+        "cubes": [
+          { "origin": [2.0, 2.2, -0.6], "size": [4.0, 0.5, 1.2], "uv": [48, 0] },
+          { "origin": [3.4, 2.2, -2.0], "size": [1.2, 0.5, 4.0], "uv": [48, 0] }
+        ]
+      }
+    ]
+  }]
+}`
+      },
+      {
+        lang: "json",
+        title: { ru: "assets/gecko/animations/shoulder_drone.animation.json (Molang-анимация)", en: "assets/gecko/animations/shoulder_drone.animation.json (Molang Animation)" },
+        code: `{
+  "format_version": "1.8.0",
+  "animations": {
+    "hover": {
+      "loop": true,
+      "animation_length": 2.0,
+      "bones": {
+        "hull": {
+          "position": [0, "math.sin(query.anim_time * 180) * 0.9", 0],
+          "rotation": ["math.sin(query.anim_time * 180) * 4", 0, "math.cos(query.anim_time * 180) * 3"]
+        },
+        "rotor_left":  { "rotation": [0, "query.anim_time * 1080", 0] },
+        "rotor_right": { "rotation": [0, "-query.anim_time * 1080", 0] }
+      }
+    }
+  }
+}`
+      }
+    ],
+    notes: {
+      ru: [
+        "Распакуйте gecko-resources.zip в папку scriptcraft/resources/ (получится scriptcraft/resources/assets/gecko/...) или просто запустите мод с нуля — все ресурсы gecko уже встроены в jar по умолчанию!",
+        "Включите скрипт командой /sc enable gecko (если вы добавили новые define item / armor / block на работающем сервере, они сразу подхватятся через пул слотов, а при следующем запуске получат собственные реестровые ID; кастомные мобы define entity работают вообще без слотов!).",
+        "Введите /gecko в игре (или кликните ПКМ по установленному блоку gecko:holo_terminal), чтобы открыть интерактивный 3D-терминал со всеми 9 демонстрациями. Также откройте любой .geo.json или .ogg файл в Проводнике Студии (/sc studio), чтобы опробовать новый 3D-превьюер и аудиоплеер!"
+      ],
+      en: [
+        "Extract gecko-resources.zip into scriptcraft/resources/ (creating scriptcraft/resources/assets/gecko/...) — all gecko resources are also bundled into the mod's default assets out of the box!",
+        "Enable the script with /sc enable gecko and run /sc reload resources (define entity custom 3D mobs use zero registry slots!).",
+        "Run /gecko in-game (or right-click a placed gecko:holo_terminal block) to open the interactive 3D showcase hub. You can also click any .geo.json or .ogg file in Studio's Explorer (/sc studio) to test the built-in 3D Geo Viewer and OGG Waveform Player!"
+      ]
+    },
+    related: ["define-entity", "define-armor", "eff-geo-entity", "eff-geo-item-block", "eff-npc", "event-npc", "eff-prop-attach", "eff-camera-cutscene", "res-auto-ogg-studio"]
   }
 ];

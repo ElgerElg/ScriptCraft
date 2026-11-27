@@ -272,8 +272,16 @@ public final class Effects {
             SoundEvent sound = soundEvent(ctx.format(soundId));
             float vol = volume == null ? 1f : (float) Math.max(0, Math.min(10, number(volume, ctx)));
             float pit = pitch == null ? 1f : (float) Math.max(0.5, Math.min(2, number(pitch, ctx)));
+            boolean registered = ForgeRegistries.SOUND_EVENTS.containsKey(sound.getLocation());
+            Holder<SoundEvent> directHolder = registered ? null : Holder.direct(sound);
             for (ServerPlayer p : target.resolve(ctx)) {
-                p.playNotifySound(sound, SoundSource.MASTER, vol, pit);
+                if (registered) {
+                    p.playNotifySound(sound, SoundSource.MASTER, vol, pit);
+                } else {
+                    long seed = p.serverLevel().getRandom().nextLong();
+                    p.connection.send(new ClientboundSoundPacket(directHolder, SoundSource.MASTER,
+                            p.getX(), p.getY(), p.getZ(), vol, pit, seed));
+                }
             }
         }
     }
@@ -340,8 +348,15 @@ public final class Effects {
     }
 
     private static boolean hasCustomSoundResource(ResourceLocation rl) {
-        String soundsJson = "assets/" + rl.getNamespace() + "/sounds.json";
-        return com.scriptcraft.resources.ResourceIndex.entries().containsKey(soundsJson);
+        String ns = rl.getNamespace();
+        String soundsJson = "assets/" + ns + "/sounds.json";
+        if (com.scriptcraft.resources.ResourceIndex.entries().containsKey(soundsJson)) {
+            return true;
+        }
+        String oggDirect = "assets/" + ns + "/sounds/" + rl.getPath() + ".ogg";
+        String oggSlash = "assets/" + ns + "/sounds/" + rl.getPath().replace('.', '/') + ".ogg";
+        return com.scriptcraft.resources.ResourceIndex.entries().containsKey(oggDirect)
+                || com.scriptcraft.resources.ResourceIndex.entries().containsKey(oggSlash);
     }
 
     /** stop sound [<id>] for|to <target> */
@@ -745,18 +760,11 @@ public final class Effects {
     private static Block resolveBlock(@Nullable Object raw) {
         String text = Expression.toText(raw).strip();
         String id = text.toLowerCase(java.util.Locale.ROOT);
-        if (!id.contains(":")) {
-            id = "minecraft:" + id;
+        Block bound = com.scriptcraft.registry.Bindings.current().resolveBlock(id);
+        if (bound != null) {
+            return bound;
         }
-        ResourceLocation key = ResourceLocation.tryParse(id);
-        if (key == null || !ForgeRegistries.BLOCKS.containsKey(key)) {
-            throw new ScriptRuntimeException(Messages.get("effect.unknown_block", text));
-        }
-        Block block = ForgeRegistries.BLOCKS.getValue(key);
-        if (block == null) {
-            throw new ScriptRuntimeException(Messages.get("effect.unknown_block", text));
-        }
-        return block;
+        throw new ScriptRuntimeException(Messages.get("effect.unknown_block", text));
     }
 
     /** kick player [due to "причина"] */
@@ -1551,38 +1559,62 @@ public final class Effects {
                               @Nullable java.util.Map<EquipmentSlot, String> equipment) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            ResourceLocation rl = id(ctx.format(entityId));
-            EntityType<?> type = ForgeRegistries.ENTITY_TYPES.getValue(rl);
-            if (type == null || !ForgeRegistries.ENTITY_TYPES.containsKey(rl)) {
-                throw new ScriptRuntimeException("неизвестная сущность: " + rl);
+            String formattedId = ctx.format(entityId).strip();
+            String lookupId = formattedId.contains(":") ? formattedId.toLowerCase(java.util.Locale.ROOT)
+                    : (ScriptCraft.MODID + ":" + formattedId.toLowerCase(java.util.Locale.ROOT));
+            var customGeoDef = com.scriptcraft.script.ScriptLoader.getProgram().entity(lookupId);
+            if (customGeoDef == null && !formattedId.contains(":")) {
+                // Проверяем по короткому имени среди всех define entity
+                for (var entry : com.scriptcraft.script.ScriptLoader.getProgram().entities().entrySet()) {
+                    if (entry.getKey().endsWith(":" + formattedId.toLowerCase(java.util.Locale.ROOT))) {
+                        customGeoDef = entry.getValue();
+                        break;
+                    }
+                }
             }
+            EntityType<?> type;
+            if (customGeoDef != null) {
+                type = com.scriptcraft.registry.ScriptRegistries.GEO_ENTITY.get();
+            } else {
+                ResourceLocation rl = id(formattedId);
+                type = ForgeRegistries.ENTITY_TYPES.getValue(rl);
+                if (type == null || !ForgeRegistries.ENTITY_TYPES.containsKey(rl)) {
+                    throw new ScriptRuntimeException("неизвестная сущность: " + rl);
+                }
+            }
+            final var resolvedGeoDef = customGeoDef;
             if (x != null && y != null && z != null) {
-                spawnOne(ctx, levelOf(ctx), type, number(x, ctx), number(y, ctx), number(z, ctx));
+                spawnOne(ctx, levelOf(ctx), type, resolvedGeoDef, number(x, ctx), number(y, ctx), number(z, ctx));
                 return;
             }
             if (place != null) {
                 ScriptLocation loc = Places.require(place.evaluate(ctx));
-                spawnOne(ctx, Places.level(ctx.server(), loc), type, loc.x(), loc.y(), loc.z());
+                spawnOne(ctx, Places.level(ctx.server(), loc), type, resolvedGeoDef, loc.x(), loc.y(), loc.z());
                 return;
             }
             if (target != null) {
                 ScriptLocation loc = Places.fromNamed(target, ctx);
                 if (loc != null) {
-                    spawnOne(ctx, Places.level(ctx.server(), loc), type, loc.x(), loc.y(), loc.z());
+                    spawnOne(ctx, Places.level(ctx.server(), loc), type, resolvedGeoDef, loc.x(), loc.y(), loc.z());
                     return;
                 }
                 for (ServerPlayer p : target.resolve(ctx)) {
-                    spawnOne(ctx, p.serverLevel(), type, p.getX(), p.getY(), p.getZ());
+                    spawnOne(ctx, p.serverLevel(), type, resolvedGeoDef, p.getX(), p.getY(), p.getZ());
                 }
             }
         }
 
-        private void spawnOne(ExecutionContext ctx, ServerLevel level, EntityType<?> type, double sx, double sy, double sz) {
+        private void spawnOne(ExecutionContext ctx, ServerLevel level, EntityType<?> type,
+                              @Nullable com.scriptcraft.script.parser.EntityDefinition geoDef,
+                              double sx, double sy, double sz) {
             Entity entity = type.create(level);
             if (entity == null) {
                 return;
             }
             entity.moveTo(sx, sy, sz, 0f, 0f);
+            if (geoDef != null && entity instanceof com.scriptcraft.entity.ScriptGeoEntity geoEntity) {
+                geoEntity.applyDefinition(geoDef);
+            }
             if (snbt != null && !snbt.isBlank()) {
                 try {
                     CompoundTag merged = entity.saveWithoutId(new CompoundTag());
@@ -1615,6 +1647,165 @@ public final class Effects {
                 }
             }
             level.addFreshEntity(entity);
+            LAST_SPAWNED_UUID = entity.getUUID();
+            ctx.setPlaceholder("last_spawned_uuid", entity.getStringUUID());
+        }
+    }
+
+    private static volatile java.util.UUID LAST_SPAWNED_UUID;
+
+    @Nullable
+    public static Entity resolveLastSpawned(ExecutionContext ctx) {
+        String local = ctx.placeholderOrNull("last_spawned_uuid");
+        java.util.UUID id = null;
+        if (local != null && !local.isBlank()) {
+            try {
+                id = java.util.UUID.fromString(local);
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+        if (id == null) {
+            id = LAST_SPAWNED_UUID;
+        }
+        return id == null ? null : LeashManager.findEntity(ctx.server(), id, null);
+    }
+
+    /**
+     * leash <entity> to <entity | block at x y z | targeted block | location> [опции поводка...]
+     */
+    public record AttachLeash(
+            EntityTarget subject,
+            @Nullable EntityTarget holderEntity,
+            boolean toTargetedBlock,
+            @Nullable Expression bx,
+            @Nullable Expression by,
+            @Nullable Expression bz,
+            @Nullable Expression locExpr,
+            @Nullable Expression maxLen,
+            @Nullable Expression minLen,
+            @Nullable Expression stiffness,
+            @Nullable Expression breakDist,
+            @Nullable Boolean breakableFlag,
+            @Nullable Expression colorExpr,
+            @Nullable Expression widthExpr,
+            @Nullable Expression sagExpr,
+            @Nullable Expression twoWayExpr,
+            @Nullable Expression knotExpr,
+            @Nullable Expression dropLeadExpr
+    ) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            List<Entity> subjects = subject.resolve(ctx);
+            if (subjects.isEmpty()) {
+                return;
+            }
+            float len = maxLen != null ? (float) number(maxLen, ctx) : 6.0f;
+            float mLen = minLen != null ? (float) number(minLen, ctx) : 0.0f;
+            float stiff = stiffness != null ? (float) number(stiffness, ctx) : 1.0f;
+            float brk = 0.0f;
+            if (breakDist != null) {
+                brk = (float) number(breakDist, ctx);
+            } else if (breakableFlag != null) {
+                brk = breakableFlag ? len + 4.0f : 0.0f;
+            }
+            int col = colorExpr != null
+                    ? LeashManager.parseHexColor(Expression.toText(colorExpr.evaluate(ctx)), LeashManager.DEFAULT_COLOR)
+                    : LeashManager.DEFAULT_COLOR;
+            float w = widthExpr != null ? (float) number(widthExpr, ctx) : 1.0f;
+            float s = sagExpr != null ? (float) number(sagExpr, ctx) : 1.0f;
+            boolean bidir = twoWayExpr != null && Boolean.parseBoolean(Expression.toText(twoWayExpr.evaluate(ctx)).strip());
+            boolean knot = knotExpr == null || !"false".equalsIgnoreCase(Expression.toText(knotExpr.evaluate(ctx)).strip());
+            boolean drop = dropLeadExpr != null && Boolean.parseBoolean(Expression.toText(dropLeadExpr.evaluate(ctx)).strip());
+
+            LeashManager.Config cfg = new LeashManager.Config(len, mLen, stiff, brk, bidir, col, w, s, knot, drop);
+
+            if (toTargetedBlock) {
+                ServerPlayer viewer = ctx.player();
+                if (viewer == null) {
+                    return;
+                }
+                net.minecraft.world.phys.BlockHitResult hit = Look.sight(viewer).block();
+                if (hit == null) {
+                    return;
+                }
+                for (Entity sub : subjects) {
+                    LeashManager.attachToBlock(ctx.server(), sub, viewer.serverLevel(), hit.getBlockPos(), cfg);
+                }
+                return;
+            }
+
+            if (bx != null && by != null && bz != null) {
+                ServerLevel lvl = levelOf(ctx);
+                BlockPos bp = BlockPos.containing(number(bx, ctx), number(by, ctx), number(bz, ctx));
+                for (Entity sub : subjects) {
+                    ServerLevel subLvl = sub.level() instanceof ServerLevel sl ? sl : lvl;
+                    LeashManager.attachToBlock(ctx.server(), sub, subLvl, bp, cfg);
+                }
+                return;
+            }
+
+            if (locExpr != null) {
+                ScriptLocation loc = Places.require(locExpr.evaluate(ctx));
+                ServerLevel lvl = Places.level(ctx.server(), loc);
+                BlockPos bp = BlockPos.containing(loc.x(), loc.y(), loc.z());
+                for (Entity sub : subjects) {
+                    LeashManager.attachToBlock(ctx.server(), sub, lvl, bp, cfg);
+                }
+                return;
+            }
+
+            if (holderEntity != null) {
+                // Если в holderEntity передали {var} с локацией (например, leash player to {anchor_loc}) — поддержим!
+                if (holderEntity instanceof EntityTarget.Players pl && pl.target() instanceof Target.Named named) {
+                    ScriptLocation maybeLoc = ScriptLocation.decode(named.name().evaluate(ctx));
+                    if (maybeLoc != null) {
+                        ServerLevel lvl = Places.level(ctx.server(), maybeLoc);
+                        BlockPos bp = BlockPos.containing(maybeLoc.x(), maybeLoc.y(), maybeLoc.z());
+                        for (Entity sub : subjects) {
+                            LeashManager.attachToBlock(ctx.server(), sub, lvl, bp, cfg);
+                        }
+                        return;
+                    }
+                }
+                Entity holder = holderEntity.first(ctx);
+                if (holder == null) {
+                    return;
+                }
+                for (Entity sub : subjects) {
+                    if (sub != holder) {
+                        LeashManager.attachToEntity(ctx.server(), sub, holder, cfg);
+                    }
+                }
+            }
+        }
+    }
+
+    /** set leash <prop> of <entity> to <expr> */
+    public record SetLeashProperty(String property, EntityTarget target, Expression value) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            Object v = value.evaluate(ctx);
+            for (Entity e : target.resolve(ctx)) {
+                LeashManager.updateProperty(ctx.server(), e, property, v);
+            }
+        }
+    }
+
+    /** unleash <entity> */
+    public record UnleashEntity(EntityTarget target) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            for (Entity e : target.resolve(ctx)) {
+                LeashManager.unleash(ctx.server(), e, false, true);
+            }
+        }
+    }
+
+    /** clear [all] leashes */
+    public record ClearLeashes() implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            LeashManager.clearAll(ctx.server());
         }
     }
 
@@ -1981,5 +2172,514 @@ public final class Effects {
         bolt.moveTo(x, y, z);
         bolt.setVisualOnly(visualOnly);
         level.addFreshEntity(bolt);
+    }
+
+    // =========================================================================
+    // 3D GECKOLIB / BLOCKBENCH СУЩНОСТИ, ПРЕДМЕТЫ, БЛОКИ, NPC, АТТАЧИ И КАТСЦЕНЫ
+    // =========================================================================
+
+    private static ServerLevel resolvePosAndLevel(ExecutionContext ctx, @Nullable Target target, @Nullable Expression place,
+                                                  @Nullable Expression x, @Nullable Expression y, @Nullable Expression z,
+                                                  double[] outXyz) {
+        if (x != null && y != null && z != null) {
+            outXyz[0] = number(x, ctx);
+            outXyz[1] = number(y, ctx);
+            outXyz[2] = number(z, ctx);
+            return levelOf(ctx);
+        }
+        if (place != null) {
+            ScriptLocation loc = Places.require(place.evaluate(ctx));
+            outXyz[0] = loc.x();
+            outXyz[1] = loc.y();
+            outXyz[2] = loc.z();
+            return Places.level(ctx.server(), loc);
+        }
+        if (target != null) {
+            ScriptLocation loc = Places.fromNamed(target, ctx);
+            if (loc != null) {
+                outXyz[0] = loc.x();
+                outXyz[1] = loc.y();
+                outXyz[2] = loc.z();
+                return Places.level(ctx.server(), loc);
+            }
+            ServerPlayer p = target.first(ctx);
+            if (p != null) {
+                outXyz[0] = p.getX();
+                outXyz[1] = p.getY();
+                outXyz[2] = p.getZ();
+                return p.serverLevel();
+            }
+        }
+        ServerPlayer self = ctx.player();
+        if (self != null) {
+            outXyz[0] = self.getX();
+            outXyz[1] = self.getY();
+            outXyz[2] = self.getZ();
+            return self.serverLevel();
+        }
+        outXyz[0] = 0;
+        outXyz[1] = 64;
+        outXyz[2] = 0;
+        return ctx.server().overworld();
+    }
+
+    /** spawn geo [entity|mob|boss|turret|prop] <idExpr> at <pos> [...] */
+    public record SpawnGeoEntity(
+            Expression idOrModel,
+            @Nullable Target atTarget, @Nullable Expression atPlace,
+            @Nullable Expression x, @Nullable Expression y, @Nullable Expression z,
+            @Nullable Expression modelOverride,
+            @Nullable Expression texOverride,
+            @Nullable Expression animOverride,
+            @Nullable String customName,
+            @Nullable Expression health,
+            @Nullable Expression damage,
+            @Nullable Expression scale,
+            float hitboxW, float hitboxH,
+            @Nullable String aiOverride
+    ) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            double[] xyz = new double[3];
+            ServerLevel level = resolvePosAndLevel(ctx, atTarget, atPlace, x, y, z, xyz);
+            var geo = com.scriptcraft.registry.ScriptRegistries.GEO_ENTITY.get().create(level);
+            if (geo == null) return;
+            geo.moveTo(xyz[0], xyz[1], xyz[2], ctx.player() != null ? ctx.player().getYRot() + 180f : 0f, 0f);
+
+            String rawId = Expression.toText(idOrModel.evaluate(ctx)).strip();
+            String fullId = rawId.contains(":") ? rawId.toLowerCase(java.util.Locale.ROOT)
+                    : (ScriptCraft.MODID + ":" + rawId.toLowerCase(java.util.Locale.ROOT));
+            var def = com.scriptcraft.script.ScriptLoader.getProgram().entity(fullId);
+            if (def == null && !rawId.contains(":")) {
+                for (var e : com.scriptcraft.script.ScriptLoader.getProgram().entities().entrySet()) {
+                    if (e.getKey().endsWith(":" + rawId.toLowerCase(java.util.Locale.ROOT))) {
+                        def = e.getValue();
+                        break;
+                    }
+                }
+            }
+            if (def != null) {
+                geo.applyDefinition(def);
+            } else {
+                geo.setDefId(fullId);
+                geo.setModelPath(rawId);
+                geo.setTexturePath(rawId);
+                geo.setAnimFilePath(rawId);
+                geo.setAiMode(aiOverride != null ? aiOverride : "hostile");
+            }
+
+            if (modelOverride != null) geo.setModelPath(Expression.toText(modelOverride.evaluate(ctx)).strip());
+            if (texOverride != null) geo.setTexturePath(Expression.toText(texOverride.evaluate(ctx)).strip());
+            if (animOverride != null) geo.setAnimFilePath(Expression.toText(animOverride.evaluate(ctx)).strip());
+            if (customName != null) {
+                geo.setCustomName(colored(ctx.format(customName)));
+                geo.setCustomNameVisible(true);
+            }
+            if (health != null) {
+                double hp = Math.max(1.0, number(health, ctx));
+                AttributeInstance attr = geo.getAttribute(Attributes.MAX_HEALTH);
+                if (attr != null) attr.setBaseValue(hp);
+                geo.setHealth((float) hp);
+            }
+            if (damage != null) {
+                AttributeInstance attr = geo.getAttribute(Attributes.ATTACK_DAMAGE);
+                if (attr != null) attr.setBaseValue(Math.max(0.0, number(damage, ctx)));
+            }
+            if (scale != null) {
+                geo.setGeoScale((float) number(scale, ctx));
+            }
+            if (hitboxW > 0f && hitboxH > 0f) {
+                geo.setHitbox(hitboxW, hitboxH);
+            }
+            if (aiOverride != null) {
+                geo.setAiMode(aiOverride);
+            }
+
+            level.addFreshEntity(geo);
+            LAST_SPAWNED_UUID = geo.getUUID();
+            ctx.setPlaceholder("last_spawned_uuid", geo.getStringUUID());
+        }
+    }
+
+    /** play/stop geo animation / set geo texture / set geo scale / clear geo entities */
+    public record GeoEntityControl(
+            String op,
+            @Nullable EntityTarget target,
+            @Nullable Expression value,
+            int loopMode,
+            @Nullable Expression speed
+    ) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            if ("clear_all".equals(op)) {
+                for (ServerLevel lvl : ctx.server().getAllLevels()) {
+                    List<com.scriptcraft.entity.ScriptGeoEntity> list = new java.util.ArrayList<>();
+                    for (Entity e : lvl.getAllEntities()) {
+                        if (e instanceof com.scriptcraft.entity.ScriptGeoEntity g) list.add(g);
+                    }
+                    list.forEach(Entity::discard);
+                }
+                return;
+            }
+            if (target == null) return;
+            float spd = speed == null ? 1.0f : (float) number(speed, ctx);
+            String txt = value == null ? "" : Expression.toText(value.evaluate(ctx)).strip();
+            for (Entity e : target.resolve(ctx)) {
+                if (e instanceof com.scriptcraft.entity.ScriptGeoEntity geo) {
+                    switch (op) {
+                        case "play" -> geo.playAnimation(txt, loopMode, spd);
+                        case "stop" -> geo.stopAnimation();
+                        case "texture" -> geo.setTexturePath(txt);
+                        case "scale" -> geo.setGeoScale((float) number(value, ctx));
+                        default -> {
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /** play / stop item animation <anim> [for <target>] [mainhand|offhand] [loop|once] [speed N] */
+    public record GeoItemAnim(
+            @Nullable Expression animName,
+            @Nullable Target target,
+            boolean offhand,
+            int loopMode,
+            @Nullable Expression speed
+    ) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            String anim = animName == null ? "" : Expression.toText(animName.evaluate(ctx)).strip();
+            float spd = speed == null ? 1.0f : (float) number(speed, ctx);
+            List<ServerPlayer> players = target == null
+                    ? (ctx.player() == null ? List.of() : List.of(ctx.player()))
+                    : target.resolve(ctx);
+            for (ServerPlayer p : players) {
+                var pkt = com.scriptcraft.network.GeoSyncPacket.itemAnim(p.getUUID(), offhand, anim, loopMode, spd);
+                for (ServerPlayer viewer : p.serverLevel().players()) {
+                    com.scriptcraft.network.ModNetwork.sendTo(viewer, pkt);
+                }
+            }
+        }
+    }
+
+    /** play / stop block animation <anim> at <targeted block | x y z | expr> [loop|once|hold] [speed N] */
+    public record GeoBlockAnim(
+            @Nullable Expression animName,
+            boolean targetedBlock,
+            @Nullable Expression place,
+            @Nullable Expression x, @Nullable Expression y, @Nullable Expression z,
+            int loopMode,
+            @Nullable Expression speed
+    ) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            ServerLevel level;
+            BlockPos pos;
+            if (targetedBlock) {
+                ServerPlayer viewer = ctx.requirePlayer();
+                String enc = Places.blockLocation(viewer);
+                if (enc == null) return;
+                ScriptLocation loc = Places.require(enc);
+                level = Places.level(ctx.server(), loc);
+                pos = BlockPos.containing(loc.x(), loc.y(), loc.z());
+            } else if (x != null && y != null && z != null) {
+                level = levelOf(ctx);
+                pos = BlockPos.containing(number(x, ctx), number(y, ctx), number(z, ctx));
+            } else if (place != null) {
+                ScriptLocation loc = Places.require(place.evaluate(ctx));
+                level = Places.level(ctx.server(), loc);
+                pos = BlockPos.containing(loc.x(), loc.y(), loc.z());
+            } else {
+                return;
+            }
+            String anim = animName == null ? "" : Expression.toText(animName.evaluate(ctx)).strip();
+            float spd = speed == null ? 1.0f : (float) number(speed, ctx);
+            if (level.getBlockEntity(pos) instanceof com.scriptcraft.registry.ScriptBlockEntity sbe) {
+                sbe.triggerAnimation(anim, loopMode, spd);
+            }
+            var pkt = com.scriptcraft.network.GeoSyncPacket.blockAnim(pos, anim, loopMode, spd);
+            for (ServerPlayer viewer : level.players()) {
+                if (viewer.distanceToSqr(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5) <= 96.0 * 96.0) {
+                    com.scriptcraft.network.ModNetwork.sendTo(viewer, pkt);
+                }
+            }
+        }
+    }
+
+    /** Управление фейковыми игроками-NPC (spawn, remove, clear, skin, name, equip, anim, stop_anim, look, walk). */
+    public record NpcAction(
+            String op,
+            @Nullable Expression npcId,
+            @Nullable Target atTarget, @Nullable Expression atPlace,
+            @Nullable Expression x, @Nullable Expression y, @Nullable Expression z,
+            @Nullable Expression strArg,
+            @Nullable String modelStyle,
+            @Nullable Boolean lookPlayers,
+            @Nullable Boolean vulnerable,
+            @Nullable Boolean sneaking,
+            @Nullable EquipmentSlot slot,
+            @Nullable Expression numArg
+    ) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            if ("clear".equals(op)) {
+                NpcManager.clearAll(ctx.server());
+                return;
+            }
+            String id = npcId == null ? "" : Expression.toText(npcId.evaluate(ctx)).strip();
+            if (id.isEmpty()) return;
+
+            if ("remove".equals(op)) {
+                NpcManager.remove(ctx.server(), id);
+                return;
+            }
+            if ("spawn".equals(op)) {
+                NpcManager.remove(ctx.server(), id);
+                double[] xyz = new double[3];
+                ServerLevel level = resolvePosAndLevel(ctx, atTarget, atPlace, x, y, z, xyz);
+                var npc = com.scriptcraft.registry.ScriptRegistries.FAKE_NPC.get().create(level);
+                if (npc == null) return;
+                float yaw = ctx.player() != null ? ctx.player().getYRot() + 180f : 0f;
+                npc.moveTo(xyz[0], xyz[1], xyz[2], yaw, 0f);
+                npc.setYHeadRot(yaw);
+                npc.setYBodyRot(yaw);
+                npc.setNpcId(id);
+                if (strArg != null) {
+                    npc.setSkinSource(Expression.toText(strArg.evaluate(ctx)).strip());
+                } else {
+                    npc.setSkinSource(id);
+                }
+                if (modelStyle != null) npc.setModelStyle(modelStyle);
+                if (lookPlayers != null) npc.setLookAtPlayers(lookPlayers);
+                if (vulnerable != null) npc.setVulnerable(vulnerable);
+                if (sneaking != null) npc.setNpcSneaking(sneaking);
+                if (numArg != null) {
+                    String display = ctx.format(Expression.toText(numArg.evaluate(ctx)));
+                    npc.setCustomName(colored(display));
+                    npc.setCustomNameVisible(true);
+                }
+                level.addFreshEntity(npc);
+                NpcManager.register(npc);
+                LAST_SPAWNED_UUID = npc.getUUID();
+                ctx.setPlaceholder("last_spawned_uuid", npc.getStringUUID());
+                return;
+            }
+
+            var npc = NpcManager.find(ctx.server(), id);
+            if (npc == null) return;
+
+            switch (op) {
+                case "skin" -> npc.setSkinSource(strArg == null ? "" : Expression.toText(strArg.evaluate(ctx)).strip());
+                case "name" -> {
+                    String nm = strArg == null ? "" : ctx.format(Expression.toText(strArg.evaluate(ctx)));
+                    npc.setCustomName(nm.isEmpty() ? null : colored(nm));
+                    npc.setCustomNameVisible(!nm.isEmpty());
+                }
+                case "equip" -> {
+                    if (slot != null && strArg != null) {
+                        String itemSpec = Expression.toText(strArg.evaluate(ctx)).strip();
+                        ItemStack st = (itemSpec.isEmpty() || itemSpec.equalsIgnoreCase("air") || itemSpec.equalsIgnoreCase("none"))
+                                ? ItemStack.EMPTY : ItemStacks.create(itemSpec, 1);
+                        npc.setItemSlot(slot, st);
+                    }
+                }
+                case "anim" -> {
+                    String anim = strArg == null ? "" : Expression.toText(strArg.evaluate(ctx)).strip();
+                    float spd = numArg == null ? 1.0f : (float) number(numArg, ctx);
+                    npc.playNpcAnimation(anim, spd);
+                }
+                case "stop_anim" -> npc.stopNpcAnimation();
+                case "look" -> {
+                    double[] xyz = new double[3];
+                    resolvePosAndLevel(ctx, atTarget, atPlace, x, y, z, xyz);
+                    npc.setLookAtPlayers(false);
+                    npc.lookAt(net.minecraft.commands.arguments.EntityAnchorArgument.Anchor.EYES,
+                            new Vec3(xyz[0], xyz[1] + (atTarget != null ? 1.6 : 0.0), xyz[2]));
+                }
+                case "walk" -> {
+                    double[] xyz = new double[3];
+                    resolvePosAndLevel(ctx, atTarget, atPlace, x, y, z, xyz);
+                    double spd = numArg == null ? 1.0 : Math.max(0.2, Math.min(3.0, number(numArg, ctx)));
+                    npc.getNavigation().moveTo(xyz[0], xyz[1], xyz[2], spd);
+                }
+                default -> {
+                }
+            }
+        }
+    }
+
+    /** Привязка / отвязка 3D-моделей (.geo.json) и предметов к костям игроков и NPC (Props). */
+    public record PropAction(
+            String op,
+            @Nullable Expression slotId,
+            @Nullable String bone,
+            boolean itemMode,
+            @Nullable Expression modelOrItem,
+            @Nullable Expression texture,
+            @Nullable Expression animation,
+            @Nullable EntityTarget entityTarget,
+            @Nullable Expression npcIdTarget,
+            @Nullable Expression ox, @Nullable Expression oy, @Nullable Expression oz,
+            @Nullable Expression rx, @Nullable Expression ry, @Nullable Expression rz,
+            @Nullable Expression scale
+    ) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            List<java.util.UUID> uuids = new java.util.ArrayList<>();
+            if (npcIdTarget != null) {
+                var npc = NpcManager.find(ctx.server(), Expression.toText(npcIdTarget.evaluate(ctx)).strip());
+                if (npc != null) uuids.add(npc.getUUID());
+            } else if (entityTarget != null) {
+                for (Entity e : entityTarget.resolve(ctx)) {
+                    uuids.add(e.getUUID());
+                }
+            } else if (ctx.player() != null) {
+                uuids.add(ctx.player().getUUID());
+            }
+            if (uuids.isEmpty()) return;
+
+            if ("clear".equals(op)) {
+                for (java.util.UUID u : uuids) {
+                    PropManager.clearEntity(ctx.server(), u);
+                }
+                return;
+            }
+            String slot = slotId == null ? "default" : Expression.toText(slotId.evaluate(ctx)).strip();
+            if ("detach".equals(op)) {
+                for (java.util.UUID u : uuids) {
+                    PropManager.detach(ctx.server(), u, slot);
+                }
+                return;
+            }
+            String mainVal = modelOrItem == null ? "" : Expression.toText(modelOrItem.evaluate(ctx)).strip();
+            String texVal = texture == null ? "" : Expression.toText(texture.evaluate(ctx)).strip();
+            String animVal = animation == null ? "" : Expression.toText(animation.evaluate(ctx)).strip();
+            float fox = ox == null ? 0f : (float) number(ox, ctx);
+            float foy = oy == null ? 0f : (float) number(oy, ctx);
+            float foz = oz == null ? 0f : (float) number(oz, ctx);
+            float frx = rx == null ? 0f : (float) number(rx, ctx);
+            float fry = ry == null ? 0f : (float) number(ry, ctx);
+            float frz = rz == null ? 0f : (float) number(rz, ctx);
+            float fsc = scale == null ? 1.0f : (float) number(scale, ctx);
+
+            PropManager.PropSpec spec = new PropManager.PropSpec(
+                    slot, bone == null ? "body" : bone, itemMode, mainVal, texVal, animVal,
+                    fox, foy, foz, frx, fry, frz, fsc);
+            for (java.util.UUID u : uuids) {
+                PropManager.attach(ctx.server(), u, spec);
+            }
+        }
+    }
+
+    /** Плавный пролёт камеры / катсцена по точкам Catmull-Rom (абсолютные и ~относительные координаты!). */
+    public record CameraCutscene(
+            boolean stop,
+            @Nullable Target target,
+            @Nullable Expression pointsSpec,
+            @Nullable Expression fromLoc,
+            @Nullable Expression toLoc,
+            @Nullable Expression duration,
+            int ticksPerUnit,
+            @Nullable EntityTarget lookEntity,
+            @Nullable Expression lookNpcId,
+            @Nullable Expression lookPlace,
+            @Nullable Expression lookX, @Nullable Expression lookY, @Nullable Expression lookZ,
+            boolean lockInput
+    ) implements Action {
+        @Override
+        public void execute(ExecutionContext ctx) {
+            List<ServerPlayer> viewers = target == null
+                    ? (ctx.player() == null ? List.of() : List.of(ctx.player()))
+                    : target.resolve(ctx);
+            if (viewers.isEmpty()) return;
+
+            if (stop) {
+                var stopPkt = com.scriptcraft.network.CameraPathPacket.stopCutscene();
+                for (ServerPlayer p : viewers) {
+                    com.scriptcraft.network.ModNetwork.sendTo(p, stopPkt);
+                }
+                return;
+            }
+
+            int durTicks = duration == null ? 100
+                    : Math.max(2, Math.min(20 * 600, (int) Math.round(number(duration, ctx) * ticksPerUnit)));
+
+            for (ServerPlayer viewer : viewers) {
+                List<com.scriptcraft.network.CameraPathPacket.Waypoint> waypoints = new java.util.ArrayList<>();
+                if (pointsSpec != null) {
+                    String raw = ctx.format(Expression.toText(pointsSpec.evaluate(ctx)));
+                    for (String seg : raw.split(";")) {
+                        String trimmed = seg.strip();
+                        if (trimmed.isEmpty()) continue;
+                        String[] parts = trimmed.split("[,\\s]+");
+                        if (parts.length < 3) continue;
+                        double wx = parseCoord(parts[0], viewer.getX());
+                        double wy = parseCoord(parts[1], viewer.getY());
+                        double wz = parseCoord(parts[2], viewer.getZ());
+                        boolean hasAng = parts.length >= 5;
+                        float wyaw = hasAng ? (float) parseCoord(parts[3], viewer.getYRot()) : 0f;
+                        float wpitch = hasAng ? (float) parseCoord(parts[4], viewer.getXRot()) : 0f;
+                        waypoints.add(new com.scriptcraft.network.CameraPathPacket.Waypoint(wx, wy, wz, wyaw, wpitch, hasAng));
+                    }
+                } else if (fromLoc != null && toLoc != null) {
+                    ScriptLocation a = Places.require(fromLoc.evaluate(ctx));
+                    ScriptLocation b = Places.require(toLoc.evaluate(ctx));
+                    waypoints.add(new com.scriptcraft.network.CameraPathPacket.Waypoint(a.x(), a.y(), a.z(), a.yaw(), a.pitch(), false));
+                    waypoints.add(new com.scriptcraft.network.CameraPathPacket.Waypoint(b.x(), b.y(), b.z(), b.yaw(), b.pitch(), false));
+                }
+                if (waypoints.isEmpty()) continue;
+
+                boolean hasLook = false;
+                double lx = 0, ly = 0, lz = 0;
+                int entNetId = -1;
+                if (lookNpcId != null) {
+                    var npc = NpcManager.find(ctx.server(), Expression.toText(lookNpcId.evaluate(ctx)).strip());
+                    if (npc != null) {
+                        hasLook = true;
+                        entNetId = npc.getId();
+                        lx = npc.getX(); ly = npc.getEyeY(); lz = npc.getZ();
+                    }
+                } else if (lookEntity != null) {
+                    Entity le = lookEntity.first(ctx);
+                    if (le != null) {
+                        hasLook = true;
+                        entNetId = le.getId();
+                        lx = le.getX(); ly = le.getEyeY(); lz = le.getZ();
+                    }
+                } else if (lookX != null && lookY != null && lookZ != null) {
+                    hasLook = true;
+                    lx = parseExprOrRel(lookX, viewer.getX(), ctx);
+                    ly = parseExprOrRel(lookY, viewer.getY(), ctx);
+                    lz = parseExprOrRel(lookZ, viewer.getZ(), ctx);
+                } else if (lookPlace != null) {
+                    ScriptLocation l = Places.require(lookPlace.evaluate(ctx));
+                    hasLook = true;
+                    lx = l.x(); ly = l.y(); lz = l.z();
+                }
+
+                var pkt = new com.scriptcraft.network.CameraPathPacket(
+                        false, waypoints, durTicks, hasLook, lx, ly, lz, entNetId, lockInput);
+                com.scriptcraft.network.ModNetwork.sendTo(viewer, pkt);
+            }
+        }
+
+        private static double parseCoord(String token, double origin) {
+            String t = token.strip();
+            if (t.startsWith("~")) {
+                if (t.length() == 1) return origin;
+                return origin + Double.parseDouble(t.substring(1));
+            }
+            return Double.parseDouble(t);
+        }
+
+        private static double parseExprOrRel(Expression expr, double origin, ExecutionContext ctx) {
+            Object val = expr.evaluate(ctx);
+            String txt = Expression.toText(val).strip();
+            if (txt.startsWith("~")) {
+                return parseCoord(txt, origin);
+            }
+            return number(expr, ctx);
+        }
     }
 }

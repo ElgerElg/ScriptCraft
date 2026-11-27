@@ -131,6 +131,17 @@ public final class Bindings {
             return slot == null ? null : blocks[slot];
         }
 
+        /** Описание предмета по id из скрипта — настоящего или во временном слоте. */
+        @Nullable
+        public ItemDefinition itemById(String id) {
+            ItemDefinition d = realItems.get(id);
+            if (d != null) {
+                return d;
+            }
+            Integer slot = itemSlots.get(id);
+            return slot == null ? null : items[slot];
+        }
+
         /** Все id из скриптов: сначала настоящие, потом временные (в слотах). */
         public List<String> allIds() {
             List<String> all = new ArrayList<>(realBlocks.keySet());
@@ -177,6 +188,78 @@ public final class Bindings {
                 }
             }
             return null;
+        }
+
+        /** Блок по полному или короткому id из скрипта (настоящий, из слота пула или ванильный/модовый). */
+        @Nullable
+        public net.minecraft.world.level.block.Block resolveBlock(String rawId) {
+            if (rawId == null || rawId.isEmpty()) return null;
+            if (rawId.contains(":")) {
+                if (realBlocks.containsKey(rawId)) {
+                    var real = ScriptRegistries.realBlock(rawId);
+                    if (real != null) return real;
+                }
+                Integer slot = blockSlots.get(rawId);
+                if (slot != null) {
+                    return ScriptRegistries.block(slot);
+                }
+                var rl = net.minecraft.resources.ResourceLocation.tryParse(rawId);
+                if (rl != null && net.minecraftforge.registries.ForgeRegistries.BLOCKS.containsKey(rl)) {
+                    return net.minecraftforge.registries.ForgeRegistries.BLOCKS.getValue(rl);
+                }
+                return null;
+            }
+            var vanilla = net.minecraft.resources.ResourceLocation.tryParse("minecraft:" + rawId);
+            if (vanilla != null && net.minecraftforge.registries.ForgeRegistries.BLOCKS.containsKey(vanilla)) {
+                return net.minecraftforge.registries.ForgeRegistries.BLOCKS.getValue(vanilla);
+            }
+            var own = net.minecraft.resources.ResourceLocation.tryParse(com.scriptcraft.ScriptCraft.MODID + ":" + rawId);
+            if (own != null && net.minecraftforge.registries.ForgeRegistries.BLOCKS.containsKey(own)) {
+                return net.minecraftforge.registries.ForgeRegistries.BLOCKS.getValue(own);
+            }
+            String suffix = ":" + rawId;
+            for (String id : realBlocks.keySet()) {
+                if (id.endsWith(suffix)) {
+                    var real = ScriptRegistries.realBlock(id);
+                    if (real != null) return real;
+                }
+            }
+            for (Map.Entry<String, Integer> e : blockSlots.entrySet()) {
+                if (e.getKey().endsWith(suffix)) {
+                    return ScriptRegistries.block(e.getValue());
+                }
+            }
+            return null;
+        }
+
+        /** Логический id блока для скриптов: возвращает id из define ("example:ruby_block") даже для слота пула. */
+        public static String logicalBlockId(net.minecraft.world.level.block.Block block) {
+            if (block instanceof ScriptBlock sb) {
+                BlockDefinition def = sb.definition();
+                if (def != null) {
+                    return def.id();
+                }
+            }
+            var key = net.minecraftforge.registries.ForgeRegistries.BLOCKS.getKey(block);
+            return key == null ? "minecraft:air" : key.toString();
+        }
+
+        /** Логический id предмета для скриптов: возвращает id из define ("example:ruby") даже для слота пула. */
+        public static String logicalItemId(Item item) {
+            if (item instanceof ScriptItem si) {
+                ItemDefinition def = si.definition();
+                if (def != null) {
+                    return def.id();
+                }
+            }
+            if (item instanceof ScriptBlockItem sbi) {
+                BlockDefinition def = sbi.scriptBlock().definition();
+                if (def != null) {
+                    return def.id();
+                }
+            }
+            var key = net.minecraftforge.registries.ForgeRegistries.ITEMS.getKey(item);
+            return key == null ? "minecraft:air" : key.toString();
         }
 
         /**
@@ -283,6 +366,11 @@ public final class Bindings {
             buf.writeBoolean(d.collision());
             buf.writeVarInt(d.burn());
             buf.writeVarInt(d.spread());
+            writeName(buf, d.geoModel());
+            writeName(buf, d.geoTexture());
+            writeName(buf, d.geoAnimation());
+            writeName(buf, d.idleAnimation());
+            buf.writeFloat(d.geoScale());
         }
 
         private static BlockDefinition readBlock(FriendlyByteBuf buf) {
@@ -301,7 +389,8 @@ public final class Bindings {
                     facing == null ? BlockDefinition.FACING_NONE : facing,
                     render == null ? BlockDefinition.RENDER_SOLID : render, full,
                     buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readBoolean(), buf.readBoolean(),
-                    buf.readVarInt(), buf.readVarInt());
+                    buf.readVarInt(), buf.readVarInt(),
+                    readName(buf), readName(buf), readName(buf), readName(buf), buf.readFloat());
         }
 
         private static void writeItem(FriendlyByteBuf buf, ItemDefinition d) {
@@ -316,6 +405,13 @@ public final class Bindings {
             buf.writeBoolean(d.alwaysEat());
             buf.writeUtf(d.tier());
             buf.writeVarInt(d.durability());
+            buf.writeVarInt(d.defense());
+            buf.writeFloat(d.toughness());
+            writeName(buf, d.geoModel());
+            writeName(buf, d.geoTexture());
+            writeName(buf, d.geoAnimation());
+            writeName(buf, d.idleAnimation());
+            buf.writeFloat(d.geoScale());
         }
 
         private static ItemDefinition readItem(FriendlyByteBuf buf) {
@@ -325,7 +421,9 @@ public final class Bindings {
             boolean fire = buf.readBoolean();
             String rarity = buf.readUtf(MAX_TEXT);
             return new ItemDefinition(id, name, stack, fire, rarity, buf.readUtf(MAX_TEXT), buf.readVarInt(),
-                    buf.readFloat(), buf.readBoolean(), buf.readUtf(MAX_TEXT), buf.readVarInt());
+                    buf.readFloat(), buf.readBoolean(), buf.readUtf(MAX_TEXT), buf.readVarInt(),
+                    buf.readVarInt(), buf.readFloat(),
+                    readName(buf), readName(buf), readName(buf), readName(buf), buf.readFloat());
         }
 
         private static int checkCount(int n, int max) {

@@ -1,0 +1,68 @@
+{
+  "format_version": 3,
+  "emote": {
+    "beginTick": 5,
+    "endTick": 35,
+    "stopTick": 42,
+    "isLoop": false,
+    "returnToTick": 0,
+    "nsfw": false,
+    "degrees": true,
+    "moves": [
+      {
+        "tick": 0,
+        "easing": "EASEINOUTSINE",
+        "rightArm": {
+          "pitch": 0,
+          "yaw": 0,
+          "roll": 0
+        }
+      },
+      {
+        "tick": 7,
+        "easing": "EASEOUTSINE",
+        "rightArm": {
+          "pitch": -142,
+          "yaw": -10,
+          "roll": 12
+        }
+      },
+      {
+        "tick": 14,
+        "easing": "EASEINOUTSINE",
+        "rightArm": {
+          "pitch": -142,
+          "yaw": -10,
+          "roll": 36
+        }
+      },
+      {
+        "tick": 21,
+        "easing": "EASEINOUTSINE",
+        "rightArm": {
+          "pitch": -142,
+          "yaw": -10,
+          "roll": 8
+        }
+      },
+      {
+        "tick": 28,
+        "easing": "EASEINOUTSINE",
+        "rightArm": {
+          "pitch": -142,
+          "yaw": -10,
+          "roll": 36
+        }
+      },
+      {
+        "tick": 42,
+        "easing": "EASEINOUTSINE",
+        "rightArm": {
+          "pitch": 0,
+          "yaw": 0,
+          "roll": 0
+        }
+      }
+    ]
+  }
+}

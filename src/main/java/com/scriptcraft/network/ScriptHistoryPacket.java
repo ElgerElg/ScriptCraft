@@ -16,6 +16,8 @@ import net.minecraftforge.network.NetworkEvent;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
 /** Пакеты истории версий скрипта (список, превью, откат, удаление). */
@@ -24,6 +26,8 @@ public final class ScriptHistoryPacket {
     public static final byte PREVIEW = 1;
     public static final byte RESTORE = 2;
     public static final byte DELETE = 3;
+
+    private static final Map<String, StringBuilder> CLIENT_PREVIEW_CHUNKS = new ConcurrentHashMap<>();
 
     private ScriptHistoryPacket() {
     }
@@ -54,7 +58,7 @@ public final class ScriptHistoryPacket {
                     case PREVIEW -> {
                         String text = ScriptHistory.read(name, packet.snapshotId);
                         if (text != null) {
-                            ModNetwork.sendTo(player, new PreviewView(name, packet.snapshotId, text));
+                            PreviewView.sendToClientChunked(player, name, packet.snapshotId, text);
                         }
                     }
                     case RESTORE -> {
@@ -128,20 +132,60 @@ public final class ScriptHistoryPacket {
         }
     }
 
-    public record PreviewView(String scriptName, String snapshotId, String text) {
+    public record PreviewView(String scriptName, String snapshotId, String text, int partIndex, int partTotal) {
+        public PreviewView(String scriptName, String snapshotId, String text) {
+            this(scriptName, snapshotId, text, 0, 1);
+        }
+
+        public static void sendToClientChunked(ServerPlayer player, String scriptName, String snapshotId, String text) {
+            if (player == null) return;
+            List<String> parts = ScriptPayload.splitUtf8(text, ScriptPayload.MAX_S2C_SLICE_BYTES);
+            int total = parts.size();
+            for (int i = 0; i < total; i++) {
+                ModNetwork.sendTo(player, new PreviewView(scriptName, snapshotId, parts.get(i), i, total));
+            }
+        }
+
         public static void encode(PreviewView p, FriendlyByteBuf buf) {
             buf.writeUtf(p.scriptName, 200);
             buf.writeUtf(p.snapshotId, 128);
             ScriptPayload.write(buf, p.text);
+            buf.writeVarInt(p.partIndex);
+            buf.writeVarInt(p.partTotal);
         }
 
         public static PreviewView decode(FriendlyByteBuf buf) {
-            return new PreviewView(buf.readUtf(200), buf.readUtf(128), ScriptPayload.read(buf));
+            return new PreviewView(buf.readUtf(200), buf.readUtf(128), ScriptPayload.read(buf),
+                    buf.readVarInt(), buf.readVarInt());
         }
 
         public static void handle(PreviewView packet, Supplier<NetworkEvent.Context> ctx) {
-            ctx.get().enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () ->
-                    com.scriptcraft.client.ClientPacketHandler.historyPreview(packet)));
+            ctx.get().enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> {
+                int total = Math.max(1, packet.partTotal);
+                String key = packet.scriptName + ":" + packet.snapshotId;
+                if (total > 1) {
+                    if (packet.partIndex <= 0) {
+                        CLIENT_PREVIEW_CHUNKS.put(key, new StringBuilder(packet.text.length() * Math.min(total, 16)));
+                    }
+                    StringBuilder sb = CLIENT_PREVIEW_CHUNKS.get(key);
+                    if (sb == null) return;
+                    if (sb.length() + packet.text.length() <= ScriptPayload.MAX_BYTES) {
+                        sb.append(packet.text);
+                    } else {
+                        CLIENT_PREVIEW_CHUNKS.remove(key);
+                        return;
+                    }
+                    if (packet.partIndex + 1 < total) {
+                        return;
+                    }
+                    CLIENT_PREVIEW_CHUNKS.remove(key);
+                    com.scriptcraft.client.ClientPacketHandler.historyPreview(
+                            new PreviewView(packet.scriptName, packet.snapshotId, sb.toString(), 0, 1));
+                    return;
+                }
+                CLIENT_PREVIEW_CHUNKS.remove(key);
+                com.scriptcraft.client.ClientPacketHandler.historyPreview(packet);
+            }));
             ctx.get().setPacketHandled(true);
         }
     }

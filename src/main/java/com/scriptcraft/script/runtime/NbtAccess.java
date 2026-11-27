@@ -107,8 +107,7 @@ public final class NbtAccess {
         }
         BlockPos pos = hit.getBlockPos();
         BlockState state = viewer.level().getBlockState(pos);
-        var key = net.minecraftforge.registries.ForgeRegistries.BLOCKS.getKey(state.getBlock());
-        String id = key == null ? state.getBlock().toString() : key.toString();
+        String id = com.scriptcraft.registry.Bindings.Snapshot.logicalBlockId(state.getBlock());
         return id + " " + pos.getX() + " " + pos.getY() + " " + pos.getZ();
     }
 

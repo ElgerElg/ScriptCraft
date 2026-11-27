@@ -156,8 +156,12 @@ public final class ScriptPaths {
     @Nullable
     public static ScriptSource readOne(String relName, List<String> errors) {
         try {
-            // Файлы читаются в UTF-8, чтобы русский текст отображался правильно.
-            return new ScriptSource(relName, Files.readAllLines(resolve(relName), StandardCharsets.UTF_8));
+            // Файлы читаются в UTF-8 (с авто-снятием BOM при ручной загрузке из Windows-редакторов).
+            List<String> lines = new ArrayList<>(Files.readAllLines(resolve(relName), StandardCharsets.UTF_8));
+            if (!lines.isEmpty() && !lines.get(0).isEmpty() && lines.get(0).charAt(0) == '\uFEFF') {
+                lines.set(0, lines.get(0).substring(1));
+            }
+            return new ScriptSource(relName, lines);
         } catch (IOException e) {
             errors.add(relName + ": ошибка чтения: " + e.getMessage());
             return null;

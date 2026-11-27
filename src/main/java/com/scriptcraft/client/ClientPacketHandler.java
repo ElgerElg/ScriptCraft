@@ -114,4 +114,24 @@ public final class ClientPacketHandler {
     public static void historyPreview(com.scriptcraft.network.ScriptHistoryPacket.PreviewView view) {
         StudioSession.acceptHistoryPreview(view);
     }
+
+    public static void geoSync(com.scriptcraft.network.GeoSyncPacket packet) {
+        if (packet.kind() == com.scriptcraft.network.GeoSyncPacket.ITEM_ANIM) {
+            com.scriptcraft.client.geo.ScriptGeoItemRenderer.triggerItemAnim(
+                    packet.targetUuid(), packet.offhand(), packet.animName(), packet.loopMode(), packet.speed());
+        } else if (packet.kind() == com.scriptcraft.network.GeoSyncPacket.BLOCK_ANIM) {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.level != null && mc.level.getBlockEntity(packet.blockPos()) instanceof com.scriptcraft.registry.ScriptBlockEntity sbe) {
+                sbe.applyClientSync(packet.animName(), packet.loopMode(), packet.speed());
+            }
+        }
+    }
+
+    public static void propAttach(com.scriptcraft.network.PropAttachPacket packet) {
+        com.scriptcraft.client.geo.PlayerPropLayer.handlePacket(packet);
+    }
+
+    public static void cameraPath(com.scriptcraft.network.CameraPathPacket packet) {
+        ClientCameraEffects.applyPath(packet);
+    }
 }

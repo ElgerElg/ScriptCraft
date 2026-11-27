@@ -97,6 +97,10 @@ public final class StudioSession {
     public static final Deque<String> dirBack = new ArrayDeque<>();
     public static final Deque<String> dirForward = new ArrayDeque<>();
     public static String selectedExplorerPath;
+    public static final java.util.Set<String> selectedExplorerPaths = new java.util.LinkedHashSet<>();
+    public static String explorerAnchorPath;
+    public static final List<String> explorerClipPaths = new ArrayList<>();
+    public static boolean explorerClipCut = false;
     private static int imageSeq;
     /** Данные профайлера с сервера. */
     public static com.scriptcraft.network.ProfilerPacket.Data profilerData;
@@ -135,6 +139,10 @@ public final class StudioSession {
         dirBack.clear();
         dirForward.clear();
         selectedExplorerPath = null;
+        selectedExplorerPaths.clear();
+        explorerAnchorPath = null;
+        explorerClipPaths.clear();
+        explorerClipCut = false;
         profilerData = null;
         historyOpen = false;
         guiEditorMode = false;
@@ -143,7 +151,11 @@ public final class StudioSession {
         historySelectedId = "";
         historyPreviewText = "";
         StudioAnimEditor.reset();
+        StudioAudioPlayer.stopAndRelease();
         StudioSync.reset();
+        ScriptDataPacket.clearClientBuffers();
+        StudioLivePacket.clearClientBuffers();
+        StudioExplorerPacket.clearClientBuffers();
     }
 
     public static void journal(List<ScriptLog.Issue> nextIssues, List<ScriptLog.Slice> nextSlices) {
@@ -196,6 +208,18 @@ public final class StudioSession {
     public static void acceptText(String name, String text, long revision, int flags) {
         ScriptDocument doc = docs.get(name);
         if (doc == null) {
+            return;
+        }
+        if ((flags & ScriptDataPacket.READ_ERROR) != 0) {
+            if (!doc.loaded && !doc.dirty()) {
+                docs.remove(name);
+                if (name.equals(lastScriptTab)) {
+                    lastScriptTab = docs.keySet().stream().findFirst().orElse(null);
+                }
+                if (name.equals(active)) {
+                    active = HOME;
+                }
+            }
             return;
         }
         boolean live = (flags & ScriptDataPacket.LIVE) != 0;
@@ -268,6 +292,94 @@ public final class StudioSession {
         explorerDir = view.dir() == null ? "" : view.dir();
         explorerEntries = List.copyOf(view.entries());
         activeEditors = List.copyOf(view.editors());
+        java.util.Set<String> valid = new java.util.HashSet<>();
+        for (StudioExplorerPacket.Entry e : explorerEntries) {
+            valid.add(explorerDir.isEmpty() ? e.name() : explorerDir + "/" + e.name());
+        }
+        selectedExplorerPaths.retainAll(valid);
+        if (selectedExplorerPath != null && !valid.contains(selectedExplorerPath)) {
+            selectedExplorerPath = selectedExplorerPaths.stream().reduce((a, b) -> b).orElse(null);
+        }
+        if (explorerAnchorPath != null && !valid.contains(explorerAnchorPath)) {
+            explorerAnchorPath = selectedExplorerPath;
+        }
+    }
+
+    public static void clearExplorerSelection() {
+        selectedExplorerPaths.clear();
+        selectedExplorerPath = null;
+        explorerAnchorPath = null;
+    }
+
+    public static void selectSingleExplorer(String fullPath) {
+        selectedExplorerPaths.clear();
+        if (fullPath != null && !fullPath.isEmpty()) {
+            selectedExplorerPaths.add(fullPath);
+            selectedExplorerPath = fullPath;
+            explorerAnchorPath = fullPath;
+        } else {
+            selectedExplorerPath = null;
+            explorerAnchorPath = null;
+        }
+    }
+
+    public static void toggleExplorerSelection(String fullPath) {
+        if (fullPath == null || fullPath.isEmpty()) return;
+        if (selectedExplorerPaths.contains(fullPath)) {
+            selectedExplorerPaths.remove(fullPath);
+            selectedExplorerPath = selectedExplorerPaths.stream().reduce((a, b) -> b).orElse(null);
+        } else {
+            selectedExplorerPaths.add(fullPath);
+            selectedExplorerPath = fullPath;
+        }
+        explorerAnchorPath = fullPath;
+    }
+
+    public static void selectExplorerRange(String targetPath, boolean keepExisting) {
+        if (targetPath == null || targetPath.isEmpty()) return;
+        List<String> all = currentExplorerFullPaths();
+        int idxB = all.indexOf(targetPath);
+        int idxA = explorerAnchorPath != null ? all.indexOf(explorerAnchorPath) : -1;
+        if (idxB < 0) {
+            selectSingleExplorer(targetPath);
+            return;
+        }
+        if (idxA < 0) {
+            idxA = idxB;
+            explorerAnchorPath = targetPath;
+        }
+        if (!keepExisting) {
+            selectedExplorerPaths.clear();
+        }
+        int lo = Math.min(idxA, idxB);
+        int hi = Math.max(idxA, idxB);
+        for (int i = lo; i <= hi; i++) {
+            selectedExplorerPaths.add(all.get(i));
+        }
+        selectedExplorerPath = targetPath;
+    }
+
+    public static void selectAllExplorer() {
+        List<String> all = currentExplorerFullPaths();
+        selectedExplorerPaths.clear();
+        selectedExplorerPaths.addAll(all);
+        if (!all.isEmpty()) {
+            selectedExplorerPath = all.get(all.size() - 1);
+            if (explorerAnchorPath == null) explorerAnchorPath = all.get(0);
+        }
+    }
+
+    public static List<String> currentExplorerFullPaths() {
+        String cur = explorerDir == null ? "" : explorerDir;
+        List<String> out = new ArrayList<>(explorerEntries.size());
+        for (StudioExplorerPacket.Entry e : explorerEntries) {
+            out.add(cur.isEmpty() ? e.name() : cur + "/" + e.name());
+        }
+        return out;
+    }
+
+    public static boolean isExplorerSelected(String fullPath) {
+        return fullPath != null && selectedExplorerPaths.contains(fullPath);
     }
 
     public static ScriptDocument openGenericFile(String relPath) {
@@ -298,6 +410,17 @@ public final class StudioSession {
             StudioAnimEditor.acceptLoadedJson(view.path(), new String(view.data(), StandardCharsets.UTF_8));
             return;
         }
+        if ("$read_error".equals(view.renamedFrom())) {
+            String errKey = "@" + view.path();
+            ScriptDocument failed = docs.get(errKey);
+            if (failed != null && !failed.loaded && !failed.dirty()) {
+                docs.remove(errKey);
+                if (errKey.equals(active)) {
+                    active = HOME;
+                }
+            }
+            return;
+        }
         // Уведомление о переименовании / включении-выключении / удалении файла
         if (view.renamedFrom() != null && !view.renamedFrom().isEmpty()) {
             handleRemoteRename(view.renamedFrom(), view.path());
@@ -309,6 +432,13 @@ public final class StudioSession {
             return;
         }
         if (view.binary()) {
+            if (com.scriptcraft.studio.StudioExplorer.isAudioName(view.path())) {
+                doc.isAudio = true;
+                doc.audioBytes = view.data();
+                doc.loaded = true;
+                doc.saved = "";
+                return;
+            }
             try {
                 NativeImage img = NativeImage.read(new ByteArrayInputStream(view.data()));
                 DynamicTexture tex = new DynamicTexture(img);

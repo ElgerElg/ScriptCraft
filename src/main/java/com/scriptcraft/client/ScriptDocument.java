@@ -19,6 +19,11 @@ public final class ScriptDocument {
     public ResourceLocation imageId;
     public int imageW;
     public int imageH;
+    /** true — открыт звуковой файл (.ogg) во встроенном аудиоплеере Студии. */
+    public boolean isAudio;
+    public byte[] audioBytes;
+    /** true — включён интерактивный 3D-превьюер модели Blockbench/GeckoLib (.geo.json / .animation.json). */
+    public boolean geoPreviewMode;
     public final List<String> lines = new ArrayList<>();
     public boolean loaded;
     public String saved = "";
@@ -36,6 +41,11 @@ public final class ScriptDocument {
     public int horiz;
     /** Курсор сдвинулся правкой или стрелками: следующий кадр покажет его строку. Колесо этот флаг не ставит. */
     public boolean followCaret;
+    /** Счётчик изменений текста (для кэширования ширины строк и числа экранов на больших скриптах). */
+    public int editStamp;
+    /** Время открытия вкладки и флаг повторного запроса при долгой загрузке. */
+    public long openedAtMs = System.currentTimeMillis();
+    public boolean retriedRead;
     private final ArrayDeque<Snap> undo = new ArrayDeque<>();
     private final ArrayDeque<Snap> redo = new ArrayDeque<>();
 
@@ -116,7 +126,11 @@ public final class ScriptDocument {
     }
 
     public void load(String raw) {
-        saved = raw.replace("\r\n", "\n").replace('\r', '\n');
+        String clean = raw == null ? "" : raw;
+        if (!clean.isEmpty() && clean.charAt(0) == '\uFEFF') {
+            clean = clean.substring(1);
+        }
+        saved = clean.replace("\r\n", "\n").replace('\r', '\n');
         lines.clear();
         if (saved.isEmpty()) {
             lines.add("");
@@ -130,6 +144,7 @@ public final class ScriptDocument {
             }
         }
         loaded = true;
+        editStamp++;
         line = 0;
         col = 0;
         anchorLine = -1;
@@ -1125,12 +1140,14 @@ public final class ScriptDocument {
     }
 
     private void snapshot() {
+        editStamp++;
         Snap snap = capture();
         if (!undo.isEmpty() && undo.peekLast().text.equals(snap.text)) {
             return;
         }
         undo.addLast(snap);
-        while (undo.size() > 60) {
+        int maxSteps = snap.text.length() > 150_000 ? 20 : 60;
+        while (undo.size() > maxSteps) {
             undo.removeFirst();
         }
         redo.clear();
@@ -1141,6 +1158,7 @@ public final class ScriptDocument {
     }
 
     private void restore(Snap snap) {
+        editStamp++;
         lines.clear();
         int from = 0;
         String text = snap.text;

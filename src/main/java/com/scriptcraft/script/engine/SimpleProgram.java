@@ -51,6 +51,11 @@ final class SimpleProgram implements ScriptProgram {
     }
 
     @Override
+    public Map<String, com.scriptcraft.script.parser.EntityDefinition> entities() {
+        return parsed.entities();
+    }
+
+    @Override
     public Set<String> commandNames() {
         return parsed.commands().keySet();
     }
@@ -131,6 +136,10 @@ final class SimpleProgram implements ScriptProgram {
             case GUI_CHANGE -> {
                 String elem = ctx.placeholder("element");
                 yield handlerFilter.equals("*") || handlerFilter.equals("any") || handlerFilter.equalsIgnoreCase(elem);
+            }
+            case NPC_CLICK, NPC_ATTACK -> {
+                String npc = ctx.placeholder("npc");
+                yield handlerFilter.equals("*") || handlerFilter.equals("any") || handlerFilter.equalsIgnoreCase(npc);
             }
             default -> true;
         };

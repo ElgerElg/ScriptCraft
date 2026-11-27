@@ -41,6 +41,10 @@ public final class ClientEvents {
         ClientToasts.clear();
         StudioSession.reset();
         ClientInput.reset();
+        ClientLeash.reset();
+        com.scriptcraft.client.geo.PlayerPropLayer.clearAll();
+        com.scriptcraft.client.geo.ScriptGeoItemRenderer.clearAnims();
+        com.scriptcraft.client.geo.GeoParticleHelper.clear();
     }
 
     /**

@@ -152,7 +152,12 @@ public final class PlayerAnimBridge {
 
     public static KeyframeAnimation buildKeyframeAnimation(StudioAnimModel.AnimDoc doc) {
         KeyframeAnimation.AnimationBuilder builder = new KeyframeAnimation.AnimationBuilder(AnimationFormat.JSON_EMOTECRAFT);
-        builder.name = doc.displayName == null || doc.displayName.isBlank() ? doc.fileName : doc.displayName;
+        String safeName = StudioAnimModel.safeResourceSlug(doc.fileName, StudioAnimModel.safeResourceSlug(doc.displayName, "anim"));
+        builder.name = safeName;
+        builder.extraData.put("name", safeName);
+        if (doc.displayName != null && !doc.displayName.isBlank()) {
+            builder.extraData.put("title", doc.displayName);
+        }
         builder.author = doc.author == null || doc.author.isBlank() ? "ScriptCraft" : doc.author;
         builder.description = doc.description == null ? "" : doc.description;
         builder.uuid = doc.uuid != null ? doc.uuid : UUID.randomUUID();
@@ -225,8 +230,10 @@ public final class PlayerAnimBridge {
         out.easingBefore = anim.isEasingBefore;
         out.uuid = anim.getUuid();
         if (anim.extraData != null) {
+            Object t = anim.extraData.get("title");
             Object n = anim.extraData.get("name");
-            if (n instanceof String s && !s.isBlank()) out.displayName = s;
+            if (t instanceof String s && !s.isBlank()) out.displayName = s;
+            else if (n instanceof String s && !s.isBlank()) out.displayName = s;
             Object a = anim.extraData.get("author");
             if (a instanceof String s && !s.isBlank()) out.author = s;
             Object d = anim.extraData.get("description");
@@ -463,12 +470,23 @@ public final class PlayerAnimBridge {
         for (String folder : List.of("player_animation", "player_animations")) {
             Path file = cacheRoot.resolve(folder).resolve(id.getPath() + ".json");
             if (Files.isRegularFile(file)) {
-                try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
-                    List<KeyframeAnimation> list = AnimationSerializing.deserializeAnimation(reader);
-                    if (list != null && !list.isEmpty()) {
-                        KeyframeAnimation loaded = list.get(0);
-                        CACHE.put(id, loaded);
-                        return loaded;
+                try {
+                    String rawJson = Files.readString(file, StandardCharsets.UTF_8);
+                    StudioAnimModel.AnimDoc customDoc = new StudioAnimModel.AnimDoc();
+                    customDoc.namespace = id.getNamespace();
+                    customDoc.fileName = id.getPath();
+                    if (StudioAnimModel.fromChannelsJsonString(rawJson, customDoc)) {
+                        KeyframeAnimation built = buildKeyframeAnimation(customDoc);
+                        CACHE.put(id, built);
+                        return built;
+                    }
+                    try (Reader reader = new StringReader(rawJson)) {
+                        List<KeyframeAnimation> list = AnimationSerializing.deserializeAnimation(reader);
+                        if (list != null && !list.isEmpty()) {
+                            KeyframeAnimation loaded = list.get(0);
+                            CACHE.put(id, loaded);
+                            return loaded;
+                        }
                     }
                 } catch (Exception e) {
                     ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка чтения анимации {}: {}", file, e.toString());
