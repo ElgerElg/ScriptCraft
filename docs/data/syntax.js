@@ -15,7 +15,7 @@
  */
 window.SC_DOCS = window.SC_DOCS || {};
 window.SC_DOCS.syntax = {
-  version: "0.9.7",
+  version: "0.9.9",
   categories: [
     { id: "events", ru: "События", en: "Events" },
     { id: "structures", ru: "Структуры", en: "Structures" },
@@ -4974,7 +4974,7 @@ define entity cyber_guardian:
 	hitbox: 1.3x2.6
 	scale: 1.15
 	particle_bone: "core_locator=end_rod"`,
-    since: "0.9.7", related: ["eff-geo-entity", "define-armor", "eff-geo-item-block", "res-auto-ogg-studio"]
+    since: "0.9.9", related: ["eff-geo-entity", "define-armor", "eff-geo-item-block", "res-auto-ogg-studio"]
   },
   {
     id: "define-armor", category: "structures",
@@ -5005,7 +5005,7 @@ define item plasma_rifle:
 	texture: "gecko:textures/item/plasma_rifle.png"
 	animation: "gecko:plasma_rifle"
 	idle_animation: "idle"`,
-    since: "0.9.7", related: ["define-entity", "eff-geo-item-block", "eff-prop-attach"]
+    since: "0.9.9", related: ["define-entity", "eff-geo-item-block", "eff-prop-attach"]
   },
   {
     id: "eff-geo-entity", category: "effects",
@@ -5025,7 +5025,7 @@ define item plasma_rifle:
     example: `command /boss:
 	spawn geo entity "gecko:cyber_guardian" at player
 	play geo animation "roar" on last spawned entity once speed 1.0`,
-    since: "0.9.7", related: ["define-entity", "expr-leash", "eff-geo-item-block"]
+    since: "0.9.9", related: ["define-entity", "expr-leash", "eff-geo-item-block"]
   },
   {
     id: "eff-geo-item-block", category: "effects",
@@ -5045,7 +5045,7 @@ define item plasma_rifle:
 		play item animation "shoot" for player once speed 1.25
 	if "%block%" is "gecko:holo_terminal":
 		play block animation "activate" at targeted block once`,
-    since: "0.9.7", related: ["define-armor", "eff-geo-entity", "res-auto-ogg-studio"]
+    since: "0.9.9", related: ["define-armor", "eff-geo-entity", "res-auto-ogg-studio"]
   },
   {
     id: "eff-npc", category: "effects",
@@ -5070,7 +5070,7 @@ define item plasma_rifle:
 	equip npc "commander" with chestplate gecko:exo_chestplate
 	equip npc "commander" with mainhand gecko:plasma_rifle
 	play npc animation "gecko:npc_salute" on npc "commander"`,
-    since: "0.9.7", related: ["event-npc", "eff-prop-attach", "define-armor"]
+    since: "0.9.9", related: ["event-npc", "eff-prop-attach", "define-armor"]
   },
   {
     id: "event-npc", category: "events",
@@ -5087,7 +5087,7 @@ define item plasma_rifle:
 	make npc "commander" look at player
 	play npc animation "gecko:npc_salute" on npc "commander"
 	send "&b[Командор] &fЧесть имею, %player%!" to player`,
-    since: "0.9.7", related: ["eff-npc", "eff-open-screen"]
+    since: "0.9.9", related: ["eff-npc", "eff-open-screen"]
   },
   {
     id: "eff-prop-attach", category: "effects",
@@ -5104,7 +5104,7 @@ define item plasma_rifle:
     },
     example: `command /drone:
 	attach prop "drone" model "gecko:shoulder_drone" animation "hover" to body of player offset -6 5 2 scale 0.85`,
-    since: "0.9.7", related: ["eff-npc", "define-armor", "eff-geo-entity"]
+    since: "0.9.9", related: ["eff-npc", "define-armor", "eff-geo-entity"]
   },
   {
     id: "eff-camera-cutscene", category: "effects",
@@ -5121,7 +5121,7 @@ define item plasma_rifle:
     example: `command /intro:
 	fade screen of player to #000000 in 5 stay 4 out 10 ticks
 	play cutscene for player points "~0 ~2.2 ~5.5; ~5.2 ~3.6 ~1.5; ~1.5 ~4.0 ~-5.2; ~-5.0 ~2.8 ~-1.0" for 6 seconds looking at player`,
-    since: "0.9.7", related: ["eff-camera", "eff-npc", "eff-geo-entity"]
+    since: "0.9.9", related: ["eff-camera", "eff-npc", "eff-geo-entity"]
   },
   {
     id: "res-auto-ogg-studio", category: "config",
@@ -5139,7 +5139,7 @@ define item plasma_rifle:
 on right click:
 	if player is holding gecko:plasma_rifle:
 		play sound gecko:plasma_shot at player with volume 0.9 pitch 1.05`,
-    since: "0.9.7", related: ["define-entity", "define-armor", "eff-geo-item-block"]
+    since: "0.9.9", related: ["define-entity", "define-armor", "eff-geo-item-block"]
   }
   ]
 };
