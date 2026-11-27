@@ -126,7 +126,7 @@ on right click:
 		cancel event
 		play block animation "activate" at targeted block once speed 1.2
 		# Кастомный .ogg звук из assets/gecko/sounds/terminal_boot.ogg БЕЗ sounds.json!
-		play sound gecko:terminal_boot at targeted block with volume 0.9 pitch 1.0
+		play sound gecko:terminal_boot at location of targeted block with volume 0.9 pitch 1.0
 		spawn particle end_rod at player count 14 speed 0.04
 		GeckoOpenHub(player)
 		stop

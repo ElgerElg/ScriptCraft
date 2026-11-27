@@ -303,7 +303,7 @@ public final class Effects {
                 return;
             }
             if (atPlace != null) {
-                ScriptLocation loc = Places.require(atPlace.evaluate(ctx));
+                ScriptLocation loc = Places.require(atPlace, ctx);
                 emitSound(ctx, Places.level(ctx.server(), loc), loc.x(), loc.y(), loc.z(), sound, vol, pit, listeners);
                 return;
             }
@@ -675,7 +675,7 @@ public final class Effects {
     public record TeleportToLocation(Target target, Expression place) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            ScriptLocation loc = Places.require(place.evaluate(ctx));
+            ScriptLocation loc = Places.require(place, ctx);
             for (ServerPlayer p : target.resolve(ctx)) {
                 Places.teleport(p, loc, ctx.server());
             }
@@ -744,7 +744,7 @@ public final class Effects {
                     pos = BlockPos.containing(loc.x(), loc.y(), loc.z());
                 }
                 case PLACE -> {
-                    ScriptLocation loc = Places.require(place.evaluate(ctx));
+                    ScriptLocation loc = Places.require(place, ctx);
                     level = Places.level(ctx.server(), loc);
                     pos = BlockPos.containing(loc.x(), loc.y(), loc.z());
                 }
@@ -988,7 +988,7 @@ public final class Effects {
 
         @Override
         public void execute(ExecutionContext ctx) {
-            ScriptLocation loc = Places.require(place.evaluate(ctx));
+            ScriptLocation loc = Places.require(place, ctx);
             bolt(Places.level(ctx.server(), loc), loc.x(), loc.y(), loc.z(), visualOnly);
         }
     }
@@ -1070,7 +1070,7 @@ public final class Effects {
             ItemStack proto = ItemStacks.create(itemText(item, ctx), 1);
             int total = itemCount(count, ctx);
             if (atPlace != null) {
-                dropStacks(ctx, Places.require(atPlace.evaluate(ctx)), proto, total);
+                dropStacks(ctx, Places.require(atPlace, ctx), proto, total);
                 return;
             }
             ScriptLocation loc = Places.fromNamed(atPlayer, ctx);
@@ -1136,7 +1136,7 @@ public final class Effects {
     public record SetSpawnAt(Target target, Expression place) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
-            ScriptLocation loc = Places.require(place.evaluate(ctx));
+            ScriptLocation loc = Places.require(place, ctx);
             ServerLevel level = Places.level(ctx.server(), loc);
             BlockPos pos = BlockPos.containing(loc.x(), loc.y(), loc.z());
             for (ServerPlayer p : target.resolve(ctx)) {
@@ -1245,7 +1245,7 @@ public final class Effects {
                     }
                 }
             } else if (sourceLocation != null) {
-                ScriptLocation loc = Places.require(sourceLocation.evaluate(ctx));
+                ScriptLocation loc = Places.require(sourceLocation, ctx);
                 srcPos = new Vec3(loc.x(), loc.y(), loc.z());
             }
             if (srcPos == null && (mode != PushMode.LOOK || srcLook == null)) {
@@ -1321,7 +1321,7 @@ public final class Effects {
         public void execute(ExecutionContext ctx) {
             float power = force == null ? 3f : (float) Math.max(0, Math.min(8, number(force, ctx)));
             Level.ExplosionInteraction mode = safe ? Level.ExplosionInteraction.NONE : Level.ExplosionInteraction.BLOCK;
-            ScriptLocation loc = Places.require(place.evaluate(ctx));
+            ScriptLocation loc = Places.require(place, ctx);
             Places.level(ctx.server(), loc).explode(null, loc.x(), loc.y(), loc.z(), power, mode);
         }
     }
@@ -1351,7 +1351,7 @@ public final class Effects {
                 return;
             }
             if (place != null) {
-                ScriptLocation loc = Places.require(place.evaluate(ctx));
+                ScriptLocation loc = Places.require(place, ctx);
                 emit(ctx, Places.level(ctx.server(), loc), opts, loc.x(), loc.y(), loc.z(), cnt, ox, oy, oz, spd, listeners);
                 return;
             }
@@ -1420,7 +1420,7 @@ public final class Effects {
             double rad = Math.max(0.1, Math.min(32.0, number(radius, ctx)));
             int pts = points == null ? 24 : (int) Math.max(4, Math.min(180, Math.round(number(points, ctx))));
             if (place != null) {
-                ScriptLocation loc = Places.require(place.evaluate(ctx));
+                ScriptLocation loc = Places.require(place, ctx);
                 drawRing(Places.level(ctx.server(), loc), opts, loc.x(), loc.y(), loc.z(), rad, pts);
                 return;
             }
@@ -1588,7 +1588,7 @@ public final class Effects {
                 return;
             }
             if (place != null) {
-                ScriptLocation loc = Places.require(place.evaluate(ctx));
+                ScriptLocation loc = Places.require(place, ctx);
                 spawnOne(ctx, Places.level(ctx.server(), loc), type, resolvedGeoDef, loc.x(), loc.y(), loc.z());
                 return;
             }
@@ -1745,7 +1745,7 @@ public final class Effects {
             }
 
             if (locExpr != null) {
-                ScriptLocation loc = Places.require(locExpr.evaluate(ctx));
+                ScriptLocation loc = Places.require(locExpr, ctx);
                 ServerLevel lvl = Places.level(ctx.server(), loc);
                 BlockPos bp = BlockPos.containing(loc.x(), loc.y(), loc.z());
                 for (Entity sub : subjects) {
@@ -2014,7 +2014,7 @@ public final class Effects {
             ServerLevel level = levelOf(ctx);
             double px, py, pz;
             if (location != null) {
-                ScriptLocation loc = Places.require(location.evaluate(ctx));
+                ScriptLocation loc = Places.require(location, ctx);
                 ServerLevel resolved = Places.level(ctx.server(), loc);
                 if (resolved != null) {
                     level = resolved;
@@ -2188,7 +2188,7 @@ public final class Effects {
             return levelOf(ctx);
         }
         if (place != null) {
-            ScriptLocation loc = Places.require(place.evaluate(ctx));
+            ScriptLocation loc = Places.require(place, ctx);
             outXyz[0] = loc.x();
             outXyz[1] = loc.y();
             outXyz[2] = loc.z();
@@ -2379,6 +2379,7 @@ public final class Effects {
             if (targetedBlock) {
                 ServerPlayer viewer = ctx.requirePlayer();
                 String enc = Places.blockLocation(viewer);
+                if (enc == null) enc = Places.eventBlockLocation(viewer, ctx);
                 if (enc == null) return;
                 ScriptLocation loc = Places.require(enc);
                 level = Places.level(ctx.server(), loc);
@@ -2387,7 +2388,7 @@ public final class Effects {
                 level = levelOf(ctx);
                 pos = BlockPos.containing(number(x, ctx), number(y, ctx), number(z, ctx));
             } else if (place != null) {
-                ScriptLocation loc = Places.require(place.evaluate(ctx));
+                ScriptLocation loc = Places.require(place, ctx);
                 level = Places.level(ctx.server(), loc);
                 pos = BlockPos.containing(loc.x(), loc.y(), loc.z());
             } else {
@@ -2623,8 +2624,8 @@ public final class Effects {
                         waypoints.add(new com.scriptcraft.network.CameraPathPacket.Waypoint(wx, wy, wz, wyaw, wpitch, hasAng));
                     }
                 } else if (fromLoc != null && toLoc != null) {
-                    ScriptLocation a = Places.require(fromLoc.evaluate(ctx));
-                    ScriptLocation b = Places.require(toLoc.evaluate(ctx));
+                    ScriptLocation a = Places.require(fromLoc, ctx);
+                    ScriptLocation b = Places.require(toLoc, ctx);
                     waypoints.add(new com.scriptcraft.network.CameraPathPacket.Waypoint(a.x(), a.y(), a.z(), a.yaw(), a.pitch(), false));
                     waypoints.add(new com.scriptcraft.network.CameraPathPacket.Waypoint(b.x(), b.y(), b.z(), b.yaw(), b.pitch(), false));
                 }
@@ -2653,7 +2654,7 @@ public final class Effects {
                     ly = parseExprOrRel(lookY, viewer.getY(), ctx);
                     lz = parseExprOrRel(lookZ, viewer.getZ(), ctx);
                 } else if (lookPlace != null) {
-                    ScriptLocation l = Places.require(lookPlace.evaluate(ctx));
+                    ScriptLocation l = Places.require(lookPlace, ctx);
                     hasLook = true;
                     lx = l.x(); ly = l.y(); lz = l.z();
                 }

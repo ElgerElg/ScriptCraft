@@ -120,6 +120,45 @@ public final class Places {
         return null;
     }
 
+    public static ScriptLocation require(Expression expr, ExecutionContext ctx) {
+        if (expr instanceof Expression.Look look) {
+            ServerPlayer viewer = ctx.player();
+            if (viewer != null) {
+                String enc = switch (look.kind()) {
+                    case "block", "loc-block" -> {
+                        String bl = blockLocation(viewer);
+                        yield bl != null ? bl : eventBlockLocation(viewer, ctx);
+                    }
+                    case "entity", "loc-entity" -> entityLocation(viewer);
+                    case "player", "loc-player" -> {
+                        ServerPlayer looked = Target.Targeted.lookedAt(viewer);
+                        yield looked == null ? null : ofPlayer(looked);
+                    }
+                    default -> targetedLocation(viewer);
+                };
+                if (enc != null) {
+                    return require(enc);
+                }
+            }
+        }
+        return require(expr.evaluate(ctx));
+    }
+
+    @Nullable
+    public static String eventBlockLocation(ServerPlayer viewer, ExecutionContext ctx) {
+        String xs = ctx.expandPlaceholders("%x%");
+        String ys = ctx.expandPlaceholders("%y%");
+        String zs = ctx.expandPlaceholders("%z%");
+        Double x = Expression.toNumber(xs);
+        Double y = Expression.toNumber(ys);
+        Double z = Expression.toNumber(zs);
+        if (x != null && y != null && z != null) {
+            return new ScriptLocation(viewer.level().dimension().location().toString(),
+                    x + 0.5, y, z + 0.5, viewer.getYRot(), viewer.getXRot()).encode();
+        }
+        return null;
+    }
+
     public static ScriptLocation require(Object value) {
         ScriptLocation loc = ScriptLocation.decode(value);
         if (loc == null) {

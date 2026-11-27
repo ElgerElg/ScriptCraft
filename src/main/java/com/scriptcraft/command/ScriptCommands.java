@@ -90,6 +90,10 @@ public final class ScriptCommands {
         return SharedSuggestionProvider.suggest(Bindings.current().allIds(), builder);
     };
 
+    /** Подсказки: id 3D-сущностей из define entity (для /sc summon и /sc spawn). */
+    private static final SuggestionProvider<CommandSourceStack> GEO_ENTITY_IDS = (ctx, builder) ->
+            SharedSuggestionProvider.suggest(ScriptLoader.getProgram().entities().keySet(), builder);
+
     private ScriptCommands() {
     }
 
@@ -167,7 +171,51 @@ public final class ScriptCommands {
                                         .then(Commands.argument("count", IntegerArgumentType.integer(1, 64 * 36))
                                                 .executes(ctx -> give(ctx.getSource(), EntityArgument.getPlayers(ctx, "targets"),
                                                         ResourceLocationArgument.getId(ctx, "item"),
-                                                        IntegerArgumentType.getInteger(ctx, "count")))))));
+                                                        IntegerArgumentType.getInteger(ctx, "count")))))))
+                // Призыв кастомных 3D-мобов из define entity: /sc summon <id> [x y z]  или  /sc spawn <id> [x y z]
+                .then(buildSummonNode("summon"))
+                .then(buildSummonNode("spawn"));
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildSummonNode(String literal) {
+        return Commands.literal(literal)
+                .then(Commands.argument("entity", ResourceLocationArgument.id())
+                        .suggests(GEO_ENTITY_IDS)
+                        .executes(ctx -> summonGeo(ctx.getSource(), ResourceLocationArgument.getId(ctx, "entity"),
+                                ctx.getSource().getPosition()))
+                        .then(Commands.argument("pos", net.minecraft.commands.arguments.coordinates.Vec3Argument.vec3())
+                                .executes(ctx -> summonGeo(ctx.getSource(), ResourceLocationArgument.getId(ctx, "entity"),
+                                        net.minecraft.commands.arguments.coordinates.Vec3Argument.getVec3(ctx, "pos")))));
+    }
+
+    private static int summonGeo(CommandSourceStack source, ResourceLocation id, net.minecraft.world.phys.Vec3 pos) {
+        String key = id.toString().toLowerCase(Locale.ROOT);
+        var def = ScriptLoader.getProgram().entity(key);
+        if (def == null && "minecraft".equals(id.getNamespace())) {
+            for (var e : ScriptLoader.getProgram().entities().entrySet()) {
+                if (e.getKey().endsWith(":" + id.getPath().toLowerCase(Locale.ROOT))) {
+                    def = e.getValue();
+                    break;
+                }
+            }
+        }
+        if (def == null) {
+            Feedback.failText(source, "Неизвестная 3D-сущность '" + id + "' (доступные: "
+                    + String.join(", ", ScriptLoader.getProgram().entities().keySet()) + ")");
+            return 0;
+        }
+        var level = source.getLevel();
+        var geo = com.scriptcraft.registry.ScriptRegistries.GEO_ENTITY.get().create(level);
+        if (geo == null) return 0;
+        float yaw = source.getEntity() != null ? source.getEntity().getYRot() + 180f : 0f;
+        geo.moveTo(pos.x, pos.y, pos.z, yaw, 0f);
+        geo.applyDefinition(def);
+        if (def.displayName() != null && !def.displayName().isBlank()) {
+            geo.setCustomName(Component.literal(def.displayName().replace('&', '\u00a7')));
+        }
+        level.addFreshEntity(geo);
+        Feedback.showColored(source, "\u00a7aПризвана 3D-сущность \u00a7e" + def.id());
+        return 1;
     }
 
     /** /sc ids: какие технические id (F3, ванильные команды, датапаки) получили define из скриптов. */

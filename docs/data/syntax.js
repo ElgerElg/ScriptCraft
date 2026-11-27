@@ -5016,7 +5016,8 @@ define item plasma_rifle:
       "stop geo animation on <сущность>",
       "set geo texture of <сущность> to \"<ns:путь.png>\"",
       "set geo scale of <сущность> to <N>",
-      "clear all geo entities"
+      "clear all geo entities",
+      "/sc summon <ns:id> [X Y Z]   (команда администратора в чате)"
     ],
     desc: {
       ru: "Призывает 3D-мобов из `define entity` (или напрямую по модели `model \"...\" texture \"...\"`) и управляет их анимациями, текстурой фаз босса и масштабом в реальном времени. Сразу после спавна сущность доступна через `last spawned entity` (а также её можно выводить в 3D прямо внутри GUI через `entity \"gecko:cyber_guardian\"`!).",
