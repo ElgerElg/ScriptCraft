@@ -1,0 +1,25 @@
+{
+  "format_version": "1.8.0",
+  "animations": {
+    "idle": {
+      "loop": true,
+      "animation_length": 2.4,
+      "bones": {
+        "armorHead": {
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "armorBody": {
+          "scale": [
+            1.0,
+            1.0,
+            "1 + math.sin(query.anim_time * 150) * 0.02"
+          ]
+        }
+      }
+    }
+  }
+}

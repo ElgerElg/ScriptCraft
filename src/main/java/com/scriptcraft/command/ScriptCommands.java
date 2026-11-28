@@ -211,7 +211,7 @@ public final class ScriptCommands {
         geo.moveTo(pos.x, pos.y, pos.z, yaw, 0f);
         geo.applyDefinition(def);
         if (def.displayName() != null && !def.displayName().isBlank()) {
-            geo.setCustomName(Component.literal(def.displayName().replace('&', '\u00a7')));
+            geo.setCustomName(com.scriptcraft.util.TextFormat.format(def.displayName()));
         }
         level.addFreshEntity(geo);
         Feedback.showColored(source, "\u00a7aПризвана 3D-сущность \u00a7e" + def.id());

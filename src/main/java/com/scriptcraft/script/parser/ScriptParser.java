@@ -477,7 +477,8 @@ public final class ScriptParser {
                             props.get("model"), props.get("texture"),
                             props.getOrDefault("animation", props.get("animations")),
                             props.getOrDefault("idle_animation", props.get("idle")),
-                            floatProp(props, "scale", 1.0f)));
+                            floatProp(props, "scale", 1.0f),
+                            props.get("lore"), boolProp(props, "glow")));
                 } else {
                     String rawType = isArmorKw
                             ? props.getOrDefault("slot", props.getOrDefault("type", "helmet"))
@@ -512,6 +513,7 @@ public final class ScriptParser {
                     };
                     int defense = (int) floatProp(props, "defense", floatProp(props, "armor", defArmor));
                     float toughness = floatProp(props, "toughness", 0f);
+                    float customDamage = props.containsKey("damage") ? floatProp(props, "damage", -1f) : -1f;
                     items.put(id, new ItemDefinition(id, props.get("name"), stack, boolProp(props, "fire_resistant"),
                             props.getOrDefault("rarity", "common").toLowerCase(Locale.ROOT),
                             type, Math.max(0, Math.min(20, (int) floatProp(props, "nutrition", 4))),
@@ -521,7 +523,8 @@ public final class ScriptParser {
                             props.get("model"), props.get("texture"),
                             props.getOrDefault("animation", props.get("animations")),
                             props.getOrDefault("idle_animation", props.get("idle")),
-                            floatProp(props, "scale", 1.0f)));
+                            floatProp(props, "scale", 1.0f),
+                            props.get("lore"), boolProp(props, "glow"), customDamage));
                 }
             } catch (NumberFormatException e) {
                 error(headerLine, "неверное число в свойствах: " + e.getMessage());

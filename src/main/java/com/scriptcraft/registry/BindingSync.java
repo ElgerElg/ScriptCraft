@@ -75,6 +75,7 @@ public final class BindingSync {
         if (r.dataChanged() && source != null) {
             Feedback.ok(source, "bindings.data_reload");
         }
+        SlotMigration.invalidateAndMigrateOnline(server);
     }
 
     /** Вход игрока: таблица привязок (после манифеста ресурсов — модели скачиваются параллельно). */

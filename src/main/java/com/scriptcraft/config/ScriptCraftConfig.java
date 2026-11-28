@@ -34,7 +34,7 @@ public final class ScriptCraftConfig {
     private static final ForgeConfigSpec.BooleanValue LOG_SCRIPT_LOAD_TIMES;
     private static final ForgeConfigSpec.BooleanValue ALLOW_COMMAND_EFFECTS;
     private static final ForgeConfigSpec.IntValue TARGETED_PLAYER_RANGE;
-    private static final ForgeConfigSpec.BooleanValue REGISTER_REAL_IDS;
+    private static final ForgeConfigSpec.BooleanValue USE_LEGACY_SLOT_POOL;
     private static final ForgeConfigSpec.IntValue VARIABLE_BACKUPS;
     private static final ForgeConfigSpec.BooleanValue SYNC_RESOURCES;
     private static final ForgeConfigSpec.BooleanValue DISABLE_VANILLA_PACK_PROMPT;
@@ -88,12 +88,13 @@ public final class ScriptCraftConfig {
                         "Как далеко ищется 'targeted player' / %targeted% (блоков; сквозь блоки луч не проходит).")
                 .defineInRange("targetedPlayerRange", 50, 1, 256);
 
-        REGISTER_REAL_IDS = b.comment(
-                        "true (default): register real modid:item and modid:block Forge registry IDs via Mixin + Login Handshake sync (and hot /sc reload!).",
-                        "Players join on the VERY FIRST attempt with real IDs in F3, /give, JEI and datapacks, with zero client restart.",
-                        "false: legacy slot-pool mode (scriptcraft:dyn_block_N / dyn_item_N).",
-                        "true (по умолчанию): настоящие modid:item и modid:block через Mixin + синхронизацию на экране входа и горячий /sc reload без перезапуска!")
-                .define("registerRealIds", true);
+        USE_LEGACY_SLOT_POOL = b.comment(
+                        "false (default): register real modid:item and modid:block Forge registry IDs via Mixin + Login Handshake sync + hot /sc reload!",
+                        "Players join on the VERY FIRST attempt with real IDs (e.g. gecko:plasma_rifle) in F3, /give, JEI and datapacks.",
+                        "true: force legacy slot-pool mode (scriptcraft:dyn_block_N / dyn_item_N).",
+                        "false (по умолчанию): настоящие modid:item и modid:block (например gecko:plasma_rifle) через Mixin, синхронизацию при входе и горячий /sc reload!",
+                        "true: старый режим пула временных слотов (scriptcraft:dyn_block_N / dyn_item_N).")
+                .define("useLegacySlotPool", false);
 
         b.pop();
 
@@ -221,10 +222,10 @@ public final class ScriptCraftConfig {
     }
 
     public static boolean registerRealIds() {
-        return safe(REGISTER_REAL_IDS::get, true);
+        return !safe(USE_LEGACY_SLOT_POOL::get, false);
     }
 
-    /** Чтение registerRealIds в конструкторе мода (до того как Forge загрузил SPEC). */
+    /** Чтение режима настоящих ID в конструкторе мода (до того как Forge загрузил SPEC). */
     public static boolean registerRealIdsAtBoot() {
         if (SPEC.isLoaded()) {
             return registerRealIds();
@@ -237,13 +238,13 @@ public final class ScriptCraftConfig {
             for (String line : Files.readAllLines(path, java.nio.charset.StandardCharsets.UTF_8)) {
                 String trimmed = line.strip();
                 if (trimmed.startsWith("#")) continue;
-                if (trimmed.startsWith("registerRealIds")) {
+                if (trimmed.startsWith("useLegacySlotPool")) {
                     int eq = trimmed.indexOf('=');
                     if (eq >= 0) {
                         String val = trimmed.substring(eq + 1).strip();
                         int hash = val.indexOf('#');
                         if (hash >= 0) val = val.substring(0, hash).strip();
-                        return !"false".equalsIgnoreCase(val);
+                        return !"true".equalsIgnoreCase(val);
                     }
                 }
             }

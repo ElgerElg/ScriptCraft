@@ -1,36 +1,98 @@
 package com.scriptcraft.client;
 
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.scriptcraft.mixin.LoadingOverlayAccessor;
+import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.ConnectScreen;
+import net.minecraft.client.gui.screens.LoadingOverlay;
+import net.minecraft.client.gui.screens.Overlay;
+import net.minecraft.client.gui.screens.ReceivingLevelScreen;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.server.packs.resources.ReloadInstance;
 import net.minecraft.util.Mth;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 
 /**
- * Единый рендерер кастомных загрузочных экранов ScriptCraft с плавным прогресс-баром и процентами (0%..100%):
- *  1) При перезагрузке ресурспаков / F3+T / запекании новых моделей (LoadingOverlayMixin)
- *  2) При подключении к серверу, докачке кэша в фазе LOGIN и загрузке мира (ConnectScreenMixin + ReceivingLevelScreenMixin)
+ * Единый рендерер кастомных загрузочных экранов ScriptCraft с плавным прогресс-баром и процентами (0%..100%)
+ * и наивысшим приоритетом поверх ForgeLoadingOverlay и любых сторонних модов (GameRendererMixin):
+ *  1) При старте игры и перезагрузке ресурспаков / F3+T / запекании моделей (LoadingOverlay + ForgeLoadingOverlay)
+ *  2) При входе на сервер, синхронизации кэша/реестров и загрузке мира (включая плавный довод до 100% в мире!)
  */
 @OnlyIn(Dist.CLIENT)
 public final class ClientLoadScreenRenderer {
+    private static final int JOIN_IDLE = 0;
+    private static final int JOIN_CONNECTING = 1;
+    private static final int JOIN_POST_WORLD_FADE = 2;
+
+    private static final long POST_JOIN_HOLD_MS = 500L;
+    private static final long POST_JOIN_FADE_MS = 650L;
+
+    private static volatile int joinPhase = JOIN_IDLE;
+    private static volatile long postJoinStartMs = 0L;
     private static volatile float serverJoinProgress = 0.08f;
     private static volatile String serverJoinStage = "";
     private static volatile String serverJoinDetail = "";
     private static volatile String reloadCustomReason = "";
     private static float smoothedJoinProgress = 0.05f;
 
+    // Отслеживание оверлея перезагрузки ресурсов (в т.ч. ForgeLoadingOverlay)
+    private static boolean overlayRenderedDirectlyThisFrame = false;
+    private static Overlay trackedOverlay = null;
+    private static float trackedOverlayProgress = 0.0f;
+    private static long trackedOverlayDoneMs = -1L;
+
     private ClientLoadScreenRenderer() {
     }
 
     public static void beginServerConnect() {
-        serverJoinProgress = 0.08f;
-        smoothedJoinProgress = 0.05f;
+        joinPhase = JOIN_CONNECTING;
+        postJoinStartMs = 0L;
+        serverJoinProgress = 0.10f;
+        smoothedJoinProgress = 0.06f;
         serverJoinStage = isRu() ? "Подключение к серверу..." : "Connecting to server...";
         serverJoinDetail = "";
     }
 
+    public static void ensureServerConnectStarted() {
+        if (joinPhase == JOIN_IDLE) {
+            beginServerConnect();
+        }
+    }
+
+    public static void onWorldLoggedIn() {
+        // Даже если локальный вход прошёл за 50 мс, плавно доводим шкалу до 100% и растворяем карточку
+        if (joinPhase == JOIN_IDLE) {
+            smoothedJoinProgress = Math.max(smoothedJoinProgress, 0.72f);
+        }
+        joinPhase = JOIN_POST_WORLD_FADE;
+        postJoinStartMs = Util.getMillis();
+        serverJoinProgress = 1.0f;
+        serverJoinStage = isRu()
+                ? "Синхронизация завершена — добро пожаловать!"
+                : "Sync complete — entering world!";
+        serverJoinDetail = "";
+    }
+
+    public static void resetJoinState() {
+        joinPhase = JOIN_IDLE;
+        postJoinStartMs = 0L;
+        serverJoinProgress = 0.08f;
+        smoothedJoinProgress = 0.05f;
+        serverJoinStage = "";
+        serverJoinDetail = "";
+    }
+
+    public static void markOverlayRenderedDirectly() {
+        overlayRenderedDirectlyThisFrame = true;
+    }
+
     public static void updateJoinProgress(float target01, String stageRu, String stageEn, String detail) {
+        ensureServerConnectStarted();
         serverJoinProgress = Mth.clamp(target01, 0.0f, 1.0f);
         serverJoinStage = isRu() ? stageRu : stageEn;
         serverJoinDetail = detail == null ? "" : detail;
@@ -47,9 +109,9 @@ public final class ClientLoadScreenRenderer {
     public static float stepServerJoinProgress(float minFloor, float maxCeil, float deltaTick) {
         float target = Math.max(minFloor, Math.min(maxCeil, serverJoinProgress));
         if (smoothedJoinProgress < target) {
-            smoothedJoinProgress = Math.min(target, smoothedJoinProgress + Math.max(0.004f, (target - smoothedJoinProgress) * 0.14f));
+            smoothedJoinProgress = Math.min(target, smoothedJoinProgress + Math.max(0.006f, (target - smoothedJoinProgress) * 0.16f));
         } else if (smoothedJoinProgress < maxCeil) {
-            smoothedJoinProgress = Math.min(maxCeil, smoothedJoinProgress + deltaTick * 0.0025f);
+            smoothedJoinProgress = Math.min(maxCeil, smoothedJoinProgress + deltaTick * 0.0035f);
         }
         return Mth.clamp(smoothedJoinProgress, 0.0f, 1.0f);
     }
@@ -83,9 +145,172 @@ public final class ClientLoadScreenRenderer {
     }
 
     /**
+     * Вызывается из GameRendererMixin с наивысшим приоритетом (20000) непосредственно перед GuiGraphics.flush():
+     * перекрывает любые экраны загрузки других модов (ForgeLoadingOverlay, FancyMenu, FastLoad и др.).
+     */
+    public static void renderTopMostHook(Minecraft mc, MultiBufferSource.BufferSource buffers, float partialTick) {
+        boolean directOverlay = overlayRenderedDirectlyThisFrame;
+        overlayRenderedDirectlyThisFrame = false;
+
+        int width = mc.getWindow().getGuiScaledWidth();
+        int height = mc.getWindow().getGuiScaledHeight();
+        int mouseX = (int) (mc.mouseHandler.xpos() * (double) width / (double) Math.max(1, mc.getWindow().getScreenWidth()));
+        int mouseY = (int) (mc.mouseHandler.ypos() * (double) height / (double) Math.max(1, mc.getWindow().getScreenHeight()));
+
+        Overlay overlay = mc.getOverlay();
+        if (overlay instanceof LoadingOverlay lo) {
+            // Если активен оверлей перезагрузки ресурсов, он главнее пост-логин анимации
+            if (joinPhase == JOIN_POST_WORLD_FADE) {
+                joinPhase = JOIN_IDLE;
+            }
+            if (directOverlay) {
+                // LoadingOverlayMixin уже отрисовал карточку в этом кадре
+                return;
+            }
+            renderFallbackLoadingOverlay(mc, buffers, lo, width, height);
+            return;
+        } else {
+            trackedOverlay = null;
+            trackedOverlayDoneMs = -1L;
+        }
+
+        Screen screen = mc.screen;
+        if (screen instanceof ConnectScreen) {
+            ensureServerConnectStarted();
+            String vanillaStatus = (screen instanceof ConnectScreenBridge bridge) ? bridge.scriptcraft$getStatusString() : "";
+            float progress = stepServerJoinProgress(0.10f, 0.86f, partialTick);
+            String title = isRu() ? "ВХОД НА СЕРВЕР" : "JOINING SERVER";
+            String stage = currentJoinStage(vanillaStatus);
+            String rawDetail = currentJoinDetail();
+            final String detail = (rawDetail.isEmpty() && !vanillaStatus.isEmpty() && !vanillaStatus.equals(stage))
+                    ? vanillaStatus : rawDetail;
+            drawTopMostLayer(mc, buffers, g -> {
+                renderCard(g, width, height, progress, title, stage, detail, 1.0f, true);
+                if (screen instanceof ConnectScreenBridge bridge) {
+                    g.pose().pushPose();
+                    g.pose().translate(0f, 0f, 20f);
+                    bridge.scriptcraft$renderButtonsOnly(g, mouseX, mouseY, partialTick);
+                    g.pose().popPose();
+                }
+            });
+            return;
+        }
+
+        if (screen instanceof ReceivingLevelScreen) {
+            ensureServerConnectStarted();
+            float progress = stepServerJoinProgress(0.90f, 0.99f, partialTick);
+            String title = isRu() ? "ЗАГРУЗКА МИРА" : "LOADING WORLD";
+            String stage = isRu()
+                    ? "Генерация ландшафта и синхронизация сущностей..."
+                    : "Receiving terrain chunks & syncing entities...";
+            drawTopMostLayer(mc, buffers, g -> renderCard(g, width, height, progress, title, stage, "", 1.0f, false));
+            return;
+        }
+
+        if (joinPhase == JOIN_POST_WORLD_FADE) {
+            // Если игрок открыл меню смерти/отключения — сразу убираем оверлей
+            if (mc.level == null) {
+                joinPhase = JOIN_IDLE;
+                return;
+            }
+            long elapsed = Math.max(0L, Util.getMillis() - postJoinStartMs);
+            if (elapsed >= POST_JOIN_HOLD_MS + POST_JOIN_FADE_MS) {
+                joinPhase = JOIN_IDLE;
+                return;
+            }
+            float progress;
+            float alpha;
+            if (elapsed < POST_JOIN_HOLD_MS) {
+                float t = (float) elapsed / (float) POST_JOIN_HOLD_MS;
+                smoothedJoinProgress = Mth.lerp(Math.min(1.0f, 0.22f + t * 0.5f), smoothedJoinProgress, 1.0f);
+                progress = Mth.clamp(Math.max(smoothedJoinProgress, 0.85f + 0.15f * t), 0.0f, 1.0f);
+                alpha = 1.0f;
+            } else {
+                progress = 1.0f;
+                float fadeT = (float) (elapsed - POST_JOIN_HOLD_MS) / (float) POST_JOIN_FADE_MS;
+                float inv = 1.0f - Mth.clamp(fadeT, 0.0f, 1.0f);
+                alpha = inv * inv;
+            }
+            String title = isRu() ? "ВХОД НА СЕРВЕР" : "JOINING SERVER";
+            String stage = currentJoinStage("");
+            drawTopMostLayer(mc, buffers, g -> renderCard(g, width, height, progress, title, stage, "", alpha, false));
+        } else if (joinPhase == JOIN_CONNECTING && screen != null) {
+            // Защита на случай, если сторонний мод (например FancyMenu) подменил ConnectScreen своим классом Screen!
+            String screenName = screen.getClass().getSimpleName().toLowerCase(java.util.Locale.ROOT);
+            if (screenName.contains("connect") || screenName.contains("login") || screenName.contains("load") || screenName.contains("receiving")) {
+                float progress = stepServerJoinProgress(0.12f, 0.92f, partialTick);
+                String title = isRu() ? "ВХОД НА СЕРВЕР" : "JOINING SERVER";
+                String stage = currentJoinStage("");
+                String detail = currentJoinDetail();
+                drawTopMostLayer(mc, buffers, g -> renderCard(g, width, height, progress, title, stage, detail, 1.0f, true));
+            } else if (screenName.contains("disconnected") || screenName.contains("multiplayer") || screenName.contains("title")) {
+                joinPhase = JOIN_IDLE;
+            }
+        }
+    }
+
+    private static void renderFallbackLoadingOverlay(
+            Minecraft mc,
+            MultiBufferSource.BufferSource buffers,
+            LoadingOverlay lo,
+            int width,
+            int height
+    ) {
+        if (trackedOverlay != lo) {
+            trackedOverlay = lo;
+            trackedOverlayProgress = 0.02f;
+            trackedOverlayDoneMs = -1L;
+        }
+        LoadingOverlayAccessor acc = (LoadingOverlayAccessor) lo;
+        ReloadInstance reload = acc.scriptcraft$getReload();
+        long now = Util.getMillis();
+
+        float actual = reload != null ? reload.getActualProgress() : 0.5f;
+        trackedOverlayProgress = Mth.clamp(trackedOverlayProgress * 0.88f + actual * 0.12f, 0.0f, 1.0f);
+
+        long baseFadeOut = acc.scriptcraft$getFadeOutStart();
+        if (baseFadeOut > -1L) {
+            trackedOverlayDoneMs = baseFadeOut;
+        } else if (reload != null && reload.isDone() && trackedOverlayDoneMs == -1L) {
+            trackedOverlayDoneMs = now;
+        }
+
+        float shownProgress = trackedOverlayDoneMs > -1L ? 1.0f : trackedOverlayProgress;
+        float alpha = 1.0f;
+        if (trackedOverlayDoneMs > -1L) {
+            float fadeFrac = (float) (now - trackedOverlayDoneMs) / 750.0f;
+            alpha = 1.0f - Mth.clamp(fadeFrac, 0.0f, 1.0f);
+        }
+        if (alpha <= 0.01f) {
+            return;
+        }
+        String title = isRu() ? "ЗАГРУЗКА РЕСУРСОВ" : "LOADING RESOURCES";
+        String stage = currentReloadStage(shownProgress);
+        float finalAlpha = alpha;
+        drawTopMostLayer(mc, buffers, g -> renderCard(g, width, height, shownProgress, title, stage, "", finalAlpha, false));
+    }
+
+    private static void drawTopMostLayer(
+            Minecraft mc,
+            MultiBufferSource.BufferSource buffers,
+            java.util.function.Consumer<GuiGraphics> painter
+    ) {
+        GuiGraphics g = new GuiGraphics(mc, buffers);
+        g.pose().pushPose();
+        // Поднимаем по Z выше всех экранов, оверлеев и тостов
+        g.pose().translate(0.0f, 0.0f, 800.0f);
+        RenderSystem.disableDepthTest();
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        painter.accept(g);
+        g.flush();
+        RenderSystem.disableBlend();
+        RenderSystem.enableDepthTest();
+        g.pose().popPose();
+    }
+
+    /**
      * Отрисовка фирменного экрана загрузки с карточкой, прогресс-баром, свечением и точным процентом (0%..100%).
-     *
-     * @param alpha глобальная прозрачность (1.0f во время загрузки, 1.0 -> 0.0 при плавном затухании LoadingOverlay)
      */
     public static void renderCard(
             GuiGraphics g,

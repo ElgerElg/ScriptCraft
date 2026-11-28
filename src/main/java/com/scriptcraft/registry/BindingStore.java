@@ -130,6 +130,14 @@ public final class BindingStore {
         return HINT_ITEMS.get(id);
     }
 
+    public static synchronized Map<String, Integer> hintBlocksSnapshot() {
+        return new LinkedHashMap<>(HINT_BLOCKS);
+    }
+
+    public static synchronized Map<String, Integer> hintItemsSnapshot() {
+        return new LinkedHashMap<>(HINT_ITEMS);
+    }
+
     public static Map<String, String> dataRewrite() {
         return dataRewrite;
     }

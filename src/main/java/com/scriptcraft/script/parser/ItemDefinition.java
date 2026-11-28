@@ -18,7 +18,8 @@ public record ItemDefinition(String id, @Nullable String displayName, int stackS
                              String type, int nutrition, float saturation, boolean alwaysEat, String tier, int durability,
                              int defense, float toughness,
                              String geoModel, String geoTexture, String geoAnimation,
-                             String idleAnimation, float geoScale) {
+                             String idleAnimation, float geoScale,
+                             @Nullable String lore, boolean glow, float customDamage) {
     public static final Set<String> TYPES = Set.of(
             "item", "food", "sword", "pickaxe", "axe", "shovel", "hoe", "fishing_rod", "shears",
             "helmet", "chestplate", "leggings", "boots");
@@ -26,7 +27,16 @@ public record ItemDefinition(String id, @Nullable String displayName, int stackS
     public ItemDefinition(String id, @Nullable String displayName, int stackSize, boolean fireResistant, String rarity,
                           String type, int nutrition, float saturation, boolean alwaysEat, String tier, int durability) {
         this(id, displayName, stackSize, fireResistant, rarity, type, nutrition, saturation, alwaysEat, tier, durability,
-                0, 0f, "", "", "", "idle", 1.0f);
+                0, 0f, "", "", "", "idle", 1.0f, null, false, -1f);
+    }
+
+    public ItemDefinition(String id, @Nullable String displayName, int stackSize, boolean fireResistant, String rarity,
+                          String type, int nutrition, float saturation, boolean alwaysEat, String tier, int durability,
+                          int defense, float toughness,
+                          String geoModel, String geoTexture, String geoAnimation,
+                          String idleAnimation, float geoScale) {
+        this(id, displayName, stackSize, fireResistant, rarity, type, nutrition, saturation, alwaysEat, tier, durability,
+                defense, toughness, geoModel, geoTexture, geoAnimation, idleAnimation, geoScale, null, false, -1f);
     }
 
     public boolean isGeo() {
@@ -102,7 +112,14 @@ public record ItemDefinition(String id, @Nullable String displayName, int stackS
         };
     }
 
+    public boolean hasWeaponStats() {
+        return digger() || customDamage >= 0f;
+    }
+
     public double attackDamage() {
+        if (customDamage >= 0f) {
+            return Math.max(0.0, customDamage - 1.0);
+        }
         double bonus = tierValue().getAttackDamageBonus();
         return switch (type) {
             case "sword" -> bonus + 3;
@@ -127,7 +144,7 @@ public record ItemDefinition(String id, @Nullable String displayName, int stackS
                 case "netherite" -> 0;
                 default -> -1.0;
             };
-            default -> 0;
+            default -> customDamage >= 0f ? -2.0 : 0;
         };
     }
 

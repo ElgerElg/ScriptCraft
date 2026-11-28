@@ -11,9 +11,10 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * Плавное завершение прогресс-бара (88%..99%) на стадии загрузки чанков мира (ReceivingLevelScreen).
+ * Плавное завершение прогресс-бара (90%..99%) на стадии загрузки чанков мира (ReceivingLevelScreen)
+ * с отрисовкой поверх всех модов через GameRendererMixin.
  */
-@Mixin(ReceivingLevelScreen.class)
+@Mixin(value = ReceivingLevelScreen.class, priority = 20000)
 public abstract class ReceivingLevelScreenMixin extends Screen {
     protected ReceivingLevelScreenMixin(Component title) {
         super(title);
@@ -21,12 +22,7 @@ public abstract class ReceivingLevelScreenMixin extends Screen {
 
     @Inject(method = "render", at = @At("HEAD"), cancellable = true)
     private void scriptcraft$renderCustomReceivingLevel(GuiGraphics g, int mouseX, int mouseY, float partialTick, CallbackInfo ci) {
+        ClientLoadScreenRenderer.ensureServerConnectStarted();
         ci.cancel();
-        float progress = ClientLoadScreenRenderer.stepServerJoinProgress(0.90f, 0.99f, partialTick);
-        String title = ClientLoadScreenRenderer.isRu() ? "ЗАГРУЗКА МИРА" : "LOADING WORLD";
-        String stage = ClientLoadScreenRenderer.isRu()
-                ? "Генерация ландшафта и синхронизация сущностей..."
-                : "Receiving terrain chunks & syncing entities...";
-        ClientLoadScreenRenderer.renderCard(g, this.width, this.height, progress, title, stage, "", 1.0f, false);
     }
 }

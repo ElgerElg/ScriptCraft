@@ -94,12 +94,29 @@ public final class SlotMigration {
         return p;
     }
 
-    /** Строит план из записей мира: слоты, чей id (или "id#слот") теперь зарегистрирован настоящим. */
+    /**
+     * Сбрасывает кэшированный план миграции (после динамической регистрации новых настоящих ID)
+     * и сразу переводит временные слоты (scriptcraft:dyn_item_N) в инвентарях онлайн-игроков на настоящие modid:id.
+     */
+    public static void invalidateAndMigrateOnline(MinecraftServer server) {
+        plan = null;
+        Plan p = plan(server);
+        if (p.isEmpty()) {
+            return;
+        }
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            onPlayerLogin(player);
+        }
+    }
+
+    /** Строит план из записей мира и подсказок bindings.json: слоты, чей id теперь зарегистрирован настоящим. */
     private static Plan build(BindingsData data) {
         Map<Block, Block> b = new IdentityHashMap<>();
         Map<Item, Item> i = new IdentityHashMap<>();
         synchronized (BindingStore.class) {
-            for (Map.Entry<String, Integer> e : data.blocks.entrySet()) {
+            Map<String, Integer> mergedBlocks = new java.util.LinkedHashMap<>(BindingStore.hintBlocksSnapshot());
+            mergedBlocks.putAll(data.blocks);
+            for (Map.Entry<String, Integer> e : mergedBlocks.entrySet()) {
                 int slot = e.getValue();
                 if (slot < 0 || slot >= ScriptRegistries.BLOCK_SLOTS) {
                     continue;
@@ -114,7 +131,9 @@ public final class SlotMigration {
                     putItem(i, ScriptRegistries.blockItem(slot), ScriptRegistries.realItem(id));
                 }
             }
-            for (Map.Entry<String, Integer> e : data.items.entrySet()) {
+            Map<String, Integer> mergedItems = new java.util.LinkedHashMap<>(BindingStore.hintItemsSnapshot());
+            mergedItems.putAll(data.items);
+            for (Map.Entry<String, Integer> e : mergedItems.entrySet()) {
                 int slot = e.getValue();
                 if (slot < 0 || slot >= ScriptRegistries.ITEM_SLOTS) {
                     continue;

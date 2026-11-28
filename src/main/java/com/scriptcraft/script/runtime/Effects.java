@@ -1627,7 +1627,7 @@ public final class Effects {
                 }
             }
             if (customName != null) {
-                entity.setCustomName(Component.literal(ctx.format(customName)));
+                entity.setCustomName(com.scriptcraft.util.TextFormat.format(ctx.format(customName)));
                 entity.setCustomNameVisible(true);
             }
             if (entity instanceof LivingEntity living) {
@@ -2272,7 +2272,7 @@ public final class Effects {
             if (texOverride != null) geo.setTexturePath(Expression.toText(texOverride.evaluate(ctx)).strip());
             if (animOverride != null) geo.setAnimFilePath(Expression.toText(animOverride.evaluate(ctx)).strip());
             if (customName != null) {
-                geo.setCustomName(colored(ctx.format(customName)));
+                geo.setCustomName(com.scriptcraft.util.TextFormat.format(ctx.format(customName)));
                 geo.setCustomNameVisible(true);
             }
             if (health != null) {
@@ -2457,7 +2457,7 @@ public final class Effects {
                 if (sneaking != null) npc.setNpcSneaking(sneaking);
                 if (numArg != null) {
                     String display = ctx.format(Expression.toText(numArg.evaluate(ctx)));
-                    npc.setCustomName(colored(display));
+                    npc.setCustomName(com.scriptcraft.util.TextFormat.format(display));
                     npc.setCustomNameVisible(true);
                 }
                 level.addFreshEntity(npc);
@@ -2474,7 +2474,7 @@ public final class Effects {
                 case "skin" -> npc.setSkinSource(strArg == null ? "" : Expression.toText(strArg.evaluate(ctx)).strip());
                 case "name" -> {
                     String nm = strArg == null ? "" : ctx.format(Expression.toText(strArg.evaluate(ctx)));
-                    npc.setCustomName(nm.isEmpty() ? null : colored(nm));
+                    npc.setCustomName(nm.isEmpty() ? null : com.scriptcraft.util.TextFormat.format(nm));
                     npc.setCustomNameVisible(!nm.isEmpty());
                 }
                 case "equip" -> {

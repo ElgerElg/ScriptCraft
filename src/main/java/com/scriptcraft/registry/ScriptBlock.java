@@ -233,8 +233,10 @@ public abstract class ScriptBlock extends Block implements EntityBlock {
         if (def == null) {
             return unboundName();
         }
-        // name: "..." из скрипта важнее перевода.
-        return def.displayName() != null ? Component.literal(def.displayName()) : Component.translatable(getDescriptionId());
+        // name: "..." из скрипта важнее перевода (с поддержкой & и &#RRGGBB цветов).
+        return def.displayName() != null
+                ? com.scriptcraft.util.TextFormat.formatItemName(def.displayName())
+                : Component.translatable(getDescriptionId());
     }
 
     /** Скорость ломания — формула ванили/Forge, но с прочностью и "нужным инструментом" из скрипта. */

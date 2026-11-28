@@ -371,6 +371,8 @@ public final class Bindings {
             writeName(buf, d.geoAnimation());
             writeName(buf, d.idleAnimation());
             buf.writeFloat(d.geoScale());
+            writeName(buf, d.lore());
+            buf.writeBoolean(d.glow());
         }
 
         private static BlockDefinition readBlock(FriendlyByteBuf buf) {
@@ -390,7 +392,8 @@ public final class Bindings {
                     render == null ? BlockDefinition.RENDER_SOLID : render, full,
                     buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readBoolean(), buf.readBoolean(),
                     buf.readVarInt(), buf.readVarInt(),
-                    readName(buf), readName(buf), readName(buf), readName(buf), buf.readFloat());
+                    readName(buf), readName(buf), readName(buf), readName(buf), buf.readFloat(),
+                    readName(buf), buf.readBoolean());
         }
 
         private static void writeItem(FriendlyByteBuf buf, ItemDefinition d) {
@@ -412,6 +415,9 @@ public final class Bindings {
             writeName(buf, d.geoAnimation());
             writeName(buf, d.idleAnimation());
             buf.writeFloat(d.geoScale());
+            writeName(buf, d.lore());
+            buf.writeBoolean(d.glow());
+            buf.writeFloat(d.customDamage());
         }
 
         private static ItemDefinition readItem(FriendlyByteBuf buf) {
@@ -423,7 +429,8 @@ public final class Bindings {
             return new ItemDefinition(id, name, stack, fire, rarity, buf.readUtf(MAX_TEXT), buf.readVarInt(),
                     buf.readFloat(), buf.readBoolean(), buf.readUtf(MAX_TEXT), buf.readVarInt(),
                     buf.readVarInt(), buf.readFloat(),
-                    readName(buf), readName(buf), readName(buf), readName(buf), buf.readFloat());
+                    readName(buf), readName(buf), readName(buf), readName(buf), buf.readFloat(),
+                    readName(buf), buf.readBoolean(), buf.readFloat());
         }
 
         private static int checkCount(int n, int max) {

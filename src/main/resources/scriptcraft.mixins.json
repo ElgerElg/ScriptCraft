@@ -9,9 +9,11 @@
     "GameDataMixin"
   ],
   "client": [
+    "LoadingOverlayAccessor",
     "LoadingOverlayMixin",
     "ConnectScreenMixin",
-    "ReceivingLevelScreenMixin"
+    "ReceivingLevelScreenMixin",
+    "GameRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 1

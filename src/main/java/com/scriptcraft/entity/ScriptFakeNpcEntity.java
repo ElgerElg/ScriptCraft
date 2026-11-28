@@ -164,6 +164,14 @@ public class ScriptFakeNpcEntity extends PathfinderMob {
     }
 
     @Override
+    public void setCustomName(@org.jetbrains.annotations.Nullable net.minecraft.network.chat.Component name) {
+        if (name != null && com.scriptcraft.util.TextFormat.containsAmpersandCodes(name.getString())) {
+            name = com.scriptcraft.util.TextFormat.format(name.getString());
+        }
+        super.setCustomName(name);
+    }
+
+    @Override
     public boolean isPushable() {
         return false;
     }

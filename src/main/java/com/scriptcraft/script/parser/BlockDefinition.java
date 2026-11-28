@@ -11,7 +11,8 @@ public record BlockDefinition(String id, @Nullable String displayName, float har
                               String render, @Nullable Boolean full, float friction, float speed, float jump,
                               boolean gravity, boolean collision, int burn, int spread,
                               String geoModel, String geoTexture, String geoAnimation,
-                              String idleAnimation, float geoScale) {
+                              String idleAnimation, float geoScale,
+                              @Nullable String lore, boolean glow) {
     public static final String FACING_NONE = "none";
     public static final String FACING_HORIZONTAL = "horizontal";
     public static final String FACING_ALL = "all";
@@ -24,7 +25,18 @@ public record BlockDefinition(String id, @Nullable String displayName, float har
                            String render, @Nullable Boolean full, float friction, float speed, float jump,
                            boolean gravity, boolean collision, int burn, int spread) {
         this(id, displayName, hardness, resistance, sound, lightLevel, requiresTool, facing, render, full,
-                friction, speed, jump, gravity, collision, burn, spread, "", "", "", "idle", 1.0f);
+                friction, speed, jump, gravity, collision, burn, spread, "", "", "", "idle", 1.0f, null, false);
+    }
+
+    public BlockDefinition(String id, @Nullable String displayName, float hardness, float resistance,
+                           String sound, int lightLevel, boolean requiresTool, String facing,
+                           String render, @Nullable Boolean full, float friction, float speed, float jump,
+                           boolean gravity, boolean collision, int burn, int spread,
+                           String geoModel, String geoTexture, String geoAnimation,
+                           String idleAnimation, float geoScale) {
+        this(id, displayName, hardness, resistance, sound, lightLevel, requiresTool, facing, render, full,
+                friction, speed, jump, gravity, collision, burn, spread,
+                geoModel, geoTexture, geoAnimation, idleAnimation, geoScale, null, false);
     }
 
     public boolean isGeo() {

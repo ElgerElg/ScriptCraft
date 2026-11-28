@@ -154,7 +154,7 @@ public class ScriptGeoEntity extends PathfinderMob {
         this.entityData.set(DATA_PARTICLE_BONES, encodeParticleBones(def.particleBones()));
 
         if (def.displayName() != null && !def.displayName().isBlank()) {
-            this.setCustomName(Component.literal(def.displayName()));
+            this.setCustomName(com.scriptcraft.util.TextFormat.format(def.displayName()));
             this.setCustomNameVisible(def.nametag());
         }
 
@@ -168,6 +168,14 @@ public class ScriptGeoEntity extends PathfinderMob {
         if (def.spawnAnimation() != null && !def.spawnAnimation().isBlank()) {
             playAnimation(def.spawnAnimation(), 0, 1.0f);
         }
+    }
+
+    @Override
+    public void setCustomName(@org.jetbrains.annotations.Nullable Component name) {
+        if (name != null && com.scriptcraft.util.TextFormat.containsAmpersandCodes(name.getString())) {
+            name = com.scriptcraft.util.TextFormat.format(name.getString());
+        }
+        super.setCustomName(name);
     }
 
     private void setAttr(net.minecraft.world.entity.ai.attributes.Attribute attr, double val) {

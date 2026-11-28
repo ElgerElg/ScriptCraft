@@ -40,14 +40,23 @@ public class ScriptBlockItem extends BlockItem {
         return block.getName();
     }
 
-    /** Подробные подсказки (F3+H) у слота: рядом с техническим id показываем id из скрипта. */
+    /** Описание (lore) блока + подробные подсказки (F3+H) у временного слота. */
     @Override
     public void appendHoverText(ItemStack stack, @Nullable Level level, List<Component> tooltip, TooltipFlag flag) {
         super.appendHoverText(stack, level, tooltip, flag);
         BlockDefinition def = block.definition();
+        if (def != null && def.lore() != null && !def.lore().isBlank()) {
+            tooltip.addAll(com.scriptcraft.util.TextFormat.formatLore(def.lore()));
+        }
         if (flag.isAdvanced() && def != null && block instanceof PoolBlock) {
             tooltip.add(scriptIdLine(def.id()));
         }
+    }
+
+    @Override
+    public boolean isFoil(ItemStack stack) {
+        BlockDefinition def = block.definition();
+        return (def != null && def.glow()) || super.isFoil(stack);
     }
 
     static Component scriptIdLine(String id) {

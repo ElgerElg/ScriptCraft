@@ -1,0 +1,74 @@
+{
+  "format_version": "1.8.0",
+  "animations": {
+    "idle": {
+      "loop": true,
+      "animation_length": 2.0,
+      "bones": {
+        "energy_cell": {
+          "scale": [
+            "1 + math.sin(query.anim_time * 180) * 0.05",
+            "1 + math.sin(query.anim_time * 180) * 0.05",
+            1.0
+          ]
+        }
+      }
+    },
+    "shoot": {
+      "loop": false,
+      "animation_length": 0.35,
+      "bones": {
+        "rifle": {
+          "position": {
+            "0.0": [
+              0,
+              0,
+              0
+            ],
+            "0.06": [
+              0,
+              0.6,
+              2.4
+            ],
+            "0.35": [
+              0,
+              0,
+              0
+            ]
+          },
+          "rotation": {
+            "0.0": [
+              0,
+              0,
+              0
+            ],
+            "0.06": [
+              -12,
+              0,
+              0
+            ],
+            "0.35": [
+              0,
+              0,
+              0
+            ]
+          }
+        },
+        "energy_cell": {
+          "rotation": {
+            "0.0": [
+              0,
+              0,
+              0
+            ],
+            "0.35": [
+              0,
+              0,
+              180
+            ]
+          }
+        }
+      }
+    }
+  }
+}

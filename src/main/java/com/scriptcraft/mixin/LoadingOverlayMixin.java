@@ -22,7 +22,7 @@ import java.util.function.Consumer;
  * Заменяет стандартный красный экран перезагрузки ресурсов Mojang на стильное меню ScriptCraft
  * с плавным прогресс-баром, точным процентом (0%..100%) и описанием текущего этапа!
  */
-@Mixin(LoadingOverlay.class)
+@Mixin(value = LoadingOverlay.class, priority = 20000)
 public abstract class LoadingOverlayMixin {
     @Shadow @Final private Minecraft minecraft;
     @Shadow @Final private ReloadInstance reload;
@@ -35,6 +35,7 @@ public abstract class LoadingOverlayMixin {
     @Inject(method = "render", at = @At("HEAD"), cancellable = true)
     private void scriptcraft$renderCustomReloadOverlay(GuiGraphics g, int mouseX, int mouseY, float partialTick, CallbackInfo ci) {
         ci.cancel();
+        ClientLoadScreenRenderer.markOverlayRenderedDirectly();
 
         int width = g.guiWidth();
         int height = g.guiHeight();

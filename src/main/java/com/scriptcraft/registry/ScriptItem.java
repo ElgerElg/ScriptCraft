@@ -87,16 +87,27 @@ public abstract class ScriptItem extends Item {
         if (def == null) {
             return unboundName();
         }
-        return def.displayName() != null ? Component.literal(def.displayName()) : Component.translatable(getDescriptionId());
+        return def.displayName() != null
+                ? com.scriptcraft.util.TextFormat.formatItemName(def.displayName())
+                : Component.translatable(getDescriptionId());
     }
 
-    /** Подробные подсказки (F3+H) у слота: рядом с техническим id показываем id из скрипта. */
+    /** Описание (lore) из define + подробные подсказки (F3+H) у временного слота. */
     @Override
     public void appendHoverText(ItemStack stack, @Nullable Level level, List<Component> tooltip, TooltipFlag flag) {
         ItemDefinition def = definition();
+        if (def != null && def.lore() != null && !def.lore().isBlank()) {
+            tooltip.addAll(com.scriptcraft.util.TextFormat.formatLore(def.lore()));
+        }
         if (flag.isAdvanced() && def != null && this instanceof PoolItem) {
             tooltip.add(ScriptBlockItem.scriptIdLine(def.id()));
         }
+    }
+
+    @Override
+    public boolean isFoil(ItemStack stack) {
+        ItemDefinition def = definition();
+        return (def != null && def.glow()) || super.isFoil(stack);
     }
 
     /** Forge спрашивает размер стака у предмета для каждого стака — так он меняется без перезапуска. */
@@ -274,7 +285,7 @@ public abstract class ScriptItem extends Item {
             }
             return mods.build();
         }
-        if (def == null || slot != EquipmentSlot.MAINHAND || !def.digger()) {
+        if (def == null || slot != EquipmentSlot.MAINHAND || !def.hasWeaponStats()) {
             return super.getDefaultAttributeModifiers(slot);
         }
         ImmutableMultimap.Builder<Attribute, AttributeModifier> mods = ImmutableMultimap.builder();
