@@ -16,6 +16,8 @@ import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.registries.MissingMappingsEvent;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Map;
+
 /**
  * Связка привязок с сервером: старт мира, /sc reload, вход игрока, старые миры.
  * После каждого изменения define сервер заново раздаёт слоты, рассылает таблицу всем игрокам
@@ -119,30 +121,123 @@ public final class BindingSync {
             rememberServerIds(event);
             return;
         }
+        // Сервер перед загрузкой мира: убеждаемся, что все define из скриптов уже зарегистрированы настоящими ID!
+        if (com.scriptcraft.config.ScriptCraftConfig.registerRealIds()) {
+            DynamicRegistryManager.ensureServerRealEntries(
+                    com.scriptcraft.script.ScriptLoader.getProgram().blocks(),
+                    com.scriptcraft.script.ScriptLoader.getProgram().items());
+        }
+        Map<String, Integer> blockHints = BindingStore.hintBlocksSnapshot();
+        Map<String, Integer> itemHints = BindingStore.hintItemsSnapshot();
+
         for (MissingMappingsEvent.Mapping<Block> m : event.getAllMappings(ForgeRegistries.Keys.BLOCKS)) {
-            String id = m.getKey().toString();
+            net.minecraft.resources.ResourceLocation key = m.getKey();
+            // Автоперевод старых слотов scriptcraft:dyn_block_N из прежних миров на настоящие modid:block
+            if (key.getNamespace().equals(ScriptCraft.MODID)) {
+                int oldSlot = ScriptRegistries.parseSlot(key.getPath(), ScriptRegistries.BLOCK_PREFIX, ScriptRegistries.BLOCK_SLOTS);
+                if (oldSlot >= 0) {
+                    Block mapped = findRealBlockForOldSlot(oldSlot, blockHints);
+                    if (mapped != null) {
+                        m.remap(mapped);
+                    } else {
+                        m.ignore();
+                    }
+                    continue;
+                }
+            }
+            if (!ScriptRegistries.hasLegacyPool()) {
+                continue;
+            }
+            String id = key.toString();
             Integer slot = BindingStore.hintBlockSlot(id) != null || BindingStore.wasRealBlock(id)
                     ? BindingStore.reserveForMissing(id, true) : null;
             if (slot != null && slot < ScriptRegistries.BLOCK_SLOTS) {
-                m.remap(ScriptRegistries.block(slot));
+                Block pb = ScriptRegistries.block(slot);
+                if (pb != null) m.remap(pb);
             }
         }
         for (MissingMappingsEvent.Mapping<Item> m : event.getAllMappings(ForgeRegistries.Keys.ITEMS)) {
-            String id = m.getKey().toString();
+            net.minecraft.resources.ResourceLocation key = m.getKey();
+            // Автоперевод старых слотов scriptcraft:dyn_item_N / dyn_block_N из инвентарей и сундуков на настоящие modid:item
+            if (key.getNamespace().equals(ScriptCraft.MODID)) {
+                int oldBlockSlot = ScriptRegistries.parseSlot(key.getPath(), ScriptRegistries.BLOCK_PREFIX, ScriptRegistries.BLOCK_SLOTS);
+                if (oldBlockSlot >= 0) {
+                    Item mapped = findRealBlockItemForOldSlot(oldBlockSlot, blockHints);
+                    if (mapped != null) {
+                        m.remap(mapped);
+                    } else {
+                        m.ignore();
+                    }
+                    continue;
+                }
+                int oldItemSlot = ScriptRegistries.parseSlot(key.getPath(), ScriptRegistries.ITEM_PREFIX, ScriptRegistries.ITEM_SLOTS);
+                if (oldItemSlot >= 0) {
+                    Item mapped = findRealItemForOldSlot(oldItemSlot, itemHints);
+                    if (mapped != null) {
+                        m.remap(mapped);
+                    } else {
+                        m.ignore();
+                    }
+                    continue;
+                }
+            }
+            if (!ScriptRegistries.hasLegacyPool()) {
+                continue;
+            }
+            String id = key.toString();
             if (BindingStore.hintBlockSlot(id) != null || BindingStore.wasRealBlock(id)) {
                 Integer slot = BindingStore.reserveForMissing(id, true);
                 if (slot != null && slot < ScriptRegistries.BLOCK_SLOTS) {
-                    m.remap(ScriptRegistries.blockItem(slot));
+                    Item pbi = ScriptRegistries.blockItem(slot);
+                    if (pbi != null) m.remap(pbi);
                 }
                 continue;
             }
             if (BindingStore.hintItemSlot(id) != null || BindingStore.wasRealItem(id)) {
                 Integer slot = BindingStore.reserveForMissing(id, false);
                 if (slot != null && slot < ScriptRegistries.ITEM_SLOTS) {
-                    m.remap(ScriptRegistries.item(slot));
+                    Item pi = ScriptRegistries.item(slot);
+                    if (pi != null) m.remap(pi);
                 }
             }
         }
+    }
+
+    @Nullable
+    private static Block findRealBlockForOldSlot(int slot, Map<String, Integer> hints) {
+        for (Map.Entry<String, Integer> e : hints.entrySet()) {
+            if (e.getValue() != null && e.getValue() == slot) {
+                Block rb = ScriptRegistries.realBlock(e.getKey());
+                if (rb != null) return rb;
+            }
+        }
+        return null;
+    }
+
+    @Nullable
+    private static Item findRealBlockItemForOldSlot(int slot, Map<String, Integer> hints) {
+        for (Map.Entry<String, Integer> e : hints.entrySet()) {
+            if (e.getValue() != null && e.getValue() == slot) {
+                Item rbi = ScriptRegistries.realBlockItem(e.getKey());
+                if (rbi != null) return rbi;
+                Item ri = ScriptRegistries.realItem(e.getKey());
+                if (ri != null) return ri;
+            }
+        }
+        return null;
+    }
+
+    @Nullable
+    private static Item findRealItemForOldSlot(int slot, Map<String, Integer> hints) {
+        for (Map.Entry<String, Integer> e : hints.entrySet()) {
+            if (e.getValue() != null && e.getValue() == slot) {
+                Item ri = ScriptRegistries.realItem(e.getKey());
+                if (ri != null) return ri;
+                Item rbi = ScriptRegistries.realBlockItem(e.getKey());
+                if (rbi != null) return rbi;
+            }
+        }
+        return null;
     }
 
     /** Идёт ли синхронизация реестров при входе на сервер (а не загрузка своего мира). */

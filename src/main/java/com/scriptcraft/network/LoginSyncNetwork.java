@@ -158,50 +158,12 @@ public final class LoginSyncNetwork {
         if (isLocal) {
             return List.of();
         }
+        // На стадии LOGIN передаём только компактную таблицу настоящих modid:id (~2 КБ -> вход за 50 мс без "Took too long to log in"!).
+        // Сами файлы ресурсов проверяются по SHA-1 через ResourceManifestPacket сразу при входе:
+        // если кэш актуален (например, все 548 файлов уже скачаны) — трафик 0 байт,
+        // а если есть новые/изменённые файлы — они докачиваются с плашкой прогресса в левом верхнем углу!
         Bindings.Snapshot snapshot = Bindings.current();
-        List<List<AssetFile>> batches = new ArrayList<>();
-
-        if (ScriptCraftConfig.syncResourcesToClients()) {
-            long totalBytes = ResourceIndex.totalBytes();
-            long maxAllowed = ScriptCraftConfig.maxResourceSizeMb() * 1024L * 1024L;
-            if (totalBytes <= maxAllowed) {
-                List<AssetFile> cur = new ArrayList<>();
-                int curBytes = 0;
-                for (ResourceIndex.Entry e : ResourceIndex.entries().values()) {
-                    byte[] d = e.data();
-                    if (d.length > BATCH_RAW_LIMIT * 2) {
-                        // Очень крупные одиночные файлы докачаются потоково через ResourceSync после коннекта
-                        continue;
-                    }
-                    if (!cur.isEmpty() && curBytes + d.length > BATCH_RAW_LIMIT) {
-                        batches.add(cur);
-                        cur = new ArrayList<>();
-                        curBytes = 0;
-                    }
-                    cur.add(new AssetFile(e.path(), e.sha1(), d));
-                    curBytes += d.length;
-                }
-                if (!cur.isEmpty()) {
-                    batches.add(cur);
-                }
-            }
-        }
-
-        int totalFilesCount = 0;
-        for (List<AssetFile> b : batches) {
-            totalFilesCount += b.size();
-        }
-        int totalSteps = Math.max(1, batches.size());
-        List<Pair<String, LoginBundlePacket>> result = new ArrayList<>(totalSteps);
-        if (batches.isEmpty()) {
-            result.add(Pair.of("sc_login_0", new LoginBundlePacket(0, 1, 0, snapshot, new byte[0])));
-        } else {
-            for (int i = 0; i < batches.size(); i++) {
-                byte[] gz = compressBatch(batches.get(i));
-                result.add(Pair.of("sc_login_" + i, new LoginBundlePacket(i, totalSteps, totalFilesCount, i == 0 ? snapshot : null, gz)));
-            }
-        }
-        return result;
+        return List.of(Pair.of("sc_login_0", new LoginBundlePacket(0, 1, 0, snapshot, new byte[0])));
     }
 
     private static void handleBundleOnClient(

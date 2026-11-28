@@ -8,7 +8,8 @@
     "ForgeRegistryAccessor",
     "MappedRegistryAccessor",
     "HolderReferenceAccessor",
-    "GameDataMixin"
+    "GameDataMixin",
+    "ServerLoginPacketListenerMixin"
   ],
   "client": [
     "LoadingOverlayAccessor",

@@ -103,23 +103,28 @@ public final class ScriptRegistries {
                     .updateInterval(1)
                     .build("fake_npc"));
 
-    static {
-        for (int i = 0; i < BLOCK_SLOTS; i++) {
-            final int slot = i;
-            RegistryObject<Block> block = BLOCKS.register(BLOCK_PREFIX + i, () -> new PoolBlock(slot));
-            POOL_BLOCKS.add(block);
-            POOL_BLOCK_ITEMS.add(ITEMS.register(BLOCK_PREFIX + i, () -> new ScriptBlockItem((PoolBlock) block.get())));
-        }
-        for (int i = 0; i < ITEM_SLOTS; i++) {
-            final int slot = i;
-            POOL_ITEMS.add(ITEMS.register(ITEM_PREFIX + i, () -> new PoolItem(slot)));
+    private static boolean legacyPoolRegistered = false;
+
+    private static void initLegacyPoolIfEnabled() {
+        if (legacyPoolRegistered || !com.scriptcraft.config.ScriptCraftConfig.registerRealIdsAtBoot()) {
+            if (!legacyPoolRegistered && !com.scriptcraft.config.ScriptCraftConfig.registerRealIdsAtBoot()) {
+                legacyPoolRegistered = true;
+                for (int i = 0; i < BLOCK_SLOTS; i++) {
+                    final int slot = i;
+                    RegistryObject<Block> block = BLOCKS.register(BLOCK_PREFIX + i, () -> new PoolBlock(slot));
+                    POOL_BLOCKS.add(block);
+                    POOL_BLOCK_ITEMS.add(ITEMS.register(BLOCK_PREFIX + i, () -> new ScriptBlockItem((PoolBlock) block.get())));
+                }
+                for (int i = 0; i < ITEM_SLOTS; i++) {
+                    final int slot = i;
+                    POOL_ITEMS.add(ITEMS.register(ITEM_PREFIX + i, () -> new PoolItem(slot)));
+                }
+            }
         }
     }
 
     /**
-     * Вкладка творческого режима: только привязанные сейчас блоки/предметы. Регистрируется всегда (число
-     * вкладок тоже сверяется при входе), но пустую вкладку игра сама не показывает (shouldDisplay = есть предметы).
-     * Содержимое пересобирается на клиенте, когда приходит новая таблица привязок.
+     * Вкладка творческого режима: только привязанные сейчас настоящие блоки/предметы (никаких пустых слотов!).
      */
     public static final RegistryObject<CreativeModeTab> TAB = TABS.register("scripted", () -> CreativeModeTab.builder()
             .title(Component.translatable("itemGroup.scriptcraft"))
@@ -128,34 +133,55 @@ public final class ScriptRegistries {
                 Bindings.Snapshot b = Bindings.current();
                 b.realBlocks().keySet().forEach(id -> {
                     Item item = realBlockItem(id);
-                    if (item != null) {
+                    if (item != null && item != Items.AIR) {
                         output.accept(item);
                     }
                 });
-                b.blockSlots().values().forEach(slot -> output.accept(blockItem(slot)));
+                if (hasLegacyPool()) {
+                    b.blockSlots().values().forEach(slot -> {
+                        if (b.block(slot) != null) {
+                            Item bi = blockItem(slot);
+                            if (bi != null) output.accept(bi);
+                        }
+                    });
+                }
                 b.realItems().keySet().forEach(id -> {
                     Item item = realItem(id);
-                    if (item != null) {
+                    if (item != null && item != Items.AIR) {
                         output.accept(item);
                     }
                 });
-                b.itemSlots().values().forEach(slot -> output.accept(item(slot)));
+                if (hasLegacyPool()) {
+                    b.itemSlots().values().forEach(slot -> {
+                        if (b.item(slot) != null) {
+                            Item it = item(slot);
+                            if (it != null) output.accept(it);
+                        }
+                    });
+                }
             })
             .build());
 
     private ScriptRegistries() {
     }
 
+    public static boolean hasLegacyPool() {
+        return !POOL_BLOCKS.isEmpty() && !POOL_ITEMS.isEmpty();
+    }
+
+    @org.jetbrains.annotations.Nullable
     public static Block block(int slot) {
-        return POOL_BLOCKS.get(slot).get();
+        return slot >= 0 && slot < POOL_BLOCKS.size() && POOL_BLOCKS.get(slot).isPresent() ? POOL_BLOCKS.get(slot).get() : null;
     }
 
+    @org.jetbrains.annotations.Nullable
     public static Item blockItem(int slot) {
-        return POOL_BLOCK_ITEMS.get(slot).get();
+        return slot >= 0 && slot < POOL_BLOCK_ITEMS.size() && POOL_BLOCK_ITEMS.get(slot).isPresent() ? POOL_BLOCK_ITEMS.get(slot).get() : null;
     }
 
+    @org.jetbrains.annotations.Nullable
     public static Item item(int slot) {
-        return POOL_ITEMS.get(slot).get();
+        return slot >= 0 && slot < POOL_ITEMS.size() && POOL_ITEMS.get(slot).isPresent() ? POOL_ITEMS.get(slot).get() : null;
     }
 
     /** Технический id слота блока: scriptcraft:dyn_block_3. */
@@ -314,6 +340,7 @@ public final class ScriptRegistries {
 
     /** Подключает DeferredRegister к шине событий мода (блоки Forge и так регистрирует раньше предметов). */
     public static void register(IEventBus modBus) {
+        initLegacyPoolIfEnabled();
         BLOCKS.register(modBus);
         ITEMS.register(modBus);
         REAL_BLOCK_REGISTERS.values().forEach(dr -> dr.register(modBus));

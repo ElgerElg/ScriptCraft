@@ -139,5 +139,6 @@ public final class ClientBindings {
             Bindings.set(Bindings.Snapshot.EMPTY);
         }
         ElementRenderer.clearItemCache();
+        ClientLoadScreenRenderer.resetJoinState();
     }
 }

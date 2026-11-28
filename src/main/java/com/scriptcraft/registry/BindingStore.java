@@ -78,14 +78,16 @@ public final class BindingStore {
     public static synchronized void prepare(ScriptProgram program) {
         loadHints();
         boolean dirty = false;
-        for (BlockDefinition b : program.blocks()) {
-            if (!ScriptRegistries.isRealBlock(b.id())) { // настоящим id слот не нужен
-                dirty |= hint(b.id(), HINT_BLOCKS, ScriptRegistries.BLOCK_SLOTS);
+        if (!com.scriptcraft.config.ScriptCraftConfig.registerRealIdsAtBoot()) {
+            for (BlockDefinition b : program.blocks()) {
+                if (!ScriptRegistries.isRealBlock(b.id())) {
+                    dirty |= hint(b.id(), HINT_BLOCKS, ScriptRegistries.BLOCK_SLOTS);
+                }
             }
-        }
-        for (ItemDefinition i : program.items()) {
-            if (!HINT_BLOCKS.containsKey(i.id()) && !ScriptRegistries.isRealItem(i.id())) {
-                dirty |= hint(i.id(), HINT_ITEMS, ScriptRegistries.ITEM_SLOTS);
+            for (ItemDefinition i : program.items()) {
+                if (!HINT_BLOCKS.containsKey(i.id()) && !ScriptRegistries.isRealItem(i.id())) {
+                    dirty |= hint(i.id(), HINT_ITEMS, ScriptRegistries.ITEM_SLOTS);
+                }
             }
         }
         dirty |= KNOWN_REAL_BLOCKS.addAll(ScriptRegistries.realBlockIds());
@@ -93,7 +95,7 @@ public final class BindingStore {
         if (dirty) {
             saveHints();
         }
-        dataRewrite = rewriteMap(HINT_BLOCKS, HINT_ITEMS);
+        dataRewrite = com.scriptcraft.config.ScriptCraftConfig.registerRealIdsAtBoot() ? Map.of() : rewriteMap(HINT_BLOCKS, HINT_ITEMS);
     }
 
     /** Регистрировался ли id когда-то настоящим блоком (true) / предметом. */
@@ -238,6 +240,7 @@ public final class BindingStore {
         List<String> full = new ArrayList<>();
         Set<String> seen = new HashSet<>();
 
+        boolean realMode = com.scriptcraft.config.ScriptCraftConfig.registerRealIds();
         Map<Integer, BlockDefinition> blocks = new HashMap<>();
         Map<String, BlockDefinition> realBlocks = new LinkedHashMap<>();
         Map<String, ItemDefinition> realItems = new LinkedHashMap<>();
@@ -246,8 +249,11 @@ public final class BindingStore {
                 continue; // дубликаты id уже отмечены парсером/предупреждением
             }
             if (ScriptRegistries.isRealBlock(b.id())) {
-                realBlocks.put(b.id(), b); // настоящий id: слот не нужен (старый слот, если был, — "отставной")
+                realBlocks.put(b.id(), b); // настоящий id: слот не нужен
                 continue;
+            }
+            if (realMode || !ScriptRegistries.hasLegacyPool()) {
+                continue; // в режиме настоящих ID пул dyn_block_* отключён (конфликтующий ID пропускается без выдачи слота)
             }
             int slot = allocate(b.id(), world.blocks, HINT_BLOCKS, ScriptRegistries.BLOCK_SLOTS, hintsDirty, worldDirty);
             if (slot < 0) {
@@ -264,6 +270,9 @@ public final class BindingStore {
             }
             if (ScriptRegistries.isRealItem(i.id())) {
                 realItems.put(i.id(), i);
+                continue;
+            }
+            if (realMode || !ScriptRegistries.hasLegacyPool()) {
                 continue;
             }
             int slot = allocate(i.id(), world.items, HINT_ITEMS, ScriptRegistries.ITEM_SLOTS, hintsDirty, worldDirty);
@@ -295,9 +304,8 @@ public final class BindingStore {
             }
         }
 
-        // Перезаписываем в data-паке все id мира (и удалённые: их слоты зарезервированы, вреда нет),
-        // кроме настоящих — они и так есть в реестре.
-        Map<String, String> rewrite = rewriteMap(world.blocks, world.items);
+        // Перезаписываем в data-паке все id мира (только если включён старый пул слотов).
+        Map<String, String> rewrite = (realMode || !ScriptRegistries.hasLegacyPool()) ? Map.of() : rewriteMap(world.blocks, world.items);
         boolean dataChanged = !rewrite.equals(dataRewrite) || !hotEntries.isEmpty();
         dataRewrite = rewrite;
         return new Result(snapshot, !snapshot.equals(old) || !hotEntries.isEmpty(), dataChanged, added, full, hotEntries);

@@ -1,6 +1,7 @@
 package com.scriptcraft.mixin;
 
 import com.google.common.collect.BiMap;
+import com.google.common.collect.Multimap;
 import net.minecraft.core.Holder;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -28,6 +29,9 @@ public interface ForgeRegistryAccessor<V> {
 
     @Accessor("availabilityMap")
     BitSet getAvailabilityMap();
+
+    @Accessor("overrides")
+    Multimap<ResourceLocation, V> getOverrides();
 
     @Accessor("delegatesByName")
     Map<ResourceLocation, Holder.Reference<V>> getDelegatesByName();

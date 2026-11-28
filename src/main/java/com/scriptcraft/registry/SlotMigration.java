@@ -111,6 +111,9 @@ public final class SlotMigration {
 
     /** Строит план из записей мира и подсказок bindings.json: слоты, чей id теперь зарегистрирован настоящим. */
     private static Plan build(BindingsData data) {
+        if (!ScriptRegistries.hasLegacyPool()) {
+            return new Plan(Map.of(), Map.of(), Map.of());
+        }
         Map<Block, Block> b = new IdentityHashMap<>();
         Map<Item, Item> i = new IdentityHashMap<>();
         synchronized (BindingStore.class) {

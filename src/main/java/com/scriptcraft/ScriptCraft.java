@@ -65,21 +65,11 @@ public class ScriptCraft {
         } catch (RuntimeException e) {
             LOGGER.error("[ScriptCraft] Скрипты не загрузились, мод продолжит работу", e);
         }
-        // 2a. По умолчанию (registerRealIds = true) локальные скрипты регистрируют настоящие modid:item / modid:block,
-        //     а при подключении к удалённому серверу недостающие серверные ID динамически прописываются через Mixin
-        //     прямо на стадии рукопожатия (GameDataMixin + LoginSyncNetwork) — вход с 1-го раза без кэша слотов и без рестарта!
-        Set<String> realBlocks = new LinkedHashSet<>();
-        Set<String> realItems = new LinkedHashSet<>();
-        if (ScriptCraftConfig.registerRealIdsAtBoot()) {
-            ScriptLoader.getProgram().blocks().forEach(b -> realBlocks.add(b.id()));
-            ScriptLoader.getProgram().items().forEach(i -> realItems.add(i.id()));
-            if (FMLEnvironment.dist.isClient()) {
-                realBlocks.addAll(DefineCache.blocks());
-                realItems.addAll(DefineCache.items());
-            }
-            realItems.removeAll(realBlocks);
-        }
-        ScriptRegistries.registerReal(realBlocks, realItems);
+        // 2a. В режиме настоящих ID (useLegacySlotPool = false, по умолчанию) НЕ регистрируем ничего через DeferredRegister
+        //     вслепую до загрузки остальных модов (чтобы никогда не перезаписать чужие блоки вроде lhs:printer и не создать
+        //     конфликт в FROZEN.overrides при выходе с сервера). Все настоящие modid:block / modid:item регистрируются
+        //     динамически через DynamicRegistryManager ПОСЛЕ инициализации всех модов!
+        ScriptRegistries.registerReal(Set.of(), Set.of());
         BindingStore.prepare(ScriptLoader.getProgram());
 
         // 3. Пул блоков/предметов (одинаковый у всех), настоящие id и вкладка творческого режима.

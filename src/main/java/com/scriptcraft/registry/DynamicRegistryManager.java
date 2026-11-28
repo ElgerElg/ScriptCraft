@@ -85,6 +85,19 @@ public final class DynamicRegistryManager {
                 ResourceLocation rl = ResourceLocation.tryParse(id);
                 if (rl == null) continue;
 
+                // Защита от перезаписи блоков чужих установленных модов (например lhs:printer),
+                // иначе Forge помещает дубликат в FROZEN.overrides и падает при выходе с сервера!
+                if (activeBlocks.containsKey(rl) && !(activeBlocks.getValue(rl) instanceof RealBlock)) {
+                    ScriptCraft.LOGGER.warn("[ScriptCraft] define block '{}' пропущен: этот ID уже зарегистрирован другим модом ({})",
+                            id, activeBlocks.getValue(rl).getClass().getName());
+                    continue;
+                }
+                if (activeItems.containsKey(rl) && !(activeItems.getValue(rl) instanceof ScriptBlockItem)) {
+                    ScriptCraft.LOGGER.warn("[ScriptCraft] define block '{}' пропущен: предмет с таким ID уже зарегистрирован другим модом ({})",
+                            id, activeItems.getValue(rl).getClass().getName());
+                    continue;
+                }
+
                 RealBlock realBlock = activeBlocks.containsKey(rl) && activeBlocks.getValue(rl) instanceof RealBlock existingB
                         ? existingB : new RealBlock(id);
                 int blockIntId = addUnlocked(activeBlocks, -1, rl, realBlock);
@@ -115,6 +128,12 @@ public final class DynamicRegistryManager {
                 }
                 ResourceLocation rl = ResourceLocation.tryParse(id);
                 if (rl == null || activeBlocks.containsKey(rl)) continue;
+
+                if (activeItems.containsKey(rl) && !(activeItems.getValue(rl) instanceof RealItem)) {
+                    ScriptCraft.LOGGER.warn("[ScriptCraft] define item '{}' пропущен: этот ID уже зарегистрирован другим модом ({})",
+                            id, activeItems.getValue(rl).getClass().getName());
+                    continue;
+                }
 
                 RealItem realItem = activeItems.containsKey(rl) && activeItems.getValue(rl) instanceof RealItem existingIt
                         ? existingIt : new RealItem(id);
@@ -167,7 +186,7 @@ public final class DynamicRegistryManager {
         boolean needBlocks = false;
         if (blockSnap != null && blockSnap.ids != null) {
             for (ResourceLocation rl : blockSnap.ids.keySet()) {
-                if (!frozenBlocks.containsKey(rl) && isScriptCandidateNamespace(rl.getNamespace())) {
+                if (!frozenBlocks.containsKey(rl) && isClientInjectableNamespace(rl.getNamespace())) {
                     needBlocks = true;
                     break;
                 }
@@ -176,7 +195,7 @@ public final class DynamicRegistryManager {
         boolean needItems = false;
         if (itemSnap != null && itemSnap.ids != null) {
             for (ResourceLocation rl : itemSnap.ids.keySet()) {
-                if (!frozenItems.containsKey(rl) && isScriptCandidateNamespace(rl.getNamespace())) {
+                if (!frozenItems.containsKey(rl) && isClientInjectableNamespace(rl.getNamespace())) {
                     needItems = true;
                     break;
                 }
@@ -193,10 +212,39 @@ public final class DynamicRegistryManager {
             if (blockSnap != null && blockSnap.ids != null) {
                 for (var entry : blockSnap.ids.object2IntEntrySet()) {
                     ResourceLocation rl = entry.getKey();
-                    if (frozenBlocks.containsKey(rl) || !isScriptCandidateNamespace(rl.getNamespace())) {
+                    if (frozenBlocks.containsKey(rl) || !isClientInjectableNamespace(rl.getNamespace())) {
                         continue;
                     }
+                    // Если у сервера включён старый режим слотов (dyn_block_N), а на клиенте он отключён — создаём временный PoolBlock на сессию
+                    int legacyBlockSlot = rl.getNamespace().equals(ScriptCraft.MODID)
+                            ? ScriptRegistries.parseSlot(rl.getPath(), ScriptRegistries.BLOCK_PREFIX, ScriptRegistries.BLOCK_SLOTS) : -1;
+                    if (legacyBlockSlot >= 0) {
+                        PoolBlock pb = activeBlocks.containsKey(rl) && activeBlocks.getValue(rl) instanceof PoolBlock exPb
+                                ? exPb : new PoolBlock(legacyBlockSlot);
+                        if (!activeBlocks.containsKey(rl)) {
+                            addUnlocked(activeBlocks, -1, rl, pb);
+                        }
+                        bindIntrusiveBlockHolder(rl, pb);
+                        addUnlocked(frozenBlocks, -1, rl, pb);
+                        SESSION_CLIENT_BLOCKS.add(rl);
+                        if (itemSnap != null && itemSnap.ids != null && itemSnap.ids.containsKey(rl) && !frozenItems.containsKey(rl)) {
+                            ScriptBlockItem pbi = activeItems.containsKey(rl) && activeItems.getValue(rl) instanceof ScriptBlockItem exPbi
+                                    ? exPbi : new ScriptBlockItem(pb);
+                            if (!activeItems.containsKey(rl)) {
+                                addUnlocked(activeItems, -1, rl, pbi);
+                            }
+                            bindIntrusiveItemHolder(rl, pbi);
+                            addUnlocked(frozenItems, -1, rl, pbi);
+                            SESSION_CLIENT_ITEMS.add(rl);
+                        }
+                        injected++;
+                        continue;
+                    }
+
                     String id = rl.toString();
+                    if (activeBlocks.containsKey(rl) && !(activeBlocks.getValue(rl) instanceof RealBlock)) {
+                        continue;
+                    }
                     RealBlock block = activeBlocks.containsKey(rl) && activeBlocks.getValue(rl) instanceof RealBlock exB
                             ? exB : new RealBlock(id);
                     if (!activeBlocks.containsKey(rl)) {
@@ -226,10 +274,28 @@ public final class DynamicRegistryManager {
             if (itemSnap != null && itemSnap.ids != null) {
                 for (var entry : itemSnap.ids.object2IntEntrySet()) {
                     ResourceLocation rl = entry.getKey();
-                    if (frozenItems.containsKey(rl) || !isScriptCandidateNamespace(rl.getNamespace())) {
+                    if (frozenItems.containsKey(rl) || !isClientInjectableNamespace(rl.getNamespace())) {
                         continue;
                     }
+                    int legacyItemSlot = rl.getNamespace().equals(ScriptCraft.MODID)
+                            ? ScriptRegistries.parseSlot(rl.getPath(), ScriptRegistries.ITEM_PREFIX, ScriptRegistries.ITEM_SLOTS) : -1;
+                    if (legacyItemSlot >= 0) {
+                        PoolItem pi = activeItems.containsKey(rl) && activeItems.getValue(rl) instanceof PoolItem exPi
+                                ? exPi : new PoolItem(legacyItemSlot);
+                        if (!activeItems.containsKey(rl)) {
+                            addUnlocked(activeItems, -1, rl, pi);
+                        }
+                        bindIntrusiveItemHolder(rl, pi);
+                        addUnlocked(frozenItems, -1, rl, pi);
+                        SESSION_CLIENT_ITEMS.add(rl);
+                        injected++;
+                        continue;
+                    }
+
                     String id = rl.toString();
+                    if (activeItems.containsKey(rl) && !(activeItems.getValue(rl) instanceof RealItem)) {
+                        continue;
+                    }
                     RealItem item = activeItems.containsKey(rl) && activeItems.getValue(rl) instanceof RealItem exIt
                             ? exIt : new RealItem(id);
                     if (!activeItems.containsKey(rl)) {
@@ -338,27 +404,43 @@ public final class DynamicRegistryManager {
      * чтобы при входе на другой сервер реестр клиента был чистым.
      */
     public static synchronized void cleanupClientSessionEntries() {
-        if (SESSION_CLIENT_BLOCKS.isEmpty() && SESSION_CLIENT_ITEMS.isEmpty()) {
-            return;
-        }
         try {
             ForgeRegistry<Block> frozenBlocks = RegistryManager.FROZEN.getRegistry(ForgeRegistries.Keys.BLOCKS);
             ForgeRegistry<Item> frozenItems = RegistryManager.FROZEN.getRegistry(ForgeRegistries.Keys.ITEMS);
-            for (ResourceLocation rl : SESSION_CLIENT_BLOCKS) {
-                removeFromRegistry(frozenBlocks, rl);
-                ScriptRegistries.removeDynamicClientEntry(rl.toString());
+            if (!SESSION_CLIENT_BLOCKS.isEmpty()) {
+                for (ResourceLocation rl : SESSION_CLIENT_BLOCKS) {
+                    removeFromRegistry(frozenBlocks, rl);
+                    ScriptRegistries.removeDynamicClientEntry(rl.toString());
+                }
             }
-            for (ResourceLocation rl : SESSION_CLIENT_ITEMS) {
-                removeFromRegistry(frozenItems, rl);
-                ScriptRegistries.removeDynamicClientEntry(rl.toString());
+            if (!SESSION_CLIENT_ITEMS.isEmpty()) {
+                for (ResourceLocation rl : SESSION_CLIENT_ITEMS) {
+                    removeFromRegistry(frozenItems, rl);
+                    ScriptRegistries.removeDynamicClientEntry(rl.toString());
+                }
             }
-            ScriptCraft.LOGGER.info("[ScriptCraft] Очищено временных записей сессии сервера: блоков {}, предметов {}",
-                    SESSION_CLIENT_BLOCKS.size(), SESSION_CLIENT_ITEMS.size());
+            // Защита от ванильного бага ForgeRegistry.sync: если в FROZEN.overrides остались переопределения,
+            // при дырках в availabilityMap Forge кидает RuntimeException ("Object did not get ID it asked for").
+            sanitizeFrozenOverrides(frozenBlocks);
+            sanitizeFrozenOverrides(frozenItems);
+            if (!SESSION_CLIENT_BLOCKS.isEmpty() || !SESSION_CLIENT_ITEMS.isEmpty()) {
+                ScriptCraft.LOGGER.info("[ScriptCraft] Очищено временных записей сессии сервера: блоков {}, предметов {}",
+                        SESSION_CLIENT_BLOCKS.size(), SESSION_CLIENT_ITEMS.size());
+            }
         } catch (Throwable t) {
             ScriptCraft.LOGGER.warn("[ScriptCraft] Не удалось очистить временные записи сессии: {}", t.toString());
         } finally {
             SESSION_CLIENT_BLOCKS.clear();
             SESSION_CLIENT_ITEMS.clear();
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <V> void sanitizeFrozenOverrides(ForgeRegistry<V> frozen) {
+        if (frozen == null) return;
+        ForgeRegistryAccessor<V> acc = (ForgeRegistryAccessor<V>) frozen;
+        if (acc.getOverrides() != null && !acc.getOverrides().isEmpty()) {
+            acc.getOverrides().clear();
         }
     }
 
@@ -452,20 +534,17 @@ public final class DynamicRegistryManager {
         }
         ResourceKey<V> rKey = ResourceKey.create(reg.getRegistryKey(), rl);
         acc.getKeys().remove(rKey);
+        if (acc.getOverrides() != null) {
+            acc.getOverrides().removeAll(rl);
+        }
         acc.getDelegatesByName().remove(rl);
         acc.getDelegatesByValue().remove(val);
         acc.getOwners().inverse().remove(val);
     }
 
-    private static boolean isScriptCandidateNamespace(String ns) {
+    private static boolean isClientInjectableNamespace(String ns) {
         if (ns == null || ns.isEmpty()) return false;
         String low = ns.toLowerCase(Locale.ROOT);
-        if (low.equals("minecraft") || low.equals("forge") || low.equals("neoforge") || low.equals("c")) {
-            return false;
-        }
-        if (!low.equals(ScriptCraft.MODID) && ModList.get().isLoaded(low)) {
-            return false;
-        }
-        return true;
+        return !low.equals("minecraft") && !low.equals("forge") && !low.equals("neoforge") && !low.equals("c");
     }
 }
