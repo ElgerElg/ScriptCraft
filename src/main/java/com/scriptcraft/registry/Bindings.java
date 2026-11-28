@@ -1,6 +1,7 @@
 package com.scriptcraft.registry;
 
 import com.scriptcraft.script.parser.BlockDefinition;
+import com.scriptcraft.script.parser.EntityDefinition;
 import com.scriptcraft.script.parser.ItemDefinition;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.item.Item;
@@ -51,15 +52,24 @@ public final class Bindings {
         /** Настоящие id -> описание, в порядке скриптов. */
         private final Map<String, BlockDefinition> realBlocks;
         private final Map<String, ItemDefinition> realItems;
+        /** Кастомные 3D-сущности (define entity) -> синхронизируются клиентам для превью в GUI и Студии. */
+        private final Map<String, EntityDefinition> entities;
 
         public Snapshot(Map<Integer, BlockDefinition> blockDefs, Map<Integer, ItemDefinition> itemDefs) {
-            this(blockDefs, itemDefs, Map.of(), Map.of());
+            this(blockDefs, itemDefs, Map.of(), Map.of(), Map.of());
         }
 
         public Snapshot(Map<Integer, BlockDefinition> blockDefs, Map<Integer, ItemDefinition> itemDefs,
                         Map<String, BlockDefinition> realBlockDefs, Map<String, ItemDefinition> realItemDefs) {
+            this(blockDefs, itemDefs, realBlockDefs, realItemDefs, Map.of());
+        }
+
+        public Snapshot(Map<Integer, BlockDefinition> blockDefs, Map<Integer, ItemDefinition> itemDefs,
+                        Map<String, BlockDefinition> realBlockDefs, Map<String, ItemDefinition> realItemDefs,
+                        Map<String, EntityDefinition> entityDefs) {
             realBlocks = Collections.unmodifiableMap(new LinkedHashMap<>(realBlockDefs));
             realItems = Collections.unmodifiableMap(new LinkedHashMap<>(realItemDefs));
+            entities = Collections.unmodifiableMap(new LinkedHashMap<>(entityDefs));
             Map<String, Integer> b = new LinkedHashMap<>();
             new TreeMap<>(blockDefs).forEach((slot, def) -> {
                 if (slot >= 0 && slot < blocks.length) {
@@ -118,6 +128,25 @@ public final class Bindings {
 
         public Map<String, ItemDefinition> realItems() {
             return realItems;
+        }
+
+        public Map<String, EntityDefinition> entities() {
+            return entities;
+        }
+
+        @Nullable
+        public EntityDefinition entityById(String rawId) {
+            if (rawId == null || rawId.isEmpty()) return null;
+            String key = rawId.toLowerCase(java.util.Locale.ROOT);
+            EntityDefinition direct = entities.get(key);
+            if (direct != null) return direct;
+            String suffix = ":" + (key.contains(":") ? key.substring(key.indexOf(':') + 1) : key);
+            for (Map.Entry<String, EntityDefinition> e : entities.entrySet()) {
+                if (e.getKey().endsWith(suffix)) {
+                    return e.getValue();
+                }
+            }
+            return null;
         }
 
         /** Описание блока по id из скрипта — настоящего или во временном слоте. */
@@ -293,12 +322,14 @@ public final class Bindings {
         @Override
         public boolean equals(Object o) {
             return o instanceof Snapshot s && Arrays.equals(blocks, s.blocks) && Arrays.equals(items, s.items)
-                    && realBlocks.equals(s.realBlocks) && realItems.equals(s.realItems);
+                    && realBlocks.equals(s.realBlocks) && realItems.equals(s.realItems)
+                    && entities.equals(s.entities);
         }
 
         @Override
         public int hashCode() {
-            return 31 * (31 * Arrays.hashCode(blocks) + Arrays.hashCode(items)) + realBlocks.hashCode() * 7 + realItems.hashCode();
+            return 31 * (31 * Arrays.hashCode(blocks) + Arrays.hashCode(items))
+                    + realBlocks.hashCode() * 7 + realItems.hashCode() * 3 + entities.hashCode();
         }
 
         // ------------------------------------------------------------------ сеть
@@ -318,6 +349,8 @@ public final class Bindings {
             realBlocks.values().forEach(d -> writeBlock(buf, d));
             buf.writeVarInt(realItems.size());
             realItems.values().forEach(d -> writeItem(buf, d));
+            buf.writeVarInt(entities.size());
+            entities.values().forEach(d -> writeEntity(buf, d));
         }
 
         public static Snapshot decode(FriendlyByteBuf buf) {
@@ -345,7 +378,13 @@ public final class Bindings {
                 ItemDefinition d = readItem(buf);
                 ri.put(d.id(), d);
             }
-            return new Snapshot(b, i, rb, ri);
+            Map<String, EntityDefinition> ents = new LinkedHashMap<>();
+            n = checkCount(buf.readVarInt(), MAX_REAL);
+            for (int k = 0; k < n; k++) {
+                EntityDefinition ed = readEntity(buf);
+                ents.put(ed.id(), ed);
+            }
+            return new Snapshot(b, i, rb, ri, ents);
         }
 
         private static void writeBlock(FriendlyByteBuf buf, BlockDefinition d) {
@@ -431,6 +470,74 @@ public final class Bindings {
                     buf.readVarInt(), buf.readFloat(),
                     readName(buf), readName(buf), readName(buf), readName(buf), buf.readFloat(),
                     readName(buf), buf.readBoolean(), buf.readFloat());
+        }
+
+        private static void writeEntity(FriendlyByteBuf buf, EntityDefinition d) {
+            buf.writeUtf(d.id());
+            writeName(buf, d.displayName());
+            buf.writeUtf(d.ai());
+            writeName(buf, d.model());
+            writeName(buf, d.texture());
+            writeName(buf, d.animation());
+            buf.writeUtf(d.idleAnimation() == null ? "idle" : d.idleAnimation());
+            buf.writeUtf(d.walkAnimation() == null ? "walk" : d.walkAnimation());
+            buf.writeUtf(d.attackAnimation() == null ? "attack" : d.attackAnimation());
+            buf.writeUtf(d.deathAnimation() == null ? "death" : d.deathAnimation());
+            writeName(buf, d.spawnAnimation());
+            buf.writeFloat(d.health());
+            buf.writeFloat(d.speed());
+            buf.writeFloat(d.damage());
+            buf.writeFloat(d.attackRange());
+            buf.writeFloat(d.followRange());
+            buf.writeFloat(d.width());
+            buf.writeFloat(d.height());
+            buf.writeFloat(d.scale());
+            buf.writeBoolean(d.glow());
+            buf.writeBoolean(d.nametag());
+            buf.writeBoolean(d.pushable());
+            buf.writeBoolean(d.invulnerable());
+            buf.writeBoolean(d.gravity());
+            Map<String, String> pb = d.particleBones() == null ? Map.of() : d.particleBones();
+            buf.writeVarInt(pb.size());
+            pb.forEach((bone, part) -> {
+                buf.writeUtf(bone);
+                buf.writeUtf(part);
+            });
+        }
+
+        private static EntityDefinition readEntity(FriendlyByteBuf buf) {
+            String id = buf.readUtf(MAX_TEXT);
+            String name = readName(buf);
+            String ai = buf.readUtf(MAX_TEXT);
+            String model = readName(buf);
+            String tex = readName(buf);
+            String anim = readName(buf);
+            String idle = buf.readUtf(MAX_TEXT);
+            String walk = buf.readUtf(MAX_TEXT);
+            String attack = buf.readUtf(MAX_TEXT);
+            String death = buf.readUtf(MAX_TEXT);
+            String spawn = readName(buf);
+            float health = buf.readFloat();
+            float speed = buf.readFloat();
+            float damage = buf.readFloat();
+            float attackRange = buf.readFloat();
+            float followRange = buf.readFloat();
+            float width = buf.readFloat();
+            float height = buf.readFloat();
+            float scale = buf.readFloat();
+            boolean glow = buf.readBoolean();
+            boolean nametag = buf.readBoolean();
+            boolean pushable = buf.readBoolean();
+            boolean invuln = buf.readBoolean();
+            boolean gravity = buf.readBoolean();
+            int pbCount = checkCount(buf.readVarInt(), 64);
+            Map<String, String> pb = new LinkedHashMap<>();
+            for (int k = 0; k < pbCount; k++) {
+                pb.put(buf.readUtf(MAX_TEXT), buf.readUtf(MAX_TEXT));
+            }
+            return new EntityDefinition(id, name, ai, model, tex, anim, idle, walk, attack, death, spawn,
+                    health, speed, damage, attackRange, followRange, width, height, scale,
+                    glow, nametag, pushable, invuln, gravity, pb);
         }
 
         private static int checkCount(int n, int max) {

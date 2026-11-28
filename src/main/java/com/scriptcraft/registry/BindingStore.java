@@ -281,7 +281,7 @@ public final class BindingStore {
         }
 
         Bindings.Snapshot old = Bindings.current();
-        Bindings.Snapshot snapshot = new Bindings.Snapshot(blocks, items, realBlocks, realItems);
+        Bindings.Snapshot snapshot = new Bindings.Snapshot(blocks, items, realBlocks, realItems, program.entities());
         Bindings.set(snapshot);
 
         // Новые привязки (или переехавшие в другой слот) — для сообщения администратору.

@@ -87,6 +87,16 @@ public final class ClientCameraEffects {
         }
 
         @Override
+        public boolean isPickable() {
+            return false;
+        }
+
+        @Override
+        public boolean isAttackable() {
+            return false;
+        }
+
+        @Override
         protected void defineSynchedData() {
         }
 
@@ -227,6 +237,23 @@ public final class ClientCameraEffects {
             event.getInput().right = false;
             event.getInput().jumping = false;
             event.getInput().shiftKeyDown = false;
+        }
+    }
+
+    public static boolean isCutsceneActive() {
+        return pathActive;
+    }
+
+    /**
+     * Глобальная блокировка ЛКМ (атаки / ломания блоков), ПКМ (использования предметов / взаимодействия) и СКМ
+     * во время активной катсцены камеры: предотвращает взаимодействие с миром и кик сервера
+     * ("Attempting to attack an invalid entity" при клике от лица удалённой клиентской камеры).
+     */
+    @SubscribeEvent
+    public static void onInteractionKey(net.minecraftforge.client.event.InputEvent.InteractionKeyMappingTriggered event) {
+        if (pathActive) {
+            event.setCanceled(true);
+            event.setSwingHand(false);
         }
     }
 

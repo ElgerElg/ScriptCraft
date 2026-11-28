@@ -512,12 +512,30 @@ public final class GuiEntityRenderer {
         ResourceLocation rl = ResourceLocation.tryParse(rawId);
         if (rl == null) return null;
         Entity created = null;
-        var scriptEntDef = com.scriptcraft.script.ScriptLoader.getProgram().entity(rawId);
+        var scriptEntDef = com.scriptcraft.registry.Bindings.current().entityById(rawId);
+        if (scriptEntDef == null) {
+            scriptEntDef = com.scriptcraft.script.ScriptLoader.getProgram().entity(rawId);
+        }
         if (scriptEntDef != null) {
             var geoEnt = com.scriptcraft.registry.ScriptRegistries.GEO_ENTITY.get().create(level);
             if (geoEnt != null) {
                 geoEnt.applyDefinition(scriptEntDef);
                 created = geoEnt;
+            }
+        }
+        if (created == null && !ForgeRegistries.ENTITY_TYPES.containsKey(rl)) {
+            // Если это прямой путь к 3D Geo-модели (даже без define entity) — рендерим как GEO_ENTITY, а не дефолтную свинью!
+            if (com.scriptcraft.client.geo.GeoRenderer.resolveModel(rawId) != null) {
+                var geoEnt = com.scriptcraft.registry.ScriptRegistries.GEO_ENTITY.get().create(level);
+                if (geoEnt != null) {
+                    geoEnt.setDefId(rawId);
+                    geoEnt.setModelPath(rawId);
+                    geoEnt.setTexturePath(rawId);
+                    geoEnt.setAnimFilePath(rawId);
+                    created = geoEnt;
+                }
+            } else {
+                return null;
             }
         }
         if (created == null) {

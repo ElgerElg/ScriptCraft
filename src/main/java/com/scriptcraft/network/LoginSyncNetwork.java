@@ -37,7 +37,7 @@ import java.util.zip.GZIPOutputStream;
  * и сжатые пачки ресурсов в scriptcraft/cache/assets/, обновляя прогресс-бар и % на экране входа!
  */
 public final class LoginSyncNetwork {
-    private static final String LOGIN_PROTOCOL = "2";
+    private static final String LOGIN_PROTOCOL = "3";
     /** Целевой размер одной несжатой пачки ассетов в фазе LOGIN (~384 КБ). */
     private static final int BATCH_RAW_LIMIT = 384 * 1024;
     private static final int MAX_COMPRESSED_BYTES = 950 * 1024;

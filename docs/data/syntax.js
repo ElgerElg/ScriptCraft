@@ -15,7 +15,7 @@
  */
 window.SC_DOCS = window.SC_DOCS || {};
 window.SC_DOCS.syntax = {
-  version: "0.9.14",
+  version: "0.9.15",
   categories: [
     { id: "events", ru: "События", en: "Events" },
     { id: "structures", ru: "Структуры", en: "Structures" },
@@ -5163,7 +5163,7 @@ useLegacySlotPool = false
 [resources]
 syncResourcesToClients = true
 disableVanillaResourcePackPrompt = true`,
-    since: "0.9.14", related: ["define-entity", "define-armor", "res-auto-ogg-studio"]
+    since: "0.9.15", related: ["define-entity", "define-armor", "res-auto-ogg-studio"]
   }
   ]
 };

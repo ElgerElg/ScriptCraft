@@ -17,6 +17,8 @@ import net.minecraft.util.Mth;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 
+import java.util.List;
+
 /**
  * Компактная плашка прогресса загрузки в левом верхнем углу экрана (в стиле уведомлений {@link ClientToasts}),
  * НЕ перекрывающая и НЕ изменяющая ванильные/модовые меню, экран подключения к серверу или загрузку мира.
@@ -318,19 +320,22 @@ public final class ClientLoadScreenRenderer {
         String pctText = Math.round(progress01 * 100.0f) + "%";
         int pctW = font.width(pctText);
 
-        String trimmedTitle = font.plainSubstrByWidth(title, maxTextWidth - pctW - 10);
-        String trimmedFile = fileLine == null || fileLine.isEmpty() ? null : ellipsizeMiddleOrLeft(font, fileLine, maxTextWidth);
-        String trimmedRem = remainingLine == null || remainingLine.isEmpty() ? null : font.plainSubstrByWidth(remainingLine, maxTextWidth);
+        List<String> titleLines = wrapText(font, title, maxTextWidth - pctW - 10, maxTextWidth);
+        List<String> fileLines = (fileLine == null || fileLine.isEmpty()) ? List.of() : wrapText(font, fileLine, maxTextWidth, maxTextWidth);
+        List<String> remLines = (remainingLine == null || remainingLine.isEmpty()) ? List.of() : wrapText(font, remainingLine, maxTextWidth, maxTextWidth);
 
-        int contentW = Math.max(176, font.width(trimmedTitle) + 10 + pctW);
-        if (trimmedFile != null) {
-            contentW = Math.max(contentW, font.width(trimmedFile));
+        int contentW = Math.max(176, font.width(titleLines.get(0)) + 10 + pctW);
+        for (int i = 1; i < titleLines.size(); i++) {
+            contentW = Math.max(contentW, font.width(titleLines.get(i)));
         }
-        if (trimmedRem != null) {
-            contentW = Math.max(contentW, font.width(trimmedRem));
+        for (String s : fileLines) {
+            contentW = Math.max(contentW, font.width(s));
+        }
+        for (String s : remLines) {
+            contentW = Math.max(contentW, font.width(s));
         }
 
-        int lineCount = 1 + (trimmedFile != null ? 1 : 0) + (trimmedRem != null ? 1 : 0);
+        int lineCount = titleLines.size() + fileLines.size() + remLines.size();
         int boxW = contentW + 12;
         int boxH = 5 + lineCount * 10 + 6; // + место под нижний прогресс-бар
 
@@ -351,21 +356,26 @@ public final class ClientLoadScreenRenderer {
         g.fill(boxW - 1, 0, boxW, boxH - 3, border);
         g.fill(0, 0, 2, boxH, edge);
 
-        // Строка 1: Заголовок слева + Процент справа
+        // Заголовок + Процент справа на первой строке
         int textY = 4;
-        g.drawString(font, trimmedTitle, 6, textY, withAlpha(0xFFFFFF, alpha), false);
+        g.drawString(font, titleLines.get(0), 6, textY, withAlpha(0xFFFFFF, alpha), false);
         g.drawString(font, pctText, boxW - 5 - pctW, textY, withAlpha(done ? 0x86EFAC : 0xF3CF7A, alpha), false);
         textY += 10;
-
-        // Строка 2: Текущий скачиваемый файл (или этап)
-        if (trimmedFile != null) {
-            g.drawString(font, trimmedFile, 6, textY, withAlpha(0xCBD5E1, alpha), false);
+        for (int i = 1; i < titleLines.size(); i++) {
+            g.drawString(font, titleLines.get(i), 6, textY, withAlpha(0xFFFFFF, alpha), false);
             textY += 10;
         }
 
-        // Строка 3: Сколько осталось файлов
-        if (trimmedRem != null) {
-            g.drawString(font, trimmedRem, 6, textY, withAlpha(0x94A3B8, alpha), false);
+        // Текущий скачиваемый файл (с переносом длинных путей по строкам)
+        for (String s : fileLines) {
+            g.drawString(font, s, 6, textY, withAlpha(0xCBD5E1, alpha), false);
+            textY += 10;
+        }
+
+        // Сколько осталось файлов (с переносом при необходимости)
+        for (String s : remLines) {
+            g.drawString(font, s, 6, textY, withAlpha(0x94A3B8, alpha), false);
+            textY += 10;
         }
 
         // Нижний прогресс-бар (3px высотой во всю ширину уведомления)
@@ -414,29 +424,31 @@ public final class ClientLoadScreenRenderer {
         return s;
     }
 
-    /** Чтобы конец пути (имя файла!) всегда оставался виден: "Файл: ...item/plasma_rifle.png" */
-    private static String ellipsizeMiddleOrLeft(Font font, String text, int maxW) {
-        if (font.width(text) <= maxW) {
-            return text;
-        }
-        int colon = text.indexOf(": ");
-        String prefix = colon >= 0 && colon < 12 ? text.substring(0, colon + 2) : "";
-        String body = prefix.isEmpty() ? text : text.substring(prefix.length());
-        String dots = "...";
-        int avail = maxW - font.width(prefix) - font.width(dots);
-        if (avail <= 16) {
-            return font.plainSubstrByWidth(text, maxW);
-        }
-        // Берём хвост строки body, чтобы имя файла всегда читалось полностью
-        StringBuilder tail = new StringBuilder();
-        for (int i = body.length() - 1; i >= 0; i--) {
-            char c = body.charAt(i);
-            if (font.width(c + tail.toString()) > avail) {
+    /** Перенос длинного текста и путей файлов по пробелам и '/' (по аналогии с ClientToasts.wrap). */
+    private static java.util.List<String> wrapText(Font font, String text, int firstLineMaxW, int nextLineMaxW) {
+        java.util.List<String> lines = new java.util.ArrayList<>();
+        String rest = text == null ? "" : text;
+        int limit = Math.max(60, firstLineMaxW);
+        while (!rest.isEmpty()) {
+            if (font.width(rest) <= limit) {
+                lines.add(rest);
                 break;
             }
-            tail.insert(0, c);
+            String part = font.plainSubstrByWidth(rest, limit);
+            if (part.isEmpty()) {
+                part = rest.substring(0, 1);
+            }
+            int breakSpace = part.lastIndexOf(' ');
+            int breakSlash = part.lastIndexOf('/');
+            int breakAt = Math.max(breakSpace, breakSlash >= 0 ? breakSlash + 1 : -1);
+            if (breakAt > 8 && breakAt < part.length()) {
+                part = part.substring(0, breakAt);
+            }
+            lines.add(part.stripTrailing());
+            rest = rest.substring(part.length()).stripLeading();
+            limit = Math.max(60, nextLineMaxW);
         }
-        return prefix + dots + tail;
+        return lines.isEmpty() ? java.util.List.of("") : lines;
     }
 
     private static int withAlpha(int rgb, float alpha) {
@@ -444,16 +456,12 @@ public final class ClientLoadScreenRenderer {
         return (a << 24) | (rgb & 0x00FFFFFF);
     }
 
+    /** Язык плашки берётся напрямую из настроек Студии (ClientUiSettings.language()). */
     public static boolean isRu() {
         try {
-            Minecraft mc = Minecraft.getInstance();
-            if (mc != null && mc.options != null && mc.options.languageCode != null) {
-                if (mc.options.languageCode.toLowerCase(java.util.Locale.ROOT).startsWith("ru")) {
-                    return true;
-                }
-            }
+            return !"en".equalsIgnoreCase(ClientUiSettings.language());
         } catch (Throwable ignored) {
+            return !"en".equalsIgnoreCase(com.scriptcraft.config.ScriptCraftConfig.language());
         }
-        return "ru".equalsIgnoreCase(com.scriptcraft.config.ScriptCraftConfig.language());
     }
 }

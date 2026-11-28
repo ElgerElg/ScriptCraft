@@ -58,6 +58,8 @@ public final class AssetBindings {
     /** id 3D Geo-блоков и 3D Geo-предметов: получают parent builtin/entity для кастомного 3D-рендера. */
     private static volatile Set<String> geoBlocks = Set.of();
     private static volatile Set<String> geoItems = Set.of();
+    /** Кастомные пути 2D-текстур предметов (если в define item указан texture: "..." отличный от ns:item/path). */
+    private static volatile Map<String, String> customItemTextures = Map.of();
     private static volatile Set<String> realIdSignature = Set.of();
     private static boolean loaded = false;
 
@@ -91,6 +93,7 @@ public final class AssetBindings {
             renders = readRenders(root.getAsJsonObject("render"));
             geoBlocks = readIdSet(root.getAsJsonArray("geo_blocks"));
             geoItems = readIdSet(root.getAsJsonArray("geo_items"));
+            customItemTextures = readStringMap(root.getAsJsonObject("item_textures"));
         } catch (IOException | RuntimeException e) {
             ScriptCraft.LOGGER.warn("[ScriptCraft] Не удалось прочитать {}: {}", file, e.getMessage());
         }
@@ -108,6 +111,17 @@ public final class AssetBindings {
                 } catch (RuntimeException ignored) {
                     // мусорная запись — пропускаем
                 }
+            }
+        }
+        return Map.copyOf(map);
+    }
+
+    private static Map<String, String> readStringMap(@Nullable JsonObject obj) {
+        if (obj == null) return Map.of();
+        Map<String, String> map = new HashMap<>();
+        for (Map.Entry<String, JsonElement> e : obj.entrySet()) {
+            if (isId(e.getKey()) && e.getValue().isJsonPrimitive()) {
+                map.put(e.getKey(), e.getValue().getAsString());
             }
         }
         return Map.copyOf(map);
@@ -184,17 +198,31 @@ public final class AssetBindings {
             if (def != null && def.isGeo()) gb.add(id);
         });
         Set<String> gi = new HashSet<>();
-        snapshot.realItems().forEach((id, def) -> { if (def.isGeo()) gi.add(id); });
+        Map<String, String> cit = new HashMap<>(customItemTextures);
+        snapshot.realItems().forEach((id, def) -> {
+            if (def.isGeo()) {
+                gi.add(id);
+            } else if (def.geoTexture() != null && !def.geoTexture().isBlank()) {
+                cit.put(id, textureRef(ns(id), def.geoTexture()));
+            }
+        });
         snapshot.itemSlots().keySet().forEach(id -> {
             var def = snapshot.itemById(id);
-            if (def != null && def.isGeo()) gi.add(id);
+            if (def != null) {
+                if (def.isGeo()) {
+                    gi.add(id);
+                } else if (def.geoTexture() != null && !def.geoTexture().isBlank()) {
+                    cit.put(id, textureRef(ns(id), def.geoTexture()));
+                }
+            }
         });
 
         Set<String> newRealSig = new HashSet<>(snapshot.realBlocks().keySet());
         newRealSig.addAll(snapshot.realItems().keySet());
 
         if (b.equals(blocks) && i.equals(items) && mergedFacings.equals(facings) && mergedRenders.equals(renders)
-                && gb.equals(geoBlocks) && gi.equals(geoItems) && newRealSig.equals(realIdSignature)) {
+                && gb.equals(geoBlocks) && gi.equals(geoItems) && cit.equals(customItemTextures)
+                && newRealSig.equals(realIdSignature)) {
             return false;
         }
         realIdSignature = Set.copyOf(newRealSig);
@@ -204,6 +232,7 @@ public final class AssetBindings {
         renders = Map.copyOf(mergedRenders);
         geoBlocks = Set.copyOf(gb);
         geoItems = Set.copyOf(gi);
+        customItemTextures = Map.copyOf(cit);
         JsonObject root = new JsonObject();
         JsonObject jb = new JsonObject();
         b.forEach((slot, id) -> jb.addProperty(Integer.toString(slot), id));
@@ -223,6 +252,9 @@ public final class AssetBindings {
         com.google.gson.JsonArray jgi = new com.google.gson.JsonArray();
         gi.forEach(jgi::add);
         root.add("geo_items", jgi);
+        JsonObject jcit = new JsonObject();
+        cit.forEach(jcit::addProperty);
+        root.add("item_textures", jcit);
         try {
             Files.createDirectories(file().getParent());
             Files.writeString(file(), root.toString(), StandardCharsets.UTF_8);
@@ -299,7 +331,8 @@ public final class AssetBindings {
             } else if (geoItems.contains(id)) {
                 json = "{\"parent\":\"builtin/entity\"}";
             } else {
-                json = "{\"parent\":\"minecraft:item/generated\",\"textures\":{\"layer0\":\"" + ns(id) + ":item/" + path(id) + "\"}}";
+                String itemTex = customItemTextures.getOrDefault(id, ns(id) + ":item/" + path(id));
+                json = "{\"parent\":\"minecraft:item/generated\",\"textures\":{\"layer0\":\"" + itemTex + "\"}}";
             }
         } else {
             return null;
@@ -515,8 +548,9 @@ public final class AssetBindings {
                 if ((block && geoBlocks.contains(id)) || (item && geoItems.contains(id))) {
                     json = "{\"parent\":\"builtin/entity\"}";
                 } else {
+                    String itemTex = customItemTextures.getOrDefault(id, texture);
                     json = block ? "{\"parent\":\"" + namespace + ":block/" + path(id) + "\"}"
-                            : "{\"parent\":\"minecraft:item/generated\",\"textures\":{\"layer0\":\"" + texture + "\"}}";
+                            : "{\"parent\":\"minecraft:item/generated\",\"textures\":{\"layer0\":\"" + itemTex + "\"}}";
                 }
             }
         }

@@ -31,7 +31,8 @@ public final class ModNetwork {
     // 20: опции блокировки поворота головы (lockLook) и скрытия руки (hideHand) в CameraPathPacket.
     // 21: Mixin-синхронизация настоящих modid:id при входе (LoginSyncNetwork) и горячем /sc reload (HotRegistryPacket).
     // 22: lore, glow и customDamage в таблицах define предметов и блоков + полное &-форматирование цветов.
-    private static final String PROTOCOL_VERSION = "22";
+    // 23: синхронизация define entity в Bindings.Snapshot для клиентского 3D-превью мобов в экранах и Студии.
+    private static final String PROTOCOL_VERSION = "23";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(ScriptCraft.MODID, "main"),

@@ -73,6 +73,10 @@ public class ScriptCraft {
         if (ScriptCraftConfig.registerRealIdsAtBoot()) {
             ScriptLoader.getProgram().blocks().forEach(b -> realBlocks.add(b.id()));
             ScriptLoader.getProgram().items().forEach(i -> realItems.add(i.id()));
+            if (FMLEnvironment.dist.isClient()) {
+                realBlocks.addAll(DefineCache.blocks());
+                realItems.addAll(DefineCache.items());
+            }
             realItems.removeAll(realBlocks);
         }
         ScriptRegistries.registerReal(realBlocks, realItems);

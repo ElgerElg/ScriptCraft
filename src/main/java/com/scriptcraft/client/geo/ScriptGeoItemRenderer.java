@@ -82,6 +82,10 @@ public class ScriptGeoItemRenderer extends BlockEntityWithoutLevelRenderer {
         if (stack.getItem() instanceof ScriptItem si) {
             ItemDefinition def = si.definition();
             if (def != null && def.isGeo()) {
+                // Надетую на голову 3D-броню уже рисует GeoArmorLayer по кости головы — не дублируем через CustomHeadLayer!
+                if (def.isArmor() && displayContext == ItemDisplayContext.HEAD) {
+                    return;
+                }
                 modelSpec = def.geoModel();
                 texSpec = def.geoTexture() != null ? def.geoTexture() : def.id();
                 animSpec = def.geoAnimation() != null ? def.geoAnimation() : modelSpec;
