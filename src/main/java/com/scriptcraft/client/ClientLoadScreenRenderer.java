@@ -46,6 +46,7 @@ public final class ClientLoadScreenRenderer {
     private static float smoothedProgress01 = 0.0f;
     private static Overlay trackedOverlay = null;
     private static float trackedOverlayProgress = 0.0f;
+    private static volatile boolean wasReloadOverlayActive = false;
     private static volatile int lastRenderedScaledHeightPx = 0;
 
     private static final long COMPLETE_HOLD_MS = 900L;
@@ -161,6 +162,7 @@ public final class ClientLoadScreenRenderer {
         smoothedProgress01 = 0.0f;
         currentFilePath = "";
         reloadCustomReason = "";
+        wasReloadOverlayActive = false;
         lastRenderedScaledHeightPx = 0;
     }
 
@@ -181,16 +183,26 @@ public final class ClientLoadScreenRenderer {
 
         boolean hasReloadOverlay = overlay instanceof LoadingOverlay;
         if (!hasReloadOverlay) {
+            if (wasReloadOverlayActive && downloadingActive && doneFiles >= totalFiles) {
+                // Перезагрузка ресурспаков завершилась после докачки — запускаем удержание 100% и плавное скрытие
+                onAllDownloadsComplete();
+            }
+            wasReloadOverlayActive = false;
             trackedOverlay = null;
             if (!reloadCustomReason.isEmpty()) {
                 reloadCustomReason = "";
             }
+        } else {
+            wasReloadOverlayActive = true;
         }
 
         // Проверяем, не истекло ли плавное затухание после полного окончания докачки
         long nowMs = Util.getMillis();
-        if (downloadingActive && !hasReloadOverlay && finishTimestampMs > 0L) {
-            if (nowMs - finishTimestampMs >= COMPLETE_HOLD_MS + COMPLETE_FADE_MS) {
+        if (downloadingActive && !hasReloadOverlay) {
+            if (finishTimestampMs < 0L && totalFiles > 0 && doneFiles >= totalFiles && targetProgress01 >= 0.999f) {
+                finishTimestampMs = nowMs;
+            }
+            if (finishTimestampMs > 0L && nowMs - finishTimestampMs >= COMPLETE_HOLD_MS + COMPLETE_FADE_MS) {
                 resetJoinState();
             }
         }

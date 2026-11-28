@@ -734,6 +734,7 @@ public final class AssetBindings {
             }
             JsonObject root = parsed.getAsJsonObject();
             if (root.has("emote") && root.get("emote").isJsonObject()) {
+                boolean changed = false;
                 String curName = root.has("name") && root.get("name").isJsonPrimitive()
                         ? root.get("name").getAsString() : "";
                 if (curName.isEmpty() || !isSafeRlPath(curName)) {
@@ -741,9 +742,14 @@ public final class AssetBindings {
                         root.addProperty("title", curName);
                     }
                     root.addProperty("name", fileSlug);
-                    return root.toString().getBytes(StandardCharsets.UTF_8);
+                    changed = true;
                 }
-                return data;
+                if (root.has("version") && root.get("version").isJsonPrimitive()
+                        && root.get("version").getAsNumber().intValue() > 3) {
+                    root.addProperty("version", 3);
+                    changed = true;
+                }
+                return changed ? root.toString().getBytes(StandardCharsets.UTF_8) : data;
             }
             if (root.has("bones") && root.get("bones").isJsonObject() && !root.has("animations")) {
                 return convertChannelsToEmoteBytes(root, fileSlug);

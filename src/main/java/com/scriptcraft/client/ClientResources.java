@@ -168,9 +168,7 @@ public final class ClientResources {
         ClientLoadScreenRenderer.onPlayDownloadProgress(doneCount, totalBatchFiles, prog, nextOrLastFile);
         if (PENDING.isEmpty()) {
             apply();
-            if (Minecraft.getInstance().getOverlay() == null) {
-                ClientLoadScreenRenderer.onAllDownloadsComplete();
-            }
+            ClientLoadScreenRenderer.onAllDownloadsComplete();
         }
     }
 
