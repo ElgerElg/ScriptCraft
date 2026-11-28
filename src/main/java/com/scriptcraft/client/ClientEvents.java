@@ -34,11 +34,6 @@ public final class ClientEvents {
     }
 
     @SubscribeEvent
-    public static void onLoggingIn(ClientPlayerNetworkEvent.LoggingIn event) {
-        ClientLoadScreenRenderer.onWorldLoggedIn();
-    }
-
-    @SubscribeEvent
     public static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
         ClientLoadScreenRenderer.resetJoinState();
         ClientResources.reset();

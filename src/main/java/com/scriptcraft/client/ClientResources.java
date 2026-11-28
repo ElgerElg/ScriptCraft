@@ -64,6 +64,9 @@ public final class ClientResources {
      * сохранена, и если перезагрузка не успела пройти, она выполнится при следующем входе.
      */
     private static boolean bindingsReload = false;
+    private static int totalBatchFiles = 0;
+    private static long totalBatchBytes = 0L;
+    private static long finishedBatchBytes = 0L;
 
     private ClientResources() {
     }
@@ -74,6 +77,9 @@ public final class ClientResources {
         PENDING.clear();
         BUFFERS.clear();
         RECEIVED.clear();
+        totalBatchFiles = 0;
+        totalBatchBytes = 0L;
+        finishedBatchBytes = 0L;
         long total = 0;
         for (ResourceManifestPacket.Entry e : entries) {
             total += Math.max(0, e.size());
@@ -103,8 +109,14 @@ public final class ClientResources {
         if (request.isEmpty()) {
             ScriptCraft.LOGGER.info("[ScriptCraft] Кэш ресурсов актуален ({} файлов), скачивать нечего", entries.size());
             apply(); // вдруг остались применённые не до конца файлы от прерванной передачи
+            ClientLoadScreenRenderer.onManifestUpToDate();
             return;
         }
+        totalBatchFiles = request.size();
+        for (ResourceManifestPacket.Entry pe : PENDING.values()) {
+            totalBatchBytes += Math.max(1L, pe.size());
+        }
+        ClientLoadScreenRenderer.onPlayDownloadProgress(0, totalBatchFiles, 0.0f, request.get(0));
         ScriptCraft.LOGGER.info("[ScriptCraft] Запрашиваю у сервера {} файлов ресурсов", request.size());
         ModNetwork.sendToServer(new ResourceRequestPacket(request));
     }
@@ -120,11 +132,17 @@ public final class ClientResources {
         System.arraycopy(p.data(), 0, buffer, p.offset(), p.data().length);
         int received = RECEIVED.merge(p.path(), p.data().length, Integer::sum);
         if (received < p.total()) {
+            long inFlight = 0L;
+            for (int r : RECEIVED.values()) inFlight += r;
+            float prog = totalBatchBytes > 0L ? (float) (finishedBatchBytes + inFlight) / (float) totalBatchBytes : 0f;
+            int doneCount = Math.max(0, totalBatchFiles - PENDING.size());
+            ClientLoadScreenRenderer.onPlayDownloadProgress(doneCount, totalBatchFiles, prog, p.path());
             return;
         }
         PENDING.remove(p.path());
         BUFFERS.remove(p.path());
         RECEIVED.remove(p.path());
+        finishedBatchBytes += Math.max(1L, p.total());
         if (!ResourceIndex.sha1(buffer).equals(expected.sha1())) {
             ScriptCraft.LOGGER.warn("[ScriptCraft] Ресурс {} пришёл повреждённым (SHA-1 не совпал)", p.path());
         } else {
@@ -139,8 +157,20 @@ public final class ClientResources {
                 ScriptCraft.LOGGER.warn("[ScriptCraft] Не удалось записать ресурс {} в кэш: {}", p.path(), e.toString());
             }
         }
+        int remaining = PENDING.size();
+        int doneCount = Math.max(0, totalBatchFiles - remaining);
+        long inFlight = 0L;
+        for (int r : RECEIVED.values()) inFlight += r;
+        float prog = remaining == 0 ? 1.0f : (totalBatchBytes > 0L
+                ? (float) (finishedBatchBytes + inFlight) / (float) totalBatchBytes
+                : (float) doneCount / (float) Math.max(1, totalBatchFiles));
+        String nextOrLastFile = remaining > 0 ? PENDING.keySet().iterator().next() : p.path();
+        ClientLoadScreenRenderer.onPlayDownloadProgress(doneCount, totalBatchFiles, prog, nextOrLastFile);
         if (PENDING.isEmpty()) {
             apply();
+            if (Minecraft.getInstance().getOverlay() == null) {
+                ClientLoadScreenRenderer.onAllDownloadsComplete();
+            }
         }
     }
 
@@ -149,6 +179,9 @@ public final class ClientResources {
         PENDING.clear();
         BUFFERS.clear();
         RECEIVED.clear();
+        totalBatchFiles = 0;
+        totalBatchBytes = 0L;
+        finishedBatchBytes = 0L;
         CHANGED.clear();
         READY.clear();
         RETRY_AT.clear();
@@ -254,7 +287,6 @@ public final class ClientResources {
         CHANGED.clear();
         if (needReload) {
             // Атлас текстур блоков/предметов и запечённые модели собираются только при перезагрузке ресурсов.
-            ClientToasts.push(Messages.toast("resources.reloading"));
             Minecraft.getInstance().reloadResourcePacks();
         }
     }

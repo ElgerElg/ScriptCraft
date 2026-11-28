@@ -58,8 +58,10 @@ public final class ClientToasts {
         int margin = 6;
         boolean up = ClientUiSettings.place() == ClientUiSettings.Place.CHAT
                 || ClientUiSettings.place() == ClientUiSettings.Place.BOTTOM_RIGHT;
+        int topLeftExtra = ClientLoadScreenRenderer.getActiveTopLeftOffsetPx();
         int y = switch (ClientUiSettings.place()) {
-            case TOP_LEFT, TOP_RIGHT -> margin;
+            case TOP_LEFT -> margin + (topLeftExtra > 0 ? topLeftExtra + 4 : 0);
+            case TOP_RIGHT -> margin;
             case BOTTOM_RIGHT -> height - margin;
             case CHAT -> height - 58;
         };

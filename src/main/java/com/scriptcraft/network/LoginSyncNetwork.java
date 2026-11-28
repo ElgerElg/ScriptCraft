@@ -37,10 +37,11 @@ import java.util.zip.GZIPOutputStream;
  * и сжатые пачки ресурсов в scriptcraft/cache/assets/, обновляя прогресс-бар и % на экране входа!
  */
 public final class LoginSyncNetwork {
-    private static final String LOGIN_PROTOCOL = "1";
+    private static final String LOGIN_PROTOCOL = "2";
     /** Целевой размер одной несжатой пачки ассетов в фазе LOGIN (~384 КБ). */
     private static final int BATCH_RAW_LIMIT = 384 * 1024;
     private static final int MAX_COMPRESSED_BYTES = 950 * 1024;
+    private static volatile int clientCheckedInHandshake = 0;
 
     public static final SimpleChannel LOGIN_CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(ScriptCraft.MODID, "login_sync"),
@@ -83,12 +84,14 @@ public final class LoginSyncNetwork {
         private int loginIndex;
         private final int stepIndex;
         private final int totalSteps;
+        private final int totalServerFiles;
         private final Bindings.Snapshot snapshot; // не null только в пакете 0
         private final byte[] gzipFiles;
 
-        public LoginBundlePacket(int stepIndex, int totalSteps, Bindings.Snapshot snapshot, byte[] gzipFiles) {
+        public LoginBundlePacket(int stepIndex, int totalSteps, int totalServerFiles, Bindings.Snapshot snapshot, byte[] gzipFiles) {
             this.stepIndex = stepIndex;
             this.totalSteps = totalSteps;
+            this.totalServerFiles = totalServerFiles;
             this.snapshot = snapshot;
             this.gzipFiles = gzipFiles;
         }
@@ -109,6 +112,7 @@ public final class LoginSyncNetwork {
         public static void encode(LoginBundlePacket p, FriendlyByteBuf buf) {
             buf.writeVarInt(p.stepIndex);
             buf.writeVarInt(p.totalSteps);
+            buf.writeVarInt(p.totalServerFiles);
             buf.writeBoolean(p.snapshot != null);
             if (p.snapshot != null) {
                 p.snapshot.encode(buf);
@@ -119,9 +123,10 @@ public final class LoginSyncNetwork {
         public static LoginBundlePacket decode(FriendlyByteBuf buf) {
             int step = buf.readVarInt();
             int total = Math.max(1, buf.readVarInt());
+            int totalFiles = Math.max(0, buf.readVarInt());
             Bindings.Snapshot snap = buf.readBoolean() ? Bindings.Snapshot.decode(buf) : null;
             byte[] gz = buf.readByteArray(MAX_COMPRESSED_BYTES);
-            return new LoginBundlePacket(step, total, snap, gz);
+            return new LoginBundlePacket(step, total, totalFiles, snap, gz);
         }
     }
 
@@ -182,14 +187,18 @@ public final class LoginSyncNetwork {
             }
         }
 
+        int totalFilesCount = 0;
+        for (List<AssetFile> b : batches) {
+            totalFilesCount += b.size();
+        }
         int totalSteps = Math.max(1, batches.size());
         List<Pair<String, LoginBundlePacket>> result = new ArrayList<>(totalSteps);
         if (batches.isEmpty()) {
-            result.add(Pair.of("sc_login_0", new LoginBundlePacket(0, 1, snapshot, new byte[0])));
+            result.add(Pair.of("sc_login_0", new LoginBundlePacket(0, 1, 0, snapshot, new byte[0])));
         } else {
             for (int i = 0; i < batches.size(); i++) {
                 byte[] gz = compressBatch(batches.get(i));
-                result.add(Pair.of("sc_login_" + i, new LoginBundlePacket(i, totalSteps, i == 0 ? snapshot : null, gz)));
+                result.add(Pair.of("sc_login_" + i, new LoginBundlePacket(i, totalSteps, totalFilesCount, i == 0 ? snapshot : null, gz)));
             }
         }
         return result;
@@ -209,7 +218,10 @@ public final class LoginSyncNetwork {
     private static void applyBundleClientSide(LoginBundlePacket pkt) {
         int step = pkt.stepIndex + 1;
         int total = Math.max(1, pkt.totalSteps);
-        float progress = 0.20f + 0.62f * ((float) step / (float) total);
+        if (pkt.stepIndex == 0) {
+            clientCheckedInHandshake = 0;
+            com.scriptcraft.client.ClientLoadScreenRenderer.onLoginStartReset();
+        }
 
         if (pkt.snapshot != null) {
             Bindings.set(pkt.snapshot);
@@ -220,41 +232,44 @@ public final class LoginSyncNetwork {
         }
 
         int writtenFiles = 0;
-        int totalFilesInBatch = 0;
+        String lastFile = "";
         if (pkt.gzipFiles != null && pkt.gzipFiles.length > 0) {
             List<AssetFile> files = decompressBatch(pkt.gzipFiles);
-            totalFilesInBatch = files.size();
+            int expectedTotal = Math.max(pkt.totalServerFiles, clientCheckedInHandshake + files.size());
             Path cache = ModPaths.cache();
             for (AssetFile af : files) {
-                if (!ResourceIndex.isSafePath(af.path())) continue;
+                if (!ResourceIndex.isSafePath(af.path())) {
+                    clientCheckedInHandshake++;
+                    continue;
+                }
                 Path target = cache.resolve(af.path());
-                if (!target.normalize().startsWith(cache.normalize())) continue;
+                if (!target.normalize().startsWith(cache.normalize())) {
+                    clientCheckedInHandshake++;
+                    continue;
+                }
                 if (isCachedWithSameHash(target, af.sha1(), af.data().length)) {
+                    clientCheckedInHandshake++;
                     continue;
                 }
                 try {
+                    com.scriptcraft.client.ClientLoadScreenRenderer.onLoginFileProgress(
+                            clientCheckedInHandshake, expectedTotal, af.path(), true);
                     Files.createDirectories(target.getParent());
                     Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
                     Files.write(tmp, af.data());
                     Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
                     com.scriptcraft.client.ClientResources.recordLoginCachedFile(af.path());
                     writtenFiles++;
+                    lastFile = af.path();
                 } catch (IOException e) {
                     ScriptCraft.LOGGER.warn("[ScriptCraft] Не удалось сохранить login-ресурс {}: {}", af.path(), e.toString());
                 }
+                clientCheckedInHandshake++;
             }
         }
 
-        String detail = total > 1
-                ? ("Пакет " + step + " / " + total + (writtenFiles > 0 ? " · обновлено файлов: " + writtenFiles : " · кэш актуален"))
-                : (totalFilesInBatch > 0 ? ("Файлов проверено: " + totalFilesInBatch + ", скачано: " + writtenFiles) : "");
-
-        com.scriptcraft.client.ClientLoadScreenRenderer.updateJoinProgress(
-                progress,
-                "Синхронизация ресурсов и modid:item в кэш...",
-                "Syncing server assets & modid:item registries...",
-                detail
-        );
+        com.scriptcraft.client.ClientLoadScreenRenderer.onLoginBatchDone(
+                step, total, clientCheckedInHandshake, pkt.totalServerFiles, writtenFiles, lastFile);
     }
 
     private static boolean isCachedWithSameHash(Path file, String sha1, int expectedLen) {

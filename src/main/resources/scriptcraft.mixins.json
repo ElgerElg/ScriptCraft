@@ -10,9 +10,6 @@
   ],
   "client": [
     "LoadingOverlayAccessor",
-    "LoadingOverlayMixin",
-    "ConnectScreenMixin",
-    "ReceivingLevelScreenMixin",
     "GameRendererMixin"
   ],
   "injectors": {

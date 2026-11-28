@@ -15,7 +15,7 @@
  */
 window.SC_DOCS = window.SC_DOCS || {};
 window.SC_DOCS.syntax = {
-  version: "0.9.12",
+  version: "0.9.13",
   categories: [
     { id: "events", ru: "События", en: "Events" },
     { id: "structures", ru: "Структуры", en: "Structures" },
@@ -5146,15 +5146,15 @@ on right click:
   {
     id: "cfg-dynamic-real-ids", category: "config",
     name: {
-      ru: "Настоящие modid:item / modid:block через Mixin + Экраны загрузки с %",
-      en: "Mixin Dynamic Real IDs (modid:item / modid:block) + Custom % Loading Screens"
+      ru: "Настоящие modid:item / modid:block через Mixin + Виджет загрузки сверху слева",
+      en: "Mixin Dynamic Real IDs (modid:item / modid:block) + Top-Left Download Progress Toast"
     },
     syntax: [
       "useLegacySlotPool = false   # в scriptcraft/config.toml (по умолчанию false — сразу настоящие modid:item!)"
     ],
     desc: {
-      ru: "Полный отказ от ручного кэша слотов и перезапусков игры за счёт встроенного **Mixin-движка динамической регистрации** и синхронизации на стадии подключения (`LOGIN`):\n• **Вход с 1-й попытки с настоящими `modid:item` / `modid:block`**: пока игрок находится на экране подключения (ещё до загрузки мира и чанков), сервер передаёт описания `define block / item / armor` и сжатые пачки ресурсов в `scriptcraft/cache/assets/`, а клиент через Mixin на лету регистрирует настоящие объекты (`gecko:plasma_rifle`, `gecko:holo_terminal` и т.д.) перед сверкой реестров Forge. Все ID сразу настоящие в F3, `/give`, датапаках, рецептах и JEI!\n• **Горячая регистрация новых ID по `/sc reload` (Вариант Б)**: если администратор прямо во время работы сервера добавляет совершенно новый `define block` или `define item` и пишет `/sc reload`, мод размораживает реестры сервера и всех онлайн-игроков (`HotRegistryPacket`), прописывает новый настоящий ID под тем же номером и запекает модели без кика и без рестарта!\n• **Фирменные экраны загрузки с прогресс-баром и процентами (`0%..100%`)**: как при входе на сервер (с отображением пакетов кэша и этапа синхронизации), так и при любой перезагрузке ресурспаков игрока (`F3+T`, смена ресурспака, авто-запекание моделей).",
-      en: "Eliminates slot-cache restarts via **Mixin dynamic registry injection** and pre-world `LOGIN` handshake asset sync:\n• **First-try server join with real `modid:item` / `modid:block` IDs**: during the `ConnectScreen` login handshake (before chunks or renderers initialize), the server streams `define` metadata and GZIP-compressed asset batches into `scriptcraft/cache/assets/`, while the client dynamically injects real `Block`/`Item` entries prior to Forge's `injectSnapshot`.\n• **Hot `/sc reload` Registration (Variant B)**: adding brand-new `define block` or `define item` IDs on a live server immediately registers them on the server and all connected clients (`HotRegistryPacket`) with matching integer IDs and automatic model baking.\n• **Custom ScriptCraft Progress-Bar & Percentage (`0%..100%`) Loading Screens**: shown both while joining a server and during any client resource-pack reload."
+      ru: "Полный отказ от ручного кэша слотов и перезапусков игры за счёт встроенного **Mixin-движка динамической регистрации** и фоновой синхронизации кэша:\n• **Вход с 1-й попытки с настоящими `modid:item` / `modid:block`**: при подключении сервер передаёт описания `define block / item / armor` и пачки ресурсов в `scriptcraft/cache/assets/`, а клиент через Mixin на лету регистрирует настоящие объекты (`gecko:plasma_rifle`, `gecko:holo_terminal` и т.д.) перед сверкой реестров Forge. Все ID сразу настоящие в F3, `/give`, датапаках, рецептах и JEI!\n• **Горячая регистрация новых ID по `/sc reload` (Вариант Б)**: новые `define block` / `define item` на работающем сервере сразу регистрируются у всех онлайн-игроков (`HotRegistryPacket`) без кика и без рестарта!\n• **Компактная плашка прогресса слева сверху (в стиле уведомлений скриптов)**: ванильные и модовые меню входа и загрузки мира остаются нетронутыми — поверх них в левом верхнем углу выводится аккуратный прогресс-бар с **процентом (`0%..100%`)**, **именем текущего скачиваемого файла** и **счётчиком оставшихся файлов (`Осталось файлов: X из Y`)**, который не исчезает, пока абсолютно все файлы не скачаются и не применятся.",
+      en: "Eliminates slot-cache restarts via **Mixin dynamic registry injection** and seamless asset sync:\n• **First-try server join with real `modid:item` / `modid:block` IDs**: during the login handshake, the server streams `define` metadata and asset batches into `scriptcraft/cache/assets/`, while the client dynamically injects real `Block`/`Item` entries prior to Forge's `injectSnapshot`.\n• **Hot `/sc reload` Registration (Variant B)**: adding brand-new `define block` or `define item` IDs on a live server immediately registers them on the server and all connected clients (`HotRegistryPacket`).\n• **Compact Top-Left Download Progress Widget**: leaves vanilla/modded connection and world-loading screens completely untouched, displaying a sleek script-toast-style widget in the top-left corner with **percentage (`0%..100%`)**, **currently downloading file**, and **remaining file count** that stays pinned until every file finishes downloading."
     },
     example: `[general]
 # false (по умолчанию): настоящие modid:item / modid:block без рестарта клиента и авто-миграция старых слотов!
@@ -5163,7 +5163,7 @@ useLegacySlotPool = false
 [resources]
 syncResourcesToClients = true
 disableVanillaResourcePackPrompt = true`,
-    since: "0.9.12", related: ["define-entity", "define-armor", "res-auto-ogg-studio"]
+    since: "0.9.13", related: ["define-entity", "define-armor", "res-auto-ogg-studio"]
   }
   ]
 };
