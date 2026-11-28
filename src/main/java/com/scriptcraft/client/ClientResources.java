@@ -195,6 +195,16 @@ public final class ClientResources {
      * Пришла таблица привязок. layoutChanged — модели слотов пула указывают на другие id: их нужно "запечь"
      * перезагрузкой ресурсов. Если файлы ещё докачиваются — перезагрузка будет одна, после докачки.
      */
+    public static void markLoginBakePending() {
+        bindingsReload = true;
+    }
+
+    public static void recordLoginCachedFile(String path) {
+        synchronized (CHANGED) {
+            CHANGED.add(path);
+        }
+    }
+
     public static void onBindings(boolean layoutChanged) {
         if (layoutChanged) {
             bindingsReload = true;

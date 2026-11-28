@@ -29,7 +29,8 @@ public final class ModNetwork {
     // 18: универсальные настраиваемые поводки (LeashPacket).
     // 19: 3D Geo-анимации предметов/блоков (GeoSyncPacket), аттачи на костях (PropAttachPacket) и катсцены (CameraPathPacket).
     // 20: опции блокировки поворота головы (lockLook) и скрытия руки (hideHand) в CameraPathPacket.
-    private static final String PROTOCOL_VERSION = "20";
+    // 21: Mixin-синхронизация настоящих modid:id при входе (LoginSyncNetwork) и горячем /sc reload (HotRegistryPacket).
+    private static final String PROTOCOL_VERSION = "21";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(ScriptCraft.MODID, "main"),
@@ -229,6 +230,14 @@ public final class ModNetwork {
                 .decoder(CameraPathPacket::decode)
                 .consumerMainThread(CameraPathPacket::handle)
                 .add();
+        CHANNEL.messageBuilder(HotRegistryPacket.class, id++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(HotRegistryPacket::encode)
+                .decoder(HotRegistryPacket::decode)
+                .consumerMainThread(HotRegistryPacket::handle)
+                .add();
+
+        // Отдельный канал фазы LOGIN (до загрузки мира): передача таблиц modid:id и ресурсов в кэш с прогресс-баром
+        LoginSyncNetwork.register();
     }
 
     public static void sendToServer(Object packet) {

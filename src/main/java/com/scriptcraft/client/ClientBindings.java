@@ -32,16 +32,37 @@ public final class ClientBindings {
     private static final Set<String> TOLD = new HashSet<>();
 
     public static void apply(Bindings.Snapshot snapshot) {
+        boolean injectedOnHandshake = com.scriptcraft.registry.DynamicRegistryManager.consumeClientInjectedFlag();
+        applyInternal(snapshot, injectedOnHandshake, false);
+    }
+
+    public static void applyHot(Bindings.Snapshot snapshot, boolean anyNewRegistered) {
+        applyInternal(snapshot, anyNewRegistered, true);
+    }
+
+    private static void applyInternal(Bindings.Snapshot snapshot, boolean forceModelBake, boolean hotOnline) {
         Bindings.set(snapshot);
         ElementRenderer.clearItemCache(); // слоты экранов/HUD ("item example:ruby") — заново через привязки
-        ClientResources.onBindings(AssetBindings.update(snapshot));
+        boolean layoutChanged = AssetBindings.update(snapshot);
+        if (forceModelBake) {
+            ClientLoadScreenRenderer.setReloadReason(
+                    hotOnline ? "Горячая регистрация и запекание новых modid:item / modid:block..."
+                            : "Запекание моделей кастомных предметов и блоков сервера...",
+                    hotOnline ? "Hot-registering & baking new modid:item / modid:block..."
+                            : "Baking custom server block & item models..."
+            );
+        }
+        ClientResources.onBindings(layoutChanged || forceModelBake);
         rebuildCreativeTab();
+        if (hotOnline && forceModelBake && Minecraft.getInstance().levelRenderer != null) {
+            Minecraft.getInstance().levelRenderer.allChanged();
+        }
         rememberIds(snapshot);
     }
 
     /**
-     * Все id сервера — в кэш define (при следующем запуске игры они станут настоящими записями клиента).
-     * Блоки во временных слотах, которых у этого клиента нет настоящими, — сообщение в чат (один раз за сессию).
+     * Сохраняет известные id в локальный список кэша. Никакого перезапуска игры больше не требуется:
+     * все настоящие modid:id прописываются на лету через Mixin при входе и по /sc reload!
      */
     private static void rememberIds(Bindings.Snapshot snapshot) {
         List<String> blocks = new ArrayList<>(snapshot.realBlocks().keySet());
@@ -52,25 +73,6 @@ public final class ClientBindings {
             DefineCache.replace(blocks, items);
         } else {
             DefineCache.add(blocks, items);
-        }
-
-        if (!com.scriptcraft.config.ScriptCraftConfig.registerRealIds()) {
-            return; // В режиме пула слоты постоянные и работают без перезапуска игры
-        }
-        List<String> temporary = new ArrayList<>();
-        for (String id : snapshot.blockSlots().keySet()) {
-            if (TOLD.add(id)) {
-                temporary.add(id);
-            }
-        }
-        for (String id : snapshot.itemSlots().keySet()) {
-            if (TOLD.add(id)) {
-                temporary.add(id);
-            }
-        }
-        LocalPlayer player = Minecraft.getInstance().player;
-        if (!temporary.isEmpty() && player != null) {
-            ClientToasts.push(Messages.toast("bindings.restart_client", String.join(", ", temporary)));
         }
     }
 

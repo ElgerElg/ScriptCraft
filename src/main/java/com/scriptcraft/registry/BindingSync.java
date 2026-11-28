@@ -34,7 +34,18 @@ public final class BindingSync {
     /** После /sc reload|enable|disable. source — кому писать о новых блоках и нехватке слотов (или null). */
     public static void apply(MinecraftServer server, ScriptProgram program, @Nullable CommandSourceStack source) {
         BindingStore.Result r = BindingStore.bind(server, program);
-        if (r.changed()) {
+        if (!r.hotEntries().isEmpty()) {
+            var hotPkt = new com.scriptcraft.network.HotRegistryPacket(r.hotEntries(), r.snapshot());
+            for (ServerPlayer p : server.getPlayerList().getPlayers()) {
+                ModNetwork.sendTo(p, hotPkt);
+            }
+            for (DynamicRegistryManager.HotEntry he : r.hotEntries()) {
+                ScriptCraft.LOGGER.info("[ScriptCraft] Зарегистрирован настоящий ID на лету: {}", he.id());
+                if (source != null) {
+                    Feedback.showColored(source, "\u00a7aЗарегистрирован настоящий ID: \u00a7e" + he.id());
+                }
+            }
+        } else if (r.changed()) {
             BindingsPacket packet = new BindingsPacket(r.snapshot());
             for (ServerPlayer p : server.getPlayerList().getPlayers()) {
                 ModNetwork.sendTo(p, packet);

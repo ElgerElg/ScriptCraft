@@ -77,17 +77,16 @@ public final class ScriptRegistries {
     private static final Map<String, RegistryObject<Block>> REAL_BLOCKS = new LinkedHashMap<>();
     private static final Map<String, RegistryObject<Item>> REAL_BLOCK_ITEMS = new LinkedHashMap<>();
     private static final Map<String, RegistryObject<Item>> REAL_ITEMS = new LinkedHashMap<>();
+    private static final Map<String, Block> DYNAMIC_BLOCKS = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final Map<String, Item> DYNAMIC_BLOCK_ITEMS = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final Map<String, Item> DYNAMIC_ITEMS = new java.util.concurrent.ConcurrentHashMap<>();
 
     public static final RegistryObject<BlockEntityType<ScriptBlockEntity>> SCRIPT_BLOCK_ENTITY =
-            BLOCK_ENTITIES.register("script_block_entity", () -> {
-                List<Block> valid = new ArrayList<>(BLOCK_SLOTS + REAL_BLOCKS.size());
-                for (RegistryObject<Block> rb : POOL_BLOCKS) {
-                    valid.add(rb.get());
+            BLOCK_ENTITIES.register("script_block_entity", () -> new BlockEntityType<>(ScriptBlockEntity::new, Set.of(), null) {
+                @Override
+                public boolean isValid(net.minecraft.world.level.block.state.BlockState state) {
+                    return state.getBlock() instanceof ScriptBlock;
                 }
-                for (RegistryObject<Block> rb : REAL_BLOCKS.values()) {
-                    valid.add(rb.get());
-                }
-                return BlockEntityType.Builder.of(ScriptBlockEntity::new, valid.toArray(Block[]::new)).build(null);
             });
 
     public static final RegistryObject<EntityType<ScriptGeoEntity>> GEO_ENTITY =
@@ -241,37 +240,74 @@ public final class ScriptRegistries {
         return true;
     }
 
-    /** Зарегистрирован ли при запуске настоящий блок с этим id. */
+    public static boolean isValidDynamicRealId(String id) {
+        return validRealId(id);
+    }
+
+    public static void recordDynamicRealBlock(String id, Block block, @org.jetbrains.annotations.Nullable Item blockItem) {
+        DYNAMIC_BLOCKS.put(id, block);
+        if (blockItem != null) {
+            DYNAMIC_BLOCK_ITEMS.put(id, blockItem);
+        }
+    }
+
+    public static void recordDynamicRealItem(String id, Item item) {
+        DYNAMIC_ITEMS.put(id, item);
+    }
+
+    public static void removeDynamicClientEntry(String id) {
+        DYNAMIC_BLOCKS.remove(id);
+        DYNAMIC_BLOCK_ITEMS.remove(id);
+        DYNAMIC_ITEMS.remove(id);
+    }
+
+    /** Зарегистрирован ли (при запуске или динамически через Mixin) настоящий блок с этим id. */
     public static boolean isRealBlock(String id) {
-        return REAL_BLOCKS.containsKey(id);
+        return REAL_BLOCKS.containsKey(id) || DYNAMIC_BLOCKS.containsKey(id);
     }
 
     public static boolean isRealItem(String id) {
-        return REAL_ITEMS.containsKey(id);
+        return REAL_ITEMS.containsKey(id) || DYNAMIC_ITEMS.containsKey(id);
     }
 
     public static Set<String> realBlockIds() {
-        return Collections.unmodifiableSet(REAL_BLOCKS.keySet());
+        if (DYNAMIC_BLOCKS.isEmpty()) {
+            return Collections.unmodifiableSet(REAL_BLOCKS.keySet());
+        }
+        Set<String> all = new java.util.LinkedHashSet<>(REAL_BLOCKS.keySet());
+        all.addAll(DYNAMIC_BLOCKS.keySet());
+        return Collections.unmodifiableSet(all);
     }
 
     public static Set<String> realItemIds() {
-        return Collections.unmodifiableSet(REAL_ITEMS.keySet());
+        if (DYNAMIC_ITEMS.isEmpty()) {
+            return Collections.unmodifiableSet(REAL_ITEMS.keySet());
+        }
+        Set<String> all = new java.util.LinkedHashSet<>(REAL_ITEMS.keySet());
+        all.addAll(DYNAMIC_ITEMS.keySet());
+        return Collections.unmodifiableSet(all);
     }
 
     @org.jetbrains.annotations.Nullable
     public static Block realBlock(String id) {
+        Block dyn = DYNAMIC_BLOCKS.get(id);
+        if (dyn != null) return dyn;
         RegistryObject<Block> o = REAL_BLOCKS.get(id);
         return o == null || !o.isPresent() ? null : o.get();
     }
 
     @org.jetbrains.annotations.Nullable
     public static Item realBlockItem(String id) {
+        Item dyn = DYNAMIC_BLOCK_ITEMS.get(id);
+        if (dyn != null) return dyn;
         RegistryObject<Item> o = REAL_BLOCK_ITEMS.get(id);
         return o == null || !o.isPresent() ? null : o.get();
     }
 
     @org.jetbrains.annotations.Nullable
     public static Item realItem(String id) {
+        Item dyn = DYNAMIC_ITEMS.get(id);
+        if (dyn != null) return dyn;
         RegistryObject<Item> o = REAL_ITEMS.get(id);
         return o == null || !o.isPresent() ? null : o.get();
     }

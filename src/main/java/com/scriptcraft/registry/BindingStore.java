@@ -63,9 +63,10 @@ public final class BindingStore {
     private BindingStore() {
     }
 
-    /** Результат привязки. added — новые привязки (id -> технический id), full — id, которым не хватило слотов. */
+    /** Результат привязки. added — новые привязки (id -> технический id), full — id, которым не хватило слотов, hotEntries — новые настоящие ID (Вариант Б). */
     public record Result(Bindings.Snapshot snapshot, boolean changed, boolean dataChanged,
-                         Map<String, String> added, List<String> full) {
+                         Map<String, String> added, List<String> full,
+                         List<DynamicRegistryManager.HotEntry> hotEntries) {
     }
 
     // ------------------------------------------------------------------ запуск
@@ -208,9 +209,22 @@ public final class BindingStore {
 
     // ------------------------------------------------------------------ мир
 
-    /** Привязать define текущей программы к слотам мира сервера и выставить {@link Bindings}. */
+    /** Привязать define текущей программы (в режиме настоящих ID — Вариант Б: горячая Mixin-регистрация новых define!) и выставить {@link Bindings}. */
     public static synchronized Result bind(MinecraftServer server, ScriptProgram program) {
         data(server);
+        List<DynamicRegistryManager.HotEntry> hotEntries = List.of();
+        if (com.scriptcraft.config.ScriptCraftConfig.registerRealIds()) {
+            hotEntries = DynamicRegistryManager.ensureServerRealEntries(program.blocks(), program.items());
+            if (!hotEntries.isEmpty()) {
+                boolean hd = false;
+                for (DynamicRegistryManager.HotEntry he : hotEntries) {
+                    hd |= (he.isBlock() ? KNOWN_REAL_BLOCKS.add(he.id()) : KNOWN_REAL_ITEMS.add(he.id()));
+                }
+                if (hd) {
+                    saveHints();
+                }
+            }
+        }
         boolean[] hintsDirty = {false};
         boolean[] worldDirty = {false};
         List<String> full = new ArrayList<>();
@@ -276,9 +290,9 @@ public final class BindingStore {
         // Перезаписываем в data-паке все id мира (и удалённые: их слоты зарезервированы, вреда нет),
         // кроме настоящих — они и так есть в реестре.
         Map<String, String> rewrite = rewriteMap(world.blocks, world.items);
-        boolean dataChanged = !rewrite.equals(dataRewrite);
+        boolean dataChanged = !rewrite.equals(dataRewrite) || !hotEntries.isEmpty();
         dataRewrite = rewrite;
-        return new Result(snapshot, !snapshot.equals(old), dataChanged, added, full);
+        return new Result(snapshot, !snapshot.equals(old) || !hotEntries.isEmpty(), dataChanged, added, full, hotEntries);
     }
 
     private static int allocate(String id, Map<String, Integer> worldMap, Map<String, Integer> hints, int size,

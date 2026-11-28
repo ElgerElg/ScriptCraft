@@ -45,6 +45,7 @@ public final class ClientEvents {
         com.scriptcraft.client.geo.PlayerPropLayer.clearAll();
         com.scriptcraft.client.geo.ScriptGeoItemRenderer.clearAnims();
         com.scriptcraft.client.geo.GeoParticleHelper.clear();
+        com.scriptcraft.registry.DynamicRegistryManager.cleanupClientSessionEntries();
     }
 
     /**

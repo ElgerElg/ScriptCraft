@@ -134,4 +134,9 @@ public final class ClientPacketHandler {
     public static void cameraPath(com.scriptcraft.network.CameraPathPacket packet) {
         ClientCameraEffects.applyPath(packet);
     }
+
+    public static void hotRegistry(com.scriptcraft.network.HotRegistryPacket packet) {
+        boolean anyNew = com.scriptcraft.registry.DynamicRegistryManager.applyHotEntriesOnClient(packet.entries());
+        ClientBindings.applyHot(packet.snapshot(), anyNew);
+    }
 }

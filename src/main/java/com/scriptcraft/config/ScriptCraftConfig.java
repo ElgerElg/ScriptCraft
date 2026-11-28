@@ -89,12 +89,11 @@ public final class ScriptCraftConfig {
                 .defineInRange("targetedPlayerRange", 50, 1, 256);
 
         REGISTER_REAL_IDS = b.comment(
-                        "false (default): all 'define block / define item' use ScriptCraft's pre-registered pool slots (dyn_block_N / dyn_item_N).",
-                        "Players join on the VERY FIRST attempt with zero disconnect/restart, while custom names, models, textures, tools, food, loot, recipes and commands all work.",
-                        "true: register real Forge registry IDs at startup (new players without cached IDs will be disconnected once by Forge handshake and asked to restart).",
-                        "false (по умолчанию): все блоки и предметы из скриптов работают через готовый пул слотов — вход с первого раза БЕЗ вылета и перезапуска клиента.",
-                        "true: регистрировать отдельные Forge ID при запуске (при первом входе на новый сервер Forge потребует один перезапуск игры).")
-                .define("registerRealIds", false);
+                        "true (default): register real modid:item and modid:block Forge registry IDs via Mixin + Login Handshake sync (and hot /sc reload!).",
+                        "Players join on the VERY FIRST attempt with real IDs in F3, /give, JEI and datapacks, with zero client restart.",
+                        "false: legacy slot-pool mode (scriptcraft:dyn_block_N / dyn_item_N).",
+                        "true (по умолчанию): настоящие modid:item и modid:block через Mixin + синхронизацию на экране входа и горячий /sc reload без перезапуска!")
+                .define("registerRealIds", true);
 
         b.pop();
 
@@ -222,7 +221,7 @@ public final class ScriptCraftConfig {
     }
 
     public static boolean registerRealIds() {
-        return safe(REGISTER_REAL_IDS::get, false);
+        return safe(REGISTER_REAL_IDS::get, true);
     }
 
     /** Чтение registerRealIds в конструкторе мода (до того как Forge загрузил SPEC). */
@@ -232,7 +231,7 @@ public final class ScriptCraftConfig {
         }
         Path path = ModPaths.root().resolve("config.toml");
         if (!Files.isRegularFile(path)) {
-            return false;
+            return true;
         }
         try {
             for (String line : Files.readAllLines(path, java.nio.charset.StandardCharsets.UTF_8)) {
@@ -244,13 +243,13 @@ public final class ScriptCraftConfig {
                         String val = trimmed.substring(eq + 1).strip();
                         int hash = val.indexOf('#');
                         if (hash >= 0) val = val.substring(0, hash).strip();
-                        return "true".equalsIgnoreCase(val);
+                        return !"false".equalsIgnoreCase(val);
                     }
                 }
             }
         } catch (IOException ignored) {
         }
-        return false;
+        return true;
     }
 
     public static boolean allowCommandEffects() {

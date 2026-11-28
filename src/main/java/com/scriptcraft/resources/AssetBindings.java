@@ -58,6 +58,7 @@ public final class AssetBindings {
     /** id 3D Geo-блоков и 3D Geo-предметов: получают parent builtin/entity для кастомного 3D-рендера. */
     private static volatile Set<String> geoBlocks = Set.of();
     private static volatile Set<String> geoItems = Set.of();
+    private static volatile Set<String> realIdSignature = Set.of();
     private static boolean loaded = false;
 
     private AssetBindings() {
@@ -189,10 +190,14 @@ public final class AssetBindings {
             if (def != null && def.isGeo()) gi.add(id);
         });
 
+        Set<String> newRealSig = new HashSet<>(snapshot.realBlocks().keySet());
+        newRealSig.addAll(snapshot.realItems().keySet());
+
         if (b.equals(blocks) && i.equals(items) && mergedFacings.equals(facings) && mergedRenders.equals(renders)
-                && gb.equals(geoBlocks) && gi.equals(geoItems)) {
+                && gb.equals(geoBlocks) && gi.equals(geoItems) && newRealSig.equals(realIdSignature)) {
             return false;
         }
+        realIdSignature = Set.copyOf(newRealSig);
         blocks = Map.copyOf(b);
         items = Map.copyOf(i);
         facings = Map.copyOf(mergedFacings);

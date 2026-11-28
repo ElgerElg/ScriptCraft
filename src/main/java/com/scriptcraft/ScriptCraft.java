@@ -65,18 +65,14 @@ public class ScriptCraft {
         } catch (RuntimeException e) {
             LOGGER.error("[ScriptCraft] Скрипты не загрузились, мод продолжит работу", e);
         }
-        // 2a. По умолчанию (registerRealIds = false) все define работают через общий пул слотов dyn_block_N / dyn_item_N:
-        //     реестры клиента и сервера всегда совпадают на 100%, поэтому первый вход проходит сразу без вылета/перезапуска!
-        //     Если в config.toml явно включён registerRealIds = true — регистрируем настоящие Forge ID при старте.
+        // 2a. По умолчанию (registerRealIds = true) локальные скрипты регистрируют настоящие modid:item / modid:block,
+        //     а при подключении к удалённому серверу недостающие серверные ID динамически прописываются через Mixin
+        //     прямо на стадии рукопожатия (GameDataMixin + LoginSyncNetwork) — вход с 1-го раза без кэша слотов и без рестарта!
         Set<String> realBlocks = new LinkedHashSet<>();
         Set<String> realItems = new LinkedHashSet<>();
         if (ScriptCraftConfig.registerRealIdsAtBoot()) {
             ScriptLoader.getProgram().blocks().forEach(b -> realBlocks.add(b.id()));
             ScriptLoader.getProgram().items().forEach(i -> realItems.add(i.id()));
-            if (FMLEnvironment.dist.isClient()) {
-                realBlocks.addAll(DefineCache.blocks());
-                realItems.addAll(DefineCache.items());
-            }
             realItems.removeAll(realBlocks);
         }
         ScriptRegistries.registerReal(realBlocks, realItems);

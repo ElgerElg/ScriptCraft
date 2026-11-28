@@ -1,0 +1,19 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.scriptcraft.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "scriptcraft.refmap.json",
+  "mixins": [
+    "ForgeRegistryAccessor",
+    "GameDataMixin"
+  ],
+  "client": [
+    "LoadingOverlayMixin",
+    "ConnectScreenMixin",
+    "ReceivingLevelScreenMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
