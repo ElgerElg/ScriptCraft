@@ -193,9 +193,7 @@ public final class ClientLoadScreenRenderer {
             }
         }
 
-        boolean isConnectingScreen = (screen instanceof ConnectScreen) || (screen instanceof ReceivingLevelScreen);
-
-        if (!downloadingActive && !hasReloadOverlay && !isConnectingScreen) {
+        if (!downloadingActive && !hasReloadOverlay) {
             lastRenderedScaledHeightPx = 0;
             return;
         }
@@ -253,7 +251,7 @@ public final class ClientLoadScreenRenderer {
                             : (ru ? ("Осталось файлов: " + remaining + " из " + totalFiles) : ("Remaining files: " + remaining + " / " + totalFiles));
                 }
             }
-        } else if (hasReloadOverlay) {
+        } else {
             // Перезагрузка ресурспаков игрока (F3+T / меню пакетов / горячее запекание)
             shownProgress01 = readLoadingOverlayProgress((LoadingOverlay) overlay);
             long fadeOutStart = ((LoadingOverlayAccessor) overlay).scriptcraft$getFadeOutStart();
@@ -267,19 +265,6 @@ public final class ClientLoadScreenRenderer {
                 lineFile = reloadCustomReason;
             } else {
                 lineFile = currentReloadStageShort(shownProgress01, ru);
-            }
-        } else {
-            // Подключение к серверу / загрузка мира (когда все файлы уже были в кэше)
-            if (screen instanceof ConnectScreen) {
-                smoothedProgress01 = Mth.clamp(Math.max(0.15f, smoothedProgress01 + partialTick * 0.01f), 0.15f, 0.75f);
-                shownProgress01 = smoothedProgress01;
-                headerTitle = ru ? "ScriptCraft · Вход на сервер" : "ScriptCraft · Connecting";
-                lineFile = ru ? "Проверка реестров modid:item и кэша..." : "Checking modid:item registries & cache...";
-            } else {
-                smoothedProgress01 = Mth.clamp(Math.max(0.82f, smoothedProgress01 + partialTick * 0.015f), 0.82f, 0.98f);
-                shownProgress01 = smoothedProgress01;
-                headerTitle = ru ? "ScriptCraft · Загрузка мира" : "ScriptCraft · Loading world";
-                lineFile = ru ? "Синхронизация данных..." : "Syncing world data...";
             }
         }
 

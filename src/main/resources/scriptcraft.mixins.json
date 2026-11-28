@@ -6,6 +6,8 @@
   "refmap": "scriptcraft.refmap.json",
   "mixins": [
     "ForgeRegistryAccessor",
+    "MappedRegistryAccessor",
+    "HolderReferenceAccessor",
     "GameDataMixin"
   ],
   "client": [
