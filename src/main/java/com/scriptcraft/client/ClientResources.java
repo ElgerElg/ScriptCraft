@@ -229,6 +229,9 @@ public final class ClientResources {
                 hasAnim = true;
                 continue;
             }
+            if (isDynamicGeoAsset(path)) {
+                continue;
+            }
             needReload = true;
         }
         if (hasAnim && net.minecraftforge.fml.ModList.get().isLoaded("playeranimator")) {
@@ -262,6 +265,21 @@ public final class ClientResources {
         String[] parts = path.split("/", 4);
         return parts.length == 4 && (parts[2].equals("player_animation") || parts[2].equals("player_animations"))
                 && path.endsWith(".json");
+    }
+
+    /**
+     * 3D-модели .geo.json, анимации .animation.json и текстуры мобов/брони/свечения загружаются напрямую
+     * из scriptcraft/cache/ классом GeoRenderer через DynamicTexture — полная перезагрузка ресурспаков не нужна!
+     */
+    private static boolean isDynamicGeoAsset(String path) {
+        if (path.endsWith(".geo.json") || path.endsWith(".animation.json") || path.endsWith("_glowmask.png")) {
+            return true;
+        }
+        String[] parts = path.split("/", 4);
+        if (parts.length == 4 && parts[2].equals("textures") && path.endsWith(".png")) {
+            return parts[3].startsWith("entity/") || parts[3].startsWith("armor/");
+        }
+        return false;
     }
 
     /** Регистрирует картинку как DynamicTexture под её обычным id (ns:textures/gui/...png). */

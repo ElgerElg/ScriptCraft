@@ -21,13 +21,15 @@ public record CameraPathPacket(
         double lookY,
         double lookZ,
         int lookEntityId,
-        boolean lockInput
+        boolean lockInput,
+        boolean lockLook,
+        boolean hideHand
 ) {
     public record Waypoint(double x, double y, double z, float yaw, float pitch, boolean hasAngles) {
     }
 
     public static CameraPathPacket stopCutscene() {
-        return new CameraPathPacket(true, List.of(), 0, false, 0, 0, 0, -1, false);
+        return new CameraPathPacket(true, List.of(), 0, false, 0, 0, 0, -1, false, false, false);
     }
 
     public static void encode(CameraPathPacket p, FriendlyByteBuf buf) {
@@ -55,6 +57,8 @@ public record CameraPathPacket(
             buf.writeVarInt(p.lookEntityId);
         }
         buf.writeBoolean(p.lockInput);
+        buf.writeBoolean(p.lockLook);
+        buf.writeBoolean(p.hideHand);
     }
 
     public static CameraPathPacket decode(FriendlyByteBuf buf) {
@@ -79,7 +83,9 @@ public record CameraPathPacket(
             entId = buf.readVarInt();
         }
         boolean lock = buf.readBoolean();
-        return new CameraPathPacket(false, pts, dur, hasLook, lx, ly, lz, entId, lock);
+        boolean lockLook = buf.readBoolean();
+        boolean hideHand = buf.readBoolean();
+        return new CameraPathPacket(false, pts, dur, hasLook, lx, ly, lz, entId, lock, lockLook, hideHand);
     }
 
     public static void handle(CameraPathPacket packet, Supplier<NetworkEvent.Context> ctx) {

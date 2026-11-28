@@ -31,10 +31,52 @@ public final class ResourceSync {
     private ResourceSync() {
     }
 
-    /** Старт сервера: строим индекс. */
-    public static void onServerStarting() {
+    /** Старт сервера: строим индекс и при необходимости подавляем лишний запрос ванильного resource-pack. */
+    public static void onServerStarting(MinecraftServer server) {
         QUEUES.clear();
         ResourceIndex.rescan();
+        if (ScriptCraftConfig.syncResourcesToClients() && ScriptCraftConfig.disableVanillaResourcePackPrompt()) {
+            suppressVanillaServerResourcePack(server);
+        }
+    }
+
+    private static void suppressVanillaServerResourcePack(MinecraftServer server) {
+        if (!(server instanceof net.minecraft.server.dedicated.DedicatedServer dedicated)) {
+            return;
+        }
+        if (dedicated.getServerResourcePack().isEmpty()) {
+            return;
+        }
+        try {
+            for (java.lang.reflect.Field f : net.minecraft.server.dedicated.DedicatedServer.class.getDeclaredFields()) {
+                if (f.getType() == net.minecraft.server.dedicated.DedicatedServerSettings.class) {
+                    f.setAccessible(true);
+                    var settings = (net.minecraft.server.dedicated.DedicatedServerSettings) f.get(dedicated);
+                    var curProps = settings.getProperties();
+                    for (java.lang.reflect.Field pf : net.minecraft.server.dedicated.Settings.class.getDeclaredFields()) {
+                        if (pf.getType() == java.util.Properties.class) {
+                            pf.setAccessible(true);
+                            var rawCopy = new java.util.Properties();
+                            rawCopy.putAll((java.util.Properties) pf.get(curProps));
+                            rawCopy.setProperty("resource-pack", "");
+                            rawCopy.setProperty("resource-pack-sha1", "");
+                            rawCopy.setProperty("require-resource-pack", "false");
+                            var cleaned = new net.minecraft.server.dedicated.DedicatedServerProperties(rawCopy);
+                            for (java.lang.reflect.Field sf : net.minecraft.server.dedicated.DedicatedServerSettings.class.getDeclaredFields()) {
+                                if (sf.getType() == net.minecraft.server.dedicated.DedicatedServerProperties.class) {
+                                    sf.setAccessible(true);
+                                    sf.set(settings, cleaned);
+                                    ScriptCraft.LOGGER.info("[ScriptCraft] Отключён лишний ванильный запрос серверного ресурспака (ресурсы синхронизируются через кэш ScriptCraft)");
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            ScriptCraft.LOGGER.debug("[ScriptCraft] Не удалось очистить serverResourcePackInfo: {}", t.toString());
+        }
     }
 
     public static void onServerStopped() {

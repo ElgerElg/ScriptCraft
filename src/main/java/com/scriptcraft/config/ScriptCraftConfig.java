@@ -37,6 +37,7 @@ public final class ScriptCraftConfig {
     private static final ForgeConfigSpec.BooleanValue REGISTER_REAL_IDS;
     private static final ForgeConfigSpec.IntValue VARIABLE_BACKUPS;
     private static final ForgeConfigSpec.BooleanValue SYNC_RESOURCES;
+    private static final ForgeConfigSpec.BooleanValue DISABLE_VANILLA_PACK_PROMPT;
     private static final ForgeConfigSpec.IntValue RESOURCE_MAX_MB;
     private static final ForgeConfigSpec.IntValue RESOURCE_CHUNK_KB;
     private static final ForgeConfigSpec.BooleanValue ENABLE_EFFECT_COMMANDS;
@@ -106,6 +107,12 @@ public final class ScriptCraftConfig {
                         "Отправлять scriptcraft/resources/assets клиентам через сетевой канал мода (только новые/изменённые файлы).",
                         "Без ванильного серверного ресурспака и без запроса: клиент хранит их в scriptcraft/cache/assets.")
                 .define("syncResourcesToClients", true);
+
+        DISABLE_VANILLA_PACK_PROMPT = b.comment(
+                        "When true (default), suppresses any leftover 'resource-pack=' prompt from server.properties while ScriptCraft syncs assets via cache.",
+                        "Set to false only if you intentionally host a separate vanilla HTTP resource pack alongside ScriptCraft.",
+                        "Когда true (по умолчанию), отключает лишнее ванильное окно 'Установить серверный ресурспак: Да/Нет' от server.properties, так как ресурсы идут через кэш мода.")
+                .define("disableVanillaResourcePackPrompt", true);
 
         RESOURCE_MAX_MB = b.comment("Max total size of synced assets in MB (server and client both check it)",
                         "Максимальный общий размер синхронизируемых ресурсов в МБ (проверяют и сервер, и клиент)")
@@ -290,6 +297,10 @@ public final class ScriptCraftConfig {
 
     public static boolean syncResourcesToClients() {
         return safe(SYNC_RESOURCES::get, true);
+    }
+
+    public static boolean disableVanillaResourcePackPrompt() {
+        return safe(DISABLE_VANILLA_PACK_PROMPT::get, true);
     }
 
     public static int maxResourceSizeMb() {

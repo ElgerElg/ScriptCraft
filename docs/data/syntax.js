@@ -15,7 +15,7 @@
  */
 window.SC_DOCS = window.SC_DOCS || {};
 window.SC_DOCS.syntax = {
-  version: "0.9.9",
+  version: "0.9.10",
   categories: [
     { id: "events", ru: "События", en: "Events" },
     { id: "structures", ru: "Структуры", en: "Structures" },
@@ -4974,7 +4974,7 @@ define entity cyber_guardian:
 	hitbox: 1.3x2.6
 	scale: 1.15
 	particle_bone: "core_locator=end_rod"`,
-    since: "0.9.9", related: ["eff-geo-entity", "define-armor", "eff-geo-item-block", "res-auto-ogg-studio"]
+    since: "0.9.10", related: ["eff-geo-entity", "define-armor", "eff-geo-item-block", "res-auto-ogg-studio"]
   },
   {
     id: "define-armor", category: "structures",
@@ -5005,7 +5005,7 @@ define item plasma_rifle:
 	texture: "gecko:textures/item/plasma_rifle.png"
 	animation: "gecko:plasma_rifle"
 	idle_animation: "idle"`,
-    since: "0.9.9", related: ["define-entity", "eff-geo-item-block", "eff-prop-attach"]
+    since: "0.9.10", related: ["define-entity", "eff-geo-item-block", "eff-prop-attach"]
   },
   {
     id: "eff-geo-entity", category: "effects",
@@ -5026,7 +5026,7 @@ define item plasma_rifle:
     example: `command /boss:
 	spawn geo entity "gecko:cyber_guardian" at player
 	play geo animation "roar" on last spawned entity once speed 1.0`,
-    since: "0.9.9", related: ["define-entity", "expr-leash", "eff-geo-item-block"]
+    since: "0.9.10", related: ["define-entity", "expr-leash", "eff-geo-item-block"]
   },
   {
     id: "eff-geo-item-block", category: "effects",
@@ -5046,7 +5046,7 @@ define item plasma_rifle:
 		play item animation "shoot" for player once speed 1.25
 	if "%block%" is "gecko:holo_terminal":
 		play block animation "activate" at targeted block once`,
-    since: "0.9.9", related: ["define-armor", "eff-geo-entity", "res-auto-ogg-studio"]
+    since: "0.9.10", related: ["define-armor", "eff-geo-entity", "res-auto-ogg-studio"]
   },
   {
     id: "eff-npc", category: "effects",
@@ -5071,7 +5071,7 @@ define item plasma_rifle:
 	equip npc "commander" with chestplate gecko:exo_chestplate
 	equip npc "commander" with mainhand gecko:plasma_rifle
 	play npc animation "gecko:npc_salute" on npc "commander"`,
-    since: "0.9.9", related: ["event-npc", "eff-prop-attach", "define-armor"]
+    since: "0.9.10", related: ["event-npc", "eff-prop-attach", "define-armor"]
   },
   {
     id: "event-npc", category: "events",
@@ -5088,7 +5088,7 @@ define item plasma_rifle:
 	make npc "commander" look at player
 	play npc animation "gecko:npc_salute" on npc "commander"
 	send "&b[Командор] &fЧесть имею, %player%!" to player`,
-    since: "0.9.9", related: ["eff-npc", "eff-open-screen"]
+    since: "0.9.10", related: ["eff-npc", "eff-open-screen"]
   },
   {
     id: "eff-prop-attach", category: "effects",
@@ -5105,24 +5105,24 @@ define item plasma_rifle:
     },
     example: `command /drone:
 	attach prop "drone" model "gecko:shoulder_drone" animation "hover" to body of player offset -6 5 2 scale 0.85`,
-    since: "0.9.9", related: ["eff-npc", "define-armor", "eff-geo-entity"]
+    since: "0.9.10", related: ["eff-npc", "define-armor", "eff-geo-entity"]
   },
   {
     id: "eff-camera-cutscene", category: "effects",
     name: { ru: "Катсцены и плавный пролёт камеры по точкам (play cutscene)", en: "Smooth Spline Camera Cutscenes (play cutscene)" },
     syntax: [
-      "play cutscene for <игрок> points \"<X1 Y1 Z1; X2 Y2 Z2; X3 Y3 Z3...>\" for <N> seconds|ticks [looking at <цель | npc \"id\" | X Y Z>] [unlock]",
-      "move camera of <игрок> from \"<X1 Y1 Z1 [yaw pitch]>\" to \"<X2 Y2 Z2 [yaw pitch]>\" in <N> seconds|ticks [looking at <цель>]",
+      "play cutscene for <игрок> points \"<X1 Y1 Z1; X2 Y2 Z2; X3 Y3 Z3...>\" for <N> seconds|ticks [looking at <цель | npc \"id\" | X Y Z>] [lock|unlock] [lock_look|free_look] [hide_hand|show_hand]",
+      "move camera of <игрок> from \"<X1 Y1 Z1 [yaw pitch]>\" to \"<X2 Y2 Z2 [yaw pitch]>\" in <N> seconds|ticks [looking at <цель>] [lock|unlock] [lock_look|free_look] [hide_hand|show_hand]",
       "stop cutscene [for <игрок>]"
     ],
     desc: {
-      ru: "Кинематографичный пролёт камеры с по-кадровой интерполяцией по гладкому сплайну **Catmull-Rom** (240+ FPS без ступенек тиков!):\n• Поддерживаются как абсолютные координаты, так и относительные от игрока через `~` (`\"~0 ~2.2 ~5.5; ~5 ~3.5 ~1; ~0 ~2 ~-5\"`), а также явные углы `X Y Z yaw pitch` в каждой точке.\n• Опция `looking at <игрок | npc \"id\" | X Y Z>` плавно удерживает фокус камеры на персонаже, боссе или точке интереса. Во время пролёта модель самого игрока остаётся видимой со стороны (с 3D-бронёй и эмоциями)!",
-      en: "Cinematic per-frame **Catmull-Rom spline** camera flight (butter-smooth at 240+ FPS):\n• Supports absolute coordinates, player-relative `~` offsets (`\"~0 ~2.2 ~5.5; ~5 ~3.5 ~1\"`), or explicit `X Y Z yaw pitch` per waypoint.\n• `looking at <entity | npc \"id\" | X Y Z>` smoothly tracks a target throughout the flight while keeping the local player's 3D body, armor, and emotes visible."
+      ru: "Кинематографичный пролёт камеры с по-кадровой интерполяцией по гладкому сплайну **Catmull-Rom** (240+ FPS без ступенек тиков!):\n• Поддерживаются как абсолютные координаты, так и относительные от игрока через `~` (`\"~0 ~2.2 ~5.5; ~5 ~3.5 ~1; ~0 ~2 ~-5\"`), а также явные углы `X Y Z yaw pitch` в каждой точке.\n• Опция `looking at <игрок | npc \"id\" | X Y Z>` плавно удерживает фокус камеры на персонаже, боссе или точке интереса. Во время пролёта модель самого игрока остаётся видимой со стороны (с 3D-бронёй и эмоциями)!\n• **Полный контроль над персонажем и рукой (всё опционально!)**:\n  – По умолчанию во время катсцены **заблокирована ходьба** (`lock`), **заблокирован поворот головы/тела мышкой** (`lock_look`) и **скрыта правая рука от 1-го лица** (`hide_hand`).\n  – Любое ограничение можно гибко переключить прямо в команде: `unlock` (или `free_move`) — разрешить ходьбу; `free_look` (или `lock_look false`) — разрешить вращать головой мышкой; `show_hand` (или `hand true` / `hide_hand false`) — оставить руку справа видимой; `free` — разблокировать и движение, и мышку.",
+      en: "Cinematic per-frame **Catmull-Rom spline** camera flight (butter-smooth at 240+ FPS):\n• Supports absolute coordinates, player-relative `~` offsets (`\"~0 ~2.2 ~5.5; ~5 ~3.5 ~1\"`), or explicit `X Y Z yaw pitch` per waypoint.\n• `looking at <entity | npc \"id\" | X Y Z>` smoothly tracks a target throughout the flight while keeping the local player's 3D body, armor, and emotes visible.\n• **Optional Movement, Head-Turn & First-Person Hand Controls**:\n  – By default, cutscenes lock WASD movement (`lock`), lock mouse head/body rotation (`lock_look`), and hide the right-hand first-person arm (`hide_hand`).\n  – Every flag is optional: use `unlock` (`free_move`) to allow walking, `free_look` (`lock_look false`) to allow mouse head turning, `show_hand` (`hand true` / `hide_hand false`) to keep the first-person arm visible, or `free` to unlock both movement and look."
     },
     example: `command /intro:
 	fade screen of player to #000000 in 5 stay 4 out 10 ticks
 	play cutscene for player points "~0 ~2.2 ~5.5; ~5.2 ~3.6 ~1.5; ~1.5 ~4.0 ~-5.2; ~-5.0 ~2.8 ~-1.0" for 6 seconds looking at player`,
-    since: "0.9.9", related: ["eff-camera", "eff-npc", "eff-geo-entity"]
+    since: "0.9.10", related: ["eff-camera", "eff-npc", "eff-geo-entity"]
   },
   {
     id: "res-auto-ogg-studio", category: "config",
@@ -5132,7 +5132,7 @@ define item plasma_rifle:
       "scriptcraft/resources/assets/<ns>/geo/<модель>.geo.json  →  кнопка [◈ 3D Geo] в Студии"
     ],
     desc: {
-      ru: "Удобная работа со звуками и 3D-моделями прямо внутри игры:\n• **Авто-звуки `.ogg` без ручного `sounds.json`**: достаточно положить любой `.ogg` файл в `scriptcraft/resources/assets/<ns>/sounds/` (например `assets/gecko/sounds/plasma_shot.ogg`) и выполнить `/sc reload resources` — ScriptCraft автоматически сгенерирует и объединит `sounds.json`, синхронизирует звук клиентам и позволит сразу вызывать `play sound gecko:plasma_shot`! Подпапки переводятся в точки или слэши (`sounds/ui/click.ogg` → `ns:ui.click` или `ns:ui/click`).\n• **Встроенный OGG-аудиоплеер в Студии**: при открытии `.ogg` в Проводнике Студии отображается реальная звуковая волна (Waveform), кнопки Play/Pause/Stop/Loop, перемотка, ползунки Volume/Pitch и кнопка `→ В скрипт`, вставляющая готовую команду `play sound ...`!\n• **Интерактивный 3D-превьюер `.geo.json` в Студии**: открывает любую модель Blockbench прямо в редакторе с вращением ЛКМ, панорамированием ПКМ, зумом колёсиком, проверкой всех клипов `.animation.json`, подсветкой `_glowmask.png`, списком костей/локаторов и генератором заготовок `+ Entity / + Item / + Armor / + Block`!",
+      ru: "Удобная работа со звуками и 3D-моделями прямо внутри игры:\n• **Никакого окна «Установить серверный ресурспак: Да / Нет?» (`disableVanillaResourcePackPrompt = true`)**: ресурсы из `scriptcraft/resources/assets` передаются через собственный кэш мода (`scriptcraft/cache/assets`), 3D-модели `.geo.json`/`.animation.json` и текстуры мобов/брони подхватываются на лету вообще без перезагрузки ресурспаков, а лишний ванильный запрос из `server.properties` автоматически подавляется.\n• **Авто-звуки `.ogg` без ручного `sounds.json`**: достаточно положить любой `.ogg` файл в `scriptcraft/resources/assets/<ns>/sounds/` (например `assets/gecko/sounds/plasma_shot.ogg`) и выполнить `/sc reload resources` — ScriptCraft автоматически сгенерирует и объединит `sounds.json`, синхронизирует звук клиентам и позволит сразу вызывать `play sound gecko:plasma_shot`! Подпапки переводятся в точки или слэши (`sounds/ui/click.ogg` → `ns:ui.click` или `ns:ui/click`).\n• **Встроенный OGG-аудиоплеер в Студии**: при открытии `.ogg` в Проводнике Студии отображается реальная звуковая волна (Waveform), кнопки Play/Pause/Stop/Loop, перемотка, ползунки Volume/Pitch и кнопка `→ В скрипт`, вставляющая готовую команду `play sound ...`!\n• **Интерактивный 3D-превьюер `.geo.json` в Студии**: открывает любую модель Blockbench прямо в редакторе с вращением ЛКМ, панорамированием ПКМ, зумом колёсиком, проверкой всех клипов `.animation.json`, подсветкой `_glowmask.png`, списком костей/локаторов и генератором заготовок `+ Entity / + Item / + Armor / + Block`!",
       en: "Zero-boilerplate `.ogg` audio and interactive 3D model tooling inside Studio:\n• **Automatic `.ogg` Sound Registration**: drop any `.ogg` file into `scriptcraft/resources/assets/<ns>/sounds/` and run `/sc reload resources` — ScriptCraft auto-generates/merges `sounds.json` and syncs it to clients with no manual JSON needed.\n• **Studio OGG Audio Player**: inspect real PCM waveforms, scrub, loop, test volume/pitch, and click `→ Insert` to paste a ready `play sound` line.\n• **Studio 3D `.geo.json` Viewer**: orbit, pan, and zoom Blockbench models live inside Studio, preview `.animation.json` clips & `_glowmask.png` layers, inspect bones/locators, and generate `define` snippets in one click."
     },
     example: `# Положите файл scriptcraft/resources/assets/gecko/sounds/plasma_shot.ogg
@@ -5140,7 +5140,7 @@ define item plasma_rifle:
 on right click:
 	if player is holding gecko:plasma_rifle:
 		play sound gecko:plasma_shot at player with volume 0.9 pitch 1.05`,
-    since: "0.9.9", related: ["define-entity", "define-armor", "eff-geo-item-block"]
+    since: "0.9.10", related: ["define-entity", "define-armor", "eff-geo-item-block"]
   }
   ]
 };

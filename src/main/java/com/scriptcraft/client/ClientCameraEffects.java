@@ -18,6 +18,7 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.client.event.MovementInputUpdateEvent;
 import net.minecraftforge.client.event.RenderGuiOverlayEvent;
+import net.minecraftforge.client.event.RenderHandEvent;
 import net.minecraftforge.client.event.ViewportEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -59,6 +60,12 @@ public final class ClientCameraEffects {
     private static double pathLookX = 0, pathLookY = 0, pathLookZ = 0;
     private static int pathLookEntityId = -1;
     private static boolean pathLockInput = true;
+    private static boolean pathLockLook = true;
+    private static boolean pathHideHand = true;
+    private static float lockedPlayerYaw = 0f;
+    private static float lockedPlayerPitch = 0f;
+    private static float lockedPlayerHeadYaw = 0f;
+    private static float lockedPlayerBodyYaw = 0f;
     private static CutsceneCameraEntity cutsceneEntity = null;
     private static float cutsceneYaw = 0f;
     private static float cutscenePitch = 0f;
@@ -157,6 +164,12 @@ public final class ClientCameraEffects {
         pathLookZ = p.lookZ();
         pathLookEntityId = p.lookEntityId();
         pathLockInput = p.lockInput();
+        pathLockLook = p.lockLook();
+        pathHideHand = p.hideHand();
+        lockedPlayerYaw = mc.player.getYRot();
+        lockedPlayerPitch = mc.player.getXRot();
+        lockedPlayerHeadYaw = mc.player.yHeadRot;
+        lockedPlayerBodyYaw = mc.player.yBodyRot;
         pathActive = true;
 
         if (cutsceneEntity == null || cutsceneEntity.level() != mc.level) {
@@ -218,11 +231,36 @@ public final class ClientCameraEffects {
     }
 
     @SubscribeEvent
+    public static void onRenderHand(RenderHandEvent event) {
+        if (pathActive && pathHideHand) {
+            event.setCanceled(true);
+        }
+    }
+
+    private static void enforceLockedPlayerRotation(Minecraft mc) {
+        if (pathActive && pathLockLook && mc.player != null) {
+            mc.player.setYRot(lockedPlayerYaw);
+            mc.player.yRotO = lockedPlayerYaw;
+            mc.player.setXRot(lockedPlayerPitch);
+            mc.player.xRotO = lockedPlayerPitch;
+            mc.player.yHeadRot = lockedPlayerHeadYaw;
+            mc.player.yHeadRotO = lockedPlayerHeadYaw;
+            mc.player.yBodyRot = lockedPlayerBodyYaw;
+            mc.player.yBodyRotO = lockedPlayerBodyYaw;
+        }
+    }
+
+    @SubscribeEvent
     public static void onClientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase == TickEvent.Phase.START) {
+            enforceLockedPlayerRotation(Minecraft.getInstance());
+            return;
+        }
         if (event.phase != TickEvent.Phase.END) {
             return;
         }
         Minecraft mc = Minecraft.getInstance();
+        enforceLockedPlayerRotation(mc);
         if (mc.isPaused()) {
             return;
         }
@@ -269,7 +307,12 @@ public final class ClientCameraEffects {
 
     @SubscribeEvent
     public static void onRenderTick(TickEvent.RenderTickEvent event) {
-        if (event.phase == TickEvent.Phase.START && pathActive) {
+        if (!pathActive) {
+            return;
+        }
+        Minecraft mc = Minecraft.getInstance();
+        enforceLockedPlayerRotation(mc);
+        if (event.phase == TickEvent.Phase.START) {
             updateCutsceneFrame(event.renderTickTime);
         }
     }

@@ -4711,6 +4711,8 @@ public final class ScriptParser {
         Expression lookPlace = null;
         Expression lx = null, ly = null, lz = null;
         boolean lock = true;
+        boolean lockLook = true;
+        boolean hideHand = true;
 
         while (idx < t.size()) {
             String w = word(t, idx);
@@ -4767,7 +4769,7 @@ public final class ScriptParser {
                         }
                     }
                 }
-                case "lock" -> {
+                case "lock", "lock_move" -> {
                     idx++;
                     if (idx < t.size() && (word(t, idx).equals("true") || word(t, idx).equals("false"))) {
                         lock = Boolean.parseBoolean(word(t, idx));
@@ -4776,7 +4778,38 @@ public final class ScriptParser {
                         lock = true;
                     }
                 }
-                case "unlock", "free" -> { lock = false; idx++; }
+                case "unlock", "free_move" -> { lock = false; idx++; }
+                case "free" -> { lock = false; lockLook = false; idx++; }
+                case "lock_look", "lock_head" -> {
+                    idx++;
+                    if (idx < t.size() && (word(t, idx).equals("true") || word(t, idx).equals("false"))) {
+                        lockLook = Boolean.parseBoolean(word(t, idx));
+                        idx++;
+                    } else {
+                        lockLook = true;
+                    }
+                }
+                case "free_look", "free_head", "unlock_look", "unlock_head" -> { lockLook = false; idx++; }
+                case "hide_hand" -> {
+                    idx++;
+                    if (idx < t.size() && (word(t, idx).equals("true") || word(t, idx).equals("false"))) {
+                        hideHand = Boolean.parseBoolean(word(t, idx));
+                        idx++;
+                    } else {
+                        hideHand = true;
+                    }
+                }
+                case "show_hand" -> { hideHand = false; idx++; }
+                case "hand" -> {
+                    idx++;
+                    if (idx < t.size() && (word(t, idx).equals("true") || word(t, idx).equals("false") || word(t, idx).equals("show") || word(t, idx).equals("hide"))) {
+                        String hw = word(t, idx);
+                        hideHand = hw.equals("false") || hw.equals("hide");
+                        idx++;
+                    } else {
+                        hideHand = false;
+                    }
+                }
                 default -> {
                     if (points == null && t.get(idx).quoted()) {
                         points = new Expression.Text(t.get(idx).value());
@@ -4791,7 +4824,7 @@ public final class ScriptParser {
             throw new ParseException("укажите точки маршрута: play cutscene for player points \"~0 ~3 ~6; ~5 ~4 ~0; ~0 ~2 ~-4\" for 6 seconds");
         }
         return new Effects.CameraCutscene(false, target, points, null, null, duration, ticksPerUnit,
-                lookEnt, lookNpc, lookPlace, lx, ly, lz, lock);
+                lookEnt, lookNpc, lookPlace, lx, ly, lz, lock, lockLook, hideHand);
     }
 
     private Action parseMoveCamera(List<Token> t) throws ParseException {
@@ -4816,6 +4849,9 @@ public final class ScriptParser {
         Expression lookNpc = null;
         Expression lookPlace = null;
         Expression lx = null, ly = null, lz = null;
+        boolean lock = true;
+        boolean lockLook = true;
+        boolean hideHand = true;
 
         while (idx < t.size()) {
             String w = word(t, idx);
@@ -4844,12 +4880,45 @@ public final class ScriptParser {
                     if (ep != null) { lookEnt = ep.target(); idx = ep.end(); }
                     else { ExprParser.Parsed lp = ExprParser.parseAtom(t, idx); lookPlace = lp.expression(); idx = lp.end(); }
                 }
+            } else if (w.equals("lock") || w.equals("lock_move")) {
+                idx++;
+                if (idx < t.size() && (word(t, idx).equals("true") || word(t, idx).equals("false"))) {
+                    lock = Boolean.parseBoolean(word(t, idx));
+                    idx++;
+                } else lock = true;
+            } else if (w.equals("unlock") || w.equals("free_move")) {
+                lock = false; idx++;
+            } else if (w.equals("free")) {
+                lock = false; lockLook = false; idx++;
+            } else if (w.equals("lock_look") || w.equals("lock_head")) {
+                idx++;
+                if (idx < t.size() && (word(t, idx).equals("true") || word(t, idx).equals("false"))) {
+                    lockLook = Boolean.parseBoolean(word(t, idx));
+                    idx++;
+                } else lockLook = true;
+            } else if (w.equals("free_look") || w.equals("free_head") || w.equals("unlock_look") || w.equals("unlock_head")) {
+                lockLook = false; idx++;
+            } else if (w.equals("hide_hand")) {
+                idx++;
+                if (idx < t.size() && (word(t, idx).equals("true") || word(t, idx).equals("false"))) {
+                    hideHand = Boolean.parseBoolean(word(t, idx));
+                    idx++;
+                } else hideHand = true;
+            } else if (w.equals("show_hand")) {
+                hideHand = false; idx++;
+            } else if (w.equals("hand")) {
+                idx++;
+                if (idx < t.size() && (word(t, idx).equals("true") || word(t, idx).equals("false") || word(t, idx).equals("show") || word(t, idx).equals("hide"))) {
+                    String hw = word(t, idx);
+                    hideHand = hw.equals("false") || hw.equals("hide");
+                    idx++;
+                } else hideHand = false;
             } else {
                 throw new ParseException("неизвестный параметр move camera: '" + t.get(idx).value() + "'");
             }
         }
         return new Effects.CameraCutscene(false, target, null, fromP.expression(), toP.expression(), duration, ticksPerUnit,
-                lookEnt, lookNpc, lookPlace, lx, ly, lz, true);
+                lookEnt, lookNpc, lookPlace, lx, ly, lz, lock, lockLook, hideHand);
     }
 
     private Action parseStopCutscene(List<Token> t) throws ParseException {
@@ -4858,7 +4927,7 @@ public final class ScriptParser {
             TargetParser.Parsed tp = TargetParser.parse(t, 3);
             if (tp != null) target = tp.target();
         }
-        return new Effects.CameraCutscene(true, target, null, null, null, null, 1, null, null, null, null, null, null, false);
+        return new Effects.CameraCutscene(true, target, null, null, null, null, 1, null, null, null, null, null, null, false, false, false);
     }
 
     private static boolean looksCoordOrRel(Token tok) {

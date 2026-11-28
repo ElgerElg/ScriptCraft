@@ -241,7 +241,7 @@ public final class StudioAutocomplete {
         eff("fade screen of player to #000000 in 4 stay 8 out 8 ticks", "fade screen of <цель> to <#HEX> in <A> stay <B> out <C> ticks", "затемнение экрана", "fade screen camera color");
         eff("set camera fov of player to $0 for 20 ticks", "set camera fov of <цель> to <FOV> for <N> ticks", "зум / FOV камеры", "set camera fov roll tilt reset");
         eff("reset camera of player", "reset camera of <цель>", "сброс эффектов камеры", "reset camera");
-        eff("play cutscene for player points \"$0\" for 6 seconds", "play cutscene for <цель> points \"x y z; ...\" for <N> seconds", "катсцена: плавный пролёт по точкам", "play cutscene camera path spline points катсцена камера пролет");
+        eff("play cutscene for player points \"$0\" for 6 seconds", "play cutscene for <цель> points \"x y z; ...\" for <N> seconds [free_look] [show_hand]", "катсцена: пролёт (блок. головы + скрытие руки)", "play cutscene camera path spline points free_look show_hand hide_hand катсцена камера пролет");
         eff("stop cutscene of player", "stop cutscene of <цель>", "остановить катсцену", "stop cutscene camera");
 
         // 3D GeckoLib / Blockbench мобы, оружие, блоки, NPC и Props (аттачи на костях)

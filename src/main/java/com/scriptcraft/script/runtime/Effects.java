@@ -2586,7 +2586,9 @@ public final class Effects {
             @Nullable Expression lookNpcId,
             @Nullable Expression lookPlace,
             @Nullable Expression lookX, @Nullable Expression lookY, @Nullable Expression lookZ,
-            boolean lockInput
+            boolean lockInput,
+            boolean lockLook,
+            boolean hideHand
     ) implements Action {
         @Override
         public void execute(ExecutionContext ctx) {
@@ -2660,7 +2662,7 @@ public final class Effects {
                 }
 
                 var pkt = new com.scriptcraft.network.CameraPathPacket(
-                        false, waypoints, durTicks, hasLook, lx, ly, lz, entNetId, lockInput);
+                        false, waypoints, durTicks, hasLook, lx, ly, lz, entNetId, lockInput, lockLook, hideHand);
                 com.scriptcraft.network.ModNetwork.sendTo(viewer, pkt);
             }
         }

@@ -28,7 +28,8 @@ public final class ModNetwork {
     // 17: анимации игрока (PlayerAnimPacket) и статус LuckPerms в ScriptListPacket.
     // 18: универсальные настраиваемые поводки (LeashPacket).
     // 19: 3D Geo-анимации предметов/блоков (GeoSyncPacket), аттачи на костях (PropAttachPacket) и катсцены (CameraPathPacket).
-    private static final String PROTOCOL_VERSION = "19";
+    // 20: опции блокировки поворота головы (lockLook) и скрытия руки (hideHand) в CameraPathPacket.
+    private static final String PROTOCOL_VERSION = "20";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(ScriptCraft.MODID, "main"),

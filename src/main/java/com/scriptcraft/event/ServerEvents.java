@@ -135,7 +135,7 @@ public final class ServerEvents {
     @SubscribeEvent
     public static void onServerStarting(ServerStartingEvent event) {
         VariableStore.load(event.getServer());
-        ResourceSync.onServerStarting();
+        ResourceSync.onServerStarting(event.getServer());
         com.scriptcraft.script.ScriptProfiler.onServerStarting();
         com.scriptcraft.studio.ScriptHistory.cleanup();
         // Мир загружен: define из скриптов получают слоты пула (запоминаются в данных мира).
