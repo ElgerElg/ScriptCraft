@@ -18,19 +18,21 @@ public abstract class ServerLoginPacketListenerMixin {
     @Shadow
     private int tick;
 
-    @Shadow
-    private Enum<?> state;
-
     @Unique
     private int scriptcraft$totalLoginTicks;
 
-    @Inject(method = "tick", at = @At("HEAD"))
+    @Inject(
+            method = "tick",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraftforge/network/NetworkHooks;tickNegotiation(Lnet/minecraft/server/network/ServerLoginPacketListenerImpl;Lnet/minecraft/network/Connection;Lnet/minecraft/server/level/ServerPlayer;)Z",
+                    remap = false
+            )
+    )
     private void scriptcraft$extendLoginTimeout(CallbackInfo ci) {
-        if (this.state != null && "NEGOTIATING".equals(this.state.name())) {
-            scriptcraft$totalLoginTicks++;
-            if (this.tick >= 500 && scriptcraft$totalLoginTicks < 6000) {
-                this.tick = 400;
-            }
+        scriptcraft$totalLoginTicks++;
+        if (this.tick >= 500 && scriptcraft$totalLoginTicks < 6000) {
+            this.tick = 400;
         }
     }
 }
