@@ -89,6 +89,17 @@ public final class BindingStore {
                     dirty |= hint(i.id(), HINT_ITEMS, ScriptRegistries.ITEM_SLOTS);
                 }
             }
+        } else {
+            for (BlockDefinition b : program.blocks()) {
+                if (ScriptRegistries.isValidDynamicRealId(b.id())) {
+                    dirty |= KNOWN_REAL_BLOCKS.add(b.id());
+                }
+            }
+            for (ItemDefinition i : program.items()) {
+                if (ScriptRegistries.isValidDynamicRealId(i.id()) && !KNOWN_REAL_BLOCKS.contains(i.id())) {
+                    dirty |= KNOWN_REAL_ITEMS.add(i.id());
+                }
+            }
         }
         dirty |= KNOWN_REAL_BLOCKS.addAll(ScriptRegistries.realBlockIds());
         dirty |= KNOWN_REAL_ITEMS.addAll(ScriptRegistries.realItemIds());

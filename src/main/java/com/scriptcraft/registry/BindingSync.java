@@ -145,10 +145,19 @@ public final class BindingSync {
                     continue;
                 }
             }
-            if (!ScriptRegistries.hasLegacyPool()) {
+            String id = key.toString();
+            Block directRealBlock = ScriptRegistries.realBlock(id);
+            if (directRealBlock != null) {
+                m.remap(directRealBlock);
                 continue;
             }
-            String id = key.toString();
+            if (!ScriptRegistries.hasLegacyPool()) {
+                if (BindingStore.wasRealBlock(id) || BindingStore.hintBlockSlot(id) != null) {
+                    ScriptCraft.LOGGER.info("[ScriptCraft] Удалённый скриптовый блок {} пропущен при загрузке мира", id);
+                    m.ignore();
+                }
+                continue;
+            }
             Integer slot = BindingStore.hintBlockSlot(id) != null || BindingStore.wasRealBlock(id)
                     ? BindingStore.reserveForMissing(id, true) : null;
             if (slot != null && slot < ScriptRegistries.BLOCK_SLOTS) {
@@ -181,10 +190,23 @@ public final class BindingSync {
                     continue;
                 }
             }
-            if (!ScriptRegistries.hasLegacyPool()) {
+            String id = key.toString();
+            Item directRealItem = ScriptRegistries.realItem(id);
+            if (directRealItem == null) {
+                directRealItem = ScriptRegistries.realBlockItem(id);
+            }
+            if (directRealItem != null) {
+                m.remap(directRealItem);
                 continue;
             }
-            String id = key.toString();
+            if (!ScriptRegistries.hasLegacyPool()) {
+                if (BindingStore.wasRealItem(id) || BindingStore.wasRealBlock(id)
+                        || BindingStore.hintItemSlot(id) != null || BindingStore.hintBlockSlot(id) != null) {
+                    ScriptCraft.LOGGER.info("[ScriptCraft] Удалённый скриптовый предмет {} пропущен при загрузке мира", id);
+                    m.ignore();
+                }
+                continue;
+            }
             if (BindingStore.hintBlockSlot(id) != null || BindingStore.wasRealBlock(id)) {
                 Integer slot = BindingStore.reserveForMissing(id, true);
                 if (slot != null && slot < ScriptRegistries.BLOCK_SLOTS) {

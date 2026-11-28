@@ -163,15 +163,27 @@ public final class DynamicRegistryManager {
     }
 
     /**
-     * Клиент (GameDataMixin.injectSnapshot, ДО сверки реестров Forge при входе на сервер):
-     * смотрит в присланный сервером снимок и мгновенно регистрирует недостающие скриптовые блоки/предметы!
-     * Обязательно перехватывает любые исключения, чтобы никогда не заблокировать CountDownLatch в HandshakeHandler!
+     * Вызывается в самом начале GameData.injectSnapshot:
+     * - На сервере / в одиночном мире (isLocalWorld == true): ДО чтения level.dat и копирования FROZEN -> STAGING
+     *   регистрирует все define block / define item из скриптов, чтобы Forge сразу сопоставил сохранённые в мире ID
+     *   (например gecko:holo_terminal, lhs:printer) без MissingMappings и без паузы загрузки сервера!
+     * - На клиенте при входе на удалённый сервер (isLocalWorld == false): мгновенно регистрирует недостающие
+     *   серверные modid:block и modid:item из присланного сервером снимка.
      */
     public static synchronized void onBeforeInjectSnapshot(
             Map<ResourceLocation, ForgeRegistry.Snapshot> snapshot,
             boolean isLocalWorld
     ) {
-        if (isLocalWorld || snapshot == null) {
+        if (snapshot == null) {
+            return;
+        }
+        if (isLocalWorld) {
+            if (com.scriptcraft.config.ScriptCraftConfig.registerRealIds()) {
+                ensureServerRealEntries(
+                        com.scriptcraft.script.ScriptLoader.getProgram().blocks(),
+                        com.scriptcraft.script.ScriptLoader.getProgram().items()
+                );
+            }
             return;
         }
         ForgeRegistry<Block> activeBlocks = RegistryManager.ACTIVE.getRegistry(ForgeRegistries.Keys.BLOCKS);
@@ -405,6 +417,8 @@ public final class DynamicRegistryManager {
      */
     public static synchronized void cleanupClientSessionEntries() {
         try {
+            ForgeRegistry<Block> activeBlocks = RegistryManager.ACTIVE.getRegistry(ForgeRegistries.Keys.BLOCKS);
+            ForgeRegistry<Item> activeItems = RegistryManager.ACTIVE.getRegistry(ForgeRegistries.Keys.ITEMS);
             ForgeRegistry<Block> frozenBlocks = RegistryManager.FROZEN.getRegistry(ForgeRegistries.Keys.BLOCKS);
             ForgeRegistry<Item> frozenItems = RegistryManager.FROZEN.getRegistry(ForgeRegistries.Keys.ITEMS);
             if (!SESSION_CLIENT_BLOCKS.isEmpty()) {
@@ -419,10 +433,9 @@ public final class DynamicRegistryManager {
                     ScriptRegistries.removeDynamicClientEntry(rl.toString());
                 }
             }
-            // Защита от ванильного бага ForgeRegistry.sync: если в FROZEN.overrides остались переопределения,
-            // при дырках в availabilityMap Forge кидает RuntimeException ("Object did not get ID it asked for").
-            sanitizeFrozenOverrides(frozenBlocks);
-            sanitizeFrozenOverrides(frozenItems);
+            // Защита от ванильного бага ForgeRegistry.sync: очищаем overrides и серверные blocked-биты перед revertToFrozen
+            sanitizeRegistryBeforeRevert(activeBlocks, frozenBlocks);
+            sanitizeRegistryBeforeRevert(activeItems, frozenItems);
             if (!SESSION_CLIENT_BLOCKS.isEmpty() || !SESSION_CLIENT_ITEMS.isEmpty()) {
                 ScriptCraft.LOGGER.info("[ScriptCraft] Очищено временных записей сессии сервера: блоков {}, предметов {}",
                         SESSION_CLIENT_BLOCKS.size(), SESSION_CLIENT_ITEMS.size());
@@ -436,11 +449,32 @@ public final class DynamicRegistryManager {
     }
 
     @SuppressWarnings("unchecked")
-    private static <V> void sanitizeFrozenOverrides(ForgeRegistry<V> frozen) {
-        if (frozen == null) return;
-        ForgeRegistryAccessor<V> acc = (ForgeRegistryAccessor<V>) frozen;
-        if (acc.getOverrides() != null && !acc.getOverrides().isEmpty()) {
-            acc.getOverrides().clear();
+    private static <V> void sanitizeRegistryBeforeRevert(ForgeRegistry<V> active, ForgeRegistry<V> frozen) {
+        if (active != null) {
+            ForgeRegistryAccessor<V> aAcc = (ForgeRegistryAccessor<V>) active;
+            if (aAcc.getOverrides() != null) {
+                aAcc.getOverrides().clear();
+            }
+            clearBlockedField(active);
+        }
+        if (frozen != null) {
+            ForgeRegistryAccessor<V> fAcc = (ForgeRegistryAccessor<V>) frozen;
+            if (fAcc.getOverrides() != null && !fAcc.getOverrides().isEmpty()) {
+                fAcc.getOverrides().clear();
+            }
+            clearBlockedField(frozen);
+        }
+    }
+
+    private static void clearBlockedField(ForgeRegistry<?> reg) {
+        try {
+            java.lang.reflect.Field f = ForgeRegistry.class.getDeclaredField("blocked");
+            f.setAccessible(true);
+            Object val = f.get(reg);
+            if (val instanceof java.util.Collection<?> col) {
+                col.clear();
+            }
+        } catch (Throwable ignored) {
         }
     }
 
