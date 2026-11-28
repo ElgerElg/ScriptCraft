@@ -10,21 +10,27 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
  * Увеличивает ванильный лимит ожидания рукопожатия входа (по умолчанию 600 тиков = 30 секунд)
- * до 6000 тиков (5 минут), чтобы игроки с медленным интернетом не кикались с ошибкой "Took too long to log in".
+ * только на фазе NEGOTIATING (передача реестров и пакетов модов), чтобы игроки с медленным интернетом
+ * не кикались с ошибкой "Took too long to log in", не затрагивая фазу авторизации Yggdrasil.
  */
 @Mixin(ServerLoginPacketListenerImpl.class)
 public abstract class ServerLoginPacketListenerMixin {
     @Shadow
     private int tick;
 
+    @Shadow
+    private Enum<?> state;
+
     @Unique
     private int scriptcraft$totalLoginTicks;
 
     @Inject(method = "tick", at = @At("HEAD"))
     private void scriptcraft$extendLoginTimeout(CallbackInfo ci) {
-        scriptcraft$totalLoginTicks++;
-        if (this.tick >= 500 && scriptcraft$totalLoginTicks < 6000) {
-            this.tick = 400;
+        if (this.state != null && "NEGOTIATING".equals(this.state.name())) {
+            scriptcraft$totalLoginTicks++;
+            if (this.tick >= 500 && scriptcraft$totalLoginTicks < 6000) {
+                this.tick = 400;
+            }
         }
     }
 }

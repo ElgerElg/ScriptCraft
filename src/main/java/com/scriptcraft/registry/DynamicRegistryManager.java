@@ -163,27 +163,15 @@ public final class DynamicRegistryManager {
     }
 
     /**
-     * Вызывается в самом начале GameData.injectSnapshot:
-     * - На сервере / в одиночном мире (isLocalWorld == true): ДО чтения level.dat и копирования FROZEN -> STAGING
-     *   регистрирует все define block / define item из скриптов, чтобы Forge сразу сопоставил сохранённые в мире ID
-     *   (например gecko:holo_terminal, lhs:printer) без MissingMappings и без паузы загрузки сервера!
-     * - На клиенте при входе на удалённый сервер (isLocalWorld == false): мгновенно регистрирует недостающие
-     *   серверные modid:block и modid:item из присланного сервером снимка.
+     * Клиент (GameDataMixin.injectSnapshot, ДО сверки реестров Forge при входе на сервер):
+     * смотрит в присланный сервером снимок и мгновенно регистрирует недостающие скриптовые блоки/предметы!
+     * Обязательно перехватывает любые исключения, чтобы никогда не заблокировать CountDownLatch в HandshakeHandler!
      */
     public static synchronized void onBeforeInjectSnapshot(
             Map<ResourceLocation, ForgeRegistry.Snapshot> snapshot,
             boolean isLocalWorld
     ) {
-        if (snapshot == null) {
-            return;
-        }
-        if (isLocalWorld) {
-            if (com.scriptcraft.config.ScriptCraftConfig.registerRealIds()) {
-                ensureServerRealEntries(
-                        com.scriptcraft.script.ScriptLoader.getProgram().blocks(),
-                        com.scriptcraft.script.ScriptLoader.getProgram().items()
-                );
-            }
+        if (isLocalWorld || snapshot == null) {
             return;
         }
         ForgeRegistry<Block> activeBlocks = RegistryManager.ACTIVE.getRegistry(ForgeRegistries.Keys.BLOCKS);

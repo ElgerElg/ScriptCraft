@@ -65,11 +65,22 @@ public class ScriptCraft {
         } catch (RuntimeException e) {
             LOGGER.error("[ScriptCraft] Скрипты не загрузились, мод продолжит работу", e);
         }
-        // 2a. В режиме настоящих ID (useLegacySlotPool = false, по умолчанию) НЕ регистрируем ничего через DeferredRegister
-        //     вслепую до загрузки остальных модов (чтобы никогда не перезаписать чужие блоки вроде lhs:printer и не создать
-        //     конфликт в FROZEN.overrides при выходе с сервера). Все настоящие modid:block / modid:item регистрируются
-        //     динамически через DynamicRegistryManager ПОСЛЕ инициализации всех модов!
-        ScriptRegistries.registerReal(Set.of(), Set.of());
+        // 2a. В режиме настоящих ID (useLegacySlotPool = false, по умолчанию) запоминаем ID из скриптов (и DefineCache на клиенте)
+        //     и регистрируем их в RegisterEvent с EventPriority.LOWEST — ПОСЛЕ всех остальных модов, чтобы никогда не
+        //     перезаписать чужой блок (например lhs:printer) и дать Forge нативно загрузить level.dat без конфликтов.
+        //     Новые ID на клиенте при входе на сервер дорегистрируются через Mixin (GameDataMixin).
+        Set<String> realBlocks = new LinkedHashSet<>();
+        Set<String> realItems = new LinkedHashSet<>();
+        if (ScriptCraftConfig.registerRealIdsAtBoot()) {
+            ScriptLoader.getProgram().blocks().forEach(b -> realBlocks.add(b.id()));
+            ScriptLoader.getProgram().items().forEach(i -> realItems.add(i.id()));
+            if (FMLEnvironment.dist.isClient()) {
+                realBlocks.addAll(DefineCache.blocks());
+                realItems.addAll(DefineCache.items());
+            }
+            realItems.removeAll(realBlocks);
+        }
+        ScriptRegistries.registerReal(realBlocks, realItems);
         BindingStore.prepare(ScriptLoader.getProgram());
 
         // 3. Пул блоков/предметов (одинаковый у всех), настоящие id и вкладка творческого режима.

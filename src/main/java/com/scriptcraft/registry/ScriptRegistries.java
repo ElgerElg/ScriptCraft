@@ -212,9 +212,12 @@ public final class ScriptRegistries {
     private static final Pattern ID = Pattern.compile("[a-z0-9_.-]+:[a-z0-9_./-]+");
     private static boolean realRegistered = false;
 
+    private static final Set<String> PENDING_REAL_BLOCKS = new java.util.LinkedHashSet<>();
+    private static final Set<String> PENDING_REAL_ITEMS = new java.util.LinkedHashSet<>();
+
     /**
-     * Создаёт настоящие записи для id, известных при запуске. Вызывать один раз из конструктора мода, ДО
-     * {@link #register}. Если id есть и среди блоков, и среди предметов — побеждает блок.
+     * Сохраняет настоящие id из скриптов для нативной регистрации в {@link net.minecraftforge.registries.RegisterEvent}
+     * с приоритетом {@code LOWEST} (после всех других модов, чтобы не перезаписать чужие блоки/предметы).
      */
     public static synchronized void registerReal(Set<String> blockIds, Set<String> itemIds) {
         if (realRegistered) {
@@ -222,25 +225,61 @@ public final class ScriptRegistries {
         }
         realRegistered = true;
         for (String id : blockIds) {
-            if (!validRealId(id)) {
-                continue;
+            if (validRealId(id)) {
+                PENDING_REAL_BLOCKS.add(id);
             }
-            ResourceLocation rl = new ResourceLocation(id);
-            RegistryObject<Block> block = REAL_BLOCK_REGISTERS
-                    .computeIfAbsent(rl.getNamespace(), ns -> DeferredRegister.create(ForgeRegistries.BLOCKS, ns))
-                    .register(rl.getPath(), () -> new RealBlock(id));
-            REAL_BLOCKS.put(id, block);
-            REAL_BLOCK_ITEMS.put(id, realItems(rl.getNamespace())
-                    .register(rl.getPath(), () -> new ScriptBlockItem((ScriptBlock) block.get())));
         }
         for (String id : itemIds) {
-            if (!validRealId(id) || REAL_BLOCKS.containsKey(id)) {
-                continue;
+            if (validRealId(id) && !PENDING_REAL_BLOCKS.contains(id)) {
+                PENDING_REAL_ITEMS.add(id);
             }
-            ResourceLocation rl = new ResourceLocation(id);
-            REAL_ITEMS.put(id, realItems(rl.getNamespace()).register(rl.getPath(), () -> new RealItem(id)));
         }
-        ScriptCraft.LOGGER.info("[ScriptCraft] Настоящие id при запуске: блоков {}, предметов {}", REAL_BLOCKS.size(), REAL_ITEMS.size());
+    }
+
+    private static void onRegisterEvent(net.minecraftforge.registries.RegisterEvent event) {
+        if (event.getRegistryKey().equals(ForgeRegistries.Keys.BLOCKS)) {
+            net.minecraftforge.registries.IForgeRegistry<Block> reg = event.getForgeRegistry();
+            for (String id : PENDING_REAL_BLOCKS) {
+                ResourceLocation rl = ResourceLocation.tryParse(id);
+                if (rl == null) continue;
+                if (reg != null && reg.containsKey(rl)) {
+                    ScriptCraft.LOGGER.warn("[ScriptCraft] define block '{}' пропущен при запуске: ID уже занят другим модом", id);
+                    continue;
+                }
+                RealBlock block = new RealBlock(id);
+                event.register(ForgeRegistries.Keys.BLOCKS, rl, () -> block);
+                DYNAMIC_BLOCKS.put(id, block);
+            }
+        } else if (event.getRegistryKey().equals(ForgeRegistries.Keys.ITEMS)) {
+            net.minecraftforge.registries.IForgeRegistry<Item> reg = event.getForgeRegistry();
+            for (Map.Entry<String, Block> e : DYNAMIC_BLOCKS.entrySet()) {
+                String id = e.getKey();
+                if (!(e.getValue() instanceof ScriptBlock sb)) continue;
+                ResourceLocation rl = ResourceLocation.tryParse(id);
+                if (rl == null) continue;
+                if (reg != null && reg.containsKey(rl)) {
+                    ScriptCraft.LOGGER.warn("[ScriptCraft] Предмет блока '{}' пропущен при запуске: ID уже занят другим модом", id);
+                    continue;
+                }
+                ScriptBlockItem bi = new ScriptBlockItem(sb);
+                event.register(ForgeRegistries.Keys.ITEMS, rl, () -> bi);
+                DYNAMIC_BLOCK_ITEMS.put(id, bi);
+            }
+            for (String id : PENDING_REAL_ITEMS) {
+                if (DYNAMIC_BLOCKS.containsKey(id)) continue;
+                ResourceLocation rl = ResourceLocation.tryParse(id);
+                if (rl == null) continue;
+                if (reg != null && reg.containsKey(rl)) {
+                    ScriptCraft.LOGGER.warn("[ScriptCraft] define item '{}' пропущен при запуске: ID уже занят другим модом", id);
+                    continue;
+                }
+                RealItem item = new RealItem(id);
+                event.register(ForgeRegistries.Keys.ITEMS, rl, () -> item);
+                DYNAMIC_ITEMS.put(id, item);
+            }
+            ScriptCraft.LOGGER.info("[ScriptCraft] Настоящие id при запуске: блоков {}, предметов {}",
+                    DYNAMIC_BLOCKS.size(), DYNAMIC_ITEMS.size());
+        }
     }
 
     private static DeferredRegister<Item> realItems(String namespace) {
@@ -348,6 +387,7 @@ public final class ScriptRegistries {
         BLOCK_ENTITIES.register(modBus);
         ENTITIES.register(modBus);
         TABS.register(modBus);
+        modBus.addListener(net.minecraftforge.eventbus.api.EventPriority.LOWEST, ScriptRegistries::onRegisterEvent);
         modBus.addListener(ScriptRegistries::onEntityAttributes);
     }
 
