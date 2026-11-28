@@ -132,16 +132,12 @@ public final class BindingSync {
 
         for (MissingMappingsEvent.Mapping<Block> m : event.getAllMappings(ForgeRegistries.Keys.BLOCKS)) {
             net.minecraft.resources.ResourceLocation key = m.getKey();
-            // Автоперевод старых слотов scriptcraft:dyn_block_N из прежних миров на настоящие modid:block
+            // Устаревшие слоты scriptcraft:dyn_block_N из прежних версий: если пул отключён,
+            // безопасно игнорируем (m.remap на уже существующий в level.dat realBlock вызвал бы дубликат в STAGING).
             if (key.getNamespace().equals(ScriptCraft.MODID)) {
                 int oldSlot = ScriptRegistries.parseSlot(key.getPath(), ScriptRegistries.BLOCK_PREFIX, ScriptRegistries.BLOCK_SLOTS);
                 if (oldSlot >= 0) {
-                    Block mapped = findRealBlockForOldSlot(oldSlot, blockHints);
-                    if (mapped != null) {
-                        m.remap(mapped);
-                    } else {
-                        m.ignore();
-                    }
+                    m.ignore();
                     continue;
                 }
             }
@@ -167,26 +163,16 @@ public final class BindingSync {
         }
         for (MissingMappingsEvent.Mapping<Item> m : event.getAllMappings(ForgeRegistries.Keys.ITEMS)) {
             net.minecraft.resources.ResourceLocation key = m.getKey();
-            // Автоперевод старых слотов scriptcraft:dyn_item_N / dyn_block_N из инвентарей и сундуков на настоящие modid:item
+            // Устаревшие слоты scriptcraft:dyn_item_N / dyn_block_N из прежних версий безопасно игнорируем
             if (key.getNamespace().equals(ScriptCraft.MODID)) {
                 int oldBlockSlot = ScriptRegistries.parseSlot(key.getPath(), ScriptRegistries.BLOCK_PREFIX, ScriptRegistries.BLOCK_SLOTS);
                 if (oldBlockSlot >= 0) {
-                    Item mapped = findRealBlockItemForOldSlot(oldBlockSlot, blockHints);
-                    if (mapped != null) {
-                        m.remap(mapped);
-                    } else {
-                        m.ignore();
-                    }
+                    m.ignore();
                     continue;
                 }
                 int oldItemSlot = ScriptRegistries.parseSlot(key.getPath(), ScriptRegistries.ITEM_PREFIX, ScriptRegistries.ITEM_SLOTS);
                 if (oldItemSlot >= 0) {
-                    Item mapped = findRealItemForOldSlot(oldItemSlot, itemHints);
-                    if (mapped != null) {
-                        m.remap(mapped);
-                    } else {
-                        m.ignore();
-                    }
+                    m.ignore();
                     continue;
                 }
             }
