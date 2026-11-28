@@ -1012,6 +1012,7 @@ public final class ScriptParser {
 
     private List<Action> parseActions(List<Line> body) {
         List<Action> actions = new ArrayList<>();
+        List<Integer> actionLines = new ArrayList<>();
         if (body.isEmpty()) {
             return actions;
         }
@@ -1021,6 +1022,7 @@ public final class ScriptParser {
         int i = 0;
         while (i < body.size()) {
             Line line = body.get(i);
+            int prevSize = actions.size();
             int end = blockEnd(body, i);
             List<Line> children = body.subList(i + 1, end);
             String lower = line.text().toLowerCase(Locale.ROOT);
@@ -1094,6 +1096,7 @@ public final class ScriptParser {
                         }
                         String raw = lt.get(0).value();
                         actions.add(new Actions.LoopIndices(raw.substring(1, raw.length() - 1), parseActions(children), sortMode));
+                        while (actionLines.size() < actions.size()) actionLines.add(line.number());
                         i = end;
                         continue;
                     }
@@ -1108,6 +1111,7 @@ public final class ScriptParser {
                             throw new ParseException("нужно: loop <число> times:");
                         }
                         actions.add(new Actions.LoopTimes(count.expression(), parseActions(children)));
+                        while (actionLines.size() < actions.size()) actionLines.add(line.number());
                         i = end;
                         continue;
                     }
@@ -1175,7 +1179,13 @@ public final class ScriptParser {
                     error(line, e.getMessage() == null ? e.toString() : e.getMessage());
                 }
             }
+            while (actionLines.size() < actions.size()) {
+                actionLines.add(line.number());
+            }
             i = end;
+        }
+        for (int k = 0; k < actions.size(); k++) {
+            actions.set(k, Action.atLine(actionLines.get(k), actions.get(k)));
         }
         return actions;
     }

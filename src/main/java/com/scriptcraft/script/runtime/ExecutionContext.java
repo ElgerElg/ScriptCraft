@@ -268,9 +268,21 @@ public final class ExecutionContext {
         return script;
     }
 
+    private int currentLine;
+
+    public int line() {
+        return currentLine;
+    }
+
+    public ExecutionContext setLine(int line) {
+        this.currentLine = Math.max(0, line);
+        return this;
+    }
+
     /** Ставится движком перед запуском обработчика события или команды из файла. */
     public ExecutionContext setScript(@Nullable String script) {
         this.script = script;
+        this.currentLine = 0;
         variables.put("script", scriptNameOf(script));
         return this;
     }

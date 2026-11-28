@@ -41,6 +41,10 @@ public final class ScriptDocument {
     public int horiz;
     /** Курсор сдвинулся правкой или стрелками: следующий кадр покажет его строку. Колесо этот флаг не ставит. */
     public boolean followCaret;
+    /** Запрошено центрирование целевой строки в видимой области (например, при переходе из Журнала). */
+    public boolean centerCaret;
+    /** Отложенный переход на строку (1-based), пока текст скрипта ещё загружается с сервера. */
+    public int pendingJumpLine = -1;
     /** Счётчик изменений текста (для кэширования ширины строк и числа экранов на больших скриптах). */
     public int editStamp;
     /** Время открытия вкладки и флаг повторного запроса при долгой загрузке. */
@@ -153,6 +157,40 @@ public final class ScriptDocument {
         horiz = 0;
         undo.clear();
         redo.clear();
+        applyPendingJump();
+    }
+
+    /** Переходит на указанную строку (1-based) сразу или сразу после загрузки текста с сервера. */
+    public void jumpToLine(int oneBasedLine) {
+        if (oneBasedLine <= 0) {
+            return;
+        }
+        if (!loaded || lines.isEmpty()) {
+            pendingJumpLine = oneBasedLine;
+            return;
+        }
+        pendingJumpLine = -1;
+        int target = Math.max(0, Math.min(lines.size() - 1, oneBasedLine - 1));
+        String row = lines.get(target);
+        int firstChar = 0;
+        while (firstChar < row.length() && (row.charAt(firstChar) == ' ' || row.charAt(firstChar) == '\t')) {
+            firstChar++;
+        }
+        anchorLine = -1;
+        box = false;
+        line = target;
+        col = firstChar;
+        scroll = Math.max(0, target - 6);
+        followCaret = true;
+        centerCaret = true;
+    }
+
+    private void applyPendingJump() {
+        if (pendingJumpLine > 0 && loaded && !lines.isEmpty()) {
+            int target = pendingJumpLine;
+            pendingJumpLine = -1;
+            jumpToLine(target);
+        }
     }
 
     /** Подмена текста с сервера. Прокрутка и курсор остаются, если документ уже был открыт. */
@@ -167,6 +205,8 @@ public final class ScriptDocument {
         int keepHoriz = horiz;
         String keepSaved = saved;
         boolean wasLoaded = loaded;
+        int wantJump = pendingJumpLine;
+        pendingJumpLine = -1;
         List<Snap> keepUndo = wasLoaded && !disk ? new ArrayList<>(undo) : List.of();
         List<Snap> keepRedo = wasLoaded && !disk ? new ArrayList<>(redo) : List.of();
         load(raw);
@@ -176,6 +216,10 @@ public final class ScriptDocument {
             saved = wasLoaded ? keepSaved : "";
             undo.addAll(keepUndo);
             redo.addAll(keepRedo);
+        }
+        if (wantJump > 0) {
+            jumpToLine(wantJump);
+            return;
         }
         if (!wasLoaded) {
             return;
@@ -992,12 +1036,18 @@ public final class ScriptDocument {
     }
 
     public void ensureVisible(int viewLines, int lineHeight) {
+        int safeView = Math.max(1, viewLines);
+        if (centerCaret) {
+            centerCaret = false;
+            scroll = Math.max(0, line - Math.max(2, safeView / 3));
+            return;
+        }
         if (line < scroll) {
             scroll = line;
         }
-        int bottom = scroll + Math.max(1, viewLines) - 1;
+        int bottom = scroll + safeView - 1;
         if (line > bottom) {
-            scroll = line - viewLines + 1;
+            scroll = line - safeView + 1;
         }
         if (scroll < 0) {
             scroll = 0;

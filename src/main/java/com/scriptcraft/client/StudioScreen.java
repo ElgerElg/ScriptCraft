@@ -1,5 +1,6 @@
 package com.scriptcraft.client;
 
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import com.scriptcraft.ModPaths;
@@ -14,6 +15,7 @@ import com.scriptcraft.network.StudioExplorerPacket;
 import com.scriptcraft.network.StudioLivePacket;
 import com.scriptcraft.script.ScriptLog;
 import net.minecraft.Util;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.PlayerInfo;
@@ -23,6 +25,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import org.lwjgl.glfw.GLFW;
+import org.lwjgl.opengl.GL11;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -238,6 +241,24 @@ public class StudioScreen extends Screen {
         return (a << 24) | (argb & 0x00FFFFFF);
     }
 
+    private boolean hasSystemModal() {
+        return naming || gotoOpen || ask != null || StudioSession.historyOpen;
+    }
+
+    private static void beginTopLayer(GuiGraphics g, float z, boolean clearDepth) {
+        g.flush();
+        if (clearDepth) {
+            RenderSystem.clear(GL11.GL_DEPTH_BUFFER_BIT, Minecraft.ON_OSX);
+        }
+        g.pose().pushPose();
+        g.pose().translate(0f, 0f, z);
+    }
+
+    private static void endTopLayer(GuiGraphics g) {
+        g.flush();
+        g.pose().popPose();
+    }
+
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         long now = System.currentTimeMillis();
@@ -257,6 +278,12 @@ public class StudioScreen extends Screen {
         g.fillGradient(0, 0, this.width, this.height, withAlpha(0x78070B12, openT), withAlpha(0x96090D16, openT));
 
         int slideY = Math.round((1f - openT) * 10f);
+        int localMy = mouseY - slideY;
+        boolean modalOpen = hasSystemModal();
+        boolean popupOpen = modalOpen || expCtxOpen || menu != null || catalog || ctxOpen;
+        int bgMx = popupOpen ? -10000 : mouseX;
+        int bgMy = popupOpen ? -10000 : localMy;
+
         g.pose().pushPose();
         g.pose().translate(0, slideY, 0);
 
@@ -268,65 +295,87 @@ public class StudioScreen extends Screen {
         // Тонкая акцентная линия сверху окна
         g.fillGradient(px, py, px + pw, py + 1, withAlpha(GOLD, 0.75f), withAlpha(ACCENT, 0.55f));
         border(g, px, py, pw, ph, EDGE);
-        renderTitle(g, mouseX, mouseY - slideY);
+        renderTitle(g, modalOpen ? -10000 : mouseX, modalOpen ? -10000 : localMy);
         if (StudioSession.minimized) {
             g.pose().popPose();
             drawTip(g);
             trackPresence();
             return;
         }
-        renderMenuRow(g, mouseX, mouseY - slideY);
+        renderMenuRow(g, modalOpen ? -10000 : mouseX, modalOpen ? -10000 : localMy);
         if (script() != null && !settings) {
-            renderToolbar(g, mouseX, mouseY - slideY);
+            renderToolbar(g, bgMx, bgMy);
         }
         if (settings) {
-            renderSettings(g, mouseX, mouseY - slideY);
+            renderSettings(g, bgMx, bgMy);
         } else if (StudioSession.HOME.equals(StudioSession.active)) {
-            renderHome(g, mouseX, mouseY - slideY);
+            renderHome(g, bgMx, bgMy);
         } else if (StudioSession.JOURNAL.equals(StudioSession.active)) {
-            renderJournal(g, mouseX, mouseY - slideY);
+            renderJournal(g, bgMx, bgMy);
         } else if (StudioSession.ANIMATOR.equals(StudioSession.active)) {
             StudioAnimEditor.render(g, this.font, px + 6, py + TITLE + MENU_H + 4,
-                    pw - 12, ph - TITLE - MENU_H - 10, mouseX, mouseY - slideY);
+                    pw - 12, ph - TITLE - MENU_H - 10, bgMx, bgMy);
         } else if (StudioSession.PROFILER.equals(StudioSession.active) && ClientUiSettings.showProfiler()) {
-            renderProfiler(g, mouseX, mouseY - slideY);
+            renderProfiler(g, bgMx, bgMy);
         } else if (script() != null) {
-            renderEditor(g, mouseX, mouseY - slideY);
+            renderEditor(g, bgMx, bgMy);
             if (!StudioSession.guiEditorMode) {
                 if (StudioSession.toolPanelOpen) {
-                    renderToolPanel(g, mouseX, mouseY - slideY);
+                    beginTopLayer(g, 420f, false);
+                    renderToolPanel(g, popupOpen ? -10000 : mouseX, popupOpen ? -10000 : localMy);
+                    endTopLayer(g);
                 }
                 if (ctxOpen) {
-                    renderCtxMenu(g, mouseX, mouseY - slideY);
+                    beginTopLayer(g, 480f, true);
+                    renderCtxMenu(g, modalOpen ? -10000 : mouseX, modalOpen ? -10000 : localMy);
+                    endTopLayer(g);
                 }
             }
         }
-        if (expCtxOpen) {
-            renderExpCtxMenu(g, mouseX, mouseY - slideY);
+        if (expCtxOpen || (drag == Drag.EXPLORER_MOVE && !StudioSession.selectedExplorerPaths.isEmpty())
+                || menu != null || catalog) {
+            beginTopLayer(g, 560f, true);
+            if (expCtxOpen) {
+                renderExpCtxMenu(g, modalOpen ? -10000 : mouseX, modalOpen ? -10000 : localMy);
+            }
+            if (drag == Drag.EXPLORER_MOVE && !StudioSession.selectedExplorerPaths.isEmpty()) {
+                renderExplorerDragBadge(g, mouseX, localMy);
+            }
+            if (menu != null) {
+                renderMenu(g, modalOpen ? -10000 : mouseX, modalOpen ? -10000 : localMy);
+            }
+            if (catalog) {
+                renderCatalog(g, modalOpen ? -10000 : mouseX, modalOpen ? -10000 : localMy);
+            }
+            endTopLayer(g);
         }
-        if (drag == Drag.EXPLORER_MOVE && !StudioSession.selectedExplorerPaths.isEmpty()) {
-            renderExplorerDragBadge(g, mouseX, mouseY - slideY);
-        }
-        if (menu != null) {
-            renderMenu(g, mouseX, mouseY - slideY);
-        }
-        if (catalog) {
-            renderCatalog(g, mouseX, mouseY - slideY);
-        }
-        if (naming) {
-            renderNameBox(g);
-        }
-        if (gotoOpen) {
-            renderGotoBox(g);
-        }
-        if (ask != null) {
-            renderAsk(g, mouseX, mouseY - slideY);
-        }
-        if (StudioSession.historyOpen) {
-            renderHistoryModal(g, mouseX, mouseY - slideY);
+        if (modalOpen) {
+            tip = null;
+            preview = null;
+            beginTopLayer(g, 700f, true);
+            if (!StudioSession.historyOpen) {
+                g.fill(px + 1, py + TITLE, px + pw - 1, py + ph - 1, 0x88060A12);
+            }
+            if (naming) {
+                renderNameBox(g);
+            }
+            if (gotoOpen) {
+                renderGotoBox(g);
+            }
+            if (ask != null) {
+                renderAsk(g, mouseX, localMy);
+            }
+            if (StudioSession.historyOpen) {
+                renderHistoryModal(g, mouseX, localMy);
+            }
+            endTopLayer(g);
         }
         g.pose().popPose();
-        drawTip(g);
+        if (tip != null) {
+            beginTopLayer(g, 820f, true);
+            drawTip(g);
+            endTopLayer(g);
+        }
         trackPresence();
     }
 
@@ -1530,22 +1579,26 @@ public class StudioScreen extends Screen {
                 tipX = mx + 10;
                 tipY = my - 4;
             }
-            if (acMatch != null && !acMatch.items().isEmpty()) {
-                renderAutocomplete(g, mx, my, doc);
-            }
-            if (peerHover != null && !inToolPanel(mx, my)) {
-                int tw = this.font.width(peerHover) + (hoveredPeer != null ? 14 : 0);
-                int nameX = Math.min(mx + 10, px + pw - tw - 10);
-                int nameY = Math.max(py + 2, errorHover != null ? my - 31 : my - 15);
-                int accent = hoveredPeer != null ? peerColor(hoveredPeer) : ACCENT;
-                g.fill(nameX - 4, nameY - 2, nameX + tw + 4, nameY + 11, 0xF5111722);
-                border(g, nameX - 4, nameY - 2, tw + 8, 13, accent);
-                int tx = nameX;
-                if (hoveredPeer != null) {
-                    blitHead(g, hoveredPeer.id(), tx, nameY, 8);
-                    tx += 11;
+            if ((acMatch != null && !acMatch.items().isEmpty()) || (peerHover != null && !inToolPanel(mx, my))) {
+                beginTopLayer(g, 320f, false);
+                if (acMatch != null && !acMatch.items().isEmpty()) {
+                    renderAutocomplete(g, mx, my, doc);
                 }
-                g.drawString(this.font, peerHover, tx, nameY + 1, TEXT, false);
+                if (peerHover != null && !inToolPanel(mx, my)) {
+                    int tw = this.font.width(peerHover) + (hoveredPeer != null ? 14 : 0);
+                    int nameX = Math.min(mx + 10, px + pw - tw - 10);
+                    int nameY = Math.max(py + 2, errorHover != null ? my - 31 : my - 15);
+                    int accent = hoveredPeer != null ? peerColor(hoveredPeer) : ACCENT;
+                    g.fill(nameX - 4, nameY - 2, nameX + tw + 4, nameY + 11, 0xFF111722);
+                    border(g, nameX - 4, nameY - 2, tw + 8, 13, accent);
+                    int tx = nameX;
+                    if (hoveredPeer != null) {
+                        blitHead(g, hoveredPeer.id(), tx, nameY, 8);
+                        tx += 11;
+                    }
+                    g.drawString(this.font, peerHover, tx, nameY + 1, TEXT, false);
+                }
+                endTopLayer(g);
             }
 
             vBarX = editorX + editorW - BAR_W;
@@ -1643,14 +1696,16 @@ public class StudioScreen extends Screen {
             g.drawString(this.font, trim(statusText, maxStatusW), px + 16, stY + 5, 0xFFF4B8BA, false);
         }
         if (preview != null) {
+            beginTopLayer(g, 340f, false);
             int w = Math.min(72, preview.width());
             int ph = Math.min(72, preview.height());
             int x = Math.min(previewX, px + pw - w - 8);
             int pyy = Math.min(previewY, this.py + this.ph - ph - 24);
-            g.fill(x - 3, pyy - 3, x + w + 3, pyy + ph + 15, 0xF510151E);
+            g.fill(x - 3, pyy - 3, x + w + 3, pyy + ph + 15, 0xFF10151E);
             border(g, x - 3, pyy - 3, w + 6, ph + 18, EDGE_HOT);
             g.blit(preview.id(), x, pyy, w, ph, 0, 0, preview.width(), preview.height(), preview.width(), preview.height());
             g.drawString(this.font, preview.width() + "×" + preview.height(), x, pyy + ph + 3, TEXT, false);
+            endTopLayer(g);
         }
     }
 
@@ -2074,12 +2129,16 @@ public class StudioScreen extends Screen {
     }
 
     private void renderGotoBox(GuiGraphics g) {
-        int x = px + pw / 2 - 84;
-        int y = py + ph / 2 - 18;
-        g.fill(x + 2, y + 2, x + 170, y + 38, 0x55000000);
-        g.fill(x, y, x + 168, y + 36, 0xF7121824);
-        border(g, x, y, 168, 36, ACCENT);
-        gotoField.render(g, this.font, x + 8, y + 10, 152, 16, true, Messages.get("studio.goto") + "...", 0xFF0B1018, ACCENT, TEXT, MUTED);
+        int w = 188;
+        int h = 50;
+        int x = px + (pw - w) / 2;
+        int y = py + (ph - h) / 2;
+        g.fill(x + 3, y + 3, x + w + 3, y + h + 3, 0x88000000);
+        g.fill(x, y, x + w, y + h, 0xFF121824);
+        g.fill(x + 1, y + 1, x + w - 1, y + 16, BAR);
+        border(g, x, y, w, h, ACCENT);
+        g.drawString(this.font, trim(Messages.get("studio.goto"), w - 16), x + 8, y + 5, ACCENT, false);
+        gotoField.render(g, this.font, x + 8, y + 24, w - 16, 16, true, Messages.get("studio.goto") + "...", 0xFF0B1018, ACCENT, TEXT, MUTED);
     }
 
     private void renderSettings(GuiGraphics g, int mx, int my) {
@@ -2358,14 +2417,18 @@ public class StudioScreen extends Screen {
     }
 
     private void renderNameBox(GuiGraphics g) {
-        int x = px + pw / 2 - 96;
-        int y = py + ph / 2 - 18;
-        g.fill(x + 2, y + 2, x + 194, y + 38, 0x55000000);
-        g.fill(x, y, x + 192, y + 36, 0xF7121824);
-        border(g, x, y, 192, 36, GOLD);
         String hint = "mkdir".equals(namingMode) ? Messages.get("studio.exp.folder_name")
                 : ("rename".equals(namingMode) ? Messages.get("studio.exp.rename") : Messages.get("studio.new_name"));
-        nameField.render(g, this.font, x + 8, y + 10, 176, 16, true, hint, 0xFF0B1018, GOLD, TEXT, MUTED);
+        int w = 224;
+        int h = 52;
+        int x = px + (pw - w) / 2;
+        int y = py + (ph - h) / 2;
+        g.fill(x + 3, y + 3, x + w + 3, y + h + 3, 0x88000000);
+        g.fill(x, y, x + w, y + h, 0xFF121824);
+        g.fill(x + 1, y + 1, x + w - 1, y + 17, BAR);
+        border(g, x, y, w, h, GOLD);
+        g.drawString(this.font, trim(hint, w - 16), x + 8, y + 5, GOLD, false);
+        nameField.render(g, this.font, x + 8, y + 25, w - 16, 16, true, hint, 0xFF0B1018, GOLD, TEXT, MUTED);
     }
 
     private void layoutToolPanel() {
@@ -2652,13 +2715,98 @@ public class StudioScreen extends Screen {
         if (ask != null) {
             if (hover(mx, my, askYesX, askY, 48, 16)) {
                 confirmAsk();
-            } else             if (hover(mx, my, askNoX, askY, 48, 16)) {
+            } else if (hover(mx, my, askNoX, askY, 48, 16)) {
                 ask = null;
             }
             return true;
         }
         if (StudioSession.historyOpen) {
             historyClick(mx, my);
+            return true;
+        }
+        if (naming) {
+            int w = 224, h = 52;
+            int bx = px + (pw - w) / 2, by = py + (ph - h) / 2;
+            if (hover(mx, my, bx, by, w, h)) {
+                nameField.mouseClicked(this.font, mx, my, button);
+            } else {
+                naming = false;
+            }
+            return true;
+        }
+        if (gotoOpen) {
+            int w = 188, h = 50;
+            int bx = px + (pw - w) / 2, by = py + (ph - h) / 2;
+            if (hover(mx, my, bx, by, w, h)) {
+                gotoField.mouseClicked(this.font, mx, my, button);
+            } else {
+                gotoOpen = false;
+                gotoField.setValue("");
+            }
+            return true;
+        }
+        if (expCtxOpen) {
+            List<ExpCtxAction> items = expCtxActions();
+            int cw = 178;
+            int ch = items.size() * 15 + 6;
+            if (mx >= expCtxX && mx < expCtxX + cw && my >= expCtxY && my < expCtxY + ch) {
+                int idx = (my - (expCtxY + 3)) / 15;
+                expCtxOpen = false;
+                if (idx >= 0 && idx < items.size()) {
+                    runExpCtx(items.get(idx).id());
+                }
+                return true;
+            }
+            expCtxOpen = false;
+            return true;
+        }
+        if (ctxOpen) {
+            List<String> items = ctxItems();
+            int cw = 152;
+            int ch = items.size() * 15 + 6;
+            if (mx >= ctxX && mx < ctxX + cw && my >= ctxY && my < ctxY + ch) {
+                int idx = (my - (ctxY + 3)) / 15;
+                ctxOpen = false;
+                if (idx >= 0 && idx < items.size()) {
+                    runCtx(idx);
+                }
+                return true;
+            }
+            ctxOpen = false;
+            return true;
+        }
+        if (menu != null) {
+            if (my >= py + TITLE + MENU_H && my < py + TITLE + MENU_H + menuItems().size() * 15 + 6
+                    && mx >= menuX() && mx < menuX() + 156) {
+                int index = (my - (py + TITLE + MENU_H + 3)) / 15;
+                runMenu(index);
+                menu = null;
+                return true;
+            }
+            if (my >= py + TITLE && my < py + TITLE + MENU_H) {
+                String clicked = menuAt(mx);
+                menu = (clicked != null && !clicked.equals(menu)) ? clicked : null;
+                if (menu != null) {
+                    menuOpenedAt = System.currentTimeMillis();
+                }
+                return true;
+            }
+            menu = null;
+            return true;
+        }
+        if (catalog) {
+            int catX = Math.min(plusX, px + pw - 190);
+            int catRows = Math.max(1, Math.min(12, StudioSession.catalog.size()));
+            int catH = catRows * 15 + 6;
+            if (my >= py + TITLE && my < py + TITLE + catH && mx >= catX && mx < catX + 186) {
+                int index = (my - (py + TITLE + 3)) / 15;
+                if (index >= 0 && index < StudioSession.catalog.size() && index < 12) {
+                    openScript(StudioSession.catalog.get(index));
+                }
+                catalog = false;
+                return true;
+            }
+            catalog = false;
             return true;
         }
         if (StudioSession.HOME.equals(StudioSession.active) && !settings) {
@@ -2680,14 +2828,6 @@ public class StudioScreen extends Screen {
             originH = StudioSession.h;
             return true;
         }
-        if (naming) {
-            nameField.mouseClicked(this.font, mx, my, button);
-            return true;
-        }
-        if (gotoOpen) {
-            gotoField.mouseClicked(this.font, mx, my, button);
-            return true;
-        }
         if (acMatch != null && !acMatch.items().isEmpty() && hover(mx, my, acX, acY, acW, acH)) {
             int vis = Math.min(AC_MAX_VIS, acMatch.items().size());
             int localRow = (my - (acY + 3)) / 14;
@@ -2699,34 +2839,6 @@ public class StudioScreen extends Screen {
         }
         acMatch = null;
         acTouched = false;
-        if (expCtxOpen) {
-            List<ExpCtxAction> items = expCtxActions();
-            int cw = 178;
-            int ch = items.size() * 15 + 6;
-            if (mx >= expCtxX && mx < expCtxX + cw && my >= expCtxY && my < expCtxY + ch) {
-                int idx = (my - (expCtxY + 3)) / 15;
-                expCtxOpen = false;
-                if (idx >= 0 && idx < items.size()) {
-                    runExpCtx(items.get(idx).id());
-                }
-                return true;
-            }
-            expCtxOpen = false;
-        }
-        if (ctxOpen) {
-            List<String> items = ctxItems();
-            int cw = 152;
-            int ch = items.size() * 15 + 6;
-            if (mx >= ctxX && mx < ctxX + cw && my >= ctxY && my < ctxY + ch) {
-                int idx = (my - (ctxY + 3)) / 15;
-                ctxOpen = false;
-                if (idx >= 0 && idx < items.size()) {
-                    runCtx(idx);
-                }
-                return true;
-            }
-            ctxOpen = false;
-        }
         if (StudioSession.toolPanelOpen && script() != null && !settings) {
             Drag pEdge = panelEdgeAt(mx, my);
             if (pEdge != Drag.NONE) {
@@ -2787,24 +2899,6 @@ public class StudioScreen extends Screen {
                 return true;
             }
         }
-        if (menu != null && my >= py + TITLE + MENU_H && my < py + TITLE + MENU_H + menuItems().size() * 15 + 6
-                && mx >= menuX() && mx < menuX() + 156) {
-            int index = (my - (py + TITLE + MENU_H + 3)) / 15;
-            runMenu(index);
-            menu = null;
-            return true;
-        }
-        menu = null;
-        int catX = Math.min(plusX, px + pw - 190);
-        if (catalog && my >= py + TITLE && mx >= catX && mx < catX + 186) {
-            int index = (my - (py + TITLE + 3)) / 15;
-            if (index >= 0 && index < StudioSession.catalog.size() && index < 12) {
-                openScript(StudioSession.catalog.get(index));
-            }
-            catalog = false;
-            return true;
-        }
-        catalog = false;
         if (my >= py && my < py + TITLE) {
             if (hover(mx, my, px + pw - 18, py + 5, 14, 14)) {
                 onClose();
@@ -3127,8 +3221,17 @@ public class StudioScreen extends Screen {
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dx, double dy) {
         int mx = (int) mouseX;
         int my = (int) mouseY;
-        if (naming && nameField.mouseDragged(this.font, mx)) return true;
-        if (gotoOpen && gotoField.mouseDragged(this.font, mx)) return true;
+        if (naming) {
+            nameField.mouseDragged(this.font, mx);
+            return true;
+        }
+        if (gotoOpen) {
+            gotoField.mouseDragged(this.font, mx);
+            return true;
+        }
+        if (ask != null || StudioSession.historyOpen) {
+            return true;
+        }
         if (StudioSession.toolPanelOpen && panelFocus == 1 && findField.mouseDragged(this.font, mx)) return true;
         if (StudioSession.toolPanelOpen && panelFocus == 2 && replaceField.mouseDragged(this.font, mx)) return true;
         if (StudioSession.ANIMATOR.equals(StudioSession.active) && !settings && drag == Drag.NONE) {
@@ -3308,6 +3411,21 @@ public class StudioScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+        int step = (int) Math.signum(delta) * -3;
+        if (StudioSession.historyOpen) {
+            if (mouseX < histSplitX) {
+                histListScroll = Math.max(0, Math.min(histListMax, histListScroll + step * 12));
+            } else {
+                histPreviewScroll = Math.max(0, Math.min(histPreviewMax, histPreviewScroll + step * 3));
+            }
+            return true;
+        }
+        if (ask != null || naming || gotoOpen) {
+            return true;
+        }
+        if (expCtxOpen || ctxOpen || menu != null || catalog) {
+            return true;
+        }
         if (StudioSession.ANIMATOR.equals(StudioSession.active) && !settings) {
             if (StudioAnimEditor.mouseScrolled((int) mouseX, (int) mouseY, delta)) {
                 return true;
@@ -3324,17 +3442,8 @@ public class StudioScreen extends Screen {
                 return true;
             }
         }
-        int step = (int) Math.signum(delta) * -3;
         if (settings) {
             hotkeyScroll = Math.max(0, Math.min(hotkeyMaxScroll, hotkeyScroll + step * 12));
-            return true;
-        }
-        if (StudioSession.historyOpen) {
-            if (mouseX < histSplitX) {
-                histListScroll = Math.max(0, Math.min(histListMax, histListScroll + step * 12));
-            } else {
-                histPreviewScroll = Math.max(0, Math.min(histPreviewMax, histPreviewScroll + step * 3));
-            }
             return true;
         }
         if (StudioSession.PROFILER.equals(StudioSession.active) && ClientUiSettings.showProfiler()) {
@@ -3433,6 +3542,12 @@ public class StudioScreen extends Screen {
                 ask = null;
             } else if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
                 confirmAsk();
+            }
+            return true;
+        }
+        if (StudioSession.historyOpen) {
+            if (key == GLFW.GLFW_KEY_ESCAPE) {
+                StudioSession.historyOpen = false;
             }
             return true;
         }
@@ -4945,12 +5060,15 @@ public class StudioScreen extends Screen {
         return tabInner(label, closable, dirty) + 3;
     }
 
+    private long lastJournalCodeClickAt;
+    private int lastJournalCodeClickRow = -1;
+
     private void journalClick(int mx, int my) {
         if (copyBtnY >= 0 && hover(mx, my, copyBtnX, copyBtnY, copyBtnW, 12)) {
             copyJournalText(currentDetailText());
             return;
         }
-        if (copyAllX >= 0 && hover(mx, my, copyAllX, copyBtnY, copyAllW, 12)) {
+        if (copyAllX >= 0 && hover(mx, my, copyAllX, copyAllW > 0 ? copyBtnY : -1, copyAllW, 12)) {
             copyJournalText(allIssuesText());
             return;
         }
@@ -4959,8 +5077,29 @@ public class StudioScreen extends Screen {
             openScriptAtLine(openEdFile, openEdLine);
             return;
         }
+        long now = System.currentTimeMillis();
         if (journalTextX >= 0 && mx >= journalTextX && mx < journalTextX + journalTextW
                 && my >= journalViewTop - 2 && my < journalY + journalH) {
+            int clickedRow = (my - journalViewTop + codeScroll) / LINE_H;
+            if (openEdFile != null && !openEdFile.isEmpty() && my < journalViewBottom && clickedRow >= 0) {
+                boolean dblCode = lastJournalCodeClickRow == clickedRow && (now - lastJournalCodeClickAt) < 500L;
+                lastJournalCodeClickRow = clickedRow;
+                lastJournalCodeClickAt = now;
+                if (dblCode) {
+                    int baseFirst = 1;
+                    if (historySel >= 0 && historySel < StudioSession.history.size()) {
+                        baseFirst = Math.max(1, StudioSession.history.get(historySel).firstLine);
+                    } else if (!StudioSession.issues.isEmpty()) {
+                        ScriptLog.Issue cur = StudioSession.issues.get(Math.max(0, Math.min(journal, StudioSession.issues.size() - 1)));
+                        List<String> live = cur.file().isEmpty() ? null : StudioSession.liveLines(cur.file());
+                        ScriptLog.Slice sl = slice(cur.file());
+                        baseFirst = (live != null && !live.isEmpty()) ? 1 : (sl == null ? 1 : Math.max(1, sl.firstLine()));
+                    }
+                    int targetLine = baseFirst + clickedRow;
+                    openScriptAtLine(openEdFile, openEdLine > 0 && Math.abs(targetLine - openEdLine) <= 1 ? openEdLine : targetLine);
+                    return;
+                }
+            }
             placeJournalCaret(mx, my, false);
             drag = Drag.JOURNAL;
             return;
@@ -4969,13 +5108,12 @@ public class StudioScreen extends Screen {
             return;
         }
         clearJournalSelection();
-        long now = System.currentTimeMillis();
         for (JournalHit hit : journalHits) {
             if (my < hit.y || my >= hit.y + hit.h) {
                 continue;
             }
             if (hit.kind == 0) {
-                boolean dbl = lastJournalClickIdx == hit.index && (now - lastJournalClickAt) < 380L;
+                boolean dbl = lastJournalClickIdx == hit.index && (now - lastJournalClickAt) < 500L;
                 lastJournalClickIdx = hit.index;
                 lastJournalClickAt = now;
                 historySel = -1;
@@ -4991,9 +5129,16 @@ public class StudioScreen extends Screen {
                     codeScroll = Math.max(0, (issue.line() - first) * LINE_H - 20);
                 }
             } else {
-                lastJournalClickIdx = -1;
+                int histKey = -1000 - hit.index;
+                boolean dbl = lastJournalClickIdx == histKey && (now - lastJournalClickAt) < 500L;
+                lastJournalClickIdx = histKey;
+                lastJournalClickAt = now;
                 historySel = hit.index;
                 StudioSession.Note note = StudioSession.history.get(hit.index);
+                if (dbl && note.file != null && !note.file.isEmpty()) {
+                    openScriptAtLine(note.file, note.line);
+                    return;
+                }
                 if (note.line > 0) {
                     codeScroll = Math.max(0, (note.line - note.firstLine) * LINE_H - 20);
                 } else {
@@ -5008,11 +5153,20 @@ public class StudioScreen extends Screen {
         if (file == null || file.isEmpty()) {
             return;
         }
-        openScript(file);
-        ScriptDocument doc = StudioSession.docs.get(file);
-        if (doc != null && line1Based > 0) {
-            doc.move(Math.max(0, line1Based - 1), 0, false);
-            doc.followCaret = true;
+        StudioSession.guiEditorMode = false;
+        ScriptDocument doc;
+        if (file.startsWith("@")) {
+            openExplorerFile(file.substring(1));
+            doc = StudioSession.docs.get(file);
+        } else {
+            openScript(file);
+            doc = StudioSession.docs.get(file);
+        }
+        if (doc != null) {
+            doc.geoPreviewMode = false;
+            if (line1Based > 0) {
+                doc.jumpToLine(line1Based);
+            }
         }
     }
 
@@ -5232,10 +5386,11 @@ public class StudioScreen extends Screen {
                     : ("delete_exp".equals(ask) ? "studio.exp.ask_delete" : "studio.ask.close");
             text = Messages.get(key, askName);
         }
-        int w = Math.max(200, this.font.width(text) + 24);
+        int w = Math.max(216, this.font.width(text) + 28);
         int x = px + (pw - w) / 2;
         int y = py + ph / 2 - 28;
-        g.fill(x, y, x + w, y + 52, 0xF0101418);
+        g.fill(x + 3, y + 3, x + w + 3, y + 55, 0x88000000);
+        g.fill(x, y, x + w, y + 52, 0xFF10151E);
         border(g, x, y, w, 52, GOLD);
         g.drawString(this.font, text, x + 12, y + 8, TEXT, false);
         askYesX = x + 12;

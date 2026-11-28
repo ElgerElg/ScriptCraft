@@ -81,8 +81,9 @@ public final class ScriptScheduler {
                 Actions.runAll(task.actions(), ctx);
             } catch (RuntimeException e) {
                 String msg = e.getMessage() == null ? e.toString() : e.getMessage();
-                ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка после wait ({}): {}", task.script(), msg);
-                ScriptLoader.noteRuntime(task.script() == null ? "" : task.script(), msg, player, server);
+                String errFile = ctx.script() != null && !ctx.script().isEmpty() ? ctx.script() : (task.script() == null ? "" : task.script());
+                ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка после wait ({}): {}", errFile, msg);
+                ScriptLoader.noteRuntime(errFile, ctx.line(), msg, player, server);
             } finally {
                 com.scriptcraft.script.ScriptProfiler.end(prof, task.script(), "wait");
             }

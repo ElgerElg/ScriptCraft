@@ -239,6 +239,9 @@ public final class StudioSession {
         } else if (disk) {
             doc.saved = doc.text();
         }
+        if (doc.pendingJumpLine > 0 && doc.loaded) {
+            doc.jumpToLine(doc.pendingJumpLine);
+        }
         doc.revision = revision;
         doc.live = live;
         StudioSync.arm(doc);

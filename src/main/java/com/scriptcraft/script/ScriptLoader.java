@@ -81,7 +81,7 @@ public final class ScriptLoader {
             String msg = e.getMessage() == null ? e.toString() : e.getMessage();
             String file = ctx.script() == null ? "" : ctx.script();
             ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка функции экрана '{}': {}", call, msg);
-            noteRuntime(file, msg, player, player.getServer());
+            noteRuntime(file, ctx.line(), msg, player, player.getServer());
         }
     }
 
@@ -95,7 +95,11 @@ public final class ScriptLoader {
     }
 
     public static void noteRuntime(String file, String message, @Nullable ServerPlayer player, @Nullable MinecraftServer server) {
-        ScriptLog.runtime(file, message, player, server);
+        ScriptLog.runtime(file, 0, message, player, server);
+    }
+
+    public static void noteRuntime(String file, int line, String message, @Nullable ServerPlayer player, @Nullable MinecraftServer server) {
+        ScriptLog.runtime(file, line, message, player, server);
     }
 
     /** Имена загруженных (включённых) скриптов. */
@@ -384,7 +388,7 @@ public final class ScriptLoader {
         } catch (RuntimeException e) {
             String file = ctx.script() == null ? "" : ctx.script();
             ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка в 'on {}' ({}): {}", event.scriptName(), file.isEmpty() ? "?" : file, e.getMessage());
-            noteRuntime(file, e.getMessage(), player, server);
+            noteRuntime(file, ctx.line(), e.getMessage(), player, server);
         }
         return ctx;
     }
@@ -466,7 +470,8 @@ public final class ScriptLoader {
         } catch (RuntimeException e) {
             String message = e.getMessage() == null ? e.toString() : e.getMessage();
             CommandDefinition def = program.command(name);
-            noteRuntime(def == null ? "" : def.file(), message, source.getPlayer(), source.getServer());
+            String errFile = ctx.script() != null && !ctx.script().isEmpty() ? ctx.script() : (def == null ? "" : def.file());
+            noteRuntime(errFile, ctx.line(), message, source.getPlayer(), source.getServer());
             Feedback.fail(source, "command.error", name, message);
             return 0;
         }

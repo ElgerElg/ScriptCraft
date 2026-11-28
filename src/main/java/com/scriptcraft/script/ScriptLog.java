@@ -45,11 +45,15 @@ public final class ScriptLog {
     private ScriptLog() {
     }
 
-    /** Ошибка выполнения. line = 0: строку в блокноте подсветить нельзя, причина всё равно видна. */
+    /** Ошибка выполнения. Если известна строка действия (line > 0), подсвечивается в редакторе и журнале. */
     public static void runtime(String file, @Nullable String message, @Nullable ServerPlayer player, @Nullable MinecraftServer server) {
+        runtime(file, 0, message, player, server);
+    }
+
+    public static void runtime(String file, int line, @Nullable String message, @Nullable ServerPlayer player, @Nullable MinecraftServer server) {
         String name = file == null ? "" : file;
         String reason = message == null || message.isBlank() ? "error" : clip(message, 300);
-        Issue issue = new Issue(name, 0, reason, true);
+        Issue issue = new Issue(name, Math.max(0, line), reason, true);
         synchronized (RUNTIME) {
             Issue last = RUNTIME.peekLast();
             if (last != null && last.equals(issue)) {

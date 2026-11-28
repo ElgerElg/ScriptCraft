@@ -93,8 +93,9 @@ final class SimpleProgram implements ScriptProgram {
             try {
                 runActions(handler.actions(), ctx);
             } catch (RuntimeException e) {
-                ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка в 'on {}' ({}): {}", event.scriptName(), handler.file(), e.getMessage());
-                ScriptLoader.noteRuntime(handler.file(), e.getMessage(), ctx.player(), ctx.server());
+                String errFile = ctx.script() != null && !ctx.script().isEmpty() ? ctx.script() : handler.file();
+                ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка в 'on {}' ({}): {}", event.scriptName(), errFile, e.getMessage());
+                ScriptLoader.noteRuntime(errFile, ctx.line(), e.getMessage(), ctx.player(), ctx.server());
             } finally {
                 com.scriptcraft.script.ScriptProfiler.end(prof, handler.file(), "on " + event.scriptName());
             }
@@ -184,8 +185,9 @@ final class SimpleProgram implements ScriptProgram {
                         Actions.runAll(hud, ctx);
                     } catch (RuntimeException e) {
                         String message = e.getMessage() == null ? e.toString() : e.getMessage();
-                        ScriptCraft.LOGGER.warn("[ScriptCraft] HUD {} не обновился: {}", handler.file(), message);
-                        ScriptLoader.noteRuntime(handler.file(), message, player, server);
+                        String errFile = ctx.script() != null && !ctx.script().isEmpty() ? ctx.script() : handler.file();
+                        ScriptCraft.LOGGER.warn("[ScriptCraft] HUD {} не обновился: {}", errFile, message);
+                        ScriptLoader.noteRuntime(errFile, ctx.line(), message, player, server);
                     }
                 }
             }
@@ -196,10 +198,11 @@ final class SimpleProgram implements ScriptProgram {
     private static List<Action> hudActions(List<Action> actions) {
         List<Action> hud = new ArrayList<>();
         for (Action action : actions) {
-            if (action instanceof HudActions.CreateHud || action instanceof HudActions.Vanilla
-                    || action instanceof HudActions.SetBar || action instanceof HudActions.SetText
-                    || action instanceof HudActions.Visibility || action instanceof HudActions.Remove
-                    || action instanceof HudActions.Clear) {
+            Action raw = Action.unwrap(action);
+            if (raw instanceof HudActions.CreateHud || raw instanceof HudActions.Vanilla
+                    || raw instanceof HudActions.SetBar || raw instanceof HudActions.SetText
+                    || raw instanceof HudActions.Visibility || raw instanceof HudActions.Remove
+                    || raw instanceof HudActions.Clear) {
                 hud.add(action);
             }
         }
@@ -213,8 +216,9 @@ final class SimpleProgram implements ScriptProgram {
         try {
             runActions(handler.actions(), ctx);
         } catch (RuntimeException e) {
-            ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка в 'on {}' ({}): {}", event.scriptName(), handler.file(), e.getMessage());
-            ScriptLoader.noteRuntime(handler.file(), e.getMessage(), ctx.player(), ctx.server());
+            String errFile = ctx.script() != null && !ctx.script().isEmpty() ? ctx.script() : handler.file();
+            ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка в 'on {}' ({}): {}", event.scriptName(), errFile, e.getMessage());
+            ScriptLoader.noteRuntime(errFile, ctx.line(), e.getMessage(), ctx.player(), ctx.server());
         } finally {
             com.scriptcraft.script.ScriptProfiler.end(prof, handler.file(), "on " + event.scriptName());
         }
@@ -251,7 +255,9 @@ final class SimpleProgram implements ScriptProgram {
         }
         Map<String, Object> frame = new LinkedHashMap<>();
         String previous = ctx.script();
+        int prevLine = ctx.line();
         boolean pushed = false;
+        boolean completed = false;
         try {
             for (int i = 0; i < args.size(); i++) {
                 FunctionDefinition.Param param = def.params().get(i);
@@ -263,6 +269,7 @@ final class SimpleProgram implements ScriptProgram {
             long prof = com.scriptcraft.script.ScriptProfiler.start();
             try {
                 Actions.runAll(def.actions(), ctx);
+                completed = true;
             } finally {
                 com.scriptcraft.script.ScriptProfiler.end(prof, def.file(), "fn " + def.name());
             }
@@ -275,7 +282,10 @@ final class SimpleProgram implements ScriptProgram {
                 if (pushed) {
                     ctx.popFrame();
                 }
-                ctx.setScript(previous);
+                if (completed) {
+                    ctx.setScript(previous);
+                    ctx.setLine(prevLine);
+                }
                 ctx.exitFunction();
             }
         }
@@ -294,8 +304,9 @@ final class SimpleProgram implements ScriptProgram {
             try {
                 runActions(handler.actions(), ctx);
             } catch (RuntimeException e) {
-                ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка в 'every' ({}): {}", handler.file(), e.getMessage());
-                ScriptLoader.noteRuntime(handler.file(), e.getMessage(), null, server);
+                String errFile = ctx.script() != null && !ctx.script().isEmpty() ? ctx.script() : handler.file();
+                ScriptCraft.LOGGER.warn("[ScriptCraft] Ошибка в 'every' ({}): {}", errFile, e.getMessage());
+                ScriptLoader.noteRuntime(errFile, ctx.line(), e.getMessage(), null, server);
             } finally {
                 com.scriptcraft.script.ScriptProfiler.end(prof, handler.file(), "every " + handler.periodTicks() + "t");
             }
